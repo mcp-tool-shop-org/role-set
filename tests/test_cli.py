@@ -66,3 +66,23 @@ def test_pack_sync_and_verify_through_the_cli(tmp_path: Path, capsys, monkeypatc
     monkeypatch.setattr(cli, "verify", boom)
     assert main(["pack", "sync", "--repo", str(tmp_path), "--commit", "main"]) == 2
     assert main(["pack", "verify"]) == 2
+
+
+def test_ingest_and_store_through_the_cli(tmp_path: Path, capsys, monkeypatch):
+    from role_set import cli
+    from role_set.ingest import IngestError, IngestResult
+
+    monkeypatch.setattr(cli, "interview_questions", lambda *a, **k: ["q"] * 12)
+    monkeypatch.setattr(cli, "ingest", lambda *a, **k: IngestResult(ingest_id=1, files=1, accepted=3, duplicates=0))
+    args = ["ingest", "--receipts", str(tmp_path), "--store", str(tmp_path / "s.db"), "--repo", str(tmp_path), "--commit", "abc1234"]
+    assert main(args) == 0
+    assert '"accepted": 3' in capsys.readouterr().out
+
+    def boom(*a, **k):
+        raise IngestError("REFUSED: test")
+
+    monkeypatch.setattr(cli, "ingest", boom)
+    assert main(args) == 2
+    assert main(["store", "status", "--store", str(tmp_path / "s.db")]) == 0
+    assert main(["store", "void", "--store", str(tmp_path / "s.db"), "--round", "1", "--reason", "test"]) == 0
+    assert '"voided_rounds": [1]' in capsys.readouterr().out
