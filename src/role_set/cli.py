@@ -9,6 +9,7 @@ from pathlib import Path
 
 from role_set import __version__
 from role_set.cost import PROFILES, estimate
+from role_set.gates import GatesUnavailable, load_gates
 from role_set.guards import GuardError, require_local_endpoint
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
@@ -60,10 +61,11 @@ def _cost(args: argparse.Namespace) -> int:
 def _write(args: argparse.Namespace) -> int:
     try:
         require_local_endpoint(args.endpoint)
-    except GuardError as e:
+        load_gates()
+    except (GuardError, GatesUnavailable) as e:
         print(e, file=sys.stderr)
         return 2
-    print("REFUSED: write is not available until aspire-si's gates package is pinned (aspire-si #85)", file=sys.stderr)
+    print("REFUSED: the runner is not built yet; the gates are installed but `write` lands in the next change", file=sys.stderr)
     return 2
 
 
