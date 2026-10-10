@@ -1,0 +1,40 @@
+{
+  "boundaries": [
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "be00584f37af3f509c5eed09a0b29e4922a3545890bbf48b14d3c8ed6501ff51",
+          "path": "README.md"
+        }
+      ],
+      "globs": [
+        "*"
+      ],
+      "importConfidence": "full",
+      "name": "root",
+      "origin": "authored",
+      "role": "docs",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    }
+  ],
+  "doors": [],
+  "edges": [],
+  "engine": "1.24.0",
+  "generatedFrom": {
+    "commit": "9bababbc331b9eeae786a1f04c1d81430e7b91b6",
+    "tracked": 1
+  },
+  "landings": [],
+  "overlaps": [],
+  "submodules": [],
+  "symlinks": [],
+  "testFiles": 0,
+  "unassigned": []
+}

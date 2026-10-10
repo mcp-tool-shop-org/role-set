@@ -1,0 +1,6 @@
+summary: ""
+boundaries:
+  - name: root
+    globs:
+      - "*"
+    role: docs

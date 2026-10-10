@@ -1,0 +1,51 @@
+{
+  "authored": [
+    "root"
+  ],
+  "breaks": [],
+  "changes": {
+    "first": true
+  },
+  "changesTogether": [],
+  "changesTogetherNote": [
+    "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
+  ],
+  "changesTogetherWithTests": 0,
+  "commit": "9bababbc331b9eeae786a1f04c1d81430e7b91b6",
+  "defaultBranch": "scaffold",
+  "derived": "1 part, mostly Markdown (1 file). No workflows were found, so this page has no doors.",
+  "doors": [],
+  "duplicates": [],
+  "duplicatesLead": null,
+  "duplicatesNote": [],
+  "edges": [],
+  "engine": "1.24.0",
+  "generated": [],
+  "generatedAt": "2026-10-10T20:31:42.002Z",
+  "limits": [
+    "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 20 source files reach 10 revisions."
+  ],
+  "mainDoor": null,
+  "partLabels": {
+    "root": "the repository root"
+  },
+  "parts": 1,
+  "readers": [],
+  "repo": "mcp-tool-shop-org/role-set",
+  "sequences": [],
+  "startDoor": null,
+  "startHere": [],
+  "summary": null,
+  "summaryFrom": null,
+  "testFiles": 0,
+  "testedBy": {},
+  "unnamedWrites": 0,
+  "unread": [],
+  "unreadFiles": 0,
+  "unreadNote": [],
+  "untested": [],
+  "untestedNote": [
+    "No test files were found by name."
+  ],
+  "written": 0
+}
