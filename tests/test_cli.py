@@ -46,3 +46,23 @@ def test_version_flag():
     with pytest.raises(SystemExit) as e:
         main(["--version"])
     assert e.value.code == 0
+
+
+def test_pack_sync_and_verify_through_the_cli(tmp_path: Path, capsys, monkeypatch):
+    from role_set import cli
+    from role_set.pack import PackError, PackManifest
+
+    m = PackManifest(role="verifier", commit="abc1234", files={"a": "1"}, pack_sha256="deadbeef")
+    monkeypatch.setattr(cli, "sync", lambda *a, **k: m)
+    monkeypatch.setattr(cli, "verify", lambda *a, **k: m)
+    assert main(["pack", "sync", "--repo", str(tmp_path), "--commit", "abc1234", "--out", str(tmp_path / "p")]) == 0
+    assert "deadbeef" in capsys.readouterr().out
+    assert main(["pack", "verify", "--pack", str(tmp_path / "p")]) == 0
+
+    def boom(*a, **k):
+        raise PackError("REFUSED: test")
+
+    monkeypatch.setattr(cli, "sync", boom)
+    monkeypatch.setattr(cli, "verify", boom)
+    assert main(["pack", "sync", "--repo", str(tmp_path), "--commit", "main"]) == 2
+    assert main(["pack", "verify"]) == 2

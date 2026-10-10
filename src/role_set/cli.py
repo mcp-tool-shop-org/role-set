@@ -10,6 +10,7 @@ from pathlib import Path
 from role_set import __version__
 from role_set.cost import PROFILES, estimate
 from role_set.guards import GuardError, require_local_endpoint
+from role_set.pack import PackError, sync, verify
 from role_set.plan import PlanError, check_plan, plan_batch
 
 # The verifier role's lessons and their two sides. The full pack arrives with `pack sync`;
@@ -64,6 +65,26 @@ def _write(args: argparse.Namespace) -> int:
     return 2
 
 
+def _pack_sync(args: argparse.Namespace) -> int:
+    try:
+        m = sync(Path(args.repo), args.commit, Path(args.out), role=args.role)
+    except PackError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(json.dumps({"role": m.role, "commit": m.commit, "files": len(m.files), "pack_sha256": m.pack_sha256}))
+    return 0
+
+
+def _pack_verify(args: argparse.Namespace) -> int:
+    try:
+        m = verify(Path(args.pack))
+    except PackError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(json.dumps({"role": m.role, "commit": m.commit, "pack_sha256": m.pack_sha256}))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="role-set", description=__doc__)
     p.add_argument("--version", action="version", version=f"role-set {__version__}")
@@ -82,6 +103,18 @@ def build_parser() -> argparse.ArgumentParser:
     c.add_argument("--attempts", type=float, default=1.5)
     c.add_argument("--critic-on-pod", action="store_true")
     c.set_defaults(func=_cost)
+
+    k = sub.add_parser("pack", help="the role pack: the humans' text at a pinned commit")
+    ksub = k.add_subparsers(dest="pack_command", required=True)
+    ks = ksub.add_parser("sync", help="fetch and split the pack from a local aspire-si clone at a commit")
+    ks.add_argument("--repo", required=True, help="path to the aspire-si clone (never recorded)")
+    ks.add_argument("--commit", required=True, help="the commit sha to pin")
+    ks.add_argument("--role", default="verifier")
+    ks.add_argument("--out", default="roles/verifier")
+    ks.set_defaults(func=_pack_sync)
+    kv = ksub.add_parser("verify", help="the pack on disk still hashes to its manifest")
+    kv.add_argument("--pack", default="roles/verifier")
+    kv.set_defaults(func=_pack_verify)
 
     w = sub.add_parser("write", help="the runner; paid; refused until the gates are pinned")
     w.add_argument("--plan", required=True)
