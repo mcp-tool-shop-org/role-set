@@ -33,14 +33,12 @@ def test_cost_reads_a_plan(tmp_path: Path, capsys):
     assert main(["cost", "--plan", str(out), "--profile", "frontier", "--attempts", "0"]) == 2
 
 
-def test_write_is_refused_off_loopback_and_before_the_gates(tmp_path: Path, capsys):
+def test_write_refuses_without_what_it_needs(tmp_path: Path, capsys):
     out = tmp_path / "plan.json"
     main(["plan", "--lessons", "T02", "--out", str(out)])
-    assert main(["write", "--plan", str(out), "--endpoint", "http://example.com/v1", "--model", "m"]) == 2
-    assert "loopback" in capsys.readouterr().err or True
-    assert main(["write", "--plan", str(out), "--endpoint", "http://127.0.0.1:11435/v1", "--model", "m"]) == 2
-    err = capsys.readouterr().err
-    assert "pin it" in err or "not built yet" in err
+    # no pack on disk: refused before anything else
+    assert main(["write", "--plan", str(out), "--pack", str(tmp_path / "nopack"), "--out", str(tmp_path / "o"), "--mock"]) == 2
+    assert "pack sync first" in capsys.readouterr().err
 
 
 def test_version_flag():

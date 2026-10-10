@@ -1,0 +1,24 @@
+{
+  "_note": "Licence-checked models only. The Publisher owns this list and checks each licence at the pinned revision before first use. A model not listed here is refused by the guards. Cloud tags are refused regardless.",
+  "writers": [
+    {
+      "served_as": "qwen3-235b-instruct-2507",
+      "repo": "QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
+      "revision": "96548f657d772187f16e9f04bc50aec78a9f9cdd",
+      "base_repo": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+      "base_revision": "ac9c66cc",
+      "licence": "Apache-2.0",
+      "offrig_profile": "writer-qwen235",
+      "checked_by": "the Publisher, 2026-10-10"
+    }
+  ],
+  "critics": [
+    {
+      "served_as": "gemma4:31b",
+      "family": "gemma",
+      "licence": "Apache-2.0",
+      "endpoint": "http://127.0.0.1:11434",
+      "checked_by": "the Publisher, 2026-10-10"
+    }
+  ]
+}
