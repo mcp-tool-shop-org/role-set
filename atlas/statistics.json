@@ -1,0 +1,285 @@
+{
+  "authorship": {
+    "parts": [],
+    "places": []
+  },
+  "boundaries": [
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": ".github",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "docs",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "roles",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "root",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": [
+          "tests"
+        ]
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "src",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
+      "name": "tests",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    }
+  ],
+  "churn": {
+    "definition": "commits is how many commits in the window touch the file, including merges and commits dropped from coupling. lines is added plus deleted in those commits.",
+    "files": [
+      {
+        "commits": 1,
+        "lines": 3,
+        "path": ".gitattributes"
+      },
+      {
+        "commits": 1,
+        "lines": 74,
+        "path": ".github/workflows/ci.yml"
+      },
+      {
+        "commits": 1,
+        "lines": 13,
+        "path": ".gitignore"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": ".python-version"
+      },
+      {
+        "commits": 1,
+        "lines": 21,
+        "path": "LICENSE"
+      },
+      {
+        "commits": 2,
+        "lines": 39,
+        "path": "README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 51,
+        "path": "atlas/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 6,
+        "path": "atlas/boundaries.yaml"
+      },
+      {
+        "commits": 1,
+        "lines": 51,
+        "path": "atlas/page.json"
+      },
+      {
+        "commits": 1,
+        "lines": 83,
+        "path": "atlas/statistics.json"
+      },
+      {
+        "commits": 1,
+        "lines": 40,
+        "path": "atlas/structure.json"
+      },
+      {
+        "commits": 1,
+        "lines": 13,
+        "path": "codecov.yml"
+      },
+      {
+        "commits": 1,
+        "lines": 508,
+        "path": "docs/role-set-design.md"
+      },
+      {
+        "commits": 1,
+        "lines": 35,
+        "path": "pyproject.toml"
+      },
+      {
+        "commits": 1,
+        "lines": 21,
+        "path": "roles/verifier/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 8,
+        "path": "src/role_set/__init__.py"
+      },
+      {
+        "commits": 1,
+        "lines": 100,
+        "path": "src/role_set/cli.py"
+      },
+      {
+        "commits": 1,
+        "lines": 53,
+        "path": "src/role_set/cost.py"
+      },
+      {
+        "commits": 1,
+        "lines": 75,
+        "path": "src/role_set/guards.py"
+      },
+      {
+        "commits": 1,
+        "lines": 221,
+        "path": "src/role_set/plan.py"
+      },
+      {
+        "commits": 1,
+        "lines": 48,
+        "path": "tests/test_cli.py"
+      },
+      {
+        "commits": 1,
+        "lines": 29,
+        "path": "tests/test_cost.py"
+      },
+      {
+        "commits": 1,
+        "lines": 58,
+        "path": "tests/test_guards.py"
+      },
+      {
+        "commits": 1,
+        "lines": 119,
+        "path": "tests/test_plan.py"
+      },
+      {
+        "commits": 1,
+        "lines": 121,
+        "path": "uv.lock"
+      }
+    ]
+  },
+  "confidence": {
+    "level": "low",
+    "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
+  },
+  "generatedAt": "2026-10-10T20:34:12.593Z",
+  "generatedFrom": {
+    "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66"
+  },
+  "pairs": [],
+  "parameters": {
+    "appliedChangesetLimit": 6.25,
+    "changeset": 50,
+    "changesetFraction": 0.25,
+    "cohesionDrop": 0.2,
+    "couplingPopulation": "source",
+    "fallenShared": 3,
+    "floor": "fallen",
+    "floorHeld": false,
+    "floorTrigger": "both",
+    "headDate": "2026-10-10T16:31:56-04:00",
+    "inScopeFiles": 25,
+    "pinnedStart": null,
+    "priorFloor": "fallen",
+    "qualifyingCommits": 1,
+    "qualifyingMinimum": 30,
+    "revisions": 5,
+    "shared": 10,
+    "sharedFloorUsed": 3,
+    "since": "2026-04-13T20:31:56.000Z",
+    "sourceExtensions": [
+      ".js",
+      ".mjs",
+      ".cjs",
+      ".jsx",
+      ".ts",
+      ".tsx",
+      ".mts",
+      ".cts",
+      ".py",
+      ".rs",
+      ".gd"
+    ],
+    "sourceFileReach": 20,
+    "sourceFileRise": 25,
+    "sourceFilesReachingStrongFloor": 0,
+    "strength": 0.5,
+    "windowDays": 180
+  },
+  "strengthDefinition": "strength is the shared qualifying commits divided by either. either is the number of qualifying commits that touch either file."
+}

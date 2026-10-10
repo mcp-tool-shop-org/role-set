@@ -1,0 +1,224 @@
+{
+  "authored": [
+    ".github/",
+    "docs/",
+    "roles/",
+    "root"
+  ],
+  "breaks": [
+    {
+      "doors": 2,
+      "importedBy": [],
+      "importedByTests": [
+        "tests"
+      ],
+      "kind": "part",
+      "name": "src",
+      "partLabel": "src"
+    }
+  ],
+  "changes": {
+    "fileCounts": {
+      "added": 19,
+      "changed": 0,
+      "moved": 0,
+      "parts": 6,
+      "removed": 0
+    },
+    "items": [
+      {
+        "kind": "import-added",
+        "sentence": "tests now imports src.",
+        "subjects": [
+          "tests",
+          "src"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "CI (.github/workflows/ci.yml) is a new door. It starts on a pull request to main; on a push to main touching 9 paths; or by hand. It runs tests/.",
+        "subjects": [
+          ".github/workflows/ci.yml",
+          "tests/"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "role-set (pyproject.toml) is a new command. It runs src/role_set/cli.py.",
+        "subjects": [
+          "pyproject.toml",
+          "src/role_set/cli.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "README.md is now read by pyproject.toml.",
+        "subjects": [
+          "README.md",
+          "pyproject.toml"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "src/role_set/ is now read by pyproject.toml.",
+        "subjects": [
+          "src/role_set/",
+          "pyproject.toml"
+        ]
+      },
+      {
+        "kind": "part",
+        "sentence": ".github is a new part, drawn from `.github/**`.",
+        "subjects": [
+          ".github"
+        ]
+      },
+      {
+        "kind": "part",
+        "sentence": "docs is a new part, drawn from `docs/**`.",
+        "subjects": [
+          "docs"
+        ]
+      },
+      {
+        "kind": "part",
+        "sentence": "roles is a new part, drawn from `roles/**`.",
+        "subjects": [
+          "roles"
+        ]
+      },
+      {
+        "kind": "part",
+        "sentence": "And 2 more changes to the parts.",
+        "subjects": []
+      },
+      {
+        "kind": "counts",
+        "sentence": "19 files added, across 6 parts.",
+        "subjects": []
+      }
+    ],
+    "since": {
+      "commit": "9bababbc331b9eeae786a1f04c1d81430e7b91b6",
+      "generatedAt": "2026-10-10T20:31:42.002Z"
+    },
+    "unchanged": false
+  },
+  "changesTogether": [],
+  "changesTogetherNote": [
+    "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
+  ],
+  "changesTogetherWithTests": 0,
+  "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
+  "defaultBranch": "main",
+  "derived": "6 parts, mostly Python (9 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "doors": [
+    {
+      "checks": [],
+      "checksCount": 0,
+      "checksMore": 0,
+      "file": ".github/workflows/ci.yml",
+      "id": ".github/workflows/ci.yml",
+      "landings": [],
+      "name": "CI",
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "tests",
+          "depth": 0,
+          "files": 4
+        },
+        {
+          "boundary": "src",
+          "depth": 1,
+          "files": 5
+        }
+      ],
+      "runs": [
+        "tests/"
+      ],
+      "runsCount": 1,
+      "runsMore": 0,
+      "sends": [
+        "uploads coverage to Codecov"
+      ],
+      "stages": [],
+      "triggers": [
+        "on a pull request to main",
+        "on a push to main touching 9 paths",
+        "or by hand"
+      ]
+    },
+    {
+      "checks": [],
+      "checksCount": 0,
+      "checksMore": 0,
+      "file": "pyproject.toml",
+      "id": "pyproject.toml#role-set",
+      "kind": "command",
+      "landings": [],
+      "name": "role-set",
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "src",
+          "depth": 0,
+          "files": 5
+        }
+      ],
+      "runs": [
+        "src/role_set/cli.py"
+      ],
+      "runsCount": 1,
+      "runsMore": 0,
+      "sends": [],
+      "stages": [],
+      "triggers": []
+    }
+  ],
+  "duplicates": [],
+  "duplicatesLead": null,
+  "duplicatesNote": [],
+  "edges": [],
+  "engine": "1.24.0",
+  "generated": [],
+  "generatedAt": "2026-10-10T20:34:12.593Z",
+  "limits": [
+    "2 reads go to the directory the command is run in, not to this repository.",
+    "1 read goes to a path its caller passes, not to this repository.",
+    "1 write goes to the directory the command is run in (plan.json) or a path its caller passes, not to this repository.",
+    "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
+  ],
+  "mainDoor": ".github/workflows/ci.yml",
+  "partLabels": {
+    ".github": ".github",
+    "docs": "docs",
+    "roles": "roles",
+    "root": "the repository root",
+    "src": "src",
+    "tests": "tests"
+  },
+  "parts": 6,
+  "readers": [],
+  "repo": "mcp-tool-shop-org/role-set",
+  "sequences": [],
+  "startDoor": "pyproject.toml#role-set",
+  "startHere": [
+    "src/role_set/cli.py",
+    "src/role_set/cost.py"
+  ],
+  "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
+  "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
+  "summaryFrom": "person",
+  "testFiles": 4,
+  "testedBy": {
+    "src": 4
+  },
+  "unnamedWrites": 0,
+  "unread": [],
+  "unreadFiles": 0,
+  "unreadNote": [],
+  "untested": [],
+  "untestedNote": [],
+  "written": 0
+}

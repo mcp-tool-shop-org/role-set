@@ -1,0 +1,806 @@
+{
+  "boundaries": [
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "4ed38e6d2ef362492fe23abddf4d65d5b0dc9974295293539e8860a17701f765",
+          "path": ".github/workflows/ci.yml"
+        }
+      ],
+      "globs": [
+        ".github/**"
+      ],
+      "importConfidence": "full",
+      "name": ".github",
+      "origin": "authored",
+      "role": "config",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "201f20c937a9e944a6742184408b12b2527c317b4fd5d36da8ada79197dceebe",
+          "path": "docs/role-set-design.md"
+        }
+      ],
+      "globs": [
+        "docs/**"
+      ],
+      "importConfidence": "full",
+      "name": "docs",
+      "origin": "authored",
+      "role": "docs",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "fb10f2c41c7b224f89a1bc12ebe55db7800204bbd0701942aa97a6bd6df57c10",
+          "path": "roles/verifier/README.md"
+        }
+      ],
+      "globs": [
+        "roles/**"
+      ],
+      "importConfidence": "full",
+      "name": "roles",
+      "origin": "authored",
+      "role": "data",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "93699a1108fd9da226b06f84ee12e317f4ea4d2f18a8fd05260443fd1bf2faef",
+          "path": ".gitattributes"
+        },
+        {
+          "hash": "8c1584894ec83d284397d7fc0a15015eefb6d4ef82611b0c0583303a4206b20c",
+          "path": ".gitignore"
+        },
+        {
+          "hash": "7b55f8e67b5623c4bef3fa691288da9437d79d3aba156de48d481db32ac7d16d",
+          "path": ".python-version"
+        },
+        {
+          "hash": "367e5141e4f5884e5791c4021f33a9faa958840a5decf44e1b273a87aad1c459",
+          "path": "LICENSE"
+        },
+        {
+          "hash": "be00584f37af3f509c5eed09a0b29e4922a3545890bbf48b14d3c8ed6501ff51",
+          "path": "README.md"
+        },
+        {
+          "hash": "8355bbf8be42ff1c5c8bf7dd2e4e1ca4b7db1440c92e15daaf5856558e7301c1",
+          "path": "codecov.yml"
+        },
+        {
+          "hash": "d0a51a067cf7c790db6be96b0b23fc05d19f31559061efdd5301c488d504ad2c",
+          "path": "pyproject.toml"
+        },
+        {
+          "hash": "914b09a39c97012ac22957b13c2f6429f46d4d986f476f737b3af1d86fc44622",
+          "path": "uv.lock"
+        }
+      ],
+      "globs": [
+        "*"
+      ],
+      "importConfidence": "full",
+      "name": "root",
+      "origin": "authored",
+      "role": "config",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [
+        "src/role_set/cli.py"
+      ],
+      "externals": 0,
+      "files": [
+        {
+          "constantOnly": true,
+          "hash": "787ddf6f5af2a2adc059e7b6ad179b410cc9ee79b996c5dec439a00eaf81a734",
+          "path": "src/role_set/__init__.py"
+        },
+        {
+          "entry": "main",
+          "entryRule": 0,
+          "exports": [
+            "build_parser",
+            "main"
+          ],
+          "failurePaths": [
+            {
+              "in": "_plan",
+              "kind": "except",
+              "line": 34
+            },
+            {
+              "in": "_cost",
+              "kind": "except",
+              "line": 50
+            },
+            {
+              "in": "_write",
+              "kind": "except",
+              "line": 60
+            }
+          ],
+          "hash": "7f8c3bc45cb2a6fcb7740351a6b04c4d63984c1ccbfff54105ed3bc8dc52a1a0",
+          "importsFiles": [
+            "src/role_set/__init__.py",
+            "src/role_set/cost.py",
+            "src/role_set/guards.py",
+            "src/role_set/plan.py"
+          ],
+          "path": "src/role_set/cli.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 33,
+                  "name": "plan_batch",
+                  "target": {
+                    "file": "src/role_set/plan.py"
+                  }
+                },
+                {
+                  "line": 37,
+                  "name": "check_plan",
+                  "target": {
+                    "file": "src/role_set/plan.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_plan"
+            },
+            {
+              "calls": [
+                {
+                  "line": 49,
+                  "name": "estimate",
+                  "target": {
+                    "file": "src/role_set/cost.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_cost"
+            },
+            {
+              "calls": [
+                {
+                  "line": 59,
+                  "name": "require_local_endpoint",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_write"
+            },
+            {
+              "calls": [
+                {
+                  "line": 81,
+                  "name": "PROFILES",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/cost.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "build_parser"
+            },
+            {
+              "calls": [
+                {
+                  "line": 81,
+                  "name": "PROFILES",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/cost.py"
+                  },
+                  "via": "build_parser"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": true,
+              "isDefaultExport": false,
+              "name": "main"
+            }
+          ]
+        },
+        {
+          "exports": [
+            "estimate"
+          ],
+          "failurePaths": [
+            {
+              "in": "estimate",
+              "kind": "raise",
+              "line": 45
+            },
+            {
+              "in": "estimate",
+              "kind": "raise",
+              "line": 47
+            }
+          ],
+          "hash": "8d05a7f265d83b6ba671fe26c272caea1d54272bff5655465883ad0c5e80607e",
+          "path": "src/role_set/cost.py"
+        },
+        {
+          "entry": "heartbeat_age_s",
+          "entryRule": 4,
+          "exports": [
+            "heartbeat_age_s",
+            "require_grant",
+            "require_heartbeat",
+            "require_local_endpoint",
+            "require_model_allowed"
+          ],
+          "failurePaths": [
+            {
+              "in": "require_local_endpoint",
+              "kind": "raise",
+              "line": 27
+            },
+            {
+              "in": "require_local_endpoint",
+              "kind": "raise",
+              "line": 29
+            },
+            {
+              "in": "require_local_endpoint",
+              "kind": "raise",
+              "line": 31
+            },
+            {
+              "in": "require_model_allowed",
+              "kind": "raise",
+              "line": 40
+            },
+            {
+              "in": "require_model_allowed",
+              "kind": "raise",
+              "line": 44
+            },
+            {
+              "in": "require_model_allowed",
+              "kind": "raise",
+              "line": 46
+            },
+            {
+              "in": "require_grant",
+              "kind": "raise",
+              "line": 56
+            },
+            {
+              "in": "heartbeat_age_s",
+              "kind": "except",
+              "line": 65
+            },
+            {
+              "in": "require_heartbeat",
+              "kind": "raise",
+              "line": 74
+            }
+          ],
+          "hash": "9b7f205cef6559a8aa3e091f8facf0a9040b0fd917849ae242922de99bc3f3a6",
+          "path": "src/role_set/guards.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 64,
+                  "name": "stat",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "heartbeat_age_s"
+            },
+            {
+              "calls": [
+                {
+                  "line": 64,
+                  "name": "stat",
+                  "target": null,
+                  "via": "heartbeat_age_s"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "require_heartbeat"
+            }
+          ]
+        },
+        {
+          "exports": [
+            "check_plan",
+            "plan_batch",
+            "plan_lesson"
+          ],
+          "failurePaths": [
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 145
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 148
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 154
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 158
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 164
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 167
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 169
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 171
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 175
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 177
+            },
+            {
+              "in": "check_plan",
+              "kind": "raise",
+              "line": 180
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 220
+            }
+          ],
+          "hash": "1a9f5dff087e47a3df843c6bf302c04535abfb5afa53945fa096b94b906fcd49",
+          "path": "src/role_set/plan.py"
+        }
+      ],
+      "globs": [
+        "src/**"
+      ],
+      "importConfidence": "full",
+      "name": "src",
+      "origin": "authored",
+      "outsidePlaces": [
+        {
+          "reads": 1,
+          "where": [
+            "caller"
+          ],
+          "writes": 0
+        },
+        {
+          "reads": 0,
+          "where": [
+            "caller",
+            "cwd:plan.json"
+          ],
+          "writes": 1
+        },
+        {
+          "reads": 2,
+          "where": [
+            "cwd"
+          ],
+          "writes": 0
+        }
+      ],
+      "outsideReads": 3,
+      "outsideWrites": 1,
+      "role": "code",
+      "testRunners": [
+        "pytest"
+      ],
+      "testedBy": 4,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "exports": [
+            "test_cost_reads_a_plan",
+            "test_plan_refuses_an_unknown_lesson",
+            "test_plan_refuses_when_the_menu_is_too_small",
+            "test_plan_writes_slots_and_figures",
+            "test_version_flag",
+            "test_write_is_refused_off_loopback_and_before_the_gates"
+          ],
+          "hash": "72d33862401efaa30c5a0cb0507213d85034ddfcfe61312bdaf800aa7e5a823c",
+          "importsFiles": [
+            "src/role_set/cli.py"
+          ],
+          "path": "tests/test_cli.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_critic_on_pod_adds_its_tokens_and_dict_rounds",
+            "test_estimate_refuses_bad_inputs",
+            "test_estimate_scales_with_slots_and_attempts"
+          ],
+          "hash": "99de16bcebd8dd75644fb2ad5a9d1c07877b83a189cd6141a067dc799b7f1954",
+          "importsFiles": [
+            "src/role_set/cost.py"
+          ],
+          "path": "tests/test_cost.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_grant_is_required_only_for_the_card",
+            "test_heartbeat_uses_mtime_and_never_opens_the_file",
+            "test_only_loopback_http_with_a_port_is_accepted",
+            "test_writer_must_be_allowed_and_never_cloud"
+          ],
+          "hash": "a451e3f6c88e41e172a8806993dbb599af37e7869bd1f36f8171723530296fe7",
+          "importsFiles": [
+            "src/role_set/guards.py"
+          ],
+          "path": "tests/test_guards.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_a_batch_of_three_lessons_needs_a_bigger_menu",
+            "test_a_batch_of_two_lessons_keeps_every_structure_at_most_twice",
+            "test_a_lesson_plan_meets_every_floor_and_is_reproducible",
+            "test_check_plan_refuses_broken_floors",
+            "test_check_plan_refuses_missing_pairs_and_turns_and_escalate",
+            "test_check_plan_refuses_shape_errors",
+            "test_different_seeds_change_the_assignment_not_the_counts"
+          ],
+          "hash": "081350a7fd0bae7288a79ffce6622c18172321778ffc2557e78fd7d4ea816996",
+          "importsFiles": [
+            "src/role_set/plan.py"
+          ],
+          "path": "tests/test_plan.py",
+          "testFramework": "pytest"
+        }
+      ],
+      "globs": [
+        "tests/**"
+      ],
+      "importConfidence": "full",
+      "name": "tests",
+      "origin": "authored",
+      "role": "test",
+      "testRunners": [
+        "pytest"
+      ],
+      "testedBy": 0,
+      "unresolvedSites": 0
+    }
+  ],
+  "doors": [
+    {
+      "checksCount": 0,
+      "commands": [
+        {
+          "dir": "",
+          "job": "test",
+          "programs": [
+            "uv"
+          ],
+          "step": "Install"
+        },
+        {
+          "dir": "",
+          "job": "test",
+          "programs": [
+            "uv"
+          ],
+          "step": "Test"
+        },
+        {
+          "dir": "",
+          "job": "test",
+          "programs": [
+            "npx"
+          ],
+          "step": "Atlas check"
+        },
+        {
+          "dir": "",
+          "job": "test",
+          "programs": [
+            "uv"
+          ],
+          "step": "Plan without a model"
+        }
+      ],
+      "elsewhere": [],
+      "file": ".github/workflows/ci.yml",
+      "jobs": [
+        {
+          "basis": "declared",
+          "name": "test",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ]
+        }
+      ],
+      "landings": [],
+      "mentions": [],
+      "name": "CI",
+      "permissions": [
+        "contents:read",
+        "id-token:write"
+      ],
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "tests",
+          "depth": 0,
+          "files": 4
+        },
+        {
+          "boundary": "src",
+          "depth": 1,
+          "enters": {
+            "file": "src/role_set/cli.py",
+            "from": "tests/test_cli.py"
+          },
+          "files": 5
+        }
+      ],
+      "readers": [],
+      "runs": [
+        {
+          "directory": true,
+          "job": "test",
+          "matched": true,
+          "path": "tests/",
+          "runKind": "executes",
+          "via": "pytest pyproject.toml"
+        }
+      ],
+      "runsCount": 1,
+      "secrets": [],
+      "sends": {
+        "deploysPages": false,
+        "dispatchesTo": [],
+        "opensIssues": false,
+        "opensIssuesOnFailure": false,
+        "opensPullRequests": false,
+        "publishes": false,
+        "publishesTo": [],
+        "releases": false
+      },
+      "stages": [],
+      "tests": [
+        {
+          "config": "pyproject.toml",
+          "coverage": true,
+          "files": 4,
+          "job": "test",
+          "runner": "pytest",
+          "step": "Test"
+        }
+      ],
+      "triggers": [
+        {
+          "branches": [
+            "main"
+          ],
+          "event": "pull_request"
+        },
+        {
+          "branches": [
+            "main"
+          ],
+          "event": "push",
+          "paths": [
+            ".github/workflows/**",
+            "atlas/**",
+            "codecov.yml",
+            "docs/**",
+            "pyproject.toml",
+            "roles/**",
+            "src/**",
+            "tests/**",
+            "uv.lock"
+          ]
+        },
+        {
+          "event": "workflow_dispatch"
+        }
+      ],
+      "unresolvedChecks": [
+        {
+          "job": "test",
+          "manifest": "pyproject.toml",
+          "requires": ">=3.12,<3.13",
+          "rule": "D1-python",
+          "step": "Install",
+          "tool": "uv sync",
+          "why": "no setup-python step before it"
+        }
+      ],
+      "uses": [
+        "actions/checkout",
+        "astral-sh/setup-uv",
+        "codecov/codecov-action"
+      ],
+      "usesWorkflowToken": false
+    },
+    {
+      "checksCount": 0,
+      "commands": [],
+      "elsewhere": [],
+      "file": "pyproject.toml",
+      "kind": "command",
+      "landings": [],
+      "mentions": [],
+      "name": "role-set",
+      "permissions": [],
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "src",
+          "depth": 0,
+          "files": 5
+        }
+      ],
+      "readers": [],
+      "runs": [
+        {
+          "path": "src/role_set/cli.py",
+          "runKind": "executes"
+        }
+      ],
+      "runsCount": 1,
+      "secrets": [],
+      "sends": {
+        "deploysPages": false,
+        "dispatchesTo": [],
+        "opensIssues": false,
+        "opensIssuesOnFailure": false,
+        "opensPullRequests": false,
+        "publishes": false,
+        "publishesTo": [],
+        "releases": false
+      },
+      "stages": [],
+      "triggers": [],
+      "uses": [],
+      "usesWorkflowToken": false
+    }
+  ],
+  "edges": [
+    {
+      "from": "tests",
+      "fromTests": true,
+      "kind": "file",
+      "to": "src"
+    }
+  ],
+  "engine": "1.24.0",
+  "generatedFrom": {
+    "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
+    "tracked": 20
+  },
+  "landings": [
+    {
+      "readers": [
+        {
+          "by": "pyproject.toml",
+          "call": "configuration",
+          "confidence": "config"
+        }
+      ],
+      "target": "README.md",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "pyproject.toml",
+          "call": "configuration",
+          "confidence": "config"
+        }
+      ],
+      "target": "src/role_set",
+      "writers": []
+    }
+  ],
+  "overlaps": [],
+  "submodules": [],
+  "symlinks": [],
+  "testFiles": 4,
+  "unassigned": []
+}
