@@ -1,0 +1,11 @@
+{
+  "_note": "The allow-list for `role-set harvest`: permissively licensed repos pinned to commits, all outside the handoff's exclusion list. Every excerpt the writer gets comes from one of these at its pinned commit, with repo@commit:path#lines recorded. Re-pinning is a reviewed change. Clones are looked up by name under --clones; no path is recorded.",
+  "repos": [
+    {"name": "site-theme", "commit": "7fa785194a762656a1d619de2b3e7f43f2289b5b", "licence": "MIT License"},
+    {"name": "repo-knowledge", "commit": "4435870bbfdf3726b9faa07e235fe5ce501c027d", "licence": "MIT License"},
+    {"name": "roll", "commit": "fbec7b5a99b2eefbd01efe431ff1c1dcc07e5a03", "licence": "MIT License"},
+    {"name": "polyglot-mcp", "commit": "25e970d9d598fb840baabaa7c0762b2762f88e0e", "licence": "MIT License"},
+    {"name": "style-dataset-lab", "commit": "80f3cb64ddd4e3ded814a546eee20430a0544896", "licence": "MIT License"},
+    {"name": "rig-bridge", "commit": "e91f65b5c12bd070342abdb298b9434c27d4a9b4", "licence": "MIT License"}
+  ]
+}

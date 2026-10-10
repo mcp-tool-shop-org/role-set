@@ -153,3 +153,14 @@ def test_write_halts_are_reported_and_cleanup_runs(pack_dir: Path, plan_file: Pa
     monkeypatch.setattr(w, "build", build_with_cleanup)
     result = run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", mock=True))
     assert result["halted"] == "andon: test" and cleaned == [True]
+
+
+def test_mock_write_draws_from_a_pool_and_refuses_bad_exemplars(pack_dir: Path, plan_file: Path, tmp_path: Path):
+    pool = tmp_path / "pool.jsonl"
+    pool.write_text(json.dumps({"text": "## [1.0.0] - 2026-01-01\n- Added the thing.\n", "content_kind": "changelog",
+                                "source": {"repo": "x/y", "commit": "abc", "path": "CHANGELOG.md", "lines": "L1-L2", "licence": "MIT License"}}) + "\n", encoding="utf-8")
+    result = run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", mock=True, pool=pool))
+    rows = [json.loads(l) for l in (tmp_path / "o" / "mock" / "accepted.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert result["accepted"] == 40 and any(r["key_basis"] == "source" for r in rows)
+    with pytest.raises(WriteRefused, match="cannot read|held out"):
+        run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o2", mock=True, exemplar_repo=tmp_path, exemplar_commit="abc1234", exemplar_files=("nope.jsonl",)))

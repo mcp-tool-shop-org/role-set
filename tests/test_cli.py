@@ -110,3 +110,16 @@ def test_critic_control_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     rc = main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--out", str(tmp_path / "c.json")])
     assert rc == 0 and json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))["grant"] == "G-1"
     assert main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--critic-model", "gemma4:cloud", "--out", str(tmp_path / "c.json")]) == 2
+
+
+def test_harvest_through_the_cli(tmp_path: Path, capsys, monkeypatch):
+    from role_set import cli
+    from role_set.harvest import HarvestReport
+
+    allow = tmp_path / "allow.json"
+    allow.write_text(json.dumps({"repos": [{"name": "x", "commit": "a" * 40}]}), encoding="utf-8")
+    monkeypatch.setattr(cli, "harvest", lambda repos, clones, out: HarvestReport(repos=1, excerpts=5, by_kind={"code": 5}))
+    assert main(["harvest", "--allow-list", str(allow), "--clones", str(tmp_path), "--out", str(tmp_path / "pool.jsonl")]) == 0
+    assert '"excerpts": 5' in capsys.readouterr().out
+    monkeypatch.setattr(cli, "harvest", lambda repos, clones, out: HarvestReport())
+    assert main(["harvest", "--allow-list", str(allow), "--clones", str(tmp_path)]) == 2
