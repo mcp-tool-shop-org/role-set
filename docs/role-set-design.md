@@ -1,6 +1,6 @@
 # role-set: a generator for role-shaping training data
 
-*Design draft 15, from the Dataset Specialist, 2026-10-10, with the Publisher's and ASPIRE's reviews folded in.
+*Design draft 17, from the Dataset Specialist, 2026-10-10, with the Publisher's and ASPIRE's reviews folded in.
 Nothing here runs until the maintainer lifts the offrig hold and says which home it gets.*
 
 ## 1. What it is for
@@ -378,33 +378,34 @@ explicit receipts directory is the primary guard; the deny list is the second.
 
 **Stuck detection, passive, as R&D ruled.** For every question the model answers in training quizzes and
 rehearsals, an observation is recorded when the model is stuck. Loop markers are the core (they measure
-circling, which is what the maintainer means by stuck; length measures effort), and the no-progress marker
-counts only on long traces. **Stuck =**
+circling, which is what the maintainer means by stuck; length measures effort), and the no-progress markers
+count only on long traces. **Stuck =**
 - **(A)** the same 8-word span three or more times in the trace, at any length; **or**
 - **(B)** the 16,384-token cap is reached; **or**
 - **(C)** the trace is long **and** not progressing, where *long* = thinking tokens above max(the tier's
   frozen p95, 2 × the item's own target thinking tokens in its arm), and *not progressing* = the re-read rate
-  is above its frozen baseline of **8.09 per 1,000 thinking tokens**.
+  is above its frozen baseline of **8.09 per 1,000 thinking tokens**, **or** a burst of three or more hedge
+  phrases ("wait", "hmm", "actually", "let me re-check") within 200 thinking tokens (the maintainer's
+  amendment, measured by ASPIRE and admitted by R&D's three conditions; the hedge rate itself is a
+  measure, not a trigger).
 
-The "no new material line in the final 30%" branch was measured and dropped: it was true of 98 of 102
-untrained traces and of every ROLE target sampled, so it would have collapsed (C) to "long".
+Measured and dropped: "no new material line in the final 30%" (true of 98 of 102 untrained traces and every
+ROLE target sampled, so it would have collapsed (C) to "long"). Recorded as measures, never triggers: the
+hedge rate (p95 8.32 per 1,000), length above the untrained p95, length above 2 × the item's target.
 
-Definitions, frozen with the figures before round 1 in aspire-si `docs/runs/stage1-stuck-rule.json` (current
-sha256 63928fea…, at 6a14f26, code `stage1-train/stuck.py` f9046b85…; it replaces 4dbcd12e):
+Frozen before round 1 in aspire-si `docs/runs/stage1-stuck-rule.json`, **sha256 716dc251… at 4b857ff**, code
+`stage1-train/stuck.py` sha256 8097b039… (supersedes 63928fea and 4dbcd12e; released by R&D and frozen for round 1). Definitions in the file:
 - **re-read:** a quote of, or an explicit return to, a material line already quoted earlier in the same
   trace, matched by the scorer's lenient normalising, with a 5-word window shared by two material lines
-  counting for neither; the rate is re-reads per 1,000 thinking tokens;
-- **re-read baseline:** the p95 over the untrained pilot-30 traces, pooled over all tiers (102 turns): 8.09;
+  counting for neither; the rate is re-reads per 1,000 thinking tokens; baseline the p95 over the untrained
+  pilot-30 traces, pooled over all tiers (102 turns): 8.09;
 - **the tier p95s:** from the untrained pilot-30, tiers under 20 samples pooled (tiers 3 and 4 at 572
   thinking tokens, 5 and 6 at 453, the rest pooled at 575);
-- **recorded fields only, never triggers:** length above the untrained p95; length above 2 × the item's
-  target.
-
-**The pin is pending R&D.** One dated amendment may land before round 1: the maintainer asked for a
-hedge-phrase marker ("wait", "hmm", "actually", "let me re-check", per 1,000 tokens). ASPIRE measures it on the
-untrained pilot-30 and on the ROLE and NO-ROLE targets; it joins as a second "not progressing" signal only if
-it discriminates, ROLE targets sit near zero, and it catches traces that re-reads and repeated spans miss.
-Otherwise it is recorded as dropped. role-set pins the sha256 R&D freezes, whichever it is.
+- **hedge fields in every receipt** (from stuck.py's counter; eval sittings carry the same fields in their own
+  outputs, never in the store): per-phrase hedge counts; hedge rate; first and last hedge positions as
+  fractions of thinking tokens; end clustering (null under 2 hedges); gaps in tokens; max in window at W =
+  100, 200 and 400; bursts with start and end; burst_before_answer; `gap_unit: "tokens (no streaming
+  timestamps)"`.
 
 An observation records: question id, lesson, kind, tier, round, seed, arm, wall time, thinking and answer
 tokens, the thinking trace, the final answer and whether it was right, and the trace analysis: where it loops,
