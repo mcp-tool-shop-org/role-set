@@ -32,7 +32,30 @@
       "externals": 0,
       "files": [
         {
-          "hash": "201f20c937a9e944a6742184408b12b2527c317b4fd5d36da8ada79197dceebe",
+          "hash": "63e534479d71a8543e23b8a4dc4836df988e7c41802b5b438f2e27a6ad432e32",
+          "path": "assets/logo/role-set-wordmark.png"
+        }
+      ],
+      "globs": [
+        "assets/**"
+      ],
+      "importConfidence": "full",
+      "name": "assets",
+      "origin": "authored",
+      "role": "data",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "1f163f7d6eaae17fd46d70159490250879d85b2172a276cd8a3ce1ea02890922",
           "path": "docs/role-set-design.md"
         }
       ],
@@ -94,7 +117,7 @@
           "path": "LICENSE"
         },
         {
-          "hash": "be00584f37af3f509c5eed09a0b29e4922a3545890bbf48b14d3c8ed6501ff51",
+          "hash": "f9ffeec4aebe335f61091d79cc976b0d307ada9f921e5d7f77ca2c07ff81f8d2",
           "path": "README.md"
         },
         {
@@ -121,7 +144,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 0,
+      "dynamicReads": 1,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 0,
@@ -146,39 +169,66 @@
             {
               "in": "_plan",
               "kind": "except",
-              "line": 34
+              "line": 37
             },
             {
               "in": "_cost",
               "kind": "except",
-              "line": 50
+              "line": 53
             },
             {
               "in": "_write",
               "kind": "except",
-              "line": 60
+              "line": 63
+            },
+            {
+              "in": "_pack_sync",
+              "kind": "except",
+              "line": 73
+            },
+            {
+              "in": "_pack_verify",
+              "kind": "except",
+              "line": 83
+            },
+            {
+              "in": "_ingest",
+              "kind": "except",
+              "line": 94
             }
           ],
-          "hash": "7f8c3bc45cb2a6fcb7740351a6b04c4d63984c1ccbfff54105ed3bc8dc52a1a0",
+          "hash": "9476001a0b7cf9003616283bdfe2f7f05ccfb6958caeeb3f08f94d2a4954576e",
+          "importOrder": [
+            "src/role_set/__init__.py",
+            "src/role_set/cost.py",
+            "src/role_set/guards.py",
+            "src/role_set/ingest.py",
+            "src/role_set/pack.py",
+            "src/role_set/store.py",
+            "src/role_set/plan.py"
+          ],
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/cost.py",
             "src/role_set/guards.py",
-            "src/role_set/plan.py"
+            "src/role_set/ingest.py",
+            "src/role_set/pack.py",
+            "src/role_set/plan.py",
+            "src/role_set/store.py"
           ],
           "path": "src/role_set/cli.py",
           "sequences": [
             {
               "calls": [
                 {
-                  "line": 33,
+                  "line": 36,
                   "name": "plan_batch",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 37,
+                  "line": 40,
                   "name": "check_plan",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -193,7 +243,7 @@
             {
               "calls": [
                 {
-                  "line": 49,
+                  "line": 52,
                   "name": "estimate",
                   "target": {
                     "file": "src/role_set/cost.py"
@@ -208,7 +258,7 @@
             {
               "calls": [
                 {
-                  "line": 59,
+                  "line": 62,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -223,7 +273,110 @@
             {
               "calls": [
                 {
-                  "line": 81,
+                  "line": 72,
+                  "name": "sync",
+                  "target": {
+                    "file": "src/role_set/pack.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_pack_sync"
+            },
+            {
+              "calls": [
+                {
+                  "line": 82,
+                  "name": "verify",
+                  "target": {
+                    "file": "src/role_set/pack.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_pack_verify"
+            },
+            {
+              "calls": [
+                {
+                  "line": 92,
+                  "name": "interview_questions",
+                  "target": {
+                    "file": "src/role_set/ingest.py"
+                  }
+                },
+                {
+                  "line": 93,
+                  "name": "ingest",
+                  "target": {
+                    "file": "src/role_set/ingest.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_ingest"
+            },
+            {
+              "calls": [
+                {
+                  "line": 102,
+                  "name": "open_store",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 103,
+                  "name": "counts",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_store_status"
+            },
+            {
+              "calls": [
+                {
+                  "line": 108,
+                  "name": "open_store",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 109,
+                  "name": "void_round",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 110,
+                  "name": "counts",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_store_void"
+            },
+            {
+              "calls": [
+                {
+                  "line": 128,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -239,7 +392,7 @@
             {
               "calls": [
                 {
-                  "line": 81,
+                  "line": 128,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -364,6 +517,254 @@
           ]
         },
         {
+          "entry": "ingest",
+          "entryRule": 3,
+          "exports": [
+            "check_receipts_dir",
+            "check_row",
+            "ingest",
+            "interview_questions",
+            "parse_questions",
+            "shingles"
+          ],
+          "failurePaths": [
+            {
+              "in": "interview_questions",
+              "kind": "raise",
+              "line": 82
+            },
+            {
+              "in": "parse_questions",
+              "kind": "raise",
+              "line": 89
+            },
+            {
+              "in": "parse_questions",
+              "kind": "raise",
+              "line": 92
+            },
+            {
+              "in": "parse_questions",
+              "kind": "raise",
+              "line": 95
+            },
+            {
+              "in": "check_receipts_dir",
+              "kind": "raise",
+              "line": 106
+            },
+            {
+              "in": "check_receipts_dir",
+              "kind": "raise",
+              "line": 108
+            },
+            {
+              "in": "check_receipts_dir",
+              "kind": "raise",
+              "line": 111
+            },
+            {
+              "in": "check_receipts_dir",
+              "kind": "raise",
+              "line": 113
+            },
+            {
+              "in": "ingest",
+              "kind": "raise",
+              "line": 169
+            },
+            {
+              "in": "ingest",
+              "kind": "raise",
+              "line": 175
+            },
+            {
+              "in": "ingest",
+              "kind": "except",
+              "line": 186
+            }
+          ],
+          "hash": "1d791832eaab16d84118896ea2057f188f59d539c544323b700457a606d283ca",
+          "importsFiles": [
+            "src/role_set/store.py"
+          ],
+          "path": "src/role_set/ingest.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 102,
+                  "name": "resolve",
+                  "target": null
+                },
+                {
+                  "line": 112,
+                  "name": "is_dir",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "check_receipts_dir"
+            },
+            {
+              "calls": [
+                {
+                  "line": 102,
+                  "name": "resolve",
+                  "target": null,
+                  "via": "check_receipts_dir"
+                },
+                {
+                  "line": 112,
+                  "name": "is_dir",
+                  "target": null,
+                  "via": "check_receipts_dir"
+                },
+                {
+                  "line": 173,
+                  "name": "glob",
+                  "target": null
+                },
+                {
+                  "line": 176,
+                  "name": "open_store",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 177,
+                  "name": "begin_ingest",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 193,
+                  "name": "insert_diagnostics",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 193,
+                  "name": "insert_quiz",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                },
+                {
+                  "line": 198,
+                  "name": "finish_ingest",
+                  "target": {
+                    "file": "src/role_set/store.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "ingest"
+            }
+          ]
+        },
+        {
+          "entry": "sync",
+          "entryRule": 4,
+          "exports": [
+            "amendments",
+            "build_files",
+            "git_show",
+            "load_manifest",
+            "pack_hash",
+            "section",
+            "split_traits",
+            "sync",
+            "verify"
+          ],
+          "failurePaths": [
+            {
+              "in": "git_show",
+              "kind": "raise",
+              "line": 57
+            },
+            {
+              "in": "git_show",
+              "kind": "raise",
+              "line": 66
+            },
+            {
+              "in": "section",
+              "kind": "raise",
+              "line": 75
+            },
+            {
+              "in": "split_traits",
+              "kind": "raise",
+              "line": 91
+            },
+            {
+              "in": "amendments",
+              "kind": "raise",
+              "line": 98
+            },
+            {
+              "in": "build_files",
+              "kind": "raise",
+              "line": 123
+            },
+            {
+              "in": "build_files",
+              "kind": "raise",
+              "line": 125
+            },
+            {
+              "in": "sync",
+              "kind": "raise",
+              "line": 141
+            },
+            {
+              "in": "sync",
+              "kind": "raise",
+              "line": 143
+            },
+            {
+              "in": "load_manifest",
+              "kind": "except",
+              "line": 160
+            },
+            {
+              "in": "load_manifest",
+              "kind": "raise",
+              "line": 161
+            },
+            {
+              "in": "verify",
+              "kind": "raise",
+              "line": 173
+            }
+          ],
+          "hash": "1b9474a2ae8e8c987ce6498ece4f8466b9d6c76496831773a550da868187dd7b",
+          "path": "src/role_set/pack.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 147,
+                  "name": "mkdir",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "sync"
+            }
+          ]
+        },
+        {
           "exports": [
             "check_plan",
             "plan_batch",
@@ -433,6 +834,135 @@
           ],
           "hash": "1a9f5dff087e47a3df843c6bf302c04535abfb5afa53945fa096b94b906fcd49",
           "path": "src/role_set/plan.py"
+        },
+        {
+          "entry": "finish_ingest",
+          "entryRule": 4,
+          "exports": [
+            "begin_ingest",
+            "counts",
+            "finish_ingest",
+            "insert_diagnostics",
+            "insert_quiz",
+            "now_iso",
+            "open_store",
+            "row_sha",
+            "void_round",
+            "voided_rounds"
+          ],
+          "failurePaths": [
+            {
+              "in": "open_store",
+              "kind": "except",
+              "line": 68
+            }
+          ],
+          "hash": "76b83b56f9e4d39a5a6ea9003e232f758460954345befe2cfb143c124cc54777",
+          "path": "src/role_set/store.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 78,
+                  "name": "execute",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "begin_ingest"
+            },
+            {
+              "calls": [
+                {
+                  "line": 87,
+                  "name": "execute",
+                  "target": null
+                },
+                {
+                  "line": 91,
+                  "name": "commit",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "finish_ingest"
+            },
+            {
+              "calls": [
+                {
+                  "line": 98,
+                  "name": "execute",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "insert_quiz"
+            },
+            {
+              "calls": [
+                {
+                  "line": 119,
+                  "name": "execute",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "insert_diagnostics"
+            },
+            {
+              "calls": [
+                {
+                  "line": 129,
+                  "name": "execute",
+                  "target": null
+                },
+                {
+                  "line": 130,
+                  "name": "commit",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "void_round"
+            },
+            {
+              "calls": [
+                {
+                  "line": 134,
+                  "name": "execute",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "voided_rounds"
+            },
+            {
+              "calls": [
+                {
+                  "line": 134,
+                  "name": "execute",
+                  "target": null,
+                  "via": "voided_rounds"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "counts"
+            }
+          ]
         }
       ],
       "globs": [
@@ -443,11 +973,11 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 1,
+          "reads": 2,
           "where": [
             "caller"
           ],
-          "writes": 0
+          "writes": 1
         },
         {
           "reads": 0,
@@ -458,20 +988,43 @@
           "writes": 1
         },
         {
+          "reads": 0,
+          "where": [
+            "caller",
+            "cwd:plan.json/"
+          ],
+          "writes": 2
+        },
+        {
+          "reads": 2,
+          "where": [
+            "caller",
+            "cwd:roles/"
+          ],
+          "writes": 0
+        },
+        {
           "reads": 2,
           "where": [
             "cwd"
           ],
           "writes": 0
+        },
+        {
+          "reads": 1,
+          "where": [
+            "cwd:roles/"
+          ],
+          "writes": 0
         }
       ],
-      "outsideReads": 3,
-      "outsideWrites": 1,
+      "outsideReads": 7,
+      "outsideWrites": 4,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 4,
+      "testedBy": 6,
       "unresolvedSites": 0
     },
     {
@@ -485,15 +1038,26 @@
         {
           "exports": [
             "test_cost_reads_a_plan",
+            "test_ingest_and_store_through_the_cli",
+            "test_pack_sync_and_verify_through_the_cli",
             "test_plan_refuses_an_unknown_lesson",
             "test_plan_refuses_when_the_menu_is_too_small",
             "test_plan_writes_slots_and_figures",
             "test_version_flag",
             "test_write_is_refused_off_loopback_and_before_the_gates"
           ],
-          "hash": "72d33862401efaa30c5a0cb0507213d85034ddfcfe61312bdaf800aa7e5a823c",
+          "hash": "c335809f3f1fa6837f397c7ce49d291805468df64682c51b234eda6254319516",
+          "importOrder": [
+            "src/role_set/cli.py",
+            "src/role_set/__init__.py",
+            "src/role_set/pack.py",
+            "src/role_set/ingest.py"
+          ],
           "importsFiles": [
-            "src/role_set/cli.py"
+            "src/role_set/__init__.py",
+            "src/role_set/cli.py",
+            "src/role_set/ingest.py",
+            "src/role_set/pack.py"
           ],
           "path": "tests/test_cli.py",
           "testFramework": "pytest"
@@ -523,6 +1087,40 @@
             "src/role_set/guards.py"
           ],
           "path": "tests/test_guards.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "diag_row",
+            "quiz_row",
+            "receipts",
+            "test_check_row_rejects_non_objects_and_parse_questions_checks_shape_and_hash",
+            "test_dev_between_stages_needs_the_flag_and_an_amendment",
+            "test_ingest_accepts_clean_rows_and_is_idempotent",
+            "test_ingest_refuses_held_out_rows_with_reasons",
+            "test_receipts_dir_shape_and_deny_list"
+          ],
+          "hash": "5454fbd70e115e9e034407978ad80365700402132679f879292a306887f1b4f2",
+          "importsFiles": [
+            "src/role_set/ingest.py",
+            "src/role_set/store.py"
+          ],
+          "path": "tests/test_ingest.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "source_repo",
+            "test_split_and_build_refuse_malformed_sources",
+            "test_sync_builds_the_pack_and_a_stable_hash",
+            "test_sync_refuses_branches_roles_missing_files_and_held_out_paths",
+            "test_verify_refuses_a_drifted_pack"
+          ],
+          "hash": "d09f9fc4105c7b9ef66dbec5159c3c1ddad8cb481a9f22a43bb48445145a47ca",
+          "importsFiles": [
+            "src/role_set/pack.py"
+          ],
+          "path": "tests/test_pack.py",
           "testFramework": "pytest"
         },
         {
@@ -626,7 +1224,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 4
+          "files": 6
         },
         {
           "boundary": "src",
@@ -635,7 +1233,7 @@
             "file": "src/role_set/cli.py",
             "from": "tests/test_cli.py"
           },
-          "files": 5
+          "files": 8
         }
       ],
       "readers": [],
@@ -666,7 +1264,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 4,
+          "files": 6,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -733,7 +1331,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 5
+          "files": 8
         }
       ],
       "readers": [],
@@ -771,8 +1369,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
-    "tracked": 20
+    "commit": "c366a4e600d5ab82f3e8c62eb4973ddcc7b7a321",
+    "tracked": 26
   },
   "landings": [
     {
@@ -801,6 +1399,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 4,
+  "testFiles": 6,
   "unassigned": []
 }

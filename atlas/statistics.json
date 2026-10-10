@@ -32,6 +32,22 @@
       "cohesionDropped": false,
       "confidence": "low",
       "highWater": null,
+      "name": "assets",
+      "qualifyingSourceCommits": 0,
+      "rebaseline": null
+    },
+    {
+      "breakage": {
+        "coChangesOnly": [],
+        "collapsed": false,
+        "confidence": "low",
+        "importsAndCoChanges": [],
+        "importsOnly": []
+      },
+      "cohesion": null,
+      "cohesionDropped": false,
+      "confidence": "low",
+      "highWater": null,
       "name": "docs",
       "qualifyingSourceCommits": 0,
       "rebaseline": null
@@ -83,7 +99,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 0,
+      "qualifyingSourceCommits": 2,
       "rebaseline": null
     },
     {
@@ -99,7 +115,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 0,
+      "qualifyingSourceCommits": 2,
       "rebaseline": null
     }
   ],
@@ -132,33 +148,33 @@
         "path": "LICENSE"
       },
       {
-        "commits": 2,
-        "lines": 39,
+        "commits": 3,
+        "lines": 41,
         "path": "README.md"
       },
       {
         "commits": 1,
-        "lines": 51,
+        "lines": 86,
         "path": "atlas/README.md"
       },
       {
         "commits": 1,
-        "lines": 6,
+        "lines": 26,
         "path": "atlas/boundaries.yaml"
       },
       {
         "commits": 1,
-        "lines": 51,
+        "lines": 224,
         "path": "atlas/page.json"
       },
       {
         "commits": 1,
-        "lines": 83,
+        "lines": 285,
         "path": "atlas/statistics.json"
       },
       {
         "commits": 1,
-        "lines": 40,
+        "lines": 806,
         "path": "atlas/structure.json"
       },
       {
@@ -167,8 +183,8 @@
         "path": "codecov.yml"
       },
       {
-        "commits": 1,
-        "lines": 508,
+        "commits": 2,
+        "lines": 545,
         "path": "docs/role-set-design.md"
       },
       {
@@ -187,8 +203,8 @@
         "path": "src/role_set/__init__.py"
       },
       {
-        "commits": 1,
-        "lines": 100,
+        "commits": 3,
+        "lines": 180,
         "path": "src/role_set/cli.py"
       },
       {
@@ -203,12 +219,27 @@
       },
       {
         "commits": 1,
+        "lines": 200,
+        "path": "src/role_set/ingest.py"
+      },
+      {
+        "commits": 1,
+        "lines": 174,
+        "path": "src/role_set/pack.py"
+      },
+      {
+        "commits": 1,
         "lines": 221,
         "path": "src/role_set/plan.py"
       },
       {
         "commits": 1,
-        "lines": 48,
+        "lines": 153,
+        "path": "src/role_set/store.py"
+      },
+      {
+        "commits": 3,
+        "lines": 88,
         "path": "tests/test_cli.py"
       },
       {
@@ -220,6 +251,16 @@
         "commits": 1,
         "lines": 58,
         "path": "tests/test_guards.py"
+      },
+      {
+        "commits": 1,
+        "lines": 132,
+        "path": "tests/test_ingest.py"
+      },
+      {
+        "commits": 1,
+        "lines": 113,
+        "path": "tests/test_pack.py"
       },
       {
         "commits": 1,
@@ -237,13 +278,13 @@
     "level": "low",
     "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
   },
-  "generatedAt": "2026-10-10T20:34:12.593Z",
+  "generatedAt": "2026-10-10T20:52:45.078Z",
   "generatedFrom": {
-    "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66"
+    "commit": "c366a4e600d5ab82f3e8c62eb4973ddcc7b7a321"
   },
   "pairs": [],
   "parameters": {
-    "appliedChangesetLimit": 6.25,
+    "appliedChangesetLimit": 7.75,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -252,16 +293,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "both",
-    "headDate": "2026-10-10T16:31:56-04:00",
-    "inScopeFiles": 25,
+    "headDate": "2026-10-10T13:50:41-07:00",
+    "inScopeFiles": 31,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 1,
+    "qualifyingCommits": 5,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-13T20:31:56.000Z",
+    "since": "2026-04-13T20:50:41.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

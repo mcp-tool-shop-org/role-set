@@ -1,5 +1,9 @@
 summary: "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates."
 boundaries:
+  - name: assets
+    globs:
+      - assets/**
+    role: data
   - name: .github
     globs:
       - .github/**
