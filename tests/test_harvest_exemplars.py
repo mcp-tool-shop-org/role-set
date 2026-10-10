@@ -7,6 +7,7 @@ import pytest
 from role_set.exemplars import ExemplarError, load_exemplars, pick, spans_of
 from role_set.harvest import (
     EXCLUDED_REPOS,
+    PRIVATE_LINE,
     HarvestError,
     changelog_excerpts,
     code_excerpts,
@@ -101,7 +102,7 @@ def test_harvest_repo_checks_licence_exclusions_and_private_lines(clones):
     kinds = {x.content_kind for x in got}
     assert kinds == {"changelog", "label", "design_note", "code"}
     assert all(x.source["repo"] == "good-tool" and x.source["commit"] == shas["good-tool"] and x.source["licence"] == "MIT License" for x in got)
-    assert dropped == 1 and not any("example.com" in x.text for x in got)
+    assert dropped == 1 and all(PRIVATE_LINE.search(x.text) is None for x in got)
     with pytest.raises(HarvestError, match="not on the allowed list"):
         harvest_repo(root / "gpl-tool", shas["gpl-tool"])
     with pytest.raises(HarvestError, match="exclusion list"):
