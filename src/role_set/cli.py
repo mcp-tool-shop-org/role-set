@@ -11,6 +11,7 @@ from role_set import __version__
 from role_set.cost import PROFILES, estimate
 from role_set.gates import GatesUnavailable, load_gates
 from role_set.guards import GuardError, require_local_endpoint
+from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
 from role_set.store import counts, open_store, void_round
@@ -70,6 +71,9 @@ def _write(args: argparse.Namespace) -> int:
         writers_file=Path(args.writers), critic_endpoint=args.critic_endpoint, critic_model=args.critic_model,
         grant=args.grant, heartbeat=Path(args.heartbeat) if args.heartbeat else None, concurrency=args.concurrency,
         mock=args.mock, no_critic=args.no_critic,
+        pool=Path(args.pool) if args.pool else None,
+        exemplar_repo=Path(args.exemplar_repo) if args.exemplar_repo else None,
+        exemplar_commit=args.exemplar_commit, exemplar_files=tuple(args.exemplar_files or ()),
     )
     try:
         result = run_write(cfg)
@@ -160,6 +164,13 @@ def _critic_control(args: argparse.Namespace) -> int:
     return 0 if out["report"]["usable_as_critic"] else 2
 
 
+def _harvest(args: argparse.Namespace) -> int:
+    allow = json.loads(Path(args.allow_list).read_text(encoding="utf-8"))
+    report = harvest(allow["repos"], Path(args.clones), Path(args.out))
+    print(json.dumps(report.as_dict(), indent=1))
+    return 0 if report.excerpts else 2
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="role-set", description=__doc__)
     p.add_argument("--version", action="version", version=f"role-set {__version__}")
@@ -224,6 +235,12 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--out", default="critic-control.json")
     cc.set_defaults(func=_critic_control)
 
+    h = sub.add_parser("harvest", help="real excerpts from pinned, licence-checked repos into a local pool")
+    h.add_argument("--allow-list", required=True, help='JSON: {"repos": [{"name", "commit"}]}')
+    h.add_argument("--clones", required=True, help="directory holding the clones, by name (never recorded)")
+    h.add_argument("--out", default="out/pool.jsonl")
+    h.set_defaults(func=_harvest)
+
     w = sub.add_parser("write", help="the runner; paid unless --mock")
     w.add_argument("--plan", required=True)
     w.add_argument("--pack", default="roles/verifier")
@@ -238,6 +255,10 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--concurrency", type=int, default=1)
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")
     w.add_argument("--no-critic", action="store_true", help="dry runs only; items pass without the second reader")
+    w.add_argument("--pool", default=None, help="the harvested excerpt pool (jsonl)")
+    w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
+    w.add_argument("--exemplar-commit", default=None)
+    w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")
     w.set_defaults(func=_write)
     return p
 

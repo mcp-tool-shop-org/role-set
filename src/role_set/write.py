@@ -17,7 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from role_set.assemble import trait_name
+from role_set.exemplars import ExemplarError, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
+from role_set.harvest import load_pool
 from role_set.guards import GuardError, require_grant, require_heartbeat, require_local_endpoint, require_model_allowed, require_ollama_digest
 from role_set.mock import MockCritic, MockWriter, mock_gates
 from role_set.pack import PackError, verify
@@ -46,6 +48,10 @@ class WriteConfig:
     concurrency: int = 1
     mock: bool = False
     no_critic: bool = False
+    pool: Path | None = None
+    exemplar_repo: Path | None = None
+    exemplar_commit: str | None = None
+    exemplar_files: tuple[str, ...] = ()
 
 
 def load_plan(path: Path) -> tuple[list[Slot], dict[str, tuple[str, str]], str]:
@@ -154,7 +160,16 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     out = cfg.out
     if cfg.mock:
         out = out / "mock"  # never confused with data
-    runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins)
+    excerpts = load_pool(cfg.pool) if cfg.pool else None
+    exemplars = None
+    if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
+        try:
+            exemplars = load_exemplars(cfg.exemplar_repo, cfg.exemplar_commit, list(cfg.exemplar_files))
+            pins["exemplar_commit"] = cfg.exemplar_commit
+        except ExemplarError as e:
+            raise WriteRefused(str(e)) from e
+    runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
+                    excerpts=excerpts, exemplars=exemplars)
     halted = None
     try:
         outcomes = runner.run(slots, sides)
