@@ -1,0 +1,401 @@
+"""The runner: it suggests, it keeps the builder inside the role-set, and it keeps diagnostics.
+
+One slot at a time per worker: material fixed, the writer asked for fields, the
+row assembled, the mechanical truth checks, the gates' per-item checks, the
+critic with the key hidden, then, under one lock, the exclusivity checks against
+everything accepted so far. A refusal comes back as a plain-words suggestion with
+the governing rule; after two replacements the slot is dropped. The run halts on
+the drop-rate andon. Every event goes to status.json; every item gets a receipt.
+Nothing is written to the output file until it has passed everything.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import re
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass, field
+from pathlib import Path
+
+from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
+from role_set.critic import compare_answer, compare_flaw, compare_trait, compare_verdict, flaw_messages, trait_messages, verdict_messages
+from role_set.gates import Gates
+from role_set.plan import Slot
+from role_set.prompts import kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
+
+MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
+ANDON_DROP_SHARE = 0.20
+ANDON_LESSON_DROPS = 3
+WARMUP_MISSES = 2
+
+# Refusal code -> what the builder is told, with the governing rule. Pinned by a test.
+SUGGESTIONS = {
+    "ASSEMBLY": "{detail} (the kinds table and the schema).",
+    "TRUTH_QUOTE": "The thinking quotes '{detail}', which is not in the material. Quote lines exactly or don't quote (rule: every thinking step is true).",
+    "TRUTH_NUMBER": "The thinking states the number {detail}, which is in neither the material, the statement nor the computed facts. Use only given numbers (handoff rule 3).",
+    "GATE": "{detail} (the validator refused it).",
+    "ROLE_WORDS": "The prompt contains {detail}. User turns of C, D and verdict quizzes name no role, trait or pattern (amendment 3).",
+    "VERDICT_MISMATCH": "A second reader, given only the material and the statement, reached a different verdict: {detail}. Make the statement settle cleanly on the slot's verdict (instant agreement).",
+    "EVIDENCE_MISMATCH": "A second reader found different deciding lines: {detail}. Quote the lines that settle every clause of the statement, whole rows and headings included (amendment 1).",
+    "FLAW_MISMATCH": "A second reader named a different flaw in the checker's trace: {detail}. Make the planted flaw the one obvious thing wrong (instant agreement).",
+    "ANSWER_MISMATCH": "A second solver reached a different answer: {detail}. Close the puzzle so only one answer fits (rule: puzzles are closed).",
+    "TRAIT_MISMATCH": "The item reads as another trait: {detail}. Make this trait, not general care, decide the named step (the trait lesson).",
+    "VOID": "The second reader's answer was unusable ({detail}); it was asked again.",
+    "AGAINST": "{detail}",
+    "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
+}
+
+
+class RunHalted(RuntimeError):
+    """The andon fired. The run stops and reports; the pod is the human's to shut down."""
+
+
+@dataclass
+class Status:
+    started_at: float
+    accepted: int = 0
+    refused: dict = field(default_factory=dict)
+    dropped: int = 0
+    attempted: int = 0
+    critic_agree: int = 0
+    critic_asked: int = 0
+    tokens_prompt: int = 0
+    tokens_completion: int = 0
+    concurrency: int = 1
+    actions: list = field(default_factory=list)
+    halted: str | None = None
+
+    def as_dict(self, now: float) -> dict:
+        share = self.dropped / self.attempted if self.attempted else 0.0
+        return {
+            "accepted": self.accepted,
+            "refused_by_code": dict(sorted(self.refused.items())),
+            "dropped": self.dropped,
+            "attempted": self.attempted,
+            "drop_share": round(share, 3),
+            "andon_distance": round(ANDON_DROP_SHARE - share, 3),
+            "critic_agreement": round(self.critic_agree / self.critic_asked, 3) if self.critic_asked else None,
+            "tokens": {"prompt": self.tokens_prompt, "completion": self.tokens_completion},
+            "elapsed_s": round(now - self.started_at, 1),
+            "concurrency": self.concurrency,
+            "halted": self.halted,
+            "actions": self.actions[-200:],
+        }
+
+
+@dataclass
+class Outcome:
+    slot_id: str
+    accepted: bool
+    attempts: int
+    refusals: list = field(default_factory=list)  # [{"code","detail","suggestion"}]
+    row: dict | None = None
+    receipt: dict | None = None
+
+
+def _quoted_spans(text: str) -> list[str]:
+    spans = re.findall(r"\[([^\[\]]{12,})\]", text) + re.findall(r"[\"“]([^\"”]{12,})[\"”]", text)
+    return [s.strip() for s in spans]
+
+
+def _numbers(text: str) -> set[str]:
+    return set(re.findall(r"\d[\d,.:]*\d|\d", text))
+
+
+def truth_checks(row: dict, facts: dict | None) -> tuple[str, str] | None:
+    """Every bracketed or quoted span in the thinking is verbatim in the material; every number is given."""
+
+    material = row.get("material") or ""
+    if not material:
+        return None
+    flat = " ".join(material.split())
+    statement = "\n".join(t["user"] for t in row["turns"])
+    allowed = _numbers(material) | _numbers(statement) | _numbers(json.dumps(facts or {}))
+    for t in row["turns"]:
+        for span in _quoted_spans(t["thinking"]):
+            if " ".join(span.split()) not in flat and " ".join(span.split()) not in " ".join(statement.split()):
+                return ("TRUTH_QUOTE", span[:60])
+        for n in _numbers(t["thinking"]):
+            if n not in allowed and not re.fullmatch(r"[1-9]", n):  # step numbers 1-9 are not claims
+                return ("TRUTH_NUMBER", n)
+    return None
+
+
+def _teaching_text(row: dict) -> str:
+    parts = []
+    for t in row["turns"]:
+        parts.append(t.get("thinking", ""))
+        parts.append(t.get("reply", ""))
+    for k in ("key_points", "quiz", "variant"):
+        if k in row:
+            parts.append(json.dumps(row[k], ensure_ascii=False))
+    return "\n".join(parts)
+
+
+class Runner:
+    def __init__(
+        self,
+        *,
+        gates: Gates,
+        pack: dict[str, str],
+        trait_names: dict[str, str],
+        writer,  # callable(messages, seed) -> Completion
+        critic,  # callable(messages) -> Completion, or None to skip (tests and dry runs only)
+        out_dir: Path,
+        exemplars: dict[str, list[dict]] | None = None,
+        excerpts: dict[str, list[Material]] | None = None,
+        concurrency: int = 1,
+        pins: dict | None = None,
+        clock=time.time,
+    ) -> None:
+        self.gates, self.pack, self.trait_names = gates, pack, trait_names
+        self.writer, self.critic = writer, critic
+        self.out_dir = out_dir
+        self.exemplars = exemplars or {}
+        self.excerpts = {k: list(v) for k, v in (excerpts or {}).items()}
+        self.pins = pins or {}
+        self.clock = clock
+        self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
+        self.accepted: list[dict] = []
+        self.lesson_drops: dict[str, int] = {}
+        self.lock = threading.Lock()
+        self.out_dir.mkdir(parents=True, exist_ok=True)
+        self.avoid: list[str] = []
+
+    # ---- status and log -------------------------------------------------------------------------------------
+    def _log(self, action: str, **kw) -> None:
+        self.status.actions.append({"t": round(self.clock() - self.status.started_at, 1), "action": action, **kw})
+        self._write_status()
+
+    def _write_status(self) -> None:
+        (self.out_dir / "status.json").write_text(json.dumps(self.status.as_dict(self.clock()), indent=1), encoding="utf-8")
+
+    def _count_tokens(self, completion) -> None:
+        self.status.tokens_prompt += completion.prompt_tokens or 0
+        self.status.tokens_completion += completion.completion_tokens or 0
+
+    # ---- warm-up ----------------------------------------------------------------------------------------------
+    def warmup(self, lesson: str, sides: tuple[str, str]) -> bool:
+        """The builder restates the trait before it writes. Two misses stop the trait."""
+
+        lesson_text = self.pack.get(f"traits/{lesson}.md", "")
+        must = {w for w in re.findall(r"[a-z]{4,}", (self.trait_names.get(lesson, "") + " " + " ".join(sides)).lower())}
+        misses = 0
+        for attempt in range(1, WARMUP_MISSES + 1):
+            c = self.writer(warmup_messages(self.pack, lesson), seed=attempt)
+            self._count_tokens(c)
+            try:
+                answer = parse_json_object(c.text)
+                text = " ".join(str(answer.get(k, "")) for k in ("main_point", "counterweight", "deciding_case")).lower()
+            except ValueError:
+                text = ""
+            hit = {w for w in must if w in text}
+            if len(hit) >= max(1, len(must) // 3) and all(answer.get(k) for k in ("main_point", "counterweight", "deciding_case")):
+                self._log("warmup_pass", lesson=lesson, attempt=attempt, terms=sorted(hit))
+                (self.out_dir / f"warmup-{lesson}.json").write_text(json.dumps({"attempt": attempt, "answer": answer, "lesson_chars": len(lesson_text)}, indent=1), encoding="utf-8")
+                return True
+            misses += 1
+            self._log("warmup_miss", lesson=lesson, attempt=attempt, missing=sorted(must - hit)[:6])
+        return False
+
+    # ---- one slot ---------------------------------------------------------------------------------------------
+    def _material_for(self, slot: Slot) -> Material | None:
+        if slot.kind in ("A", "B") or (slot.kind == "E" and slot.e_type == "written"):
+            return None
+        kind = slot.content_kind or "notice"
+        if slot.real_source and self.excerpts.get(kind):
+            return self.excerpts[kind].pop(0)
+        needs = f"It must be the kind of text a verdict of '{slot.verdict}' can be reached about for one plain statement."
+        c = self.writer(material_messages(slot, needs), seed=0)
+        self._count_tokens(c)
+        text = c.text.strip()
+        if not text or len(text) < 20:
+            raise AssemblyError("the drafted material came back empty")
+        return Material(text + "\n", {"invented": f"{kind.replace('_', ' ')} material, drafted for this item and fixed before writing"})
+
+    def _refusal(self, code: str, detail: str) -> dict:
+        tmpl = SUGGESTIONS.get(code, "{detail}")
+        return {"code": code, "detail": detail, "suggestion": tmpl.format(detail=detail)}
+
+    def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
+        if self.critic is None:
+            return None
+        material = row.get("material") or ""
+        verdicts = []
+        if slot.kind in ("C", "D") or (slot.kind == "E" and slot.e_type == "verdict"):
+            statement = fields["statement"]
+            # Each verdict-giving turn is checked with the material available at that turn.
+            turns: list[tuple[str, str, list[str]]] = []
+            if slot.kind == "E":
+                turns.append((material, row["quiz"]["verdict"], row["quiz"]["deciding"]))
+            elif row.get("turn_keys"):
+                first = row["turn_keys"]["1"]
+                turns.append((material, first["verdict"], first["deciding"]))
+                new_lines = row["turns"][-1].get("new_material") or []
+                turns.append((material + "\n" + "\n".join(new_lines), row["verdict"], row["deciding"]))
+            else:
+                turns.append((material, row["verdict"], row["deciding"]))
+            for seen_material, key_verdict, key_deciding in turns:
+                for ask in range(2):
+                    c = self.critic(verdict_messages(seen_material, statement))
+                    self._count_tokens(c)
+                    v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
+                    if v.code != "VOID":
+                        break
+                    self._log("critic_void", slot=slot.id, detail=v.detail)
+                verdicts.append(v)
+                if not v.ok:
+                    break
+            if slot.kind == "C":
+                c = self.critic(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]))
+                self._count_tokens(c)
+                verdicts.append(compare_flaw(c.text, row["planted_flaw"]))
+        elif slot.kind == "B":
+            c = self.critic([{"role": "system", "content": "Solve the puzzle. Answer with the answer only."}, {"role": "user", "content": row["turns"][0]["user"]}])
+            self._count_tokens(c)
+            verdicts.append(compare_answer(c.text, row["answer"]))
+        c = self.critic(trait_messages(_teaching_text(row), self.trait_names))
+        self._count_tokens(c)
+        verdicts.append(compare_trait(c.text, slot.lesson))
+        for v in verdicts:
+            self.status.critic_asked += 1
+            if v.ok:
+                self.status.critic_agree += 1
+            else:
+                return self._refusal(v.code, v.detail)
+        return None
+
+    def run_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> Outcome:
+        outcome = Outcome(slot_id=slot.id, accepted=False, attempts=0)
+        trait = self.trait_names.get(slot.lesson, slot.lesson)
+        try:
+            material = self._material_for(slot)
+        except AssemblyError as e:
+            outcome.refusals.append(self._refusal("ASSEMBLY", str(e)))
+            return outcome
+        exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v if e.get("kind") == slot.kind][:3]
+        facts = {"material_line_count": len(material.text.splitlines())} if material else None
+        messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes)
+        for attempt in range(1, MAX_ATTEMPTS + 1):
+            outcome.attempts = attempt
+            c = self.writer(messages, seed=attempt)
+            self._count_tokens(c)
+            refusal = None
+            row = None
+            try:
+                fields = parse_json_object(c.text)
+            except ValueError as e:
+                refusal = self._refusal("PARSE", str(e))
+            if refusal is None:
+                if slot.kind == "C" and "planted_flaw" not in fields:
+                    fields["planted_flaw"] = slot_flaw(slot)
+                try:
+                    row = assemble(slot, trait, fields, material)
+                except AssemblyError as e:
+                    refusal = self._refusal("ASSEMBLY", str(e))
+            if refusal is None:
+                t = truth_checks(row, facts)
+                if t:
+                    refusal = self._refusal(*t)
+            if refusal is None:
+                try:
+                    self.gates.check_item(row)
+                except self.gates.error_type() as e:
+                    refusal = self._refusal("GATE", str(e))
+            if refusal is None:
+                words = self.gates.role_words_in_prompt(row)
+                if words:
+                    refusal = self._refusal("ROLE_WORDS", ", ".join(words))
+            if refusal is None:
+                refusal = self._critic_pass(slot, row, fields)
+            if refusal is None:
+                with self.lock:
+                    try:
+                        reasons = self.gates.check_against(row, self.accepted)
+                    except self.gates.error_type() as e:
+                        reasons = [("AGAINST", str(e))]
+                    if reasons:
+                        code, msg = reasons[0]
+                        refusal = self._refusal("AGAINST", f"{code}: {msg}")
+                    else:
+                        self._accept(slot, row, c, attempt)
+                        outcome.accepted, outcome.row = True, row
+                        return outcome
+            outcome.refusals.append(refusal)
+            self.status.refused[refusal["code"]] = self.status.refused.get(refusal["code"], 0) + 1
+            self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"])
+            messages = messages + [
+                {"role": "assistant", "content": c.text},
+                {"role": "user", "content": "Refused: " + refusal["suggestion"] + " Return a corrected JSON object with all fields."},
+            ]
+        return outcome
+
+    def _accept(self, slot: Slot, row: dict, completion, attempt: int) -> None:
+        self.accepted.append(row)
+        self.status.accepted += 1
+        framing = row["turns"][0]["user"].split("\n", 1)[0]
+        if framing and slot.kind in ("C", "D", "E"):
+            self.avoid.append(framing)
+        receipt = {
+            "slot": slot.as_dict(),
+            "writer_model": completion.model,
+            "attempt": attempt,
+            "gates": {"version": self.gates.version, "sha256": self.gates.sha256},
+            "row_sha256": hashlib.sha256(json.dumps(row, sort_keys=True).encode("utf-8")).hexdigest(),
+            **self.pins,
+        }
+        with (self.out_dir / "accepted.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+        with (self.out_dir / "receipts.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+        self._log("accepted", slot=slot.id, attempt=attempt)
+
+    # ---- the batch --------------------------------------------------------------------------------------------
+    def _andon(self, slot: Slot) -> None:
+        self.status.dropped += 1
+        self.lesson_drops[slot.lesson] = self.lesson_drops.get(slot.lesson, 0) + 1
+        share = self.status.dropped / max(1, self.status.attempted)
+        if share > ANDON_DROP_SHARE or self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS:
+            self.status.halted = f"andon: drop share {share:.2f} (cap {ANDON_DROP_SHARE}); lesson {slot.lesson} drops {self.lesson_drops[slot.lesson]}"
+            self._log("halt", reason=self.status.halted)
+            raise RunHalted(self.status.halted)
+
+    def run(self, slots: list[Slot], sides: dict[str, tuple[str, str]]) -> list[Outcome]:
+        outcomes: list[Outcome] = []
+        lessons = []
+        for s in slots:
+            if s.lesson not in lessons:
+                lessons.append(s.lesson)
+        for lesson in lessons:
+            if not self.warmup(lesson, sides.get(lesson, ("", ""))):
+                self.status.halted = f"warm-up failed for {lesson}; the builder could not restate the trait"
+                self._log("halt", reason=self.status.halted)
+                raise RunHalted(self.status.halted)
+
+        def one(slot: Slot) -> Outcome:
+            self.status.attempted += 1
+            out = self.run_slot(slot)
+            if not out.accepted:
+                with self.lock:
+                    self._log("dropped", slot=slot.id, codes=[r["code"] for r in out.refusals])
+                    self._andon(slot)
+            return out
+
+        try:
+            if self.status.concurrency == 1:
+                for s in slots:
+                    outcomes.append(one(s))
+            else:
+                with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
+                    outcomes = list(pool.map(one, slots))
+        finally:
+            self._log("end", reminder="shut the pod down with offrig; the window closes 30 minutes after this run")
+            report = {
+                "status": self.status.as_dict(self.clock()),
+                "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals} for o in outcomes],
+            }
+            (self.out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+        return outcomes
