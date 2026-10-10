@@ -1,6 +1,6 @@
 # role-set
 
-**Prototype, private.** A generator for role-shaping training data. It plans every item before a model
+**Prototype, developed in the open.** Advisory and experimental: interfaces and data shapes change without notice. A generator for role-shaping training data. It plans every item before a model
 writes one, has a large model on a rented pod write only the parts a writer should write, and passes each
 item through the same gates the humans use before a human sees it. It is a generator, not a judge: what a
 good verifier is lives in the role pack, which humans write; every refusal is structural.
