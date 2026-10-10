@@ -1,6 +1,7 @@
 {
   "authored": [
     ".github/",
+    "assets/",
     "docs/",
     "roles/",
     "root"
@@ -19,88 +20,29 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 19,
-      "changed": 0,
+      "added": 6,
+      "changed": 4,
       "moved": 0,
-      "parts": 6,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
-        "kind": "import-added",
-        "sentence": "tests now imports src.",
-        "subjects": [
-          "tests",
-          "src"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "CI (.github/workflows/ci.yml) is a new door. It starts on a pull request to main; on a push to main touching 9 paths; or by hand. It runs tests/.",
-        "subjects": [
-          ".github/workflows/ci.yml",
-          "tests/"
-        ]
-      },
-      {
-        "kind": "door",
-        "sentence": "role-set (pyproject.toml) is a new command. It runs src/role_set/cli.py.",
-        "subjects": [
-          "pyproject.toml",
-          "src/role_set/cli.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "README.md is now read by pyproject.toml.",
-        "subjects": [
-          "README.md",
-          "pyproject.toml"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/ is now read by pyproject.toml.",
-        "subjects": [
-          "src/role_set/",
-          "pyproject.toml"
-        ]
-      },
-      {
         "kind": "part",
-        "sentence": ".github is a new part, drawn from `.github/**`.",
+        "sentence": "assets is a new part, drawn from `assets/**`.",
         "subjects": [
-          ".github"
+          "assets"
         ]
-      },
-      {
-        "kind": "part",
-        "sentence": "docs is a new part, drawn from `docs/**`.",
-        "subjects": [
-          "docs"
-        ]
-      },
-      {
-        "kind": "part",
-        "sentence": "roles is a new part, drawn from `roles/**`.",
-        "subjects": [
-          "roles"
-        ]
-      },
-      {
-        "kind": "part",
-        "sentence": "And 2 more changes to the parts.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "19 files added, across 6 parts.",
+        "sentence": "6 files added and 4 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "9bababbc331b9eeae786a1f04c1d81430e7b91b6",
-      "generatedAt": "2026-10-10T20:31:42.002Z"
+      "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
+      "generatedAt": "2026-10-10T20:34:12.593Z"
     },
     "unchanged": false
   },
@@ -109,9 +51,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 0,
-  "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
+  "commit": "c366a4e600d5ab82f3e8c62eb4973ddcc7b7a321",
   "defaultBranch": "main",
-  "derived": "6 parts, mostly Python (9 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "7 parts, mostly Python (14 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -126,12 +68,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 4
+          "files": 6
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 5
+          "files": 8
         }
       ],
       "runs": [
@@ -163,7 +105,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 5
+          "files": 8
         }
       ],
       "runs": [
@@ -182,37 +124,40 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-10T20:34:12.593Z",
+  "generatedAt": "2026-10-10T20:52:45.078Z",
   "limits": [
-    "2 reads go to the directory the command is run in, not to this repository.",
-    "1 read goes to a path its caller passes, not to this repository.",
-    "1 write goes to the directory the command is run in (plan.json) or a path its caller passes, not to this repository.",
+    "1 read uses a path built at run time and is not named here.",
+    "3 writes and 2 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
+    "1 write and 2 reads go to a path their caller passes, not to this repository.",
+    "3 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
   ],
   "mainDoor": ".github/workflows/ci.yml",
   "partLabels": {
     ".github": ".github",
+    "assets": "assets",
     "docs": "docs",
     "roles": "roles",
     "root": "the repository root",
     "src": "src",
     "tests": "tests"
   },
-  "parts": 6,
+  "parts": 7,
   "readers": [],
   "repo": "mcp-tool-shop-org/role-set",
   "sequences": [],
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
     "src/role_set/cli.py",
-    "src/role_set/cost.py"
+    "src/role_set/ingest.py",
+    "src/role_set/store.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
   "summaryFrom": "person",
-  "testFiles": 4,
+  "testFiles": 6,
   "testedBy": {
-    "src": 4
+    "src": 6
   },
   "unnamedWrites": 0,
   "unread": [],
