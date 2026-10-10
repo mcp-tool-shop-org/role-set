@@ -10,7 +10,9 @@ from pathlib import Path
 from role_set import __version__
 from role_set.cost import PROFILES, estimate
 from role_set.guards import GuardError, require_local_endpoint
+from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
+from role_set.store import counts, open_store, void_round
 from role_set.plan import PlanError, check_plan, plan_batch
 
 # The verifier role's lessons and their two sides. The full pack arrives with `pack sync`;
@@ -85,6 +87,30 @@ def _pack_verify(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ingest(args: argparse.Namespace) -> int:
+    try:
+        questions = interview_questions(Path(args.repo), args.commit, expected_sha_prefix=args.questions_sha)
+        result = ingest(Path(args.receipts), Path(args.store), questions=questions, allow_dev=args.dev_between_stages, amendment=args.amendment)
+    except IngestError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(json.dumps(result.as_dict(), indent=1))
+    return 2 if result.refusals else 0
+
+
+def _store_status(args: argparse.Namespace) -> int:
+    conn = open_store(Path(args.store))
+    print(json.dumps(counts(conn)))
+    return 0
+
+
+def _store_void(args: argparse.Namespace) -> int:
+    conn = open_store(Path(args.store))
+    void_round(conn, args.round, args.reason)
+    print(json.dumps(counts(conn)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="role-set", description=__doc__)
     p.add_argument("--version", action="version", version=f"role-set {__version__}")
@@ -115,6 +141,27 @@ def build_parser() -> argparse.ArgumentParser:
     kv = ksub.add_parser("verify", help="the pack on disk still hashes to its manifest")
     kv.add_argument("--pack", default="roles/verifier")
     kv.set_defaults(func=_pack_verify)
+
+    i = sub.add_parser("ingest", help="the trainer's receipts into the store; firewall at the door")
+    i.add_argument("--receipts", required=True, help=".../stage1-train/<round>/<arm>/<seed>/receipts")
+    i.add_argument("--store", required=True, help="the SQLite file (outside both repos)")
+    i.add_argument("--repo", required=True, help="aspire-si clone, read only for the public interview questions")
+    i.add_argument("--commit", required=True, help="the aspire-si commit the questions are read at")
+    i.add_argument("--questions-sha", default="b59927e1", help="expected prefix of the questions' sha256")
+    i.add_argument("--dev-between-stages", action="store_true")
+    i.add_argument("--amendment", default=None, help="the dated amendment that admits DEV aggregates between stages")
+    i.set_defaults(func=_ingest)
+
+    st = sub.add_parser("store", help="the store: status and voids")
+    stsub = st.add_subparsers(dest="store_command", required=True)
+    ss = stsub.add_parser("status")
+    ss.add_argument("--store", required=True)
+    ss.set_defaults(func=_store_status)
+    sv = stsub.add_parser("void", help="append a void for a round; readers skip it")
+    sv.add_argument("--store", required=True)
+    sv.add_argument("--round", type=int, required=True)
+    sv.add_argument("--reason", required=True)
+    sv.set_defaults(func=_store_void)
 
     w = sub.add_parser("write", help="the runner; paid; refused until the gates are pinned")
     w.add_argument("--plan", required=True)
