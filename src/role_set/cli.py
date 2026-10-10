@@ -14,6 +14,12 @@ from role_set.guards import GuardError, require_local_endpoint
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
 from role_set.store import counts, open_store, void_round
+from role_set.critic_control import FALSE_REFUSAL_CAP, cases_from_rows, load_rows, plant_errors, run_control
+from role_set.guards import require_grant, require_heartbeat, require_ollama_digest
+from role_set.write import allowed_critics
+from role_set.transport import ollama_chat, unload
+from role_set.write import WriteConfig, WriteRefused
+from role_set.write import run as run_write
 from role_set.plan import PlanError, check_plan, plan_batch
 
 # The verifier role's lessons and their two sides. The full pack arrives with `pack sync`;
@@ -59,14 +65,19 @@ def _cost(args: argparse.Namespace) -> int:
 
 
 def _write(args: argparse.Namespace) -> int:
+    cfg = WriteConfig(
+        plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
+        writers_file=Path(args.writers), critic_endpoint=args.critic_endpoint, critic_model=args.critic_model,
+        grant=args.grant, heartbeat=Path(args.heartbeat) if args.heartbeat else None, concurrency=args.concurrency,
+        mock=args.mock, no_critic=args.no_critic,
+    )
     try:
-        require_local_endpoint(args.endpoint)
-        load_gates()
-    except (GuardError, GatesUnavailable) as e:
+        result = run_write(cfg)
+    except WriteRefused as e:
         print(e, file=sys.stderr)
         return 2
-    print("REFUSED: the runner is not built yet; the gates are installed but `write` lands in the next change", file=sys.stderr)
-    return 2
+    print(json.dumps(result))
+    return 2 if result["halted"] else 0
 
 
 def _pack_sync(args: argparse.Namespace) -> int:
@@ -111,6 +122,42 @@ def _store_void(args: argparse.Namespace) -> int:
     void_round(conn, args.round, args.reason)
     print(json.dumps(counts(conn)))
     return 0
+
+
+def _critic_control(args: argparse.Namespace) -> int:
+    import time
+
+    try:
+        gates = load_gates()
+        require_grant(args.grant, uses_card=True)
+        require_heartbeat(Path(args.heartbeat), time.time())
+        endpoint = require_local_endpoint(args.critic_endpoint)
+        if "cloud" in args.critic_model.lower():
+            raise GuardError("REFUSED: a local critic model is required, never a cloud tag")
+        critics = allowed_critics(Path(args.writers))
+        if args.critic_model not in critics:
+            raise GuardError(f"REFUSED: {args.critic_model} is not on the licence-checked critic list")
+        digest = require_ollama_digest(endpoint, args.critic_model, critics[args.critic_model]["digest"])
+    except (GatesUnavailable, GuardError) as e:
+        print(e, file=sys.stderr)
+        return 2
+    rows = load_rows([Path(p) for p in args.items])
+    cases = cases_from_rows(rows)
+    planted = plant_errors(cases, args.planted, seed=args.seed)
+    log: list = []
+
+    def critic(messages):
+        return ollama_chat(endpoint, args.critic_model, messages)
+
+    try:
+        report = run_control(gates, critic, cases, planted=planted, log=log.append)
+    finally:
+        unload(endpoint, args.critic_model)
+    out = {"critic_model": args.critic_model, "critic_digest": digest, "gates": {"version": gates.version, "sha256": gates.sha256}, "grant": args.grant,
+           "cap": FALSE_REFUSAL_CAP, "report": report.as_dict(), "missed_plants": log}
+    Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+    print(json.dumps({k: v for k, v in out["report"].items() if k not in ("false_refusal_detail", "flaw_misses")}))
+    return 0 if out["report"]["usable_as_critic"] else 2
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -165,10 +212,32 @@ def build_parser() -> argparse.ArgumentParser:
     sv.add_argument("--reason", required=True)
     sv.set_defaults(func=_store_void)
 
-    w = sub.add_parser("write", help="the runner; paid; refused until the gates are pinned")
+    cc = sub.add_parser("critic-control", help="the critic's known-answer control on reviewed items plus planted errors; needs a grant")
+    cc.add_argument("--items", nargs="+", required=True, help="reviewed aspire-si data files (jsonl)")
+    cc.add_argument("--planted", type=int, default=20)
+    cc.add_argument("--seed", type=int, default=0)
+    cc.add_argument("--critic-endpoint", default="http://127.0.0.1:11434")
+    cc.add_argument("--critic-model", default="gemma4:31b")
+    cc.add_argument("--writers", default="writers.json")
+    cc.add_argument("--grant", required=True)
+    cc.add_argument("--heartbeat", required=True)
+    cc.add_argument("--out", default="critic-control.json")
+    cc.set_defaults(func=_critic_control)
+
+    w = sub.add_parser("write", help="the runner; paid unless --mock")
     w.add_argument("--plan", required=True)
-    w.add_argument("--endpoint", required=True)
-    w.add_argument("--model", required=True)
+    w.add_argument("--pack", default="roles/verifier")
+    w.add_argument("--out", default="out")
+    w.add_argument("--endpoint", default=None, help="http://127.0.0.1:<lane port>/v1 (offrig's tunnel)")
+    w.add_argument("--model", default=None, help="a served name from writers.json")
+    w.add_argument("--writers", default="writers.json")
+    w.add_argument("--critic-endpoint", default="http://127.0.0.1:11434")
+    w.add_argument("--critic-model", default="gemma4:31b")
+    w.add_argument("--grant", default=None, help="the Publisher's batch-window grant id for the 5090 critic")
+    w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
+    w.add_argument("--concurrency", type=int, default=1)
+    w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")
+    w.add_argument("--no-critic", action="store_true", help="dry runs only; items pass without the second reader")
     w.set_defaults(func=_write)
     return p
 

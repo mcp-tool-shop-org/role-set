@@ -62,7 +62,12 @@ class MockCritic:
         text = messages[-1]["content"]
         system = messages[0]["content"]
         if "name which single trait" in system:
-            return _done(self.trait or "T02")
+            if self.trait:
+                return _done(self.trait)
+            import re
+
+            m = re.search(r"(T\d\d)-[A-E]", text)
+            return _done(m.group(1) if m else "T02")
         if "Name the single flaw" in system:
             flaw = self.answers.get(("flaw", _after(text, "The other checker wrote: ")))
             return _done(flaw or "none")
@@ -157,3 +162,25 @@ def _fields(slot: dict, material: str, answers: dict) -> str:
     if kind == "E":
         base.update({"variant_user": "Same page, re-asked: what is the verdict?"})
     return json.dumps(base)
+
+
+def mock_gates():
+    """A permissive stand-in for aspire-si-gates, for `write --mock` in CI when the package isn't installed.
+    It refuses nothing; mock output is never data."""
+
+    import types
+
+    from role_set.gates import Gates
+
+    m = types.SimpleNamespace()
+    m.DataError = ValueError
+    m.check_item = lambda row: None
+    m.check_against = lambda row, accepted: []
+    m.check_batch = lambda rows: None
+    m.role_words_in_prompt = lambda row: []
+    m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})
+    m.answer_format = types.SimpleNamespace(parse_answer=lambda reply: {
+        "verdict": next((l.split(":", 1)[1].strip() for l in reply.splitlines() if l.startswith("VERDICT:")), None),
+        "deciding": next((l.split(":", 1)[1].strip() for l in reply.splitlines() if l.startswith("DECIDING:")), None),
+    })
+    return Gates(module=m, version="mock", sha256="0" * 64)

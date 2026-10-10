@@ -7,6 +7,8 @@ the file's modified time and never opens it.
 
 from __future__ import annotations
 
+import json
+import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -73,3 +75,29 @@ def require_heartbeat(path: Path, now: float, *, max_age_s: float = HEARTBEAT_MA
         shown = "missing" if age == float("inf") else f"{age:.0f}s"
         raise GuardError(f"REFUSED: watchdog heartbeat is {shown} old")
     return age
+
+
+def ollama_digest(endpoint: str, model: str, *, opener=None) -> str | None:
+    """The local Ollama's digest for a tag, from /api/tags. Loopback only."""
+
+    url = require_local_endpoint(endpoint).rstrip("/") + "/api/tags"
+    open_ = opener or urllib.request.urlopen
+    with open_(url, timeout=30) as resp:  # noqa: S310 - loopback only, checked above
+        data = json.loads(resp.read().decode("utf-8"))
+    for m in data.get("models", []):
+        if m.get("name") == model or m.get("model") == model:
+            return m.get("digest")
+    return None
+
+
+def require_ollama_digest(endpoint: str, model: str, expected: str, *, opener=None) -> str:
+    """A re-pull can change the weights under the same tag, so the critic's digest must match its pin."""
+
+    if "cloud" in model.lower():
+        raise GuardError(f"REFUSED: cloud model tags are never used ({model})")
+    got = ollama_digest(endpoint, model, opener=opener)
+    if got is None:
+        raise GuardError(f"REFUSED: {model} is not present on the local Ollama")
+    if got != expected:
+        raise GuardError(f"REFUSED: {model} digest {got[:12]} differs from the pinned {expected[:12]}; re-check the licence and re-pin")
+    return got
