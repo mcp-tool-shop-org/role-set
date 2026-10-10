@@ -65,8 +65,24 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
     import role_set.write as w
 
     writers = tmp_path / "writers.json"
-    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3-235b-instruct-2507", "repo": "Q/R", "revision": "9654", "licence": "Apache-2.0"}]}), encoding="utf-8")
+    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3-235b-instruct-2507", "repo": "Q/R", "revision": "9654", "licence": "Apache-2.0"}],
+                                   "critics": [{"served_as": "gemma4:31b", "digest": "6316" + "0" * 60}]}), encoding="utf-8")
     base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, critic_endpoint="http://127.0.0.1:11434", critic_model="gemma4:31b")
+
+    class _Resp:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps(self.payload).encode("utf-8")
+
+    opener = lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "6316" + "0" * 60}]})  # noqa: E731
 
     def fake_gates():
         from role_set.mock import mock_gates
@@ -89,10 +105,15 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
     with pytest.raises(WriteRefused, match="heartbeat is"):
         build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 999)
     with pytest.raises(WriteRefused, match="local critic"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "gemma-cloud"}), now=lambda: hb.stat().st_mtime + 1)
+        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "gemma4:31b-cloud"}), now=lambda: hb.stat().st_mtime + 1)
+    with pytest.raises(WriteRefused, match="critic list"):
+        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "mistral-small:24b"}), now=lambda: hb.stat().st_mtime + 1)
+    with pytest.raises(WriteRefused, match="differs from the pinned"):
+        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1,
+              digest_opener=lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "ffff"}]}))
     slots, sides, pack, names, gates, writer, critic, pins, cleanup = build(
-        WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1)
-    assert pins["writer_revision"] == "9654" and pins["grant"] == "G-1" and pins["critic_model"] == "gemma4:31b" and callable(cleanup)
+        WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=opener)
+    assert pins["writer_revision"] == "9654" and pins["grant"] == "G-1" and pins["critic_model"] == "gemma4:31b" and pins["critic_digest"].startswith("6316") and callable(cleanup)
     no_critic = build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", no_critic=True, **base))
     assert no_critic[6] is None and no_critic[8] is None
 

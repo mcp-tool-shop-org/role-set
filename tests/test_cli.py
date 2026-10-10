@@ -85,3 +85,28 @@ def test_ingest_and_store_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     assert main(["store", "status", "--store", str(tmp_path / "s.db")]) == 0
     assert main(["store", "void", "--store", str(tmp_path / "s.db"), "--round", "1", "--reason", "test"]) == 0
     assert '"voided_rounds": [1]' in capsys.readouterr().out
+
+
+def test_critic_control_through_the_cli(tmp_path: Path, capsys, monkeypatch):
+    import types
+
+    from role_set import cli
+    from role_set.critic_control import ControlReport
+
+    items = tmp_path / "items.jsonl"
+    items.write_text("", encoding="utf-8")
+    hb = tmp_path / "hb"
+    hb.write_text("x")
+    from role_set.mock import mock_gates
+
+    monkeypatch.setattr(cli, "load_gates", mock_gates)
+    assert main(["critic-control", "--items", str(items), "--grant", "", "--heartbeat", str(hb), "--out", str(tmp_path / "c.json")]) == 2
+    assert "--grant" in capsys.readouterr().err
+    monkeypatch.setattr(cli, "unload", lambda *a, **k: None)
+    monkeypatch.setattr(cli, "ollama_chat", lambda *a, **k: types.SimpleNamespace(text="VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no", prompt_tokens=1, completion_tokens=1, model="m", seconds=0))
+    monkeypatch.setattr(cli, "require_ollama_digest", lambda *a, **k: "6316f062")
+    good = ControlReport(items=1, verdict_asks=1, agree=1)
+    monkeypatch.setattr(cli, "run_control", lambda *a, **k: good)
+    rc = main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--out", str(tmp_path / "c.json")])
+    assert rc == 0 and json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))["grant"] == "G-1"
+    assert main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--critic-model", "gemma4:cloud", "--out", str(tmp_path / "c.json")]) == 2

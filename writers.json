@@ -1,12 +1,12 @@
 {
-  "_note": "Licence-checked models only. The Publisher owns this list and checks each licence at the pinned revision before first use. A model not listed here is refused by the guards. Cloud tags are refused regardless.",
+  "_note": "Licence-checked models only. The Publisher owns this list and checks each licence at the pinned revision or digest before first use. A model not listed here is refused by the guards; a critic whose local digest differs from the pin is refused; cloud tags are refused regardless.",
   "writers": [
     {
       "served_as": "qwen3-235b-instruct-2507",
       "repo": "QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
       "revision": "96548f657d772187f16e9f04bc50aec78a9f9cdd",
       "base_repo": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-      "base_revision": "ac9c66cc",
+      "base_revision": "ac9c66cc9b46af7306746a9250f23d47083d689e",
       "licence": "Apache-2.0",
       "offrig_profile": "writer-qwen235",
       "checked_by": "the Publisher, 2026-10-10"
@@ -16,9 +16,11 @@
     {
       "served_as": "gemma4:31b",
       "family": "gemma",
+      "digest": "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7",
+      "quant": "Q4_K_M",
       "licence": "Apache-2.0",
       "endpoint": "http://127.0.0.1:11434",
-      "checked_by": "the Publisher, 2026-10-10"
+      "checked_by": "the Publisher, 2026-10-10 (digest 6316f062…)"
     }
   ]
 }

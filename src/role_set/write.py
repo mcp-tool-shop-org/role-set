@@ -18,7 +18,7 @@ from pathlib import Path
 
 from role_set.assemble import trait_name
 from role_set.gates import Gates, GatesUnavailable, load_gates
-from role_set.guards import GuardError, require_grant, require_heartbeat, require_local_endpoint, require_model_allowed
+from role_set.guards import GuardError, require_grant, require_heartbeat, require_local_endpoint, require_model_allowed, require_ollama_digest
 from role_set.mock import MockCritic, MockWriter, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
@@ -79,7 +79,12 @@ def allowed_writers(path: Path) -> dict[str, dict]:
     return {w["served_as"]: w for w in data.get("writers", [])}
 
 
-def build(cfg: WriteConfig, *, now=time.time):
+def allowed_critics(path: Path) -> dict[str, dict]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return {c["served_as"]: c for c in data.get("critics", [])}
+
+
+def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
     """Everything the runner needs, with every refusal raised before a byte is sent."""
 
     slots, sides, plan_sha = load_plan(cfg.plan)
@@ -127,9 +132,13 @@ def build(cfg: WriteConfig, *, now=time.time):
             c_model = cfg.critic_model or ""
             if not c_model or "cloud" in c_model.lower():
                 raise GuardError("REFUSED: a local critic model is required, never a cloud tag")
+            critics = allowed_critics(cfg.writers_file)
+            if c_model not in critics:
+                raise GuardError(f"REFUSED: {c_model} is not on the licence-checked critic list")
+            digest = require_ollama_digest(c_endpoint, c_model, critics[c_model]["digest"], opener=digest_opener)
         except GuardError as e:
             raise WriteRefused(str(e)) from e
-        pins.update({"critic_model": c_model, "grant": cfg.grant})
+        pins.update({"critic_model": c_model, "critic_digest": digest, "grant": cfg.grant})
 
         def critic(messages):
             return ollama_chat(c_endpoint, c_model, messages)
