@@ -69,7 +69,7 @@ def test_sync_builds_the_pack_and_a_stable_hash(source_repo, tmp_path: Path):
     assert "Stay clear" in (out / "exclusions.md").read_text(encoding="utf-8")
     assert "pre-interview" not in "".join(p.name for p in out.rglob("*"))
     manifest = json.loads((out / "pack.json").read_text(encoding="utf-8"))
-    assert manifest["commit"] == sha and len(manifest["files"]) == 18 + 8
+    assert manifest["commit"] == sha and len(manifest["files"]) == 18 + 9
     assert sync(repo, sha, tmp_path / "pack2").pack_sha256 == m1.pack_sha256
     assert verify(out).pack_sha256 == m1.pack_sha256
     assert load_manifest(out).role == "verifier"
