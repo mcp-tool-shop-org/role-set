@@ -39,7 +39,8 @@ def test_write_is_refused_off_loopback_and_before_the_gates(tmp_path: Path, caps
     assert main(["write", "--plan", str(out), "--endpoint", "http://example.com/v1", "--model", "m"]) == 2
     assert "loopback" in capsys.readouterr().err or True
     assert main(["write", "--plan", str(out), "--endpoint", "http://127.0.0.1:11435/v1", "--model", "m"]) == 2
-    assert "#85" in capsys.readouterr().err
+    err = capsys.readouterr().err
+    assert "pin it" in err or "not built yet" in err
 
 
 def test_version_flag():
