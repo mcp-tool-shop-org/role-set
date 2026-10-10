@@ -9,7 +9,7 @@ def _fake_module():
     m = types.SimpleNamespace()
     m.calls = []
     m.check_item = lambda row: m.calls.append(("item", row["id"]))
-    m.check_against = lambda row, accepted: m.calls.append(("against", row["id"], len(accepted)))
+    m.check_against = lambda row, accepted: m.calls.append(("against", row["id"], len(accepted))) or []
     m.check_batch = lambda rows: m.calls.append(("batch", len(rows)))
     m.role_words_in_prompt = lambda row: ("verifier",) if "verifier" in row.get("user", "") else ()
     m.DataError = ValueError
@@ -23,7 +23,7 @@ def test_load_gates_wraps_the_package():
     g = load_gates(importer=lambda name: fake)
     assert (g.version, g.sha256[:4]) == ("1.0.0", "abab")
     g.check_item({"id": "T02-A-01"})
-    g.check_against({"id": "T02-A-02"}, [{}, {}])
+    assert g.check_against({"id": "T02-A-02"}, [{}, {}]) == []
     g.check_batch([{}, {}, {}])
     assert fake.calls == [("item", "T02-A-01"), ("against", "T02-A-02", 2), ("batch", 3)]
     assert g.parse_answer("VERDICT: supported")["verdict"] == "supported"

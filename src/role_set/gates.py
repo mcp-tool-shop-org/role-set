@@ -24,8 +24,8 @@ class Gates:
     def check_item(self, row: dict) -> None:
         self.module.check_item(row)  # type: ignore[attr-defined]
 
-    def check_against(self, row: dict, accepted: list[dict]) -> None:
-        self.module.check_against(row, accepted)  # type: ignore[attr-defined]
+    def check_against(self, row: dict, accepted: list[dict]) -> list:
+        return list(self.module.check_against(row, accepted) or [])  # type: ignore[attr-defined]
 
     def check_batch(self, rows: list[dict]) -> None:
         self.module.check_batch(rows)  # type: ignore[attr-defined]
