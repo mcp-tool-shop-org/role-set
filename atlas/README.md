@@ -1,16 +1,17 @@
 # role-set: how it works
 
-Mapped at 2026-10-11 from commit 53f88cc by Atlas 1.24.0.
+Mapped at 2026-10-11 from commit aab25ab by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates. (written by a person)
 
-7 parts, mostly Python (40 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
+7 parts, mostly Python (41 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
 
-## What changed since 2026-10-11 (c740733)
+## What changed since 2026-10-11 (53f88cc)
 
-Nothing structural changed since 2026-10-11; 1 file added and 13 changed content.
+- scripts/pilot-write.sh is new and belongs to no part, so atlas check fails on it against the previous map.
+- 2 files added and 5 changed content, across 3 parts.
 
 ## What comes in
 
@@ -37,9 +38,7 @@ CI writes nothing this map can see.
 
 ## What tends to change together
 
-- **src/role_set/critic.py** and **tests/test_prompts_critic.py** changed together in 4 of 7 commits, and the tests part imports the src part.
 - **src/role_set/mock.py** and **tests/test_runner.py** changed together in 4 of 7 commits, and the tests part imports the src part.
-- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 5 of 9 commits, inside the src part.
 - **tests/test_prompts_critic.py** and **tests/test_runner.py** changed together in 4 of 8 commits, inside the tests part.
 
 2 files changed together with their own tests, as expected.
@@ -80,6 +79,7 @@ Read those in order to follow one run of role-set end to end. This path follows 
 - 1 write and 15 reads go to a path their caller passes, not to this repository.
 - 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
 - 7 reads go to the directory the command is run in, not to this repository.
+- 1 file belongs to no part: scripts/pilot-write.sh.
 - Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.

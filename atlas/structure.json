@@ -55,7 +55,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "d8745a4562129930e9e014b1f94347b061e8567da462b856244f68804d769780",
+          "hash": "2855554bc3b565ab3619ebaea729966017aa417c5aeb971a81539a2adffe04ec",
           "path": "docs/role-set-design.md"
         },
         {
@@ -837,7 +837,7 @@
             "trait_named",
             "verdict_messages"
           ],
-          "hash": "cf5f23a8300476d9277782403e450cd690604a903669b32b4fbff4267808b27e",
+          "hash": "618bc92569d62bbb210f9959983cab7398f6322f4144a05481e22b7324a4accc",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/gates.py"
@@ -854,9 +854,10 @@
             "load_rows",
             "plant_errors",
             "run_control",
+            "same_family",
             "trait_leg"
           ],
-          "hash": "7a66023b72c7b78cc70bcf9df67d4dc5ba866cfc5c9d2b93f3dfd0bd82420fa0",
+          "hash": "d4d655abc622bdf6638197b96a4a94c772a5de0c3e5f53fe168d165b93e786b8",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -903,7 +904,7 @@
             {
               "calls": [
                 {
-                  "line": 191,
+                  "line": 200,
                   "name": "teaching_text",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -911,7 +912,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 191,
+                  "line": 200,
                   "name": "trait_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -919,7 +920,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 193,
+                  "line": 202,
                   "name": "TRAIT_VOTES",
                   "passed": true,
                   "target": {
@@ -928,7 +929,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 194,
+                  "line": 203,
                   "name": "TRAIT_TEMPERATURE",
                   "passed": true,
                   "target": {
@@ -937,7 +938,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 196,
+                  "line": 205,
                   "name": "trait_named",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -945,7 +946,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 208,
+                  "line": 217,
                   "name": "majority",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -960,7 +961,7 @@
             {
               "calls": [
                 {
-                  "line": 305,
+                  "line": 319,
                   "name": "closed_answer",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -968,28 +969,28 @@
                   "via": "leg_key"
                 },
                 {
-                  "line": 260,
+                  "line": 274,
                   "name": "names_not_in_puzzle",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 269,
+                  "line": 283,
                   "name": "answer_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 271,
+                  "line": 285,
                   "name": "compare_answer",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 279,
+                  "line": 293,
                   "name": "findall",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1004,7 +1005,7 @@
             {
               "calls": [
                 {
-                  "line": 305,
+                  "line": 319,
                   "name": "closed_answer",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1894,6 +1895,7 @@
             "interleave",
             "lesson_copy",
             "lesson_spans",
+            "lesson_terms",
             "normalize_glyphs",
             "refusal_rule",
             "reply_opening_reused",
@@ -1901,71 +1903,72 @@
             "spent_wording",
             "trait_words_note",
             "truth_checks",
+            "warmup_retry",
             "warmup_terms"
           ],
           "failurePaths": [
             {
               "in": "_record_call",
               "kind": "except",
-              "line": 417
+              "line": 449
             },
             {
               "in": "_record_call",
               "kind": "raise",
-              "line": 428
+              "line": 460
             },
             {
               "in": "warmup",
               "kind": "except",
-              "line": 453
+              "line": 488
             },
             {
               "in": "_material_for",
               "kind": "raise",
-              "line": 480
+              "line": 522
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 568
+              "line": 620
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 580
+              "line": 632
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 593
+              "line": 645
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 602
+              "line": 654
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 615
+              "line": 667
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 627
+              "line": 679
             },
             {
               "in": "_halt_cell",
               "kind": "raise",
-              "line": 712
+              "line": 764
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 781
+              "line": 833
             }
           ],
-          "hash": "c6157bd830b5fec34f7749df32fe8cbb3b074d1a0d4eea4bdf18ca6f090c5e20",
+          "hash": "a0e1b8020bc0b36d93b4cf7a5427c971e48d55fdce7c02fabde3f1bd9b131538",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -2952,7 +2955,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 18,
+      "testedBy": 19,
       "unresolvedSites": 0
     },
     {
@@ -3051,6 +3054,7 @@
             "test_a_void_answer_is_asked_once_more",
             "test_answers_compare_without_case_or_a_leading_article_but_never_by_word_span",
             "test_closed_answers_compare_by_form",
+            "test_family_agreement_is_reported_beside_exact_and_never_gates",
             "test_older_label_reason_keys_count_by_their_label_and_are_reported_apart",
             "test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement",
             "test_the_answer_prompt_asks_for_a_closed_line_in_the_keys_form",
@@ -3063,7 +3067,7 @@
             "test_three_unreadable_votes_are_not_unanimous_and_small_traits_are_thin",
             "test_trait_named_reads_the_trait_line_or_a_bare_id"
           ],
-          "hash": "7f3c0945f25f33891390c1915609cfaff3f81a639776a8b238d087ef10da5f08",
+          "hash": "80de1d65feaeba291edf794e652eb161b01014bb62a11caab3a2039b9168c55c",
           "importOrder": [
             "src/role_set/critic.py",
             "src/role_set/critic_control.py",
@@ -3350,6 +3354,23 @@
         },
         {
           "exports": [
+            "test_a_draft_that_never_reached_the_critic_has_no_critic_field",
+            "test_a_vague_or_off_trait_restatement_still_fails",
+            "test_an_accurate_restatement_in_the_lessons_terms_passes_without_the_trait_name",
+            "test_every_critic_check_is_recorded_on_the_draft_agreeing_or_not",
+            "test_the_pilot_launch_script_carries_no_machine_paths",
+            "test_the_retry_marks_the_missed_point"
+          ],
+          "hash": "683e22b3dc0adb544d29316aa9732c39b1825ff03d84e82b88b941ea885b8153",
+          "importsFiles": [
+            "src/role_set/plan.py",
+            "src/role_set/runner.py",
+            "tests/test_runner.py"
+          ],
+          "path": "tests/test_warmup_and_critic_record.py"
+        },
+        {
+          "exports": [
             "pack_dir",
             "plan_file",
             "test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes_apart",
@@ -3468,7 +3489,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 18
+          "files": 19
         },
         {
           "boundary": "src",
@@ -3508,7 +3529,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 18,
+          "files": 19,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -3613,8 +3634,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "53f88cc4f6b24e5c0686b930c4233d07e168682f",
-    "tracked": 56
+    "commit": "aab25ab01dc70400bf7520c451003e17fe11024b",
+    "tracked": 58
   },
   "landings": [
     {
@@ -3654,6 +3675,11 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 18,
-  "unassigned": []
+  "testFiles": 19,
+  "unassigned": [
+    {
+      "hash": "e8ad226d7cd844e9da46ac01a4c050fa529108ef2828520b726285dde18f84ed",
+      "path": "scripts/pilot-write.sh"
+    }
+  ]
 }
