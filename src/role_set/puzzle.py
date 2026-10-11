@@ -524,15 +524,27 @@ def _plain_direct(m: Model, rule) -> bool:
 
 
 def _direct(m: Model, rule) -> bool:
-    """A direct fact, or an `if` whose antecedent is itself one of the model's direct facts (the answer stated as an
-    if plus its own antecedent, as fix round 2's T13-B-07 did)."""
+    """A direct fact, or an `if` whose antecedent is stated outright as another fact of the model, of any form: the
+    answer given as an if plus its own antecedent (fix round 2's T13-B-07 with an `is`, T03-B-06 with a `before`)."""
 
     if _plain_direct(m, rule):
         return True
     if rule[0] == "if":
-        stated = [r for _, r in m.facts if _plain_direct(m, r)]
-        return rule[1] in stated and _plain_direct(m, rule[2])
+        return any(r == rule[1] for _, r in m.facts if r is not rule)
     return False
+
+
+def _direct_mask(m: Model) -> int:
+    """The direct facts, and with each `if` that is direct by its stated antecedent, that antecedent's own line: the
+    two together state the answer."""
+
+    out = 0
+    for i, (_, r) in enumerate(m.facts):
+        if _direct(m, r):
+            out |= 1 << i
+            if r[0] == "if":
+                out |= _mask(j for j, (_, x) in enumerate(m.facts) if x == r[1] and j != i)
+    return out
 
 
 def _count_decoration(m: Model) -> str | None:
@@ -571,7 +583,7 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
             # survives losing almost anything, so there a fact must also leave the solutions as they were (R&D on #29).
             if t.verdict(without) == v and (v != "cannot_tell" or len(t.matching(without)) == len(t.matching(full))):
                 raise PuzzleError(f"line {n} changes nothing; drop it, or list it in flavour if it states no fact")
-        direct = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(m, r))
+        direct = _direct_mask(m)
         settled = [direct] if direct else []
         settled += [1 << i for i in range(len(m.facts))]
         lookup = v != "cannot_tell" and any(t.verdict(x) == v for x in settled)
@@ -606,7 +618,7 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
     for i in considered:
         if t.projections(need & ~(1 << i)) == base:
             raise PuzzleError(f"line {m.facts[i][0]} changes nothing about the answer; drop it, or list it in flavour if it states no fact")
-    direct = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(m, r))
+    direct = _direct_mask(m)
     lookup = False
     if structure not in ("underdetermined_with_explicit_set",) + STOPPING_STRUCTURES:
         # A lookup: the direct facts alone settle the answer, or any single fact does by itself (R&D on #95).

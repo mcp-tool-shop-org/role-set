@@ -491,3 +491,14 @@ def test_a_bare_number_as_a_predicate_reads_as_model_syntax():
              "facts": [{"line": 2, "rule": ["is", "the choir line", "count", "1"]}], "flavour": [1], "asks": {"attribute": "count", "of": "the choir line"}}
     with pytest.raises(PuzzleError, match="reads as model syntax"):
         check_puzzle(_f(puzzle=puzzle, model=model, answer="1", reply="x\nAnswer: 1"), "elimination_from_a_set")
+
+
+def test_t03_b06_an_if_on_a_stated_before_is_a_lookup():
+    from role_set.puzzle import parse_model, solve
+
+    m = parse_model({"entities": ["4pm", "6pm"], "attributes": {"slot": {"values": ["slot 1", "slot 2"], "ordered": True},
+                                                             "rate": {"values": ["2 pounds an hour", "unlisted"]}},
+                     "facts": [{"line": 2, "rule": ["if", ["before", "4pm", "6pm", "slot"], ["is", "4pm", "rate", "2 pounds an hour"]]},
+                               {"line": 3, "rule": ["before", "4pm", "6pm", "slot"]}],
+                     "flavour": [1], "asks": {"attribute": "rate", "of": "4pm"}})
+    assert solve(m, "scheduling_with_exclusions", "").lookup is True
