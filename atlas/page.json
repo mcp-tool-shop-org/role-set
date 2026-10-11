@@ -20,8 +20,8 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 4,
-      "changed": 4,
+      "added": 3,
+      "changed": 10,
       "moved": 0,
       "parts": 3,
       "removed": 0
@@ -29,21 +29,36 @@
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 4 files added and 4 changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 3 files added and 10 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "4477f59dce9f102dc534c4b974368d1e626d214c",
-      "generatedAt": "2026-10-11T06:00:40.178Z"
+      "commit": "d43eb1b00f6454ddff972bafe7c0206d3ee97f62",
+      "generatedAt": "2026-10-11T06:05:42.924Z"
     },
     "unchanged": true
   },
   "changesTogether": [
     {
-      "a": "src/role_set/mock.py",
-      "b": "tests/test_runner.py",
-      "either": 7,
+      "a": "src/role_set/prompts.py",
+      "b": "src/role_set/runner.py",
+      "either": 8,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
+    },
+    {
+      "a": "src/role_set/prompts.py",
+      "b": "tests/test_prompts_critic.py",
+      "either": 8,
       "partLabels": [
         "src",
         "tests"
@@ -54,6 +69,21 @@
       ],
       "relation": "b-imports-a",
       "shared": 4
+    },
+    {
+      "a": "tests/test_prompts_critic.py",
+      "b": "tests/test_runner.py",
+      "either": 8,
+      "partLabels": [
+        "tests",
+        "tests"
+      ],
+      "parts": [
+        "tests",
+        "tests"
+      ],
+      "relation": "inside",
+      "shared": 4
     }
   ],
   "changesTogetherNote": [
@@ -62,9 +92,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "d43eb1b00f6454ddff972bafe7c0206d3ee97f62",
+  "commit": "04dd8168a52ba70be2dfda953a2caae5c672e5d1",
   "defaultBranch": "main",
-  "derived": "7 parts, mostly Python (37 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "7 parts, mostly Python (39 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -79,12 +109,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 16
+          "files": 17
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 21
+          "files": 22
         }
       ],
       "runs": [
@@ -116,7 +146,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 21
+          "files": 22
         }
       ],
       "runs": [
@@ -135,12 +165,12 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T06:05:42.924Z",
+  "generatedAt": "2026-10-11T07:25:29.703Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
-    "1 write and 15 reads go to a path their caller passes, not to this repository.",
+    "1 write and 16 reads go to a path their caller passes, not to this repository.",
     "6 writes and 3 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
-    "6 reads go to the directory the command is run in, not to this repository.",
+    "7 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -160,16 +190,17 @@
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
     "src/role_set/cli.py",
-    "src/role_set/harvest.py",
+    "src/role_set/readout.py",
+    "src/role_set/runner.py",
     "src/role_set/assemble.py",
     "src/role_set/plan.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
   "summaryFrom": "person",
-  "testFiles": 16,
+  "testFiles": 17,
   "testedBy": {
-    "src": 16
+    "src": 17
   },
   "unnamedWrites": 1,
   "unread": [],
