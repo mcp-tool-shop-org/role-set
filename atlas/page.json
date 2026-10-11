@@ -20,30 +20,45 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 4,
+      "added": 4,
+      "changed": 13,
       "moved": 0,
-      "parts": 2,
+      "parts": 3,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 4 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 4 files added and 13 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "5e6fe5e97d5d5c30cf53745c64b31b1b8c1e839e",
-      "generatedAt": "2026-10-11T08:37:56.955Z"
+      "commit": "cf06f39a98c8a307cf6ff0a5a40bbe2794c9319d",
+      "generatedAt": "2026-10-11T08:39:48.862Z"
     },
     "unchanged": true
   },
   "changesTogether": [
     {
+      "a": "src/role_set/readout.py",
+      "b": "tests/test_paid_run_data.py",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 6
+    },
+    {
       "a": "src/role_set/cli.py",
       "b": "src/role_set/write.py",
-      "either": 9,
+      "either": 12,
       "partLabels": [
         "src",
         "src"
@@ -53,11 +68,11 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 5
+      "shared": 7
     },
     {
       "a": "src/role_set/prompts.py",
-      "b": "tests/test_prompts_critic.py",
+      "b": "tests/test_paid_run_data.py",
       "either": 11,
       "partLabels": [
         "src",
@@ -69,17 +84,47 @@
       ],
       "relation": "b-imports-a",
       "shared": 6
+    },
+    {
+      "a": "src/role_set/prompts.py",
+      "b": "src/role_set/runner.py",
+      "either": 14,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 7
+    },
+    {
+      "a": "src/role_set/assemble.py",
+      "b": "src/role_set/prompts.py",
+      "either": 10,
+      "partLabels": [
+        "src",
+        "src"
+      ],
+      "parts": [
+        "src",
+        "src"
+      ],
+      "relation": "inside",
+      "shared": 5
     }
   ],
   "changesTogetherNote": [
-    "2 files changed together with their own tests, as expected.",
+    "3 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions.",
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
-  "changesTogetherWithTests": 2,
-  "commit": "cf06f39a98c8a307cf6ff0a5a40bbe2794c9319d",
+  "changesTogetherWithTests": 3,
+  "commit": "291b39797175c56dedbf30cb7827d7e9aac6de21",
   "defaultBranch": "main",
-  "derived": "7 parts, mostly Python (41 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "7 parts, mostly Python (44 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -94,12 +139,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 19
+          "files": 21
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 22
+          "files": 23
         }
       ],
       "runs": [
@@ -131,7 +176,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 22
+          "files": 23
         }
       ],
       "runs": [
@@ -150,12 +195,12 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T08:39:48.862Z",
+  "generatedAt": "2026-10-11T09:46:35.419Z",
   "limits": [
-    "1 write and 3 reads use paths built at run time and are not named here.",
-    "1 write and 16 reads go to a path their caller passes, not to this repository.",
+    "1 write and 5 reads use paths built at run time and are not named here.",
+    "4 writes and 19 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
-    "7 reads go to the directory the command is run in, not to this repository.",
+    "8 reads go to the directory the command is run in, not to this repository.",
     "1 file belongs to no part: scripts/pilot-write.sh.",
     "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
   ],
@@ -184,9 +229,9 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
   "summaryFrom": "person",
-  "testFiles": 19,
+  "testFiles": 21,
   "testedBy": {
-    "src": 19
+    "src": 21
   },
   "unnamedWrites": 1,
   "unread": [],
