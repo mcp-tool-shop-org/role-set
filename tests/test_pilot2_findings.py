@@ -159,3 +159,11 @@ def test_a_narrated_quote_counts_as_a_quote():
     for told in ("They answered supported and quoted the opening line.", "The checker read off the hours and agreed.",
                  "It cited the notice and said yes."):
         assert "a misread quote is a guess" in rubber_stamp_mislabel(told, NOTICE.text), told
+
+
+def test_a_negated_narration_is_not_a_quote():
+    for told in ("They quoted neither line and treated the permission as already printed.", "They answered without quoting anything.",
+                 "They did not quote the signature rule.", "They didn't quote it.", "They never quoted the notice.",
+                 "They quoted nothing and agreed.", "They quoted no line."):
+        assert rubber_stamp_mislabel(told, NOTICE.text) is None, told
+    assert "a misread quote is a guess" in rubber_stamp_mislabel("They answered supported and quoted the north-bell line.", NOTICE.text)
