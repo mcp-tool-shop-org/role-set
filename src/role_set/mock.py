@@ -144,6 +144,12 @@ def _slot_from_brief(text: str) -> dict:
 
     import re
 
+    # Only the slot's own section: the trait lesson and the amendments above it use the same words.
+    i = text.find("## This slot\n")
+    if i >= 0:
+        rest = text[i:]
+        j = rest.find("\n\n## ", 1)
+        text = rest if j < 0 else rest[:j]
     m = re.search(r"Lesson (T\d\d), kind ([A-E]), side: ([^,]+), tier (\d+)", text)
     lesson, kind, side, tier = m.groups() if m else ("T02", "D", "x", "3")
     verdict = re.search(r"The correct verdict is (\w+)", text)

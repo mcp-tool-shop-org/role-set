@@ -28,6 +28,10 @@ from role_set.prompts import load_pack
 from role_set.runner import RunHalted, Runner
 from role_set.transport import chat, ollama_chat, unload
 
+# The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
+# real pack; 16,384 leaves room for the reply and its thinking.
+WRITER_NUM_CTX = 16384
+
 
 class WriteRefused(RuntimeError):
     """Something a run needs is missing or wrong. Nothing was sent."""
@@ -123,17 +127,35 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
     pins.update({"writer_model": model, "writer_repo": entry.get("repo"), "writer_revision": entry.get("revision"),
                  "writer_base_revision": entry.get("base_revision"), "writer_licence": entry.get("licence")})
 
-    def writer(messages, seed=0):
-        return chat(endpoint, model, messages, seed=seed)
+    def card(what: str) -> None:
+        require_grant(cfg.grant, uses_card=True)
+        if cfg.heartbeat is None:
+            raise GuardError(f"REFUSED: the {what} on the 5090 needs --heartbeat <watchdog heartbeat file>")
+        require_heartbeat(cfg.heartbeat, now())
+
+    unloads: list = []
+    if entry.get("digest"):
+        # A writer served by the local Ollama (the rehearsal): on the 5090, so it needs the grant; pinned by digest
+        # like the critic; and called on the native API, because the OpenAI-style endpoint ignores num_ctx and the
+        # writer prompt runs past Ollama's default context.
+        try:
+            card("local writer")
+            w_digest = require_ollama_digest(endpoint, model, entry["digest"], opener=digest_opener)
+        except GuardError as e:
+            raise WriteRefused(str(e)) from e
+        pins.update({"writer_digest": w_digest, "grant": cfg.grant, "rehearsal": bool(entry.get("rehearsal_only"))})
+        unloads.append((endpoint, model))
+
+        def writer(messages, seed=0):
+            return ollama_chat(endpoint, model, messages, seed=seed, num_ctx=WRITER_NUM_CTX)
+    else:
+        def writer(messages, seed=0):
+            return chat(endpoint, model, messages, seed=seed)
 
     critic = None
-    cleanup = None
     if not cfg.no_critic:
         try:
-            require_grant(cfg.grant, uses_card=True)
-            if cfg.heartbeat is None:
-                raise GuardError("REFUSED: the critic on the 5090 needs --heartbeat <watchdog heartbeat file>")
-            require_heartbeat(cfg.heartbeat, now())
+            card("critic")
             c_endpoint = require_local_endpoint(cfg.critic_endpoint or "")
             c_model = cfg.critic_model or ""
             if not c_model or "cloud" in c_model.lower():
@@ -149,8 +171,13 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
         def critic(messages):
             return ollama_chat(c_endpoint, c_model, messages)
 
+        unloads.append((c_endpoint, c_model))
+
+    cleanup = None
+    if unloads:
         def cleanup():
-            unload(c_endpoint, c_model)
+            for e, m in unloads:
+                unload(e, m)
 
     return slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup
 
@@ -160,6 +187,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     out = cfg.out
     if cfg.mock:
         out = out / "mock"  # never confused with data
+    elif pins.get("rehearsal"):
+        out = out / "rehearsal"  # a rehearsal writer's items are never data either
     excerpts = load_pool(cfg.pool) if cfg.pool else None
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
@@ -186,6 +215,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         "attempted": runner.status.attempted,
         "halted": halted,
         "batch_check": runner.batch_check,
+        "rehearsal": bool(pins.get("rehearsal")),
         "mock": cfg.mock,
         "slots": len(slots),
         "outcomes": len(outcomes),

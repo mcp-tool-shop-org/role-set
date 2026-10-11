@@ -167,3 +167,69 @@ def test_mock_write_draws_from_a_pool_and_refuses_bad_exemplars(pack_dir: Path, 
     assert result["accepted"] == 40 and any(r["key_basis"] == "source" for r in rows)
     with pytest.raises(WriteRefused, match="cannot read|held out"):
         run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o2", mock=True, exemplar_repo=tmp_path, exemplar_commit="abc1234", exemplar_files=("nope.jsonl",)))
+
+
+def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes_apart(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+    import role_set.write as w
+
+    writers = tmp_path / "writers.json"
+    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3:8b", "digest": "500a" + "0" * 60, "licence": "Apache-2.0", "rehearsal_only": True}],
+                                   "critics": []}), encoding="utf-8")
+    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:11434", model="qwen3:8b", no_critic=True)
+
+    class _Resp:
+        def __init__(self, digest):
+            self.digest = digest
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def read(self):
+            return json.dumps({"models": [{"name": "qwen3:8b", "digest": self.digest}]}).encode("utf-8")
+
+    good = lambda url, timeout: _Resp("500a" + "0" * 60)  # noqa: E731
+    from role_set.mock import mock_gates
+
+    monkeypatch.setattr(w, "load_gates", mock_gates)
+    # The writer is on the 5090: no grant, no heartbeat, or a re-pulled tag is refused before a byte is sent.
+    with pytest.raises(WriteRefused, match="--grant"):
+        build(WriteConfig(**base), digest_opener=good)
+    with pytest.raises(WriteRefused, match="--heartbeat"):
+        build(WriteConfig(grant="G-2", **base), digest_opener=good)
+    hb = tmp_path / "hb"
+    hb.write_text("x")
+    with pytest.raises(WriteRefused, match="differs from the pinned"):
+        build(WriteConfig(grant="G-2", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=lambda url, timeout: _Resp("ffff"))
+    parts = build(WriteConfig(grant="G-2", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=good)
+    writer, critic, pins, cleanup = parts[5], parts[6], parts[7], parts[8]
+    assert pins["writer_digest"].startswith("500a") and pins["rehearsal"] is True and pins["grant"] == "G-2" and critic is None
+
+    calls, unloaded = [], []
+    monkeypatch.setattr(w, "ollama_chat", lambda endpoint, model, messages, seed=0, num_ctx=0: calls.append((endpoint, model, num_ctx)) or "ok")
+    monkeypatch.setattr(w, "unload", lambda endpoint, model: unloaded.append(model))
+    assert writer([{"role": "user", "content": "x"}]) == "ok"
+    assert calls == [("http://127.0.0.1:11434", "qwen3:8b", w.WRITER_NUM_CTX)] and w.WRITER_NUM_CTX >= 16384
+    cleanup()
+    assert unloaded == ["qwen3:8b"]
+
+    # Its items land under rehearsal/, apart from data, and the result says so.
+    seen = {}
+
+    class Stub:
+        def __init__(self, **kw):
+            from role_set.runner import Status
+
+            seen["out_dir"] = kw["out_dir"]
+            self.status = Status(started_at=0.0)
+            self.batch_check = None
+
+        def run(self, slots, sides):
+            return []
+
+    monkeypatch.setattr(w, "Runner", Stub)
+    monkeypatch.setattr(w, "build", lambda cfg, now=None: parts)
+    result = run(WriteConfig(grant="G-2", heartbeat=hb, **base))
+    assert seen["out_dir"].name == "rehearsal" and result["rehearsal"] is True and unloaded == ["qwen3:8b", "qwen3:8b"]
