@@ -148,7 +148,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-On this tree that is 241 tests and 97.64% coverage. The floor is 90, in `pyproject.toml` and in CI, and the run fails under it. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
+Line coverage has a floor of 90, in `pyproject.toml` and in CI, and the run fails under it. The coverage badge above shows the current figure. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
 
 The handbook is published with the [landing page](https://mcp-tool-shop-org.github.io/role-set/). This README stands on its own.
 
