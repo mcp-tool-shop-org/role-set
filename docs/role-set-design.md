@@ -138,7 +138,9 @@ runs inline, not as a pass afterwards, because the refusal loop needs its answer
 hundred short calls per batch is light work for the card. It only refuses; agreement is never proof, and the
 agreement rate is logged per batch. If the card is busy or the control below fails, the fallback is a second,
 smaller model on the pod from a third family, licence-checked the same way, with its cost added to the plan's
-estimate. A same-model critic is never used; R&D's full read is mandatory either way. The no-model-judge rule
+estimate. A same-model critic is never used; R&D's full read is mandatory either way. That rule is held by the
+critic list in `writers.json` (only listed critics run, and the comparison critic is refused as the run's critic),
+not by a code check that compares the writer's family with the critic's. The no-model-judge rule
 is about rewards and scores; a filter that only refuses is outside it, and the design says so here.
 
 **Known-answer control before any paid batch.** The critic runs over the 160 merged items, whose keys are
