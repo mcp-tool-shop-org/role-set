@@ -176,8 +176,8 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
             raise WriteRefused(str(e)) from e
         pins.update({"critic_model": c_model, "critic_digest": digest, "grant": cfg.grant})
 
-        def critic(messages):
-            return ollama_chat(c_endpoint, c_model, messages)
+        def critic(messages, **sampling):
+            return ollama_chat(c_endpoint, c_model, messages, **sampling)
 
         unloads.append((c_endpoint, c_model))
 

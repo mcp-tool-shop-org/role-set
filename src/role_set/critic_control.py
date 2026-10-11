@@ -167,3 +167,138 @@ def load_rows(paths: list[Path]) -> list[dict]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+# ---- the trait leg ---------------------------------------------------------------------------------------------
+# R&D's bar (2026-10-11), on reviewed items whose trait is known (the slot's lesson), majority of three calls: overall
+# agreement at least 85%, every trait at least 70%, and the three calls unanimous on at least 90% of items. If the
+# critic misses it, its prompt changes before the trait check gates again; the gate is never relaxed to fit the critic.
+TRAIT_BAR = {"overall": 0.85, "per_trait": 0.70, "stability": 0.90}
+
+
+def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict[str, str] | None = None, *,
+              concurrency: int = 1, log=None) -> dict:
+    """Ask the critic, three times each, which trait every reviewed item teaches, and score it against the known trait."""
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    from role_set.critic import TRAIT_TEMPERATURE, TRAIT_VOTES, majority, teaching_text, trait_messages, trait_named
+
+    items = [r for r in rows if r.get("lesson") in trait_names and r.get("turns")]
+    seconds: list[float] = []  # per call, for sizing the critic queue in a paid run
+
+    def ask(r: dict) -> tuple[str, list[str]]:
+        msgs = trait_messages(teaching_text(r), trait_names, steps)
+        votes = []
+        for s in range(TRAIT_VOTES):
+            c = critic(msgs, temperature=TRAIT_TEMPERATURE, seed=s)
+            seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
+            votes.append(trait_named(c.text))
+        return r["lesson"], votes
+
+    if concurrency > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            answers = list(pool.map(ask, items))
+    else:
+        answers = [ask(r) for r in items]
+    per: dict[str, dict] = {}
+    confusion: dict[str, dict] = {}
+    agree = unanimous = with_majority = 0
+    for r, (known, votes) in zip(items, answers):
+        won = majority(votes)
+        cell = per.setdefault(known, {"items": 0, "agree": 0})
+        cell["items"] += 1
+        named = won or "split"
+        confusion.setdefault(known, {})[named] = confusion.setdefault(known, {}).get(named, 0) + 1
+        # Unanimous only on a trait id: three unreadable replies agree on nothing (R&D on #23).
+        unanimous += len(set(votes)) == 1 and bool(votes[0])
+        with_majority += won is not None
+        if won == known:
+            agree += 1
+            cell["agree"] += 1
+        elif log:
+            log({"item": r.get("id"), "known": known, "votes": votes})
+    n = len(items)
+    for cell in per.values():
+        cell["rate"] = round(cell["agree"] / cell["items"], 3)
+        cell["thin"] = cell["items"] < THIN_ITEMS
+    overall = round(agree / n, 3) if n else None
+    stability = round(unanimous / n, 3) if n else None
+    worst = min((c["rate"] for c in per.values()), default=None)
+    passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
+    return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
+            "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
+            "seconds_per_call": _timing(seconds),
+            "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}
+
+
+THIN_ITEMS = 10  # a per-trait rate on fewer items than this is marked thin
+ANSWER_BAR = 0.90  # R&D (2026-10-11): the critic agrees with at least 90% of reviewed B keys
+
+
+def _timing(seconds: list[float]) -> dict:
+    ordered = sorted(seconds)
+    return {"calls": len(ordered), "p50": round(ordered[len(ordered) // 2], 2) if ordered else None,
+            "p95": round(ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))], 2) if ordered else None,
+            "total": round(sum(ordered), 1)}
+
+
+def answer_leg(critic, rows: list[dict]) -> dict:
+    """The kind-B answer check on reviewed puzzles: the critic solves each one with the closed-answer prompt, and its
+    ANSWER is compared with the reviewed key. Two subsets, per R&D's ruling: keys closed as written, and older keys whose
+    head before a dash or colon is exactly a verdict label (the label is the answer). Every other key is listed and left
+    out; every disagreement is listed. The bar applies to the combined figure."""
+
+    from role_set.critic import ANSWER_LINE, answer_messages, compare_answer
+
+    puzzles = [r for r in rows if r.get("kind") == "B" and r.get("turns")]
+    keyed = [(r, *leg_key(str(r.get("answer", "")))) for r in puzzles]
+    seconds: list[float] = []
+    voids, disagreements = 0, []
+    tally = {"as_written": [0, 0], "label_head": [0, 0]}  # subset -> [items, agree]
+    for r, key, subset in keyed:
+        if key is None:
+            continue
+        v, c = None, None
+        for ask in range(2):
+            c = critic(answer_messages(r["turns"][0]["user"], key))
+            seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
+            v = compare_answer(c.text, key)
+            if v.code != "VOID":
+                break
+            voids += 1
+        tally[subset][0] += 1
+        if v.ok:
+            tally[subset][1] += 1
+        else:
+            said = ANSWER_LINE.findall(c.text)
+            disagreements.append({"item": r.get("id"), "subset": subset, "key": r["answer"], "compared_as": key, "code": v.code,
+                                  "critic_answer": said[-1] if said else None, "critic_raw": c.text[:2000]})
+
+    def part(items: int, agree: int) -> dict:
+        return {"items": items, "agree": agree, "rate": round(agree / items, 3) if items else None}
+
+    subsets = {k: part(*v) for k, v in tally.items()}
+    combined = part(sum(v[0] for v in tally.values()), sum(v[1] for v in tally.values()))
+    written = subsets["as_written"]
+    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None], "subsets": subsets,
+            "combined": combined, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
+            "passes": bool(combined["items"]) and combined["rate"] >= ANSWER_BAR,
+            "as_written_below_bar": bool(written["items"]) and written["rate"] < ANSWER_BAR, "disagreements": disagreements}
+
+
+LABEL_HEAD = re.compile(r"\s[—–-]\s|:")
+
+
+def leg_key(answer: str) -> tuple[str | None, str | None]:
+    """The key the answer leg compares against, and its subset: the answer itself when it is closed as written; the bare
+    label when an older 'label — reason' key's head is exactly a verdict label; otherwise (None, None)."""
+
+    from role_set.assemble import VERDICTS, closed_answer
+
+    if closed_answer(answer) is not None:
+        return answer, "as_written"
+    head = LABEL_HEAD.split(answer, maxsplit=1)[0].strip().strip(".*").lower()
+    if head in VERDICTS:
+        return head, "label_head"
+    return None, None

@@ -322,10 +322,10 @@ def test_the_flaw_check_is_advisory_unless_gated(tmp_path: Path):
     slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "C" and s.verdict != "cannot_tell")
 
     def wrong_flaw(critic):
-        def call(messages):
+        def call(messages, **kw):
             if "Name the single flaw" in messages[0]["content"]:
                 return types.SimpleNamespace(text="loop", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
-            return critic(messages)
+            return critic(messages, **kw)
         return call
 
     r, _, critic = _runner(tmp_path / "a")

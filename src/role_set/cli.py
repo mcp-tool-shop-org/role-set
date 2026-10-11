@@ -16,9 +16,11 @@ from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
 from role_set.store import counts, open_store, void_round
-from role_set.critic_control import FALSE_REFUSAL_CAP, cases_from_rows, load_rows, plant_errors, run_control
+from role_set.critic_control import FALSE_REFUSAL_CAP, answer_leg, cases_from_rows, load_rows, plant_errors, run_control, trait_leg
 from role_set.guards import require_grant, require_heartbeat, require_ollama_digest
-from role_set.write import allowed_critics
+from role_set.prompts import load_pack
+from role_set.trait_steps import TRAIT_STEPS
+from role_set.write import allowed_critics, trait_names_from_pack
 from role_set.transport import ollama_chat, unload
 from role_set.write import WriteConfig, WriteRefused
 from role_set.write import run as run_write
@@ -173,12 +175,41 @@ def _critic_control(args: argparse.Namespace) -> int:
         print(e, file=sys.stderr)
         return 2
     rows = load_rows([Path(p) for p in args.items])
-    cases = cases_from_rows(rows)
-    planted = plant_errors(cases, args.planted, seed=args.seed)
     log: list = []
 
-    def critic(messages):
-        return ollama_chat(endpoint, args.critic_model, messages)
+    def critic(messages, **sampling):
+        return ollama_chat(endpoint, args.critic_model, messages, **sampling)
+
+    if args.trait_leg or args.answer_leg:
+        # The legs R&D set bars for (2026-10-11), in one grant: the trait each reviewed item teaches, three calls
+        # each; and the kind-B answers, closed and compared closed.
+        if args.trait_leg and not args.pack:
+            print("REFUSED: --trait-leg needs --pack (the trait names come from the pack)", file=sys.stderr)
+            return 2
+        out = {"critic_model": args.critic_model, "critic_digest": digest, "grant": args.grant}
+        try:
+            if args.trait_leg:
+                trait_names = trait_names_from_pack(load_pack(Path(args.pack)))
+                out["trait_leg"] = trait_leg(critic, rows, trait_names, TRAIT_STEPS, concurrency=args.concurrency, log=log.append)
+                out["trait_misses"] = log
+            if args.answer_leg:
+                out["answer_leg"] = answer_leg(critic, rows)
+        finally:
+            unload(endpoint, args.critic_model)
+        Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+        legs = [out[k] for k in ("trait_leg", "answer_leg") if k in out]
+        if "trait_leg" in out:
+            leg = out["trait_leg"]
+            print(json.dumps({k: v for k, v in leg.items() if k not in ("confusion", "per_trait")}))
+            for t, cell in leg["per_trait"].items():
+                print(f"{t}: {cell['agree']}/{cell['items']} = {cell['rate']}" + (" (thin)" if cell["thin"] else ""))
+        if "answer_leg" in out:
+            print(json.dumps({k: v for k, v in out["answer_leg"].items() if k != "disagreements"}))
+            if out["answer_leg"]["as_written_below_bar"]:
+                print("NOTE: the keys closed as written fall below the bar on their own, though the combined figure is what gates")
+        return 0 if all(leg["passes"] for leg in legs) else 2
+    cases = cases_from_rows(rows)
+    planted = plant_errors(cases, args.planted, seed=args.seed)
 
     try:
         report = run_control(gates, critic, cases, planted=planted, log=log.append)
@@ -260,6 +291,10 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--grant", required=True)
     cc.add_argument("--heartbeat", required=True)
     cc.add_argument("--out", default="critic-control.json")
+    cc.add_argument("--trait-leg", action="store_true", help="run only the trait leg: three calls per reviewed item against R&D's bar")
+    cc.add_argument("--answer-leg", action="store_true", help="run the kind-B answer leg: closed answers against the reviewed keys, bar 90%%")
+    cc.add_argument("--pack", help="the synced role pack (for --trait-leg's trait names)")
+    cc.add_argument("--concurrency", type=int, default=1, help="parallel critic calls for --trait-leg (match OLLAMA_NUM_PARALLEL)")
     cc.set_defaults(func=_critic_control)
 
     h = sub.add_parser("harvest", help="real excerpts from pinned, licence-checked repos into a local pool")

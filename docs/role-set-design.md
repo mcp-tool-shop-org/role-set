@@ -174,10 +174,19 @@ ends, halt included, with a reminder to shut the pod down; offrig's deadline wat
 - For C with a planted flaw: the critic gets the other checker's trace and must name the flaw from the flaw
   list, each label with its one-line meaning. Mismatch = refuse once a control run shows the critic agrees on
   flaws (`flaw_gate`); until then it is logged as `flaw_advisory`. The 2026-10-11 control had 9 of 24.
-- For B puzzles: the critic solves the puzzle cold and returns a structured answer (an assignment or a set),
-  compared after normalising, never as free text. Mismatch = refuse.
-- For A and written E: no critic verdict is possible without opinion, so these get only the validator and the
-  human read. The plan keeps them at 16 of 40 per trait, where they are now.
+- For B puzzles: the critic gets the puzzle's facts and question without the writer-facing pattern instruction,
+  and ends with an ANSWER line in the key's closed form (a verdict label, a value, an ordered list or
+  `name=value` assignments). The two closed answers are compared, never free text; a missing or open ANSWER line
+  is void and asked once more. Mismatch = refuse. (The 235B pilot's comparator matched free text against free
+  text, and R&D found 14 of 20 refusals were the check's fault.)
+- For every kind, the trait: the critic names the trait whose step decides the item (each trait listed with the
+  step it decides) and, apart, the error the item contrasts against; pressure is structure except for T05 and
+  T13. A majority of three calls at temperature 0.7 decides; a split or another trait refuses. It stays gating
+  (R&D, 2026-10-11: advisory would have passed 17 of 20 adjudicated refusals, 4 with wrong keys), and
+  `critic-control --trait-leg` measures it on reviewed items against R&D's bar: 85% overall, every trait 70%,
+  the three calls unanimous on 90%. A critic that misses the bar gets a new prompt; the bar doesn't move.
+- For A and written E: no verdict check is possible without opinion, so these get the validator, the trait
+  check and the human read. The plan keeps them at 16 of 40 per trait, where they are now.
 
 A mismatch is a refusal, never a vote. The critic can be the same pod model or a different one; the item
 records which.

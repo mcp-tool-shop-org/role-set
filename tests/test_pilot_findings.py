@@ -157,16 +157,17 @@ def test_a_row_shaped_draft_is_refused_as_shape_with_the_fields_named(tmp_path: 
 def test_the_critics_own_words_are_kept_with_its_refusal(tmp_path: Path):
     r, _, critic = _runner(tmp_path)
 
-    def other_trait(messages):
+    def other_trait(messages, **kw):
         if "which single trait" in messages[0]["content"]:
             return types.SimpleNamespace(text="T14\nIt fills no gap.", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
-        return critic(messages)
+        return critic(messages, **kw)
 
     r.critic = other_trait
     out = r.run_slot(_slot("A", seed=0))
     assert not out.accepted
     kept = [json.loads(line) for line in (tmp_path / "out" / "refusals.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert kept[0]["code"] == "TRAIT_MISMATCH" and kept[0]["critic_raw"] == "T14\nIt fills no gap."
+    assert kept[0]["code"] == "TRAIT_MISMATCH" and json.loads(kept[0]["critic_raw"]) == ["T14\nIt fills no gap."] * 3
+    assert "votes T14, T14, T14" in kept[0]["detail"]
 
 
 def test_a_reply_opening_shared_with_two_accepted_items_of_the_lesson_is_refused():

@@ -20,26 +20,41 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 3,
-      "changed": 10,
+      "added": 0,
+      "changed": 3,
       "moved": 0,
-      "parts": 3,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 3 files added and 10 changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 3 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "d43eb1b00f6454ddff972bafe7c0206d3ee97f62",
-      "generatedAt": "2026-10-11T06:05:42.924Z"
+      "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
+      "generatedAt": "2026-10-11T07:37:55.488Z"
     },
     "unchanged": true
   },
   "changesTogether": [
+    {
+      "a": "src/role_set/mock.py",
+      "b": "tests/test_runner.py",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 4
+    },
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
@@ -53,21 +68,6 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 5
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "tests/test_prompts_critic.py",
-      "either": 8,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
       "shared": 4
     },
     {
@@ -92,9 +92,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "04dd8168a52ba70be2dfda953a2caae5c672e5d1",
+  "commit": "c74073304b1e5ec64113fe4fd36caed4940b7429",
   "defaultBranch": "main",
-  "derived": "7 parts, mostly Python (39 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "7 parts, mostly Python (40 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -109,7 +109,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 17
+          "files": 18
         },
         {
           "boundary": "src",
@@ -165,11 +165,11 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T07:25:29.703Z",
+  "generatedAt": "2026-10-11T07:39:28.797Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
-    "1 write and 16 reads go to a path their caller passes, not to this repository.",
-    "6 writes and 3 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
+    "1 write and 15 reads go to a path their caller passes, not to this repository.",
+    "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "7 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
   ],
@@ -198,9 +198,9 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
   "summaryFrom": "person",
-  "testFiles": 17,
+  "testFiles": 18,
   "testedBy": {
-    "src": 17
+    "src": 18
   },
   "unnamedWrites": 1,
   "unread": [],

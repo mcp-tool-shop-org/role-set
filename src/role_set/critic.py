@@ -11,10 +11,11 @@ Agreement is never proof, and the rate is logged.
 
 from __future__ import annotations
 
+import json
 import re
 from dataclasses import dataclass
 
-from role_set.assemble import FLAWS, VERDICTS
+from role_set.assemble import FLAWS, VERDICTS, closed_answer
 from role_set.gates import Gates
 
 CRITIC_SYSTEM = (
@@ -64,12 +65,67 @@ def flaw_messages(material: str, statement: str, checker_trace: str, checker_ver
     ]
 
 
-def trait_messages(teaching_text: str, traits: dict[str, str]) -> list[dict]:
-    menu = "\n".join(f"- {k}: {v}" for k, v in sorted(traits.items()))
+# R&D's ruling on the 2026-10-11 pilot: the critic named the error an item contrasts against (filling a gap, giving in
+# to pressure) rather than the trait that decides it. It now names the step, with each trait's decided step in the
+# menu, the contrasted error in its own field, and pressure treated as structure.
+TRAIT_SYSTEM = (
+    "Read a training item and name which single trait decides it, from the closed list. Each trait is listed with the "
+    "step it decides. Find the step the reply's reasoning names as deciding the verdict or the answer, and name the trait "
+    "whose step that is, not the error the item warns against. In an item with pressure or a second turn, the pressure "
+    "is structure: resisting it decides the item only for T05 and T13; otherwise judge the step the reasoning names. "
+    "Answer with exactly two lines and nothing else:\nTRAIT: <trait id>\nCONTRASTED: <trait id of the error the item "
+    "contrasts against, or none>"
+)
+TRAIT_VOTES = 3  # a majority of three calls at temperature 0.7, seeds 0-2: a single call was unstable on 5 of 20
+TRAIT_TEMPERATURE = 0.7
+TRAIT_LINE = re.compile(r"^\s*\**\s*TRAIT\s*\**\s*:\s*\**\s*(T\d\d)\b", re.I | re.M)
+
+
+def trait_messages(teaching_text: str, traits: dict[str, str], steps: dict[str, str] | None = None) -> list[dict]:
+    menu = "\n".join(f"- {k}: {v}" + (f". Decides: {steps[k]}" if steps and steps.get(k) else "") for k, v in sorted(traits.items()))
     return [
-        {"role": "system", "content": "Read a training item and name which single trait it teaches, from the closed list. Answer with the trait id only."},
+        {"role": "system", "content": TRAIT_SYSTEM},
         {"role": "user", "content": f"## Traits\n{menu}\n\n## The item\n{teaching_text.strip()}"},
     ]
+
+
+def teaching_text(row: dict) -> str:
+    """What the trait check reads: each turn's thinking and reply, and an item's key points, quiz and variant."""
+
+    parts = []
+    for t in row["turns"]:
+        parts.append(t.get("thinking", ""))
+        parts.append(t.get("reply", ""))
+    for k in ("key_points", "quiz", "variant"):
+        if k in row:
+            parts.append(json.dumps(row[k], ensure_ascii=False))
+    return "\n".join(parts)
+
+
+def trait_named(reply: str) -> str:
+    """The trait id from a TRAIT line, or the reply's first word for a bare id; '' when neither is a trait id."""
+
+    m = TRAIT_LINE.search(reply)
+    if m:
+        return m.group(1).upper()
+    word = reply.strip().split()[0].strip(".,:;'\"*").upper() if reply.strip() else ""
+    return word if re.fullmatch(r"T\d\d", word) else ""
+
+
+def majority(votes: list[str]) -> str | None:
+    """The id named by most of the votes, if more than half agree; None for a split."""
+
+    best = max(set(votes), key=votes.count) if votes else ""
+    return best if best and votes.count(best) * 2 > len(votes) else None
+
+
+def compare_trait_votes(replies: list[str], slot_lesson: str) -> CriticVerdict:
+    votes = [trait_named(r) for r in replies]
+    won = majority(votes)
+    if won != slot_lesson:
+        said = won or "no majority"
+        return CriticVerdict(False, "TRAIT_MISMATCH", f"the item reads as {said} (votes {', '.join(v or '-' for v in votes)}), the slot is {slot_lesson}")
+    return CriticVerdict(True, "AGREE", f"the critic named the slot's trait (votes {', '.join(v or '-' for v in votes)})")
 
 
 def _lines(deciding: str | None) -> list[str]:
@@ -114,20 +170,69 @@ def compare_flaw(reply: str, key_flaw: str) -> CriticVerdict:
 
 
 def compare_trait(reply: str, slot_lesson: str) -> CriticVerdict:
-    word = reply.strip().split()[0].strip(".,:;'\"").upper() if reply.strip() else ""
-    if word != slot_lesson:
-        return CriticVerdict(False, "TRAIT_MISMATCH", f"the item reads as {word or 'nothing'}, the slot is {slot_lesson}")
-    return CriticVerdict(True, "AGREE", "the critic named the slot's trait")
+    return compare_trait_votes([reply], slot_lesson)
 
 
-def normalise_answer(text: str) -> str:
-    """A puzzle answer compared after normalising: lowercase, alphanumerics, sorted tokens."""
+# Kind B. The pilot's critic was handed the writer-facing turn ("show your thinking as a tree") and wrote out working,
+# and the comparator needed a near-exact match to a free-text key: R&D found 14 of 20 ANSWER_MISMATCH refusals were
+# the check's fault. The critic now gets the puzzle without its pattern instruction, must end with a closed ANSWER line
+# in the key's form, and the two closed answers are compared, never free text.
+# An instruction on how to lay out the working: an imperative sentence about a tree, grid, elimination, table, steps
+# or thinking, or the writer's note on what the exercise is for. Facts that mention a tree are left alone.
+PATTERN_INSTRUCTION = re.compile(r"(?:(?<=[.?!]\s)|^)\s*(?:(?:please\s+)?(?:show|draw|lay out|use|present|work through|set out|write out)\b"
+                                 r"[^.?!\n]*\b(?:tree|grid|elimination|table|steps|thinking|working|pattern)\b[^.?!\n]*[.?!]?"
+                                 r"|the point of (?:the|this) exercise[^.?!\n]*[.?!]?)", re.I)
+ANSWER_LINE = re.compile(r"^\s*\**\s*ANSWER\s*\**\s*:\s*(.+?)\s*$", re.I | re.M)
+ANSWER_FORMS = {"label": "one of supported, unsupported or cannot_tell", "value": "a single value",
+                "list": "an ordered list separated by commas", "map": "assignments written 'name=value; name=value'"}
 
-    tokens = re.sub(r"[^a-z0-9 ]+", " ", text.lower()).split()
-    return " ".join(sorted(tokens))
+
+def puzzle_for_critic(puzzle: str) -> str:
+    """The puzzle's facts and its question, without the writer-facing pattern instruction: nothing after the Question
+    line, and no imperative sentence on how to lay out the working."""
+
+    lines = puzzle.splitlines()
+    q = next((i for i, ln in enumerate(lines) if "Question:" in ln), len(lines) - 1)
+    kept = [PATTERN_INSTRUCTION.sub("", ln).rstrip() for ln in lines[:q + 1]]
+    return "\n".join(ln for ln in kept if ln.strip()).strip()
+
+
+def answer_messages(puzzle: str, key_answer: str) -> list[dict]:
+    form = closed_answer(key_answer)
+    shape = ANSWER_FORMS[form[0]] if form else ANSWER_FORMS["value"]
+    return [
+        {"role": "system", "content": "Solve the puzzle using only its facts. Work it out briefly, then end with one line: "
+                                      f"ANSWER: <the answer>, written as {shape}, with no explanation on that line."},
+        {"role": "user", "content": puzzle_for_critic(puzzle)},
+    ]
 
 
 def compare_answer(reply: str, key_answer: str) -> CriticVerdict:
-    if normalise_answer(reply) != normalise_answer(key_answer):
-        return CriticVerdict(False, "ANSWER_MISMATCH", f"the critic solved {reply.strip()[:40]!r}, the key says {key_answer!r}")
+    lines = ANSWER_LINE.findall(reply)
+    if not lines:
+        return CriticVerdict(False, "VOID", "the critic gave no ANSWER line; ask once more")
+    got, want = closed_answer(lines[-1]), closed_answer(key_answer)
+    if got is None:
+        return CriticVerdict(False, "VOID", f"the critic's ANSWER line is not a closed answer: {lines[-1][:40]!r}; ask once more")
+    if want is None or not same_answer(got, want):
+        return CriticVerdict(False, "ANSWER_MISMATCH", f"the critic solved {lines[-1][:40]!r}, the key says {key_answer!r}")
     return CriticVerdict(True, "AGREE", "the critic reached the same answer")
+
+
+def same_answer(a: tuple, b: tuple) -> bool:
+    """Two closed answers agree: the same label, value, ordered list or assignments; a one-item list is a value."""
+
+    def flat(x):
+        kind, v = x
+        if kind == "list" and len(v) == 1:
+            return ("value", v[0])
+        return (kind, v)
+
+    (ka, va), (kb, vb) = flat(a), flat(b)
+    if ka != kb:
+        return False
+    if ka == "map":
+        return {k.strip(): v.strip() for k, v in va.items()} == {k.strip(): v.strip() for k, v in vb.items()}
+    if ka == "list":
+        return [x.strip() for x in va] == [x.strip() for x in vb]
+    return str(va).strip() == str(vb).strip()

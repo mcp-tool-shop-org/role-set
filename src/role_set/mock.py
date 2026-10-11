@@ -74,12 +74,12 @@ class MockCritic:
     disagree_all: bool = False
     trait: str = ""
 
-    def __call__(self, messages: list[dict]) -> Completion:
+    def __call__(self, messages: list[dict], **sampling) -> Completion:
         text = messages[-1]["content"]
         system = messages[0]["content"]
         if "name which single trait" in system:
             if self.trait:
-                return _done(self.trait)
+                return _done(f"TRAIT: {self.trait}\nCONTRASTED: none")
             import re
 
             m = re.search(r"\b(T\d\d)-[A-E]\b", text)
@@ -88,7 +88,7 @@ class MockCritic:
             flaw = self.answers.get(("flaw", _after(text, "The other checker wrote: ")))
             return _done(flaw or "none")
         if "Solve the puzzle" in system:
-            return _done(self.answers.get(("answer", text.strip()[-40:]), "gold"))
+            return _done("Worked through the facts.\nANSWER: " + self.answers.get(("answer", text.strip()[-40:]), "gold"))
         statement = _after(text, "Statement: ")
         first_line = _after(text, "Material:\n")
         verdict, deciding = self.answers.get((statement, first_line), ("cannot_tell", []))
