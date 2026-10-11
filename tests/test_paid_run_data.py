@@ -44,14 +44,53 @@ def test_a_writer_that_cannot_be_reached_ends_the_slot_not_the_run(tmp_path: Pat
     assert call["outcome"] == "TRANSPORT" and call["draft"] == ""
 
 
-def test_more_than_a_fifth_of_ten_calls_unparsable_is_systemic(tmp_path: Path):
+def test_more_than_a_fifth_of_twenty_calls_unparsable_is_systemic(tmp_path: Path):
     r, _, _ = _runner(tmp_path)
     slots = [s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A"]
     r.writer = lambda messages, seed=0: types.SimpleNamespace(text="no json here", prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1)
-    with pytest.raises(RunHalted, match="systemic: .* of the last 10 writer calls"):
+    with pytest.raises(RunHalted, match="systemic: .* of the last 20 writer calls"):
         for s in slots:
             r.run_slot(s)
     assert r.status.halted.startswith("systemic")
+    calls = (tmp_path / "out" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(calls) == 20  # the window fills before it can fire
+
+
+def test_a_slot_accepted_on_the_call_that_fires_the_halt_is_still_reported(tmp_path: Path):
+    """Pilot 2's halt fired on calls whose rows were already accepted: four outcomes were lost from batch-report.json."""
+
+    r, writer, _ = _runner(tmp_path)
+    slots = [s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A"][:3]
+    calls = []
+
+    def halting(messages, seed=0):
+        calls.append(1)
+        if len(calls) == 2:  # the warm-up, then the first slot's draft
+            r.status.halted = "systemic: 5 of the last 20 writer calls failed to parse or reach the writer"
+        return writer(messages, seed=seed)
+
+    r.writer = halting
+    with pytest.raises(RunHalted):
+        r.run(slots)
+    accepted = [json.loads(x)["id"] for x in (tmp_path / "out" / "accepted.jsonl").read_text(encoding="utf-8").splitlines()]
+    report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
+    assert accepted == [slots[0].id]
+    assert [o["slot"] for o in report["outcomes"] if o["accepted"]] == accepted
+
+
+def test_a_draft_cut_off_at_the_length_limit_is_truncated_and_never_systemic(tmp_path: Path):
+    """Pilot 2 stopped at seven minutes on five kind B drafts cut off at max_tokens: a defect of that cell's drafts,
+    not of the endpoint. They count toward the cell's drops, never toward the systemic rate."""
+
+    r, _, _ = _runner(tmp_path)
+    slots = [s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A"]
+    r.writer = lambda messages, seed=0: types.SimpleNamespace(text='{"passage": "unterminated', prompt_tokens=1, completion_tokens=3500,
+                                                              model="m", seconds=0.1, finish_reason="length")
+    outs = [r.run_slot(s) for s in slots]
+    assert r.status.halted is None
+    assert all(o.refusals and o.refusals[0]["code"] == "TRUNCATED" for o in outs)
+    calls = [json.loads(x) for x in (tmp_path / "out" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(calls) > 20 and {c["outcome"] for c in calls} == {"TRUNCATED"}
 
 
 def test_the_frozen_rule_is_read_by_git_hash_checked_and_mapped(tmp_path: Path, monkeypatch):

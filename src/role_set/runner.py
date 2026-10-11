@@ -36,8 +36,11 @@ ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the pe
 ANDON_CELL_DROPS = 3  # ends that (lesson, kind) cell; the lesson's other kinds and the run go on
 # The whole run stops only on a systemic signal: every kind switched off (two cells of different lessons in a row
 # halting on the same kind and rule switch that kind off), or more
-# than 20% of the last 10 writer calls failing to parse or reach the writer (the maintainer's rule for paid runs).
-SYSTEMIC_WINDOW = 10
+# than 20% of the last 20 writer calls failing to parse or reach the writer (the maintainer's rule for paid runs).
+# The window was 10 until pilot 2: at concurrency 8, three cut-off drafts from one kind filled it in seven minutes.
+# A draft cut off at max_tokens is TRUNCATED, not PARSE: it is a defect of that cell's drafts, so it counts toward
+# the cell's drops and never toward the systemic rate.
+SYSTEMIC_WINDOW = 20
 SYSTEMIC_RATE = 0.20
 SYSTEMIC_CODES = ("PARSE", "TRANSPORT")
 # check_against codes whose message names spent wording; a retry carries that wording as a do-not-use list.
@@ -165,6 +168,7 @@ SUGGESTIONS = {
     "VOID": "The second reader's answer was unusable ({detail}); it was asked again.",
     "AGAINST": "{detail}",
     "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
+    "TRUNCATED": "The reply ran past the length limit before its JSON closed ({detail}). Decide the item before writing it: the thinking states the path to the answer in a few steps and never searches or reconsiders.",
     "TRANSPORT": "The writer could not be reached ({detail}); the slot ends.",
     "SHAPE": "The reply is a finished row (kind, turns, answer), the exemplars' shape. Return one flat object with exactly these fields instead: {detail}.",
     "REPLY_OPENING": "The reply opens like two accepted items of this trait ('{detail}'). Open it another way, in this item's own words.",
@@ -447,7 +451,7 @@ class Runner:
 
     def _record_call(self, slot: Slot, attempt: int, c, outcome: str, glyphs: int, material) -> None:
         """One line per writer call, on both paths: the raw draft, tokens, latency, the outcome, glyphs normalised, and
-        the frozen stuck rule's measures on the draft's thinking. Then the systemic check over the last 10 calls."""
+        the frozen stuck rule's measures on the draft's thinking. Then the systemic check over the last SYSTEMIC_WINDOW calls."""
         text = c.text if c is not None else ""
         record = {"slot": slot.id, "lesson": slot.lesson, "kind": slot.kind, "attempt": attempt, "outcome": outcome,
                   "prompt_tokens": getattr(c, "prompt_tokens", None), "completion_tokens": getattr(c, "completion_tokens", None),
@@ -659,7 +663,7 @@ class Runner:
             try:
                 fields, glyphs = normalize_glyphs(parse_json_object(c.text))
             except ValueError as e:
-                refusal = self._refusal("PARSE", str(e))
+                refusal = self._refusal("TRUNCATED" if getattr(c, "finish_reason", None) == "length" else "PARSE", str(e))
             if refusal is None and row_shaped(fields, slot):
                 refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
             if refusal is None:
@@ -742,6 +746,11 @@ class Runner:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         with (self.out_dir / "receipts.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+        # One file for the key-check: each accepted row beside the critic checks it passed through (R&D, pilot 2).
+        # A review copy only; the store ingests accepted.jsonl and receipts.jsonl, never this.
+        review = {"id": row.get("id"), "row": row, "critic": list(self._critic_notes.get(slot.id) or [])}
+        with (self.out_dir / "review.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(review, ensure_ascii=False) + "\n")
         self._log("accepted", slot=slot.id, attempt=attempt)
 
     # ---- the batch --------------------------------------------------------------------------------------------
@@ -818,7 +827,17 @@ class Runner:
                     self.status.skipped[why] = self.status.skipped.get(why, 0) + 1
                     return Outcome(slot_id=slot.id, accepted=False, attempts=0, skipped=True, skip_reason=why)
                 self.status.attempted += 1
-            out = self.run_slot(slot)
+            try:
+                out = self.run_slot(slot)
+            except RunHalted:
+                # The halt fired on this slot's own call, after its row may already have been accepted. Its outcome
+                # is still reported: pilot 2 lost four accepted slots this way, and its readout's kinds summed to 45 of 49.
+                with self.lock:
+                    done = any(r.get("id") == slot.id for r in self.accepted)
+                    # Not accepted: the slot was cut short, not finished, so a relaunch (pilot-auto) runs it again.
+                    self.finished.append(Outcome(slot_id=slot.id, accepted=done, attempts=0, skipped=not done,
+                                                 skip_reason=None if done else "run halted during the slot"))
+                raise
             with self.lock:
                 self.finished.append(out)
                 if not out.accepted:

@@ -33,6 +33,9 @@ from role_set.transport import chat, ollama_chat, unload
 # The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
 # real pack; 16,384 leaves room for the reply and its thinking.
 WRITER_NUM_CTX = 16384
+# The pod's writer samples at 0.7 (transport.chat's default); a local rehearsal writer at Ollama's 0 gave every
+# retry of a slot the same draft, so the rehearsal could not show what a retry recovers.
+WRITER_TEMPERATURE = 0.7
 
 
 class WriteRefused(RuntimeError):
@@ -156,10 +159,10 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
         unloads.append((endpoint, model))
 
         def writer(messages, seed=0):
-            return ollama_chat(endpoint, model, messages, seed=seed, num_ctx=WRITER_NUM_CTX)
+            return ollama_chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed, num_ctx=WRITER_NUM_CTX)
     else:
         def writer(messages, seed=0):
-            return chat(endpoint, model, messages, seed=seed)
+            return chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed)
 
     critic = None
     if not cfg.no_critic:

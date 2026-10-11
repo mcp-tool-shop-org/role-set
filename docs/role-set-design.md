@@ -155,7 +155,8 @@ without a `--grant` token and a fresh watchdog heartbeat, the same guard shape a
 cell halt is keyed by the specific rule its drops fell on (a gate rule, a check_against code, a critic code), never the
 bare code. Two cells of different lessons in a row halting on the same kind and rule switch that kind off for the rest
 of the run; the other kinds carry on. The whole run stops only when every kind is off, or when more than 20% of the
-last 10 writer calls fail to parse or reach the writer. A failed warm-up ends its own lesson and is never part of the
+last 20 writer calls fail to parse or reach the writer. A draft cut off at the length limit is TRUNCATED: it counts
+toward its cell's drops and never toward that rate. A failed warm-up ends its own lesson and is never part of the
 systemic rule. Slots are dispatched interleaved: round by round, one from every lesson and kind, kind B last, so a
 short budget still samples every lesson and kind. The 235B pilot (`docs/runs/2026-10-11-235b-pilot.md`) is why: with
 the andon per lesson and B first in the plan, every lesson ended inside B, and two warm-up misses stopped the run. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every

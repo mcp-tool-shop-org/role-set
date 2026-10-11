@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from role_set import __version__
+from role_set import autostart
 from role_set.readout import readout
 from role_set.cost import PROFILES, estimate
 from role_set.gates import GatesUnavailable, load_gates
@@ -333,7 +334,23 @@ def build_parser() -> argparse.ArgumentParser:
     ro.add_argument("--compare", nargs="*", default=None, help="earlier run directories to compare with")
     ro.add_argument("--out", default=None, help="write readout.json and readout.md here (default: the run directory)")
     ro.set_defaults(func=_readout)
+
+    pa = sub.add_parser("pilot-auto", help="one paste for a paid pilot: wait for the lane, write, relaunch after a lost-call stop")
+    pa.add_argument("port", type=int, help="the lane's port on the loopback")
+    pa.add_argument("grant", help="the critic's 5090 grant")
+    pa.add_argument("deadline", help="the pod's hard deadline, HH:MM UTC")
+    pa.add_argument("work", help="work dir holding plan.json, pack/ and pool.jsonl; attempts go in attempt-N/")
+    pa.add_argument("--serve-by", default=None, help="HH:MM UTC: give up if the lane hasn't served by then (the pod's no-serve shutdown)")
+    pa.set_defaults(func=_pilot_auto)
     return p
+
+
+def _pilot_auto(args) -> int:
+    state = autostart.run(args.port, args.grant, args.deadline, Path(args.work), serve_by=args.serve_by)
+    print(json.dumps({k: v for k, v in state.items() if k != "attempts"}))
+    for a in state["attempts"]:
+        print(f"{a['dir']}: {a['ended_by']}; accepted {a['accepted']} of {a['attempted']}; {a['halted'] or ''}")
+    return 0 if state["attempts"] else 3
 
 
 def main(argv: list[str] | None = None) -> int:
