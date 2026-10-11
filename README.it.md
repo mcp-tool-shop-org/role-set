@@ -148,7 +148,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-In questo albero sono presenti 241 test e una copertura del 97,64%. Il valore minimo è 90, in `pyproject.toml` e in CI, e l'esecuzione fallisce se questo valore non viene raggiunto. CI esegue anche `role-set plan` e `puzzle-check` su un elemento di test, senza modello. `scripts/verify` esegue gli stessi controlli locali in un unico comando.
+La copertura del codice deve essere almeno del 90%, sia in `pyproject.toml` che nell’ambiente CI; in caso contrario, l’esecuzione fallisce. Il badge di copertura mostrato sopra indica il valore attuale. Nell’ambiente CI vengono eseguiti anche `role-set plan` e `puzzle-check` su un ambiente di test, senza l’utilizzo di un modello. `scripts/verify` esegue gli stessi controlli locali in un unico comando.
 
 Il manuale è pubblicato insieme alla [pagina di destinazione](https://mcp-tool-shop-org.github.io/role-set/). Questo file README è autonomo.
 

@@ -148,7 +148,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-En este árbol hay 241 pruebas y una cobertura del 97,64 %. El mínimo es 90, en `pyproject.toml` y en CI, y la ejecución falla si está por debajo de este valor. CI también ejecuta `role-set plan` y `puzzle-check` en un entorno de prueba, sin modelo. `scripts/verify` ejecuta las mismas comprobaciones locales en un solo comando.
+La cobertura de líneas tiene un mínimo del 90 %, tanto en `pyproject.toml` como en el entorno de integración continua (CI), y la ejecución falla si no se alcanza este mínimo. La insignia de cobertura que se muestra arriba indica el valor actual. El entorno de integración continua también ejecuta `role-set plan` y `puzzle-check` en un entorno de prueba, sin utilizar ningún modelo. `scripts/verify` ejecuta las mismas comprobaciones locales en un solo comando.
 
 El manual se publica con la [página de inicio](https://mcp-tool-shop-org.github.io/role-set/). Este archivo README es independiente.
 

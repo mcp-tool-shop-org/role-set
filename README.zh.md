@@ -148,7 +148,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-在这个代码库中，有 241 个测试，覆盖率为 97.64%。最低要求是 90%，在 `pyproject.toml` 和 CI 中都会进行检查，低于此值运行将失败。CI 还会对一个没有模型的测试用例运行 `role-set plan` 和 `puzzle-check`。`scripts/verify` 在一个命令中运行相同的本地检查。
+代码覆盖率的最低标准为 90%，无论是在 `pyproject.toml` 中，还是在持续集成 (CI) 环境中，低于此标准都会导致测试失败。上述代码覆盖率徽章显示当前的覆盖率数值。CI 还会针对一个测试环境运行 `role-set plan` 和 `puzzle-check`，且该测试环境不包含任何模型。`scripts/verify` 通过一条命令运行相同的本地检查。
 
 该手册与 [登录页面](https://mcp-tool-shop-org.github.io/role-set/) 一起发布。本 README 可以独立使用。
 
