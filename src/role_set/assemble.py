@@ -81,17 +81,24 @@ def _norm_point(text: str) -> str:
     return " ".join(str(text).replace("**", "").replace("__", "").split()).lower()
 
 
-def closed_form_variant(question: str, options, key_points: list, seed: str) -> dict:
+OPTION_LABEL = re.compile(r"^\s*\(?[A-Da-d][.)]\s+")
+
+
+def closed_form_variant(question: str, correct, distractors, key_points: list, seed: str) -> dict:
     """A written E item's closed-form variant (handoff Amendment 5, aspire-si-gates 1.2.0): the stem, 3 or 4 options
-    lettered A to D on their own lines, an ANSWER line asked for, key {"answer": letter}. The writer lists the keyed
-    option first; assembly shuffles the options with an RNG seeded by the slot id and sets the letter, so the keyed
-    letter is uniform by construction whatever the writer's position bias (R&D on #26). Exactly one option carries a
-    key point of the original (contains one or sits inside one, the gates' rule), and no two options are the same."""
+    lettered A to D on their own lines, an ANSWER line asked for, key {"answer": letter}. The writer gives the correct
+    option and 2 or 3 distractors as separate fields, so its position can't be wrong. Assembly shuffles them with an
+    RNG seeded by the slot id and sets the letter, so the keyed letter is uniform by construction (R&D on #26). The
+    correct option carries a key point of the original (contains one or sits inside one, the gates' rule); no
+    distractor carries one; no two options are the same. A writer's own "A." labels are stripped."""
 
     import random
 
-    if not isinstance(options, list) or not 3 <= len(options) <= 4 or not all(isinstance(o, str) and o.strip() for o in options):
-        raise AssemblyError("variant_options must be a list of 3 or 4 non-empty option texts, the keyed one first")
+    if not isinstance(correct, str) or not correct.strip():
+        raise AssemblyError("variant_correct must be the right option's text")
+    if not isinstance(distractors, list) or not 2 <= len(distractors) <= 3 or not all(isinstance(o, str) and o.strip() for o in distractors):
+        raise AssemblyError("variant_distractors must be a list of 2 or 3 non-empty option texts")
+    options = [OPTION_LABEL.sub("", o).strip() for o in [correct] + distractors]
     texts = [_norm_point(o) for o in options]
     if len(set(texts)) != len(texts):
         raise AssemblyError("two variant options are the same")
@@ -101,15 +108,16 @@ def closed_form_variant(question: str, options, key_points: list, seed: str) -> 
         return any(k and (k in t or t in k) for k in points)
 
     if not carries(texts[0]):
-        raise AssemblyError("the first option is the keyed one and must carry one of the key points (contain one, word for word, or sit inside one)")
+        raise AssemblyError("variant_correct must carry one of the key points (contain one, word for word, or sit inside one)")
     if any(carries(t) for t in texts[1:]):
-        # The gates count an option inside a key point as carrying it, so a short distractor can trip this (R&D on #91).
-        raise AssemblyError("a distractor also carries a key point; exactly one option is keyed, so write each distractor as a "
-                            "full phrase that is not inside any key point")
+        # The gates count an option inside a key point as carrying it, so a short distractor can trip this (R&D on #91),
+        # and so does a distractor made by swapping one part of a right answer whose other parts are key points.
+        raise AssemblyError("a distractor carries a key point (contains one, or sits inside one). No distractor may hold any key "
+                            "point: don't build one by swapping one part of the right answer, and write each as a full phrase")
     order = list(range(len(options)))
     random.Random(seed).shuffle(order)
     letters = LETTERS[:len(options)]
-    shown = [options[i].strip() for i in order]
+    shown = [options[i] for i in order]
     letter = letters[order.index(0)]
     lines = [question.strip(), ""] + [f"{letters[i]}. {o}" for i, o in enumerate(shown)]
     lines += ["", "Answer with the letter alone, on a line of its own: ANSWER: <letter>"]
@@ -379,7 +387,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                 raise AssemblyError("the variant must re-ask the point in new words")
             row = _base(slot, trait, [{"invented": "written quiz and variant, written for this item"}], True, "teaching", [])
             row["quiz"] = {"type": "written", "key_points": points}
-            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_options"), points, seed=slot.id)
+            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_correct"), fields.get("variant_distractors"), points, seed=slot.id)
             row["turns"] = [{"user": fields["question"].strip(), "thinking": fields.get("thinking", "").strip(),
                              "reply": _reply_prose(fields["reply"], "reply")}]
             return row
