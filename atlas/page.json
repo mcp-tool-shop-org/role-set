@@ -20,41 +20,26 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 1,
-      "changed": 6,
+      "added": 0,
+      "changed": 4,
       "moved": 0,
-      "parts": 3,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 1 file added and 6 changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 4 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "aab25ab01dc70400bf7520c451003e17fe11024b",
-      "generatedAt": "2026-10-11T08:21:56.278Z"
+      "commit": "6d2d69e889ca9f9723339cbf08c342cdc21f9eab",
+      "generatedAt": "2026-10-11T08:30:43.529Z"
     },
     "unchanged": true
   },
   "changesTogether": [
-    {
-      "a": "src/role_set/mock.py",
-      "b": "tests/test_runner.py",
-      "either": 7,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
-      "shared": 4
-    },
     {
       "a": "src/role_set/cli.py",
       "b": "src/role_set/write.py",
@@ -69,21 +54,6 @@
       ],
       "relation": "inside",
       "shared": 5
-    },
-    {
-      "a": "tests/test_prompts_critic.py",
-      "b": "tests/test_runner.py",
-      "either": 8,
-      "partLabels": [
-        "tests",
-        "tests"
-      ],
-      "parts": [
-        "tests",
-        "tests"
-      ],
-      "relation": "inside",
-      "shared": 4
     }
   ],
   "changesTogetherNote": [
@@ -92,7 +62,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "894f905d332dc2465e3274e1fd51bc3e1a7257c6",
+  "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (41 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -165,7 +135,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T08:25:24.753Z",
+  "generatedAt": "2026-10-11T08:33:02.827Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
     "1 write and 16 reads go to a path their caller passes, not to this repository.",

@@ -141,11 +141,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "bf31593d6494153570a7f72f885a8376f26539ea7cdb41acdc18dc95b09a3dc9",
+          "hash": "56c06ba624e4e228c5e4a152deec5b680db20dbc41afde413837809b7005491d",
           "path": "pyproject.toml"
         },
         {
-          "hash": "a659856b93239df80d34b3f55ea3a851cb7b4499dd2ee4748de327ed65da66a8",
+          "hash": "0000a225cade1e2884b28eca4788c008bd4a7ddc9a1227736518d5425cf44518",
           "path": "uv.lock"
         },
         {
@@ -183,6 +183,7 @@
             "assemble",
             "bare",
             "closed_answer",
+            "closed_form_variant",
             "names_not_in_puzzle",
             "slot_flaw",
             "three_lines",
@@ -196,142 +197,162 @@
               "line": 66
             },
             {
-              "in": "three_lines",
+              "in": "closed_form_variant",
               "kind": "raise",
-              "line": 100
+              "line": 94
             },
             {
-              "in": "three_lines",
+              "in": "closed_form_variant",
               "kind": "raise",
-              "line": 102
+              "line": 97
             },
             {
-              "in": "three_lines",
+              "in": "closed_form_variant",
               "kind": "raise",
               "line": 104
             },
             {
-              "in": "verbatim_lines",
+              "in": "closed_form_variant",
               "kind": "raise",
-              "line": 117
+              "line": 107
             },
             {
-              "in": "verbatim_lines",
-              "kind": "raise",
-              "line": 121
-            },
-            {
-              "in": "_require",
-              "kind": "raise",
-              "line": 128
-            },
-            {
-              "in": "_reply_prose",
+              "in": "three_lines",
               "kind": "raise",
               "line": 142
             },
             {
+              "in": "three_lines",
+              "kind": "raise",
+              "line": 144
+            },
+            {
+              "in": "three_lines",
+              "kind": "raise",
+              "line": 146
+            },
+            {
+              "in": "verbatim_lines",
+              "kind": "raise",
+              "line": 159
+            },
+            {
+              "in": "verbatim_lines",
+              "kind": "raise",
+              "line": 163
+            },
+            {
+              "in": "_require",
+              "kind": "raise",
+              "line": 170
+            },
+            {
+              "in": "_reply_prose",
+              "kind": "raise",
+              "line": 184
+            },
+            {
               "in": "_clean_framing",
               "kind": "raise",
-              "line": 154
+              "line": 196
             },
             {
               "in": "_no_repeated_lines",
               "kind": "raise",
-              "line": 164
+              "line": 206
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 205
+              "line": 247
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 207
+              "line": 249
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 217
+              "line": 259
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 220
+              "line": 262
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 223
+              "line": 265
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 227
+              "line": 269
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 236
+              "line": 278
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 245
+              "line": 287
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 255
+              "line": 297
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 258
+              "line": 300
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 296
+              "line": 338
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 299
+              "line": 341
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 303
+              "line": 345
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 306
+              "line": 348
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 310
+              "line": 352
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 335
+              "line": 377
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 337
+              "line": 379
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 356
+              "line": 399
             }
           ],
-          "hash": "9bfa8b1efaea432b3a16d8129a042acdb400d26a113875a8c835c0535fca7658",
+          "hash": "a1ca268660319b3339295694f0abdd6a24ac538394ab4e63311ab22b4a3c297b",
           "importsFiles": [
             "src/role_set/plan.py"
           ],
@@ -1482,7 +1503,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "75f91b2a90d615f8fa86cba2a50da4e43165f1ff054e59c5bce95515a0cdc43b",
+          "hash": "708e2bf88d2aac8799ae42dd3f1fd4f9ae8afb9fb98119ef7249acfcc2a68a18",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -1686,15 +1707,15 @@
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 251
+              "line": 256
             },
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 254
+              "line": 259
             }
           ],
-          "hash": "9d5f74d150cc75b58f3e6e842251c1464db7f24be8479a44216009d7c2037f0f",
+          "hash": "b6c460f842b05f0cc74c18199e98b167714b4dcb3a71ec15e8e6a20316b4d9cb",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1719,14 +1740,14 @@
             {
               "calls": [
                 {
-                  "line": 121,
+                  "line": 126,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
                   }
                 },
                 {
-                  "line": 124,
+                  "line": 129,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1734,7 +1755,7 @@
                   }
                 },
                 {
-                  "line": 138,
+                  "line": 143,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1749,7 +1770,7 @@
             {
               "calls": [
                 {
-                  "line": 121,
+                  "line": 126,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
@@ -1757,7 +1778,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 124,
+                  "line": 129,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1766,7 +1787,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 138,
+                  "line": 143,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1774,12 +1795,12 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 191,
+                  "line": 196,
                   "name": "rstrip",
                   "target": null
                 },
                 {
-                  "line": 222,
+                  "line": 227,
                   "name": "splitlines",
                   "target": null,
                   "via": "lesson_sentences"
@@ -1793,7 +1814,7 @@
             {
               "calls": [
                 {
-                  "line": 222,
+                  "line": 227,
                   "name": "splitlines",
                   "target": null
                 }
@@ -1809,11 +1830,12 @@
           "entry": "readout",
           "entryRule": 3,
           "exports": [
+            "keyed_letters",
             "markdown",
             "readout",
             "summarize"
           ],
-          "hash": "b10dd94570f67fa43aae8a848dca91cb0fe3d3fcef436a653a62170cfd91e516",
+          "hash": "a8159eb529b4fb9c78755e2101c498b834a66a77bf001635ded2ef397e5863c2",
           "importsFiles": [
             "src/role_set/runner.py"
           ],
@@ -1852,7 +1874,7 @@
                   "via": "_lines"
                 },
                 {
-                  "line": 95,
+                  "line": 107,
                   "name": "refusal_rule",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -1879,7 +1901,7 @@
                   "via": "_lines"
                 },
                 {
-                  "line": 95,
+                  "line": 107,
                   "name": "refusal_rule",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -2977,11 +2999,13 @@
             "test_assemble_c_with_flaw_and_without",
             "test_assemble_d_single_two_turn_stands_and_changes",
             "test_assemble_e_written_and_verdict",
+            "test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point",
             "test_slot_flaw_alternates",
+            "test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_across_slots",
             "test_three_lines_and_verbatim",
             "test_trait_name_rules"
           ],
-          "hash": "e483a593e006bcccf5d4edb465976d353fe5914fcfa1abf6ea8df7cbb6ca9006",
+          "hash": "54ad7c9b0ea92ce446db2c7e65303635271a75be18ba3c19222bbbf8af619852",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py"
@@ -3197,11 +3221,12 @@
             "test_more_than_a_fifth_of_ten_calls_unparsable_is_systemic",
             "test_the_frozen_rule_is_read_by_git_hash_checked_and_mapped",
             "test_the_kind_a_brief_warns_off_the_stock_opening",
+            "test_the_readout_counts_keyed_letters_of_closed_form_variants",
             "test_the_readout_reads_a_failing_run_as_well_as_a_passing_one",
             "test_the_readout_states_the_inputs_the_run_was_pinned_to",
             "test_the_retry_after_a_spent_trait_span_names_the_trait_words"
           ],
-          "hash": "3db8eedcc50b8772825dc2e98e57909740e3d82df9622619201a4397873d941b",
+          "hash": "0e73b30f959ecc876da133ae733737e5113450206bbc3ece2afbaf1e6c676e57",
           "importOrder": [
             "src/role_set/plan.py",
             "src/role_set/runner.py",
@@ -3289,7 +3314,7 @@
             "test_window_a_fixes_quotes_without_markdown_injections_and_flaw_definitions",
             "test_writer_messages_carry_the_pack_the_slot_and_the_fields"
           ],
-          "hash": "0051cda7e96263e06986bbe25a405f9d05659577724a73a60a15729581110340",
+          "hash": "76e43ba966b50410b4796cb531d841db9d01dc87303d43a90af2311d12c6828e",
           "importOrder": [
             "src/role_set/critic.py",
             "src/role_set/gates.py",
@@ -3397,7 +3422,7 @@
             "test_the_committed_writer_list_marks_the_rehearsal_writer",
             "test_write_halts_are_reported_and_cleanup_runs"
           ],
-          "hash": "c9ae3180eab35048ddabd19d76868a3d390203f872e9e27b43e846fe8261b64a",
+          "hash": "5bff64f0e1ffe569789560f30b7f84e29c2145c9a52130003c4a028187385914",
           "importOrder": [
             "src/role_set/cli.py",
             "src/role_set/pack.py",
@@ -3648,7 +3673,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "894f905d332dc2465e3274e1fd51bc3e1a7257c6",
+    "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e",
     "tracked": 59
   },
   "landings": [

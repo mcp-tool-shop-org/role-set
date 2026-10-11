@@ -106,18 +106,56 @@ def test_assemble_d_single_two_turn_stands_and_changes():
 def test_assemble_e_written_and_verdict():
     s = _slots()
     w = s["E"]
-    row = assemble(w, "t", {"question": "What do you quote?", "reply": "The line.", "key_points": ["the line"], "variant_user": "Which words go in the answer?", "variant_key_points": ["the line"]})
-    assert row["quiz"]["type"] == "written" and row["variant"]["key"] == ["the line"]
+    closed = {"variant_question": "Which words go in the answer?",
+              "variant_options": ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers"]}
+    row = assemble(w, "t", {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"], **closed})
+    key = row["variant"]["key"]["answer"]
+    shown = row["variant"]["user"].splitlines()[2:5]
+    assert row["quiz"]["type"] == "written" and sorted(x[:2] for x in shown) == ["A.", "B.", "C."]
+    assert next(x for x in shown if x.startswith(key + ".")) == f"{key}. The deciding line, quoted exactly"
+    assert row["variant"]["user"].rstrip().endswith("ANSWER: <letter>")
     with pytest.raises(AssemblyError, match="new words"):
-        assemble(w, "t", {"question": "Same?", "reply": "r", "key_points": ["k"], "variant_user": "Same?", "variant_key_points": ["k"]})
+        assemble(w, "t", {"question": "Which words go in the answer?", "reply": "r", "key_points": ["k"], **closed})
     with pytest.raises(AssemblyError, match="key_points"):
-        assemble(w, "t", {"question": "Q?", "reply": "r", "key_points": [], "variant_user": "V?", "variant_key_points": ["k"]})
+        assemble(w, "t", {"question": "Q?", "reply": "r", "key_points": [], **closed})
     v = s["Ev"]
     v.verdict = "supported"
     row = assemble(v, "t", {"framing": "A changelog.", "statement": "The dry-run flag stopped writing the lock file in 1.2.0.",
                             "deciding": ["## [1.2.0] - 2026-01-01", "- The `--dry-run` flag no longer writes the lock file."], "thinking": "T", "reply": "R", "variant_user": "Re-asked?"}, REAL)
     assert row["quiz"]["type"] == "verdict" and row["key_basis"] == "source" and row["invented"] is False
     assert row["turns"][0]["reply"].endswith("DECIDING: ## [1.2.0] - 2026-01-01 | - The `--dry-run` flag no longer writes the lock file.\nESCALATE: no")
+
+
+def test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point():
+    w = _slots()["E"]
+    base = {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"],
+            "variant_question": "Which words go in the answer?"}
+    opts = ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers"]
+    with pytest.raises(AssemblyError, match="first option is the keyed one"):
+        assemble(w, "t", {**base, "variant_options": opts[1:] + opts[:1]})
+    with pytest.raises(AssemblyError, match="3 or 4"):
+        assemble(w, "t", {**base, "variant_options": opts[:2]})
+    with pytest.raises(AssemblyError, match="the same"):
+        assemble(w, "t", {**base, "variant_options": [opts[0], opts[1], opts[1].upper()]})
+    # A one-word distractor inside a key point also "carries" it under the gates' rule (R&D on aspire-si #91).
+    with pytest.raises(AssemblyError, match="a distractor also carries a key point"):
+        assemble(w, "t", {**base, "variant_options": [opts[0], "quoted", opts[2]]})
+
+
+def test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_across_slots():
+    # R&D on #26: the writer's position bias can't decide the letter; the slot id seeds the shuffle.
+    from role_set.assemble import closed_form_variant
+
+    opts = ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers", "The heading above it"]
+    points = ["the deciding line, quoted exactly"]
+    same = [closed_form_variant("Which words?", opts, points, seed="T07-E-01")["key"]["answer"] for _ in range(3)]
+    assert len(set(same)) == 1
+    letters = [closed_form_variant("Which words?", opts, points, seed=f"T07-E-{i:02d}")["key"]["answer"] for i in range(1, 41)]
+    counts = {x: letters.count(x) for x in "ABCD"}
+    assert all(counts[x] >= 4 for x in "ABCD"), counts
+    v = closed_form_variant("Which words?", opts, points, seed="T07-E-01")
+    key = v["key"]["answer"]
+    assert f"{key}. The deciding line, quoted exactly" in v["user"].splitlines()
 
 
 def test_slot_flaw_alternates():
