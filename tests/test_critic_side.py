@@ -116,7 +116,7 @@ def test_the_trait_leg_scores_against_the_known_trait_with_a_confusion_matrix():
     leg = trait_leg(critic, _rows() + [{"id": "x", "lesson": "T99", "turns": []}], {"T02": "goes to the source", "T14": "doesn't fill gaps"},
                     concurrency=2, log=misses.append)
     assert leg["items"] == 20 and leg["agree"] == 16 and leg["overall"] == 0.8
-    assert leg["per_trait"]["T14"] == {"items": 10, "agree": 6, "rate": 0.6} and leg["worst_trait"] == 0.6
+    assert leg["per_trait"]["T14"] == {"items": 10, "agree": 6, "rate": 0.6, "thin": False} and leg["worst_trait"] == 0.6
     assert leg["confusion"]["T14"] == {"T02": 3, "T14": 6, "split": 1} and leg["stability_unanimous"] == 0.95
     assert leg["bar"] == TRAIT_BAR and leg["passes"] is False and len(misses) == 4
 
@@ -128,4 +128,35 @@ def test_the_trait_leg_passes_only_when_every_part_of_the_bar_is_met():
     leg = trait_leg(right, _rows(), {"T02": "goes to the source", "T14": "doesn't fill gaps"})
     assert leg["overall"] == 1.0 and leg["stability_unanimous"] == 1.0 and leg["passes"] is True
     assert leg["seconds_per_call"] == {"calls": 60, "p50": 0.0, "p95": 0.0, "total": 0.0}
+    assert leg["per_trait"]["T02"]["thin"] is False
+
+
+def test_three_unreadable_votes_are_not_unanimous_and_small_traits_are_thin():
+    def mumbles(messages, temperature=0.0, seed=0):
+        return _said("I'm not sure which one.")
+
+    rows = _rows()[:3]
+    leg = trait_leg(mumbles, rows, {"T02": "goes to the source"})
+    assert leg["stability_unanimous"] == 0.0 and leg["with_majority"] == 0.0 and leg["confusion"]["T02"] == {"split": 3}
+    assert leg["per_trait"]["T02"]["thin"] is True and leg["passes"] is False
+
+
+def test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement():
+    from role_set.critic_control import ANSWER_BAR, answer_leg
+
+    def b(i, key):
+        return {"id": f"T02-B-{i:02d}", "kind": "B", "answer": key, "turns": [{"user": f"Facts {i}.\nQuestion: which?", "thinking": "", "reply": ""}]}
+
+    rows = [b(1, "Zoe"), b(2, "setup, test, deploy"), b(3, "Mira=Yellow; Noah=Red"), b(4, "unsupported"),
+            b(5, "Noah ordered juice because it cost two pounds"), {"id": "T02-A-01", "kind": "A", "turns": [{"user": "u", "thinking": "", "reply": ""}]}]
+    answers = {"Facts 1.": "ANSWER: Zoe", "Facts 2.": "ANSWER: test, setup, deploy", "Facts 3.": "ANSWER: noah=red; mira=yellow", "Facts 4.": "No idea."}
+
+    def critic(messages, **kw):
+        return _said(next(v for k, v in answers.items() if messages[1]["content"].startswith(k)))
+
+    leg = answer_leg(critic, rows)
+    assert leg["puzzles"] == 5 and leg["keys_not_closed"] == ["T02-B-05"] and leg["items"] == 4 and leg["agree"] == 2
+    assert leg["rate"] == 0.5 and leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2
+    assert [(d["item"], d["code"], d["critic_answer"]) for d in leg["disagreements"]] == [
+        ("T02-B-02", "ANSWER_MISMATCH", "test, setup, deploy"), ("T02-B-04", "VOID", None)]
     assert json.dumps(leg)  # the report is plain JSON

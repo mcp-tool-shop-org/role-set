@@ -210,7 +210,8 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
         cell["items"] += 1
         named = won or "split"
         confusion.setdefault(known, {})[named] = confusion.setdefault(known, {}).get(named, 0) + 1
-        unanimous += len(set(votes)) == 1
+        # Unanimous only on a trait id: three unreadable replies agree on nothing (R&D on #23).
+        unanimous += len(set(votes)) == 1 and bool(votes[0])
         with_majority += won is not None
         if won == known:
             agree += 1
@@ -220,15 +221,57 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
     n = len(items)
     for cell in per.values():
         cell["rate"] = round(cell["agree"] / cell["items"], 3)
+        cell["thin"] = cell["items"] < THIN_ITEMS
     overall = round(agree / n, 3) if n else None
     stability = round(unanimous / n, 3) if n else None
     worst = min((c["rate"] for c in per.values()), default=None)
     passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
-    ordered = sorted(seconds)
-    timing = {"calls": len(ordered), "p50": round(ordered[len(ordered) // 2], 2) if ordered else None,
-              "p95": round(ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))], 2) if ordered else None,
-              "total": round(sum(ordered), 1)}
     return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
             "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
-            "seconds_per_call": timing,
+            "seconds_per_call": _timing(seconds),
             "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}
+
+
+THIN_ITEMS = 10  # a per-trait rate on fewer items than this is marked thin
+ANSWER_BAR = 0.90  # R&D (2026-10-11): the critic agrees with at least 90% of reviewed B keys
+
+
+def _timing(seconds: list[float]) -> dict:
+    ordered = sorted(seconds)
+    return {"calls": len(ordered), "p50": round(ordered[len(ordered) // 2], 2) if ordered else None,
+            "p95": round(ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))], 2) if ordered else None,
+            "total": round(sum(ordered), 1)}
+
+
+def answer_leg(critic, rows: list[dict]) -> dict:
+    """The kind-B answer check on reviewed puzzles: the critic solves each one with the closed-answer prompt, and its
+    ANSWER is compared with the reviewed key. Keys that aren't closed are counted and left out; every disagreement is
+    listed for R&D."""
+
+    from role_set.assemble import closed_answer
+    from role_set.critic import ANSWER_LINE, answer_messages, compare_answer
+
+    puzzles = [r for r in rows if r.get("kind") == "B" and r.get("turns")]
+    closed = [r for r in puzzles if closed_answer(str(r.get("answer", ""))) is not None]
+    seconds: list[float] = []
+    agree, voids, disagreements = 0, 0, []
+    for r in closed:
+        v, c = None, None
+        for ask in range(2):
+            c = critic(answer_messages(r["turns"][0]["user"], r["answer"]))
+            seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
+            v = compare_answer(c.text, r["answer"])
+            if v.code != "VOID":
+                break
+            voids += 1
+        if v.ok:
+            agree += 1
+        else:
+            said = ANSWER_LINE.findall(c.text)
+            disagreements.append({"item": r.get("id"), "key": r["answer"], "code": v.code, "critic_answer": said[-1] if said else None,
+                                  "critic_raw": c.text[:2000]})
+    n = len(closed)
+    rate = round(agree / n, 3) if n else None
+    return {"puzzles": len(puzzles), "keys_not_closed": [r.get("id") for r in puzzles if r not in closed], "items": n, "agree": agree,
+            "rate": rate, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
+            "passes": bool(n) and rate >= ANSWER_BAR, "disagreements": disagreements}
