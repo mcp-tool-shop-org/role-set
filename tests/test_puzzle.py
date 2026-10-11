@@ -46,6 +46,24 @@ def test_a_wrong_key_and_a_reply_without_the_answer_line_are_refused():
     _refused("the reply ends with the answer on its own line", reply="So Cy had soup and Ana had pasta.")
 
 
+TIMES = """1. Three ferries, Ash, Birch and Cove, leave at 08:15, 12:15 and 16:15, one each.
+2. Ash leaves at 08:15.
+3. Cove does not leave at 12:15.
+Question: Which ferry leaves at which time?"""
+TIMES_MODEL = {"entities": ["Ash", "Birch", "Cove"], "attributes": {"time": {"values": ["08:15", "12:15", "16:15"], "ordered": True}},
+               "facts": [{"line": 2, "rule": ["is", "Ash", "time", "08:15"]}, {"line": 3, "rule": ["is_not", "Cove", "time", "12:15"]}],
+               "flavour": [1], "asks": {"attribute": "time"}}
+TIMES_KEY = "Ash=08:15; Birch=12:15; Cove=16:15"
+
+
+def test_a_bare_key_with_colons_in_its_values_ends_the_reply():
+    # Only a leading "Answer:" label is stripped, so a time-valued key passes bare or labelled (R&D on aspire-si#99).
+    for last in (TIMES_KEY, f"Answer: {TIMES_KEY}", f"answer:{TIMES_KEY}"):
+        assert check_puzzle(_f(puzzle=TIMES, model=TIMES_MODEL, answer=TIMES_KEY, reply=f"x\n{last}"), "constraint_grid").answer == TIMES_KEY
+    _refused("the reply ends with the answer", puzzle=TIMES, model=TIMES_MODEL, answer=TIMES_KEY,
+             reply="x\nAsh=08:15; Birch=16:15; Cove=12:15")
+
+
 def test_contradictory_facts_are_refused():
     m = copy.deepcopy(GRID_MODEL)
     m["facts"].append({"line": 4, "rule": ["is", "Cy", "dish", "pasta"]})
