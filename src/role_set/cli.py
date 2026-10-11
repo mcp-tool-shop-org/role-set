@@ -9,6 +9,7 @@ from pathlib import Path
 
 from role_set import __version__
 from role_set import autostart
+from role_set import puzzle_check
 from role_set.readout import readout
 from role_set.cost import PROFILES, estimate
 from role_set.gates import GatesUnavailable, load_gates
@@ -342,7 +343,21 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("work", help="work dir holding plan.json, pack/ and pool.jsonl; attempts go in attempt-N/")
     pa.add_argument("--serve-by", default=None, help="HH:MM UTC: give up if the lane hasn't served by then (the pod's no-serve shutdown)")
     pa.set_defaults(func=_pilot_auto)
+
+    pc = sub.add_parser("puzzle-check", help="the kind B solver over reviewed data files and their .models.jsonl sidecars")
+    pc.add_argument("data", nargs="+", help="data files (<name>.jsonl); each sidecar is <name>.models.jsonl beside it")
+    pc.add_argument("--json", action="store_true", help="print the full report as JSON")
+    pc.set_defaults(func=_puzzle_check)
     return p
+
+
+def _puzzle_check(args) -> int:
+    reports = [puzzle_check.check_file(Path(d)) for d in args.data]
+    if args.json:
+        print(json.dumps(reports, indent=1, ensure_ascii=False))
+    else:
+        print("\n".join(puzzle_check.render(r) for r in reports))
+    return 0 if all(r["ok"] for r in reports) else 1
 
 
 def _pilot_auto(args) -> int:

@@ -72,3 +72,6 @@ jobs:
 
       - name: Plan without a model
         run: uv run role-set plan --lessons T02,T03 --seed 0 --out /tmp/plan.json
+
+      - name: Puzzle check on a fixture
+        run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
