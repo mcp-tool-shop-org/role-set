@@ -199,12 +199,12 @@
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 94
+              "line": 98
             },
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 97
+              "line": 100
             },
             {
               "in": "closed_form_variant",
@@ -214,145 +214,150 @@
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 107
+              "line": 111
+            },
+            {
+              "in": "closed_form_variant",
+              "kind": "raise",
+              "line": 115
             },
             {
               "in": "three_lines",
               "kind": "raise",
-              "line": 142
+              "line": 150
             },
             {
               "in": "three_lines",
               "kind": "raise",
-              "line": 144
+              "line": 152
             },
             {
               "in": "three_lines",
               "kind": "raise",
-              "line": 146
+              "line": 154
             },
             {
               "in": "verbatim_lines",
               "kind": "raise",
-              "line": 159
+              "line": 167
             },
             {
               "in": "verbatim_lines",
               "kind": "raise",
-              "line": 163
+              "line": 171
             },
             {
               "in": "_require",
               "kind": "raise",
-              "line": 170
+              "line": 178
             },
             {
               "in": "_reply_prose",
               "kind": "raise",
-              "line": 184
+              "line": 192
             },
             {
               "in": "_clean_framing",
               "kind": "raise",
-              "line": 196
+              "line": 204
             },
             {
               "in": "_no_repeated_lines",
               "kind": "raise",
-              "line": 206
+              "line": 214
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 247
+              "line": 255
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 249
+              "line": 257
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 259
+              "line": 267
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 262
+              "line": 270
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 265
+              "line": 273
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 269
+              "line": 277
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 278
+              "line": 286
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 287
+              "line": 295
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 297
+              "line": 305
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 300
+              "line": 308
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 338
+              "line": 346
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 341
+              "line": 349
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 345
+              "line": 353
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 348
+              "line": 356
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 352
+              "line": 360
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 377
+              "line": 385
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 379
+              "line": 387
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 399
+              "line": 407
             }
           ],
-          "hash": "a1ca268660319b3339295694f0abdd6a24ac538394ab4e63311ab22b4a3c297b",
+          "hash": "0ffe12a1585b9a82a3ecbdff4c9f90d3660b0f55b2df3c6f7c6ac5caac348ebd",
           "importsFiles": [
             "src/role_set/plan.py"
           ],
@@ -1503,7 +1508,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "708e2bf88d2aac8799ae42dd3f1fd4f9ae8afb9fb98119ef7249acfcc2a68a18",
+          "hash": "4472fe08f6bfda69e47537b6361bb2996acc6a54476a98a75de9f979867021a0",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -1707,15 +1712,15 @@
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 256
+              "line": 258
             },
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 259
+              "line": 261
             }
           ],
-          "hash": "b6c460f842b05f0cc74c18199e98b167714b4dcb3a71ec15e8e6a20316b4d9cb",
+          "hash": "165f5b115d08118ecd850ef5602b27bc30ab396f46a912b77750c33bbd299eb1",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1740,14 +1745,14 @@
             {
               "calls": [
                 {
-                  "line": 126,
+                  "line": 128,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
                   }
                 },
                 {
-                  "line": 129,
+                  "line": 131,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1755,7 +1760,7 @@
                   }
                 },
                 {
-                  "line": 143,
+                  "line": 145,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1770,7 +1775,7 @@
             {
               "calls": [
                 {
-                  "line": 126,
+                  "line": 128,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
@@ -1778,7 +1783,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 129,
+                  "line": 131,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1787,7 +1792,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 143,
+                  "line": 145,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1795,12 +1800,12 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 196,
+                  "line": 198,
                   "name": "rstrip",
                   "target": null
                 },
                 {
-                  "line": 227,
+                  "line": 229,
                   "name": "splitlines",
                   "target": null,
                   "via": "lesson_sentences"
@@ -1814,7 +1819,7 @@
             {
               "calls": [
                 {
-                  "line": 227,
+                  "line": 229,
                   "name": "splitlines",
                   "target": null
                 }
@@ -2995,6 +3000,8 @@
       "files": [
         {
           "exports": [
+            "test_a_distractor_made_by_swapping_one_part_of_the_answer_is_refused",
+            "test_a_writers_own_letter_labels_are_stripped_before_lettering",
             "test_assemble_a_and_b",
             "test_assemble_c_with_flaw_and_without",
             "test_assemble_d_single_two_turn_stands_and_changes",
@@ -3005,7 +3012,7 @@
             "test_three_lines_and_verbatim",
             "test_trait_name_rules"
           ],
-          "hash": "54ad7c9b0ea92ce446db2c7e65303635271a75be18ba3c19222bbbf8af619852",
+          "hash": "716a45141d9a9ddf0db070d059fae319aff4609f0344c718e36c4eb189836212",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py"
@@ -3314,7 +3321,7 @@
             "test_window_a_fixes_quotes_without_markdown_injections_and_flaw_definitions",
             "test_writer_messages_carry_the_pack_the_slot_and_the_fields"
           ],
-          "hash": "76e43ba966b50410b4796cb531d841db9d01dc87303d43a90af2311d12c6828e",
+          "hash": "c810b9c814739d13aa384f383f9f581c4e54b15f8b059b7d305e114fc562ba27",
           "importOrder": [
             "src/role_set/critic.py",
             "src/role_set/gates.py",
@@ -3673,7 +3680,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e",
+    "commit": "5e6fe5e97d5d5c30cf53745c64b31b1b8c1e839e",
     "tracked": 59
   },
   "landings": [

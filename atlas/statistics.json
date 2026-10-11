@@ -94,7 +94,7 @@
         ],
         "importsOnly": []
       },
-      "cohesion": 0.3125,
+      "cohesion": 0.243903,
       "cohesionDropped": false,
       "confidence": "low",
       "highWater": null,
@@ -161,7 +161,7 @@
       },
       {
         "commits": 8,
-        "lines": 214,
+        "lines": 213,
         "path": "atlas/README.md"
       },
       {
@@ -171,17 +171,17 @@
       },
       {
         "commits": 8,
-        "lines": 636,
+        "lines": 645,
         "path": "atlas/page.json"
       },
       {
         "commits": 8,
-        "lines": 1137,
+        "lines": 1152,
         "path": "atlas/statistics.json"
       },
       {
         "commits": 8,
-        "lines": 5028,
+        "lines": 5024,
         "path": "atlas/structure.json"
       },
       {
@@ -236,7 +236,7 @@
       },
       {
         "commits": 5,
-        "lines": 478,
+        "lines": 480,
         "path": "src/role_set/assemble.py"
       },
       {
@@ -286,7 +286,7 @@
       },
       {
         "commits": 8,
-        "lines": 291,
+        "lines": 290,
         "path": "src/role_set/mock.py"
       },
       {
@@ -301,7 +301,7 @@
       },
       {
         "commits": 10,
-        "lines": 306,
+        "lines": 308,
         "path": "src/role_set/prompts.py"
       },
       {
@@ -341,7 +341,7 @@
       },
       {
         "commits": 4,
-        "lines": 205,
+        "lines": 228,
         "path": "tests/test_assemble.py"
       },
       {
@@ -410,8 +410,8 @@
         "path": "tests/test_plan.py"
       },
       {
-        "commits": 8,
-        "lines": 178,
+        "commits": 9,
+        "lines": 180,
         "path": "tests/test_prompts_critic.py"
       },
       {
@@ -450,9 +450,9 @@
     "level": "low",
     "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
   },
-  "generatedAt": "2026-10-11T08:33:02.827Z",
+  "generatedAt": "2026-10-11T08:37:56.955Z",
   "generatedFrom": {
-    "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e"
+    "commit": "5e6fe5e97d5d5c30cf53745c64b31b1b8c1e839e"
   },
   "pairs": [
     {
@@ -468,6 +468,13 @@
       "either": 9,
       "shared": 6,
       "strength": 0.666667
+    },
+    {
+      "a": "src/role_set/prompts.py",
+      "b": "tests/test_prompts_critic.py",
+      "either": 10,
+      "shared": 5,
+      "strength": 0.5
     },
     {
       "a": "src/role_set/runner.py",
@@ -487,16 +494,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "both",
-    "headDate": "2026-10-11T04:32:58-04:00",
+    "headDate": "2026-10-11T04:37:53-04:00",
     "inScopeFiles": 64,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 25,
+    "qualifyingCommits": 24,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T08:32:58.000Z",
+    "since": "2026-04-14T08:37:53.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
