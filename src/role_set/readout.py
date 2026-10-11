@@ -34,6 +34,23 @@ def _pct(values: list[float], q: float) -> float | None:
     return round(s[min(len(s) - 1, int(q * len(s)))], 2)
 
 
+INPUT_PINS = ("writer_model", "writer_repo", "writer_revision", "writer_digest", "critic_model", "critic_digest",
+              "pack_commit", "pack_sha256", "plan_sha256", "exemplar_commit", "stuck_rule_sha256", "grant", "rehearsal", "mock")
+
+
+def _inputs(receipts: list[dict]) -> dict:
+    """What the run was pinned to, from its receipts (every receipt carries the same pins). Exemplars are drawn from
+    other traits only: the runner never shows a slot an approved item of its own trait."""
+
+    if not receipts:
+        return {}
+    first = receipts[0]
+    out = {k: first.get(k) for k in INPUT_PINS if first.get(k) is not None}
+    if "exemplar_commit" in out:
+        out["exemplars"] = "other traits only (a slot never sees approved items of its own trait)"
+    return out
+
+
 def summarize(run_dir: Path) -> dict:
     report = json.loads((run_dir / "batch-report.json").read_text(encoding="utf-8"))
     status, outcomes = report.get("status", {}), report.get("outcomes", [])
@@ -105,11 +122,14 @@ def summarize(run_dir: Path) -> dict:
                   "with_burst": sum(1 for s in stuck if s.get("bursts")), "hedges_mean": round(statistics.mean(s.get("hedges", 0) for s in stuck), 2) if stuck else None},
         "critic_agreement": status.get("critic_agreement"),
         "elapsed_s": status.get("elapsed_s"),
+        "inputs": _inputs(receipts),
     }
 
 
 def markdown(main: dict, others: list[dict]) -> str:
     lines = [f"# Readout: {main['run']}", ""]
+    if main.get("inputs"):
+        lines += ["Inputs: " + "; ".join(f"{k} {v}" for k, v in main["inputs"].items()) + ".", ""]
     lines.append(f"Accepted {main['accepted']} of {main['attempted']} attempted (accept rate {main['accept_rate']}); "
                  f"halted: {main['halted'] or 'no'}; lesson halts: {main['lesson_halts'] or 'none'}; skipped: {main['skipped'] or 'none'}; "
                  f"batch check: {main['batch_check']}.")

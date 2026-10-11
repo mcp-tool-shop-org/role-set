@@ -162,3 +162,16 @@ def test_the_kind_a_brief_warns_off_the_stock_opening():
 
     a = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
     assert "don't open the passage with 'As a verifier, you' followed by the trait words" in hard_rules(a, ["to the source"])[0]
+
+
+def test_the_readout_states_the_inputs_the_run_was_pinned_to(tmp_path: Path):
+    from role_set.readout import readout
+
+    r, _, _ = _runner(tmp_path)
+    r.pins = {"writer_model": "w", "writer_revision": "96548f65", "pack_commit": "0801513", "pack_sha256": "7d8e", "exemplar_commit": "a7ec783", "stuck_rule_sha256": "716d"}
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
+    r.run([slot], {"T02": SIDES})
+    data, md = readout(tmp_path / "out")
+    inputs = data["run"]["inputs"]
+    assert inputs["exemplar_commit"] == "a7ec783" and inputs["writer_revision"] == "96548f65" and "other traits only" in inputs["exemplars"]
+    assert "Inputs: writer_model w;" in md and "exemplar_commit a7ec783" in md
