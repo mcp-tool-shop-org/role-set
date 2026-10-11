@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-11 from commit b8abc4d by Atlas 1.24.0.
+Mapped at 2026-10-11 from commit 1daa3ca by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,9 @@ role-set plans every slot of a role-shaping batch, has a model on a rented pod w
 
 7 parts, mostly Python (40 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
 
-## What changed since 2026-10-11 (04dd816)
+## What changed since 2026-10-11 (b8abc4d)
 
-Nothing structural changed since 2026-10-11; 1 file added and 12 changed content.
+Nothing structural changed since 2026-10-11; 3 files changed content.
 
 ## What comes in
 

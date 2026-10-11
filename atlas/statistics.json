@@ -94,12 +94,12 @@
         ],
         "importsOnly": []
       },
-      "cohesion": 0.20438,
+      "cohesion": 0.211587,
       "cohesionDropped": false,
       "confidence": "low",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 16,
+      "qualifyingSourceCommits": 18,
       "rebaseline": null
     },
     {
@@ -112,12 +112,12 @@
         "importsAndCoChanges": [],
         "importsOnly": []
       },
-      "cohesion": 0.20438,
+      "cohesion": 0.211587,
       "cohesionDropped": false,
       "confidence": "low",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 17,
+      "qualifyingSourceCommits": 19,
       "rebaseline": null
     }
   ],
@@ -160,8 +160,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 4,
-        "lines": 166,
+        "commits": 5,
+        "lines": 182,
         "path": "atlas/README.md"
       },
       {
@@ -170,18 +170,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 4,
-        "lines": 470,
+        "commits": 5,
+        "lines": 518,
         "path": "atlas/page.json"
       },
       {
-        "commits": 4,
-        "lines": 717,
+        "commits": 5,
+        "lines": 812,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 4,
-        "lines": 3872,
+        "commits": 5,
+        "lines": 4265,
         "path": "atlas/structure.json"
       },
       {
@@ -225,8 +225,8 @@
         "path": "src/role_set/assemble.py"
       },
       {
-        "commits": 10,
-        "lines": 364,
+        "commits": 11,
+        "lines": 395,
         "path": "src/role_set/cli.py"
       },
       {
@@ -240,8 +240,8 @@
         "path": "src/role_set/critic.py"
       },
       {
-        "commits": 2,
-        "lines": 223,
+        "commits": 4,
+        "lines": 291,
         "path": "src/role_set/critic_control.py"
       },
       {
@@ -345,8 +345,8 @@
         "path": "tests/test_critic_control.py"
       },
       {
-        "commits": 1,
-        "lines": 130,
+        "commits": 3,
+        "lines": 164,
         "path": "tests/test_critic_side.py"
       },
       {
@@ -430,17 +430,17 @@
     "level": "low",
     "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
   },
-  "generatedAt": "2026-10-11T07:33:40.377Z",
+  "generatedAt": "2026-10-11T07:37:55.488Z",
   "generatedFrom": {
-    "commit": "b8abc4de3c5ac23e3e80200ff26ecd9d5f4fe208"
+    "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811"
   },
   "pairs": [
     {
       "a": "src/role_set/cli.py",
       "b": "tests/test_cli.py",
-      "either": 8,
+      "either": 9,
       "shared": 6,
-      "strength": 0.75
+      "strength": 0.666667
     },
     {
       "a": "src/role_set/mock.py",
@@ -481,16 +481,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "both",
-    "headDate": "2026-10-11T03:33:36-04:00",
+    "headDate": "2026-10-11T03:37:51-04:00",
     "inScopeFiles": 60,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 21,
+    "qualifyingCommits": 24,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T07:33:36.000Z",
+    "since": "2026-04-14T07:37:51.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

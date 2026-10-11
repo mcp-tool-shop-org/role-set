@@ -376,7 +376,7 @@
               "line": 174
             }
           ],
-          "hash": "c0cfa6c2c257419c545d7773cfda0b6807b661e77b9b8daffd8352db0a1ebec0",
+          "hash": "6acab921952b2f4f618f242331c50fda936bb1e812a768361b4090df176b92cf",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/readout.py",
@@ -658,32 +658,32 @@
                   }
                 },
                 {
-                  "branch": "args.trait_leg",
-                  "line": 188,
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 192,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
                   }
                 },
                 {
-                  "branch": "args.trait_leg",
-                  "line": 188,
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 192,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "branch": "args.trait_leg",
-                  "line": 190,
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 193,
                   "name": "trait_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "branch": "args.trait_leg",
-                  "line": 190,
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 193,
                   "name": "TRAIT_STEPS",
                   "passed": true,
                   "target": {
@@ -691,36 +691,44 @@
                   }
                 },
                 {
-                  "branch": "args.trait_leg",
-                  "line": 192,
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 196,
+                  "name": "answer_leg",
+                  "target": {
+                    "file": "src/role_set/critic_control.py"
+                  }
+                },
+                {
+                  "branch": "args.trait_leg or args.answer_leg",
+                  "line": 198,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
                   }
                 },
                 {
-                  "line": 197,
+                  "line": 209,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 198,
+                  "line": 210,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 201,
+                  "line": 213,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 203,
+                  "line": 215,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
@@ -735,7 +743,7 @@
             {
               "calls": [
                 {
-                  "line": 213,
+                  "line": 225,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -750,7 +758,7 @@
             {
               "calls": [
                 {
-                  "line": 232,
+                  "line": 244,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -766,7 +774,7 @@
             {
               "calls": [
                 {
-                  "line": 232,
+                  "line": 244,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -829,14 +837,16 @@
           "entry": "trait_leg",
           "entryRule": 4,
           "exports": [
+            "answer_leg",
             "cases_from_rows",
             "load_rows",
             "plant_errors",
             "run_control",
             "trait_leg"
           ],
-          "hash": "db95f5526bbb87bee0cc91efd7be7f5ac51f18ba05c8fc341ca86773bcdf405e",
+          "hash": "41d245ceb4eea8db416690f018bc00026a745ea4523537f1f7366b558da66c9e",
           "importsFiles": [
+            "src/role_set/assemble.py",
             "src/role_set/critic.py",
             "src/role_set/gates.py"
           ],
@@ -881,7 +891,7 @@
             {
               "calls": [
                 {
-                  "line": 190,
+                  "line": 191,
                   "name": "teaching_text",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -889,7 +899,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 190,
+                  "line": 191,
                   "name": "trait_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -897,24 +907,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 191,
-                  "name": "TRAIT_TEMPERATURE",
-                  "passed": true,
-                  "target": {
-                    "file": "src/role_set/critic.py"
-                  },
-                  "via": "ask"
-                },
-                {
-                  "line": 191,
-                  "name": "trait_named",
-                  "target": {
-                    "file": "src/role_set/critic.py"
-                  },
-                  "via": "ask"
-                },
-                {
-                  "line": 191,
+                  "line": 193,
                   "name": "TRAIT_VOTES",
                   "passed": true,
                   "target": {
@@ -923,7 +916,24 @@
                   "via": "ask"
                 },
                 {
-                  "line": 202,
+                  "line": 194,
+                  "name": "TRAIT_TEMPERATURE",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  },
+                  "via": "ask"
+                },
+                {
+                  "line": 196,
+                  "name": "trait_named",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  },
+                  "via": "ask"
+                },
+                {
+                  "line": 208,
                   "name": "majority",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -934,6 +944,42 @@
               "invokedAtTopLevel": false,
               "isDefaultExport": false,
               "name": "trait_leg"
+            },
+            {
+              "calls": [
+                {
+                  "line": 255,
+                  "name": "closed_answer",
+                  "target": {
+                    "file": "src/role_set/assemble.py"
+                  }
+                },
+                {
+                  "line": 261,
+                  "name": "answer_messages",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  }
+                },
+                {
+                  "line": 263,
+                  "name": "compare_answer",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  }
+                },
+                {
+                  "line": 270,
+                  "name": "findall",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "answer_leg"
             }
           ]
         },
@@ -2953,15 +2999,17 @@
             "test_a_majority_of_three_decides_and_a_split_is_a_mismatch",
             "test_a_void_answer_is_asked_once_more",
             "test_closed_answers_compare_by_form",
+            "test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement",
             "test_the_answer_prompt_asks_for_a_closed_line_in_the_keys_form",
             "test_the_critic_gets_the_puzzle_without_its_pattern_instruction",
             "test_the_runner_asks_the_trait_three_times_at_temperature_with_seeds",
             "test_the_trait_leg_passes_only_when_every_part_of_the_bar_is_met",
             "test_the_trait_leg_scores_against_the_known_trait_with_a_confusion_matrix",
             "test_the_trait_prompt_asks_for_the_deciding_step_with_the_contrasted_error_apart",
+            "test_three_unreadable_votes_are_not_unanimous_and_small_traits_are_thin",
             "test_trait_named_reads_the_trait_line_or_a_bare_id"
           ],
-          "hash": "f77bf7f022a571d148b75b05968383d5a700aca208d98bfeb564d035289ccb23",
+          "hash": "dfec82d35e5bf90ec25069bbdb73b3c73463dee8018c17f1625d16d74171bede",
           "importsFiles": [
             "src/role_set/critic.py",
             "src/role_set/critic_control.py",
@@ -3501,7 +3549,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "b8abc4de3c5ac23e3e80200ff26ecd9d5f4fe208",
+    "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
     "tracked": 55
   },
   "landings": [
