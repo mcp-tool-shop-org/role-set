@@ -127,4 +127,5 @@ def test_the_trait_leg_passes_only_when_every_part_of_the_bar_is_met():
 
     leg = trait_leg(right, _rows(), {"T02": "goes to the source", "T14": "doesn't fill gaps"})
     assert leg["overall"] == 1.0 and leg["stability_unanimous"] == 1.0 and leg["passes"] is True
+    assert leg["seconds_per_call"] == {"calls": 60, "p50": 0.0, "p95": 0.0, "total": 0.0}
     assert json.dumps(leg)  # the report is plain JSON

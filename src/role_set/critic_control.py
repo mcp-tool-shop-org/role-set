@@ -185,10 +185,16 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
     from role_set.critic import TRAIT_TEMPERATURE, TRAIT_VOTES, majority, teaching_text, trait_messages, trait_named
 
     items = [r for r in rows if r.get("lesson") in trait_names and r.get("turns")]
+    seconds: list[float] = []  # per call, for sizing the critic queue in a paid run
 
     def ask(r: dict) -> tuple[str, list[str]]:
         msgs = trait_messages(teaching_text(r), trait_names, steps)
-        return r["lesson"], [trait_named(critic(msgs, temperature=TRAIT_TEMPERATURE, seed=s).text) for s in range(TRAIT_VOTES)]
+        votes = []
+        for s in range(TRAIT_VOTES):
+            c = critic(msgs, temperature=TRAIT_TEMPERATURE, seed=s)
+            seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
+            votes.append(trait_named(c.text))
+        return r["lesson"], votes
 
     if concurrency > 1:
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
@@ -218,6 +224,11 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
     stability = round(unanimous / n, 3) if n else None
     worst = min((c["rate"] for c in per.values()), default=None)
     passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
+    ordered = sorted(seconds)
+    timing = {"calls": len(ordered), "p50": round(ordered[len(ordered) // 2], 2) if ordered else None,
+              "p95": round(ordered[min(len(ordered) - 1, int(0.95 * len(ordered)))], 2) if ordered else None,
+              "total": round(sum(ordered), 1)}
     return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
             "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
+            "seconds_per_call": timing,
             "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}
