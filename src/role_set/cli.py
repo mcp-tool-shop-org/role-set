@@ -344,8 +344,10 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("--serve-by", default=None, help="HH:MM UTC: give up if the lane hasn't served by then (the pod's no-serve shutdown)")
     pa.set_defaults(func=_pilot_auto)
 
-    pc = sub.add_parser("puzzle-check", help="the kind B solver over reviewed data files and their .models.jsonl sidecars")
-    pc.add_argument("data", nargs="+", help="data files (<name>.jsonl); each sidecar is <name>.models.jsonl beside it")
+    pc = sub.add_parser("puzzle-check", help="the kind B solver over reviewed data files and their .models.jsonl sidecars; "
+                                             "no fact skeleton may repeat across the files given together")
+    pc.add_argument("data", nargs="+", help="data files (<name>.jsonl); each sidecar is <name>.models.jsonl beside it. "
+                                            "Give every file in the directory, so repeats across files are caught")
     pc.add_argument("--json", action="store_true", help="print the full report as JSON")
     pc.add_argument("--stamp", action="store_true", help="first write each sidecar line's row_sha256 from the rows as they stand")
     pc.set_defaults(func=_puzzle_check)
@@ -356,7 +358,7 @@ def _puzzle_check(args) -> int:
     if args.stamp:
         for d in args.data:
             print(f"stamped {puzzle_check.stamp(Path(d))} sidecar line(s) for {Path(d).name}")
-    reports = [puzzle_check.check_file(Path(d)) for d in args.data]
+    reports = puzzle_check.refuse_repeats([puzzle_check.check_file(Path(d)) for d in args.data])
     if args.json:
         print(json.dumps(reports, indent=1, ensure_ascii=False))
     else:
