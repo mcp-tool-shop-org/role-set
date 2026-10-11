@@ -100,7 +100,7 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
     data, md = readout(tmp_path / "fail" / "out")
     run = data["run"]
     assert run["lesson_halts"]["T02"]["kind"] == "A" and run["per_kind"]["A"]["dropped"] == 3
-    assert run["refusals"] == {"GATE": 9} and run["retry_recovery"] == {"refused_slots": 3, "recovered": 0, "rate": 0.0}
+    assert run["refusals"] == {"A / GATE: refused": 9} and run["retry_recovery"] == {"refused_slots": 3, "recovered": 0, "rate": 0.0}
     assert run["calls"] == 9 + run["accepted"] and run["stuck"]["stuck"] == run["calls"] and run["seconds_per_call"]["p50"] is not None
     assert "| T02 |" in md and "Retry recovery: 0 of 3" in md
     assert run["per_lesson"]["T02"]["skipped_by_reason"] == {"lesson T02 halted": 37} and "lesson T02 halted: 37" in md
@@ -120,3 +120,45 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
     assert (tmp_path / "ro" / "readout.json").exists() and (tmp_path / "ro" / "readout.md").exists()
     assert main(["readout", "--run", str(tmp_path)]) == 2
     assert "no batch-report.json" in capsys.readouterr().err
+
+
+def test_a_spent_span_holding_the_trait_words_keeps_them_required():
+    from role_set.runner import trait_words_note
+
+    words = ["fix things", "fixing", "don't fix", "doesn't fix"]
+    note = trait_words_note(words, ["a verifier you don't fix things you stick"])
+    assert "which are required: 'fix things', 'fixing', 'don't fix', 'doesn't fix'." in note
+    assert "In 'a verifier you don't fix things you stick' only the wording around the trait words is spent" in note
+    assert "only the wording around" not in trait_words_note(words, ["an unrelated spent span of eight words"])
+    assert trait_words_note([], ["a verifier you don't fix things you stick"]) == ""
+
+
+def test_the_retry_after_a_spent_trait_span_names_the_trait_words(tmp_path: Path):
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
+    calls = []
+
+    def against(row, accepted):
+        calls.append(1)
+        return [("SPAN_REUSED", "the wording 'a reader goes to the source and holds the page' is already in 2 items of this trait; reword it")] if len(calls) == 1 else []
+
+    g = _gates(against=against)
+    g.module.constants = types.SimpleNamespace(TRAIT_NAMES={"T02": ["to the source", "goes to the source"]})
+    r, _, _ = _runner(tmp_path, gates=g)
+    asks = []
+    real = r.writer
+
+    def recording(messages, seed=0):
+        asks.append(messages[-1]["content"])
+        return real(messages, seed)
+
+    r.writer = recording
+    assert r.run_slot(slot).accepted
+    assert "which are required: 'to the source', 'goes to the source'." in asks[1]
+    assert "only the wording around the trait words is spent" in asks[1]
+
+
+def test_the_kind_a_brief_warns_off_the_stock_opening():
+    from role_set.prompts import hard_rules
+
+    a = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
+    assert "don't open the passage with 'As a verifier, you' followed by the trait words" in hard_rules(a, ["to the source"])[0]

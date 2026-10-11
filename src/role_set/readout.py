@@ -14,6 +14,8 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from role_set.runner import refusal_rule
+
 
 def _lines(path: Path) -> list[dict]:
     if not path.exists():
@@ -71,7 +73,9 @@ def summarize(run_dir: Path) -> dict:
 
     codes = Counter()
     for r in refusals:
-        codes[r["detail"].split(":")[0] if r["code"] == "AGAINST" else r["code"]] += 1
+        # The halts' (kind, rule) keys, so GATE splits by the gate rule that fired.
+        kind = (r["slot"].split("-") + ["?", "?"])[1]
+        codes[f"{kind} / {refusal_rule(r)}"] += 1
     if not refusals:  # a run from before refusals.jsonl
         codes.update(status.get("refused_by_code", {}))
 
