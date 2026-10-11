@@ -23,6 +23,9 @@ from role_set.store import ARMS, SOURCES, begin_ingest, finish_ingest, insert_di
 
 SCHEMA = "stage1-receipt-v1"
 HELD_OUT_PREFIXES = {"sx-": "SEALED", "pl-": "DEV", "rv-": "DEV"}
+# An absolute path: a drive letter, a UNC share, or a POSIX root (including Git Bash's /e/). Diagnostics rows carry
+# backup destinations and stop reasons; the store feeds round reports, and paths stay out of anything shared.
+ABS_PATH = re.compile(r"(?<![A-Za-z0-9])[A-Za-z]:[\\/]|^\\\\[^\\]+\\|(?<![\w.:/])/(?:[a-z]|home|Users|mnt|root|tmp|var|opt|srv)/")
 DENY_MARKERS = ("sealed", "interview", "pilot-30", "stage1-eval", "taskset")
 INTERVIEW_FILE = "docs/runs/stage1-eval/interview.py"
 SPAN = 8
@@ -152,6 +155,10 @@ def check_row(row: dict, *, path_round: int, path_arm: str, path_seed: int, ques
             for prefix, code in HELD_OUT_PREFIXES.items():
                 if val.startswith(prefix):
                     return (code, f"{key} {val!r} is a held-out id")
+    if src == "diagnostics":
+        for text in _strings(row):
+            if ABS_PATH.search(text):
+                return ("PATH", "a diagnostics field holds an absolute path; record it relative to the run's output root or as a label")
     if src != "diagnostics":
         for key in ("question_id", "lesson", "kind"):
             if not isinstance(row.get(key), str) or not row[key]:

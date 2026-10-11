@@ -130,3 +130,17 @@ def test_check_row_rejects_non_objects_and_parse_questions_checks_shape_and_hash
         parse_questions("nothing = 1\n")
     with pytest.raises(IngestError, match="twelve"):
         parse_questions("QUESTIONS = [\n    'only one',\n]\n")
+
+
+def test_diagnostics_with_an_absolute_path_are_refused(receipts: Path, tmp_path: Path):
+    rows = [
+        diag_row(state="stopped", stop_reason="disk full", backup={"status": "copied", "to": "D:/archive/stage1/2"}),
+        diag_row(run_id="r2-b", backup={"status": "failed", "reason": "cannot write /home/runner/out"}),
+        diag_row(run_id="r2-c", state="done", stop_reason=None, backup={"status": "copied", "to": "external-archive"}),
+        quiz_row(trace="the excerpt runs /usr/local/bin/tool, and the line decides it"),
+    ]
+    _write(receipts, "diag.jsonl", rows)
+    r = ingest(receipts, tmp_path / "role.db", questions=QUESTIONS)
+    assert [x.code for x in r.refusals] == ["PATH", "PATH"]
+    # A label or a relative destination enters, and a quiz trace may quote a path from its material.
+    assert r.accepted == 2
