@@ -10,6 +10,14 @@
       "licence": "Apache-2.0",
       "offrig_profile": "writer-qwen235",
       "checked_by": "the Publisher, 2026-10-10"
+    },
+    {
+      "served_as": "qwen3:8b",
+      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
+      "quant": "Q4_K_M",
+      "licence": "Apache-2.0",
+      "rehearsal_only": true,
+      "checked_by": "the Publisher, 2026-10-10 (digest 500a1f06…)"
     }
   ],
   "critics": [

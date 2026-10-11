@@ -3,6 +3,11 @@ revision = 3
 requires-python = "==3.12.*"
 
 [[package]]
+name = "aspire-si-gates"
+version = "1.1.0"
+source = { git = "https://github.com/mcp-tool-shop-org/aspire-si?subdirectory=packages%2Faspire-si-gates&rev=c4c81aaf01c94a3e60bdff99757d7bd73cd27c7e#c4c81aaf01c94a3e60bdff99757d7bd73cd27c7e" }
+
+[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -105,6 +110,9 @@ wheels = [
 name = "role-set"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "aspire-si-gates" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -113,6 +121,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "aspire-si-gates", git = "https://github.com/mcp-tool-shop-org/aspire-si?subdirectory=packages%2Faspire-si-gates&rev=c4c81aaf01c94a3e60bdff99757d7bd73cd27c7e" }]
 
 [package.metadata.requires-dev]
 dev = [

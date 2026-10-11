@@ -1,4 +1,4 @@
-"""role-set: plan (no model), cost (no model), write (refused until the gates are pinned)."""
+"""role-set: plan and cost (no model), write (the runner; paid unless --mock), pack, harvest, ingest, store, critic-control."""
 
 from __future__ import annotations
 
@@ -245,7 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--plan", required=True)
     w.add_argument("--pack", default="roles/verifier")
     w.add_argument("--out", default="out")
-    w.add_argument("--endpoint", default=None, help="http://127.0.0.1:<lane port>/v1 (offrig's tunnel)")
+    w.add_argument("--endpoint", default=None, help="http://127.0.0.1:<lane port>/v1 (offrig's tunnel); for a digest-pinned rehearsal writer, the local Ollama base http://127.0.0.1:11434")
     w.add_argument("--model", default=None, help="a served name from writers.json")
     w.add_argument("--writers", default="writers.json")
     w.add_argument("--critic-endpoint", default="http://127.0.0.1:11434")

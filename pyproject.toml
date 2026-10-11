@@ -5,7 +5,9 @@ description = "A generator for role-shaping training data: plans every slot, wri
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
-dependencies = []
+dependencies = [
+    "aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si@c4c81aaf01c94a3e60bdff99757d7bd73cd27c7e#subdirectory=packages/aspire-si-gates",
+]
 
 [project.scripts]
 role-set = "role_set.cli:main"
@@ -19,6 +21,9 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.metadata]
+allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/role_set"]

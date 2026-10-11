@@ -28,6 +28,10 @@ from role_set.prompts import load_pack
 from role_set.runner import RunHalted, Runner
 from role_set.transport import chat, ollama_chat, unload
 
+# The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
+# real pack; 16,384 leaves room for the reply and its thinking.
+WRITER_NUM_CTX = 16384
+
 
 class WriteRefused(RuntimeError):
     """Something a run needs is missing or wrong. Nothing was sent."""
@@ -120,20 +124,41 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
     except (GatesUnavailable, GuardError) as e:
         raise WriteRefused(str(e)) from e
     entry = writers[model]
+    rehearsal = bool(entry.get("rehearsal_only"))
+    if rehearsal and not entry.get("digest"):
+        raise WriteRefused(f"REFUSED: {model} is rehearsal-only and has no digest pin; a rehearsal writer is local and pinned by digest")
     pins.update({"writer_model": model, "writer_repo": entry.get("repo"), "writer_revision": entry.get("revision"),
-                 "writer_base_revision": entry.get("base_revision"), "writer_licence": entry.get("licence")})
+                 "writer_base_revision": entry.get("base_revision"), "writer_licence": entry.get("licence"), "rehearsal": rehearsal})
 
-    def writer(messages, seed=0):
-        return chat(endpoint, model, messages, seed=seed)
+    def card(what: str) -> None:
+        require_grant(cfg.grant, uses_card=True)
+        if cfg.heartbeat is None:
+            raise GuardError(f"REFUSED: the {what} on the 5090 needs --heartbeat <watchdog heartbeat file>")
+        require_heartbeat(cfg.heartbeat, now())
+
+    unloads: list = []
+    if entry.get("digest"):
+        # A writer served by the local Ollama (the rehearsal): on the 5090, so it needs the grant; pinned by digest
+        # like the critic; and called on the native API, because the OpenAI-style endpoint ignores num_ctx and the
+        # writer prompt runs past Ollama's default context.
+        try:
+            card("local writer")
+            w_digest = require_ollama_digest(endpoint, model, entry["digest"], opener=digest_opener)
+        except GuardError as e:
+            raise WriteRefused(str(e)) from e
+        pins.update({"writer_digest": w_digest, "grant": cfg.grant})
+        unloads.append((endpoint, model))
+
+        def writer(messages, seed=0):
+            return ollama_chat(endpoint, model, messages, seed=seed, num_ctx=WRITER_NUM_CTX)
+    else:
+        def writer(messages, seed=0):
+            return chat(endpoint, model, messages, seed=seed)
 
     critic = None
-    cleanup = None
     if not cfg.no_critic:
         try:
-            require_grant(cfg.grant, uses_card=True)
-            if cfg.heartbeat is None:
-                raise GuardError("REFUSED: the critic on the 5090 needs --heartbeat <watchdog heartbeat file>")
-            require_heartbeat(cfg.heartbeat, now())
+            card("critic")
             c_endpoint = require_local_endpoint(cfg.critic_endpoint or "")
             c_model = cfg.critic_model or ""
             if not c_model or "cloud" in c_model.lower():
@@ -149,17 +174,34 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
         def critic(messages):
             return ollama_chat(c_endpoint, c_model, messages)
 
+        unloads.append((c_endpoint, c_model))
+
+    cleanup = None
+    if unloads:
         def cleanup():
-            unload(c_endpoint, c_model)
+            for e, m in unloads:
+                unload(e, m)
 
     return slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup
 
 
+def output_dir(base: Path, pins: dict, *, mock: bool) -> Path:
+    """Where a run writes. Mock output goes under mock/ and a rehearsal writer's under rehearsal/, so neither is
+    ever confused with data; require_rehearsal_dir refuses any other place for a rehearsal writer."""
+
+    out = base / "mock" if mock else (base / "rehearsal" if pins.get("rehearsal") else base)
+    require_rehearsal_dir(out, pins)
+    return out
+
+
+def require_rehearsal_dir(out: Path, pins: dict) -> None:
+    if pins.get("rehearsal") and out.name != "rehearsal":
+        raise WriteRefused(f"REFUSED: {pins.get('writer_model')} is rehearsal-only; it writes only under a rehearsal/ directory, never {out.name}/")
+
+
 def run(cfg: WriteConfig, *, now=time.time) -> dict:
     slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup = build(cfg, now=now)
-    out = cfg.out
-    if cfg.mock:
-        out = out / "mock"  # never confused with data
+    out = output_dir(cfg.out, pins, mock=cfg.mock)
     excerpts = load_pool(cfg.pool) if cfg.pool else None
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
@@ -185,6 +227,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         "dropped": runner.status.dropped,
         "attempted": runner.status.attempted,
         "halted": halted,
+        "batch_check": runner.batch_check,
+        "rehearsal": bool(pins.get("rehearsal")),
         "mock": cfg.mock,
         "slots": len(slots),
         "outcomes": len(outcomes),

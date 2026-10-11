@@ -68,9 +68,18 @@ def test_check_plan_refuses_missing_pairs_and_turns_and_escalate():
     slots = [Slot(**s.as_dict()) for s in base]
     for s in slots:
         if s.verdict == "cannot_tell":
-            s.escalate = "yes"
+            s.escalate = "yes (money)"
     with pytest.raises(PlanError, match="everyday"):
         check_plan(slots)
+
+    # A bare yes is what the gates refuse: the key names its domain.
+    slots = [Slot(**s.as_dict()) for s in base]
+    for s in slots:
+        if s.escalate.startswith("yes ("):
+            s.escalate = "yes"
+    with pytest.raises(PlanError, match="as the gates read them"):
+        check_plan(slots)
+    assert [s.escalate for s in base if s.escalate != "no"] in (["yes (medical)"], ["yes (legal)"], ["yes (safety)"], ["yes (money)"])
 
     slots = [Slot(**s.as_dict()) for s in base]
     for s in slots:
