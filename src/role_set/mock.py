@@ -186,13 +186,37 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
                            "question": _salt("What do you reach for first, and why?", n), "reply": _salt(f"I reach for the {t(9)} record. A recollection is not a line I can point at.", n),
                            "key_points": ["reach for the page first", "a recollection is not a line"]})
     if kind == "B":
-        count = 3 + (b - 1) % len(COUNT_WORDS)
+        # An elimination the solver can check: exactly one cup holds the pen, and cups are ruled out one by one. Each
+        # structure asks it the way its key is computed (PR H): the cup, the cups still possible, the line after which
+        # it is settled, or the verdict on a claim.
+        count = 3 + (b - 1) % 4  # 3 to 6 cups, within the solver's entity cap; the cue word varies the shape past four
         names = [_tag(n, 100 + k).title() for k in range(count)]
-        clues = " ".join(f"The {t(1)} pen is not in {x}." for x in names[:-1])
-        puzzle = f"{COUNT_WORDS[count - 3].title()} cups: {', '.join(names)}. {clues}\nQuestion: which cup holds the {t(1)} pen, {t(2)}?"
-        steps = "\n".join(f"{k + 1}. {x} is closed." for k, x in enumerate(names[:-1])) + f"\n{count}. {names[-1]} remains."
-        answers[("answer", puzzle.strip()[-40:])] = names[-1].lower()
-        return json.dumps({"puzzle": puzzle, "thinking": steps, "reply": f"{names[-1]}.\n" + steps, "answer": names[-1].lower()})
+        struct = slot.get("structure") or ""
+        open_set = struct.startswith("underdetermined")
+        ruled = names[:-2] if open_set else names[:-1]
+        cue = "Exactly" if (b - 1) // 4 % 2 == 0 else "Only"
+        lines = [f"{COUNT_WORDS[count - 3].title()} cups stand in a row: {', '.join(names)}.",
+                 f"{cue} one cup holds the {t(1)} pen; the rest are empty."]
+        lines += [f"The {t(1)} pen is not in {x}." for x in ruled]
+        model = {"entities": names, "attributes": {"holds": {"values": ["pen", "empty"], "distinct": False}},
+                 "facts": [{"line": 2, "rule": ["count", "holds", "pen", "=", 1]}]
+                 + [{"line": k + 3, "rule": ["is_not", x, "holds", "pen"]} for k, x in enumerate(ruled)],
+                 "flavour": [1], "asks": {"entity_with": {"holds": "pen"}}}
+        if open_set:
+            question, answer = f"which cups could hold the {t(1)} pen, {t(2)}?", f"{names[-2]}, {names[-1]}"
+        elif struct in ("stopping problem", "when to stop"):
+            question, answer = f"after which line is it settled which cup holds the {t(1)} pen, {t(2)}?", str(len(lines))
+        elif struct in ("tree with pruning", "falsifier first"):
+            question, answer = f"is it true that {names[-1]} holds the {t(1)} pen, {t(2)}?", "supported"
+            model.pop("asks")
+            model["claim"] = ["is", names[-1], "holds", "pen"]
+        else:
+            question, answer = f"which cup holds the {t(1)} pen, {t(2)}?", names[-1]
+        puzzle = "\n".join(f"{k + 1}. {x}" for k, x in enumerate(lines)) + f"\nQuestion: {question}"
+        steps = "\n".join(f"{k + 1}. {x} is ruled out." for k, x in enumerate(ruled)) + f"\n{len(ruled) + 1}. {names[-1]} is left to weigh."
+        answers[("answer", puzzle.strip()[-40:])] = answer.lower()
+        return json.dumps({"puzzle": puzzle, "model": model, "thinking": steps, "reply": steps + f"\nAnswer: {answer}",
+                           "answer": answer.lower()})
     if kind == "E" and slot["written"]:
         return json.dumps({"question": _salt(f"{t(7).title()} asks: where does the deciding line come from?", n), "thinking": "", "reply": f"From the {t(10)} sheet in front of me.", "key_points": ["from the sheet"],
                            "variant_question": f"Which source supplies the line you quote, {t(8)}?",

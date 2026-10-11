@@ -26,11 +26,14 @@ from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, co
                              flaw_messages, teaching_text, trait_messages, verdict_messages)
 from role_set.gates import Gates
 from role_set.plan import Slot
+from role_set.puzzle import PuzzleError, check_puzzle
 from role_set.prompts import FIELDS, kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
 from role_set.trait_steps import TRAIT_STEPS
 from role_set.transport import TransportError
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
+# A B puzzle whose asked answer follows from its 'is' facts alone is a lookup, not a puzzle: one per lesson (R&D, PR H).
+LOOKUP_CAP = 1
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
 ANDON_CELL_DROPS = 3  # ends that (lesson, kind) cell; the lesson's other kinds and the run go on
@@ -170,6 +173,7 @@ SUGGESTIONS = {
     "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
     "TRUNCATED": "The reply ran past the length limit before its JSON closed ({detail}). Decide the item before writing it: the thinking states the path to the answer in a few steps and never searches or reconsiders.",
     "TRANSPORT": "The writer could not be reached ({detail}); the slot ends.",
+    "PUZZLE": "The puzzle's model doesn't hold: {detail}.",
     "SHAPE": "The reply is a finished row (kind, turns, answer), the exemplars' shape. Return one flat object with exactly these fields instead: {detail}.",
     "REPLY_OPENING": "The reply opens like two accepted items of this trait ('{detail}'). Open it another way, in this item's own words.",
     "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
@@ -417,6 +421,7 @@ class Runner:
         self.cell_drop_keys: dict[tuple[str, str], Counter] = {}
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
+        self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
         self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
 
@@ -666,6 +671,16 @@ class Runner:
                 refusal = self._refusal("TRUNCATED" if getattr(c, "finish_reason", None) == "length" else "PARSE", str(e))
             if refusal is None and row_shaped(fields, slot):
                 refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
+            lookup = False
+            if refusal is None and slot.kind == "B":
+                # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
+                try:
+                    lookup = check_puzzle(fields, slot.structure).lookup
+                except PuzzleError as e:
+                    refusal = self._refusal("PUZZLE", str(e))
+                if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+                    refusal = self._refusal("PUZZLE", "the asked answer follows from the 'is' facts alone, a lookup, and this "
+                                                      "lesson already has its one; make the answer need elimination")
             if refusal is None:
                 if slot.kind == "C" and "planted_flaw" not in fields:
                     fields["planted_flaw"] = slot_flaw(slot)
@@ -706,6 +721,8 @@ class Runner:
                         refusal = self._refusal("REPLY_OPENING", stamp)
                     else:
                         self._accept(slot, row, c, attempt, glyphs=glyphs)
+                        if lookup:
+                            self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
                         outcome.accepted, outcome.row = True, row
                         self._record_call(slot, attempt, c, "accepted", glyphs, material)
                         return outcome

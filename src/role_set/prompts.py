@@ -17,7 +17,7 @@ from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 
 FIELDS = {
     "A": ["passage", "question", "reply", "key_points"],
-    "B": ["puzzle", "thinking", "reply", "answer"],
+    "B": ["puzzle", "model", "thinking", "reply", "answer"],
     "C": ["framing", "statement", "checker_trace", "checker_verdict", "deciding", "thinking", "reply"],
     "D": ["framing", "statement", "deciding", "thinking", "reply", "pressure", "injection",
           "turn2_user", "turn2_new_material", "turn2_verdict", "turn2_deciding", "turn2_thinking", "turn2_reply"],
@@ -35,6 +35,44 @@ HOUSE_RULES = (
     "its bullet. Thinking states what the claim asserts, the line found, the sweep for anything that "
     "qualifies it, and why this trait decided the step, in this item's own words, without a stock closer."
 )
+
+
+B_MODEL_RULE = (
+    "Kind B, the model: every line of the puzzle before 'Question:' is numbered (1., 2., ...), setting lines included, "
+    "and 'model' writes the same puzzle as data. model = {\"entities\": [names], \"attributes\": {name: {\"values\": "
+    "[...], \"ordered\": true if the values have an order, \"distinct\": false only if values may repeat}}, "
+    "\"facts\": [{\"line\": n, \"rule\": [form, ...]}], \"flavour\": [line numbers that state no fact, at most 2], "
+    "\"asks\": {\"attribute\": a} or {\"attribute\": a, \"of\": entity} or {\"entity_with\": {a: value}}}. "
+    "A reference is an entity name or {attribute: value} (the entity holding that value). The rule forms are: "
+    "[\"is\"|\"is_not\", ref, attr, value], [\"in\"|\"not_in\", ref, attr, [values]], [\"same\"|\"different\", ref, ref], "
+    "[\"before\"|\"after\"|\"adjacent\"|\"not_adjacent\", ref, ref, attr], [\"offset\", ref, ref, attr, k] (the second "
+    "is k places after the first), [\"count\", attr, value, \"=\"|\"<=\"|\">=\", n], [\"not\", rule], [\"and\"|\"or\", "
+    "rule, rule, ...], [\"if\", rule, rule]. Each rule encodes only its own line: it names only what that line names, a "
+    "line with not or n't gets a negative form, and before or after keep the line's order. Every fact must be needed: a "
+    "line that changes nothing is refused. Don't settle the answer with 'is' lines alone. If the puzzle says left, right, "
+    "first or last, one line states the order ('seats 1 to 4, left to right'). The code solves the model and refuses "
+    "the draft unless its answer is your key. The reply's last line is the answer alone: 'Answer: ...'."
+)
+# R&D on PR H: what each structure's key is, computed by the code.
+B_STRUCTURE_NOTES = {
+    "underdetermined_with_explicit_set": (
+        "This puzzle is underdetermined: the facts leave two or more answers to one value (asks with \"of\" or "
+        "\"entity_with\"), and 'answer' lists every possible one, separated by commas."),
+    "stopping_problem": (
+        "This is a stopping problem: the Question asks after which numbered line the answer is settled, and 'answer' is "
+        "that line's number. Lines after it may follow, but each line up to it must be needed."),
+    "when_to_stop": (
+        "This is a when-to-stop case: either the Question asks after which numbered line the answer is settled ('answer' "
+        "is that number), or model.claim holds the rule the Question asks about and 'answer' is its verdict."),
+    "tree_with_pruning": (
+        "This is a verification case: model.claim is the rule the Question asks about, every name in it appears in the "
+        "Question line, and 'answer' is supported if the claim holds in every assignment that fits the facts, "
+        "unsupported if in none, cannot_tell otherwise."),
+    "falsifier_first": (
+        "This is a verification case: model.claim is the rule the Question asks about, every name in it appears in the "
+        "Question line, and 'answer' is supported if the claim holds in every assignment that fits the facts, "
+        "unsupported if in none, cannot_tell otherwise."),
+}
 
 
 def load_pack(pack_dir: Path) -> dict[str, str]:
@@ -56,7 +94,7 @@ def required_fields(slot: Slot) -> list[str]:
     k = kind_key(slot)
     req = {
         "A": ["passage", "question", "reply", "key_points"],
-        "B": ["puzzle", "thinking", "reply", "answer"],
+        "B": ["puzzle", "model", "thinking", "reply", "answer"],
         "C": ["framing", "statement", "checker_trace", "thinking", "reply"],
         "D": ["framing", "statement", "thinking", "reply"],
         "E_written": ["question", "reply", "key_points", "variant_question", "variant_correct", "variant_distractors"],
@@ -101,6 +139,10 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "options until only that solution fits, and check that no second solution fits before you write the "
                      "JSON. The thinking walks the elimination to the answer in at most eight steps and never searches, "
                      "backtracks or reconsiders. If your facts leave two solutions, add a fact; don't reason about it.")
+        # PR H (R&D's design): the puzzle is also written as data, and the code solves it. Only the solver decides.
+        rules.append(B_MODEL_RULE)
+        if slot.structure in B_STRUCTURE_NOTES:
+            rules.append(B_STRUCTURE_NOTES[slot.structure])
     if slot.kind == "E" and slot.e_type == "written":
         # Handoff Amendment 5 (aspire-si-gates 1.2.0): written variants are closed-form, scored by the letter.
         rules.append("Written E, closed-form variant: 'variant_question' asks the same point in new words and stands alone "
