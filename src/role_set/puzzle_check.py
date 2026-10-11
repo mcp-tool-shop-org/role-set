@@ -20,9 +20,12 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from role_set.assemble import VERDICTS
+from role_set.plan import PUZZLE_STRUCTURES
 from role_set.puzzle import PuzzleError, check_puzzle
 
 VERDICT_STRUCTURE = "verdict"
+STRUCTURES = tuple(name for name, _ in PUZZLE_STRUCTURES) + (VERDICT_STRUCTURE,)
 LOOKUPS_PER_LESSON = 1
 
 
@@ -56,11 +59,20 @@ def check_file(data: Path, models: Path | None = None) -> dict:
             items.append({"id": rid, "result": "refused", "structure": structure,
                           "detail": "row_sha256 doesn't match the row as committed; the row changed after its model was written"})
             continue
+        if structure not in STRUCTURES:
+            # A typo would otherwise run as a plain one-answer puzzle and skip its structure's own rules (R&D on #32).
+            items.append({"id": rid, "result": "refused", "structure": structure,
+                          "detail": f"structure {structure!r} is not one of {', '.join(STRUCTURES)}"})
+            continue
         if structure == VERDICT_STRUCTURE:
+            # Only a verdict-label key may skip the solver: a value-keyed puzzle that ends on a VERDICT line still
+            # has an answer the solver can check, so `verdict` is never an escape from it.
+            keyed = (row.get("answer") or "").strip().lower() in VERDICTS
             verdict_reply = "VERDICT:" in (row["turns"][-1].get("reply") or "")
-            items.append({"id": rid, "result": "verdict" if verdict_reply else "refused", "structure": structure,
-                          "detail": "verdict-keyed, outside the solver's scope" if verdict_reply
-                          else "marked verdict, but its reply carries no VERDICT line"})
+            detail = ("verdict-keyed, outside the solver's scope" if keyed and verdict_reply
+                      else f"keyed by a value ({row.get('answer')!r}), so it needs a model" if not keyed
+                      else "marked verdict, but its reply carries no VERDICT line")
+            items.append({"id": rid, "result": "verdict" if keyed and verdict_reply else "refused", "structure": structure, "detail": detail})
             continue
         fields = {"puzzle": row["turns"][0].get("user") or "", "model": entry.get("model"), "answer": row.get("answer") or "",
                   "reply": row["turns"][-1].get("reply") or "", "thinking": row["turns"][-1].get("thinking") or ""}

@@ -93,3 +93,15 @@ def test_stamp_writes_the_hashes_then_a_later_edit_shows_up(tmp_path: Path, caps
     assert "stamped 1 sidecar line(s)" in capsys.readouterr().out
     data.write_text(data.read_text(encoding="utf-8").replace("Ben has salad", "Ben has the salad"), encoding="utf-8")
     assert main(["puzzle-check", str(data)]) == 1
+
+
+def test_structure_must_be_a_menu_name_and_verdict_needs_a_verdict_key(tmp_path: Path):
+    from role_set.puzzle_check import STRUCTURES
+
+    value_keyed = _row("T02-B-02", reply="1. Ben has salad.\nVERDICT: supported\nDECIDING: NONE\nESCALATE: no")
+    data = _write(tmp_path, [_row("T02-B-01"), value_keyed],
+                  [{"id": "T02-B-01", "structure": "constraint-grid", "model": MODEL}, {"id": "T02-B-02", "structure": "verdict"}])
+    by = {i["id"]: i for i in check_file(data)["items"]}
+    assert by["T02-B-01"]["result"] == "refused" and "is not one of constraint_grid" in by["T02-B-01"]["detail"]
+    assert by["T02-B-02"]["result"] == "refused" and "keyed by a value" in by["T02-B-02"]["detail"]
+    assert len(STRUCTURES) == 9 and STRUCTURES[-1] == "verdict"
