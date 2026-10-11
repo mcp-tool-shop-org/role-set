@@ -36,15 +36,23 @@ SKELETON_READINGS_MAX = 50_000
 SYMMETRIC = ("adjacent", "not_adjacent", "same", "different")
 
 
-def _canon(rule) -> list:
-    """`after a b` is `before b a`, and `offset a b -k` is `offset b a k`; every other form as written."""
+def _canon(rule, attrs: dict | None = None) -> list:
+    """`after a b` is `before b a`, and `offset a b -k` is `offset b a k`. On an attribute with exactly two values,
+    `is_not x a v` is `is x a w` (R&D on aspire-si#106: T10-B-01 and T11-B-05 were one puzzle, one written "is not lit"
+    and the other "is empty"). Every other form as written."""
 
+    attrs = attrs or {}
     if rule[0] == "after":
         return ["before", rule[2], rule[1], *rule[3:]]
     if rule[0] == "offset" and rule[4] < 0:
         return ["offset", rule[2], rule[1], rule[3], -rule[4]]
+    if rule[0] == "is_not":
+        values = [str(v) for v in (attrs.get(rule[2]) or {}).get("values", [])]
+        if len(values) == 2 and str(rule[3]) in values:
+            other = (attrs[rule[2]]["values"])[1 - values.index(str(rule[3]))]
+            return ["is", rule[1], rule[2], other]
     if rule[0] in ("not", "and", "or", "if"):
-        return [rule[0], *(_canon(r) for r in rule[1:])]
+        return [rule[0], *(_canon(r, attrs) for r in rule[1:])]
     return list(rule)
 
 
@@ -106,7 +114,7 @@ def skeleton(model: dict) -> str:
     taken in the reading (fact order, and argument order of each symmetric clue) whose serialisation sorts first, so line
     order, naming and a swapped symmetric clue don't hide a copy (R&D found six copies by hand in aspire-si#95)."""
 
-    facts = [_canon(f["rule"]) for f in model["facts"]]
+    facts = [_canon(f["rule"], model["attributes"]) for f in model["facts"]]
     variants = [_variants(r) for r in facts]
     readings = math.factorial(len(facts)) * math.prod(len(v) for v in variants)
     if readings > SKELETON_READINGS_MAX:

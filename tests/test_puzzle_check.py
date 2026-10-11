@@ -162,6 +162,18 @@ def test_a_symmetric_clue_in_either_order_and_a_negative_offset_are_one_skeleton
     assert skeleton(m(["if", ["is", "Y", "h", "1st"], ["different", "X", "Z"]], ["is_not", "X", "h", "1st"])) == \
         skeleton(m(["is_not", "Y", "h", "1st"], ["if", ["is", "X", "h", "1st"], ["different", "Z", "Y"]]))
     assert skeleton(m(["offset", "X", "Y", "h", -1])) == skeleton(m(["offset", "Y", "X", "h", 1]))
+    # R&D on aspire-si#106: on a two-value attribute, "is not lit" and "is dark" are one clue. Three values keep them apart.
+    def binary(attr, values, *rules):
+        return {"entities": ["P", "Q", "R"], "attributes": {attr: {"values": values}},
+                "facts": [{"line": i + 2, "rule": r} for i, r in enumerate(rules)]}
+
+    lamps = binary("state", ["lit", "dark"], ["count", "state", "lit", ">=", 2], ["is_not", "P", "state", "lit"])
+    mugs = binary("fill", ["full", "empty"], ["count", "fill", "full", ">=", 2], ["is", "R", "fill", "empty"])
+    assert skeleton(lamps) == skeleton(mugs)
+    assert skeleton(binary("state", ["lit", "dark"], ["not", ["is_not", "P", "state", "dark"]], ["is", "Q", "state", "lit"])) == \
+        skeleton(binary("state", ["lit", "dark"], ["not", ["is", "P", "state", "lit"]], ["is", "Q", "state", "lit"]))
+    three = binary("fill", ["full", "half", "empty"], ["count", "fill", "full", ">=", 2], ["is", "R", "fill", "empty"])
+    assert skeleton(binary("fill", ["full", "half", "empty"], ["count", "fill", "full", ">=", 2], ["is_not", "P", "fill", "full"])) != skeleton(three)
     # Past the reading cap the facts are compared as written, still renamed.
     many = m(*[["not_adjacent", "X", "Y", "h"]] * 9)
     assert skeleton(many) == skeleton(m(*[["not_adjacent", "Y", "Z", "h"]] * 9))
