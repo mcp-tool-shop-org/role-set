@@ -121,3 +121,23 @@ def test_window_a_fixes_quotes_without_markdown_injections_and_flaw_definitions(
     for name in FLAWS:
         assert f"- {name}: {FLAW_DEFINITIONS[name]}" in system
     assert "- none: the check was right" in system and compare_flaw("reject_by_default", "reject_by_default").ok
+
+
+def test_the_brief_states_each_kinds_gate_rules_before_the_first_draft():
+    from role_set.prompts import HOUSE_RULES, hard_rules
+
+    slots = plan_lesson("T02", SIDES, seed=3)
+    a = next(s for s in slots if s.kind == "A")
+    brief = slot_brief(a, [], ["to the source", "goes to the source"])
+    # The 2026-10-11 rehearsal lost every kind-A slot to these two rules; now they come first, with the gates' words.
+    assert "names the trait in one of these exact words: 'to the source', 'goes to the source'" in brief
+    assert "begins in the first person" in brief and "no VERDICT line" in brief
+    assert "by its name as the lesson heading gives it" in slot_brief(a, [])
+    b = next(s for s in slots if s.kind == "B")
+    assert any("draws the pattern" in r for r in hard_rules(b))
+    written = next(s for s in slots if s.kind == "E" and s.e_type == "written")
+    verdict = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
+    assert "share at least one" in hard_rules(written)[0] and "never summarises the material" in hard_rules(verdict)[0]
+    assert hard_rules(next(s for s in slots if s.kind == "C")) == []
+    # The role-neutral rule is scoped: kind A must name its trait, so the house rules no longer forbid it there.
+    assert "In kinds C and D and in verdict-type E" in HOUSE_RULES and "Kinds A, B and written E name the trait" in HOUSE_RULES

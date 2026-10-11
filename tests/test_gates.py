@@ -47,3 +47,12 @@ def test_gates_without_the_scorer_rules_are_refused_at_load():
         delattr(fake, missing)
         with pytest.raises(GatesUnavailable, match=f"has no {missing}; pin 1.1.0 or later"):
             load_gates(importer=lambda name, f=fake: f)
+
+
+def test_trait_words_come_from_the_gates_constants():
+    fake = _fake_module()
+    fake.constants = types.SimpleNamespace(TRAIT_NAMES={"T02": ["to the source", "goes to the source"]})
+    g = load_gates(importer=lambda name: fake)
+    assert g.trait_words("T02") == ["to the source", "goes to the source"] and g.trait_words("T99") == []
+    bare = _fake_module()
+    assert load_gates(importer=lambda name: bare).trait_words("T02") == []
