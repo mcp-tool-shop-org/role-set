@@ -123,3 +123,11 @@ def test_harvest_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     assert '"excerpts": 5' in capsys.readouterr().out
     monkeypatch.setattr(cli, "harvest", lambda repos, clones, out: HarvestReport())
     assert main(["harvest", "--allow-list", str(allow), "--clones", str(tmp_path)]) == 2
+
+
+def test_the_pilot_trait_t18_plans(tmp_path: Path, capsys):
+    out = tmp_path / "plan.json"
+    assert main(["plan", "--lessons", "T18", "--seed", "7", "--out", str(out)]) == 0
+    plan = json.loads(out.read_text(encoding="utf-8"))
+    sides = {s["side"] for s in plan["slots"]}
+    assert len(plan["slots"]) == 40 and sides == {"doesn't rewrite the statement", "still quotes the deciding line"}
