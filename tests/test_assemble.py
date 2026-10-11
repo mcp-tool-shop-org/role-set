@@ -44,7 +44,7 @@ def test_assemble_a_and_b():
     assert a["kind"] == "A" and a["content_kind"] == "teaching" and a["turns"][0]["user"].startswith("P one.")
     with pytest.raises(AssemblyError, match="key_points"):
         assemble(s["A"], "t", {"passage": "P.", "question": "Q?", "reply": "R", "key_points": []})
-    b = assemble(s["B"], "goes to the source", {"puzzle": "Three. \nQuestion: which?", "thinking": "1. x\n2. y", "reply": "Answer: y", "answer": "y"})
+    b = assemble(s["B"], "goes to the source", {"puzzle": "Three: x, y, z. \nQuestion: which?", "thinking": "1. x\n2. y", "reply": "Answer: y", "answer": "y"})
     assert b["answer"] == "y" and b["structure"] == s["B"].structure and ("non-verification" in b["tags"]) == (not s["B"].verification)
     with pytest.raises(AssemblyError, match="Question"):
         assemble(s["B"], "t", {"puzzle": "no label", "thinking": "t", "reply": "r", "answer": "a"})

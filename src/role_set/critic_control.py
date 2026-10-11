@@ -251,13 +251,18 @@ def answer_leg(critic, rows: list[dict]) -> dict:
 
     from role_set.critic import ANSWER_LINE, answer_messages, compare_answer
 
+    from role_set.assemble import names_not_in_puzzle
+
     puzzles = [r for r in rows if r.get("kind") == "B" and r.get("turns")]
     keyed = [(r, *leg_key(str(r.get("answer", "")))) for r in puzzles]
+    # A reviewed key in descriptive form ("the red lamp" where the puzzle names colours) can't be compared closed; it is
+    # listed and left out until R&D restates it in the puzzle's own names (R&D, 2026-10-11).
+    descriptive = [r.get("id") for r, key, subset in keyed if subset == "as_written" and names_not_in_puzzle(key, r["turns"][0]["user"])]
     seconds: list[float] = []
     voids, disagreements = 0, []
     tally = {"as_written": [0, 0], "label_head": [0, 0]}  # subset -> [items, agree]
     for r, key, subset in keyed:
-        if key is None:
+        if key is None or r.get("id") in descriptive:
             continue
         v, c = None, None
         for ask in range(2):
@@ -281,7 +286,8 @@ def answer_leg(critic, rows: list[dict]) -> dict:
     subsets = {k: part(*v) for k, v in tally.items()}
     combined = part(sum(v[0] for v in tally.values()), sum(v[1] for v in tally.values()))
     written = subsets["as_written"]
-    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None], "subsets": subsets,
+    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None],
+            "descriptive_keys_left_out": descriptive, "subsets": subsets,
             "combined": combined, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
             "passes": bool(combined["items"]) and combined["rate"] >= ANSWER_BAR,
             "as_written_below_bar": bool(written["items"]) and written["rate"] < ANSWER_BAR, "disagreements": disagreements}

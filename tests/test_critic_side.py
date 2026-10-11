@@ -25,6 +25,25 @@ def test_the_trait_prompt_asks_for_the_deciding_step_with_the_contrasted_error_a
     assert "- T02: goes to the source. Decides: a summary" in msgs[1]["content"] and "- T14: doesn't fill gaps. Decides:" in msgs[1]["content"]
 
 
+def test_the_trait_check_reads_the_whole_item_and_tells_close_traits_apart():
+    from role_set.critic import PAIR_DISTINCTIONS, teaching_text
+
+    row = {"turns": [{"user": "The manager insists it shipped.", "thinking": "No new line.", "reply": "It stands."}], "key_points": ["k"]}
+    text = teaching_text(row)
+    assert "User: The manager insists it shipped." in text and "No new line." in text and '["k"]' in text
+    user = trait_messages(text, {"T05": "independent", "T13": "doesn't agree just to please"})[1]["content"]
+    assert "## Telling close traits apart" in user and all(p in user for p in PAIR_DISTINCTIONS)
+    assert {p.split(":")[0] for p in PAIR_DISTINCTIONS} == {"T05 or T13", "T04 or T14", "T03 or T16", "T02 or T14", "T01 or T11", "T05 or T02", "T16 or T10"}
+
+
+def test_answers_compare_without_case_or_a_leading_article_but_never_by_word_span():
+    from role_set.assemble import bare
+
+    assert bare("The Yard  Door") == "yard door" and compare_answer("ANSWER: yard door", "the yard door").ok
+    assert compare_answer("ANSWER: C", "ticket C").code == "ANSWER_MISMATCH"
+    assert "exactly as the puzzle names it" in answer_messages("Facts.\nQuestion: who?", "Zoe")[0]["content"]
+
+
 def test_trait_named_reads_the_trait_line_or_a_bare_id():
     assert trait_named("TRAIT: T05\nCONTRASTED: T13") == "T05" and trait_named("**TRAIT:** t09\nCONTRASTED: none") == "T09"
     assert trait_named("T12") == "T12" and trait_named("I think it's precise.") == ""
@@ -93,6 +112,12 @@ def test_a_void_answer_is_asked_once_more(tmp_path: Path):
     assert out.accepted and len(calls) == 2
 
 
+def b(i, key):
+    # Every candidate the answer-leg tests use is named in the puzzle, as R&D's rule asks.
+    return {"id": f"T02-B-{i:02d}", "kind": "B", "answer": key,
+            "turns": [{"user": f"Facts {i}. The names: Zoe, Mia, setup, test, deploy, Mira, Noah, Yellow, Red.\nQuestion: which?", "thinking": "", "reply": ""}]}
+
+
 # ---- critic-control's trait leg ----------------------------------------------------------------------------------
 def _rows():
     def row(i, lesson):
@@ -144,18 +169,17 @@ def test_three_unreadable_votes_are_not_unanimous_and_small_traits_are_thin():
 def test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement():
     from role_set.critic_control import ANSWER_BAR, answer_leg
 
-    def b(i, key):
-        return {"id": f"T02-B-{i:02d}", "kind": "B", "answer": key, "turns": [{"user": f"Facts {i}.\nQuestion: which?", "thinking": "", "reply": ""}]}
-
     rows = [b(1, "Zoe"), b(2, "setup, test, deploy"), b(3, "Mira=Yellow; Noah=Red"), b(4, "unsupported"),
-            b(5, "Noah ordered juice because it cost two pounds"), {"id": "T02-A-01", "kind": "A", "turns": [{"user": "u", "thinking": "", "reply": ""}]}]
+            b(5, "Noah ordered juice because it cost two pounds"), {"id": "T02-A-01", "kind": "A", "turns": [{"user": "u", "thinking": "", "reply": ""}]},
+            b(6, "the red lamp")]
     answers = {"Facts 1.": "ANSWER: Zoe", "Facts 2.": "ANSWER: test, setup, deploy", "Facts 3.": "ANSWER: noah=red; mira=yellow", "Facts 4.": "No idea."}
 
     def critic(messages, **kw):
         return _said(next(v for k, v in answers.items() if messages[1]["content"].startswith(k)))
 
     leg = answer_leg(critic, rows)
-    assert leg["puzzles"] == 5 and leg["keys_left_out"] == ["T02-B-05"] and leg["combined"] == {"items": 4, "agree": 2, "rate": 0.5}
+    assert leg["puzzles"] == 6 and leg["keys_left_out"] == ["T02-B-05"] and leg["combined"] == {"items": 4, "agree": 2, "rate": 0.5}
+    assert leg["descriptive_keys_left_out"] == ["T02-B-06"]  # "the red lamp" where the puzzle names only colours
     assert leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2 and leg["as_written_below_bar"] is True
     assert [(d["item"], d["code"], d["critic_answer"]) for d in leg["disagreements"]] == [
         ("T02-B-02", "ANSWER_MISMATCH", "test, setup, deploy"), ("T02-B-04", "VOID", None)]
@@ -168,10 +192,6 @@ def test_older_label_reason_keys_count_by_their_label_and_are_reported_apart():
     assert leg_key("cannot_tell: the notice never gives a distance") == ("cannot_tell", "label_head")
     assert leg_key("Undetermined: Rhea or Ulf was fastest") == (None, None) and leg_key("No - it fails") == (None, None)
     assert leg_key("Zoe") == ("Zoe", "as_written")
-
-    def b(i, key):
-        return {"id": f"T02-B-{i:02d}", "kind": "B", "answer": key, "turns": [{"user": f"Facts {i}.\nQuestion: which?", "thinking": "", "reply": ""}]}
-
     rows = [b(1, "Zoe"), b(2, "supported — both parts are backed"), b(3, "unsupported — the tile is square"), b(4, "Undetermined: either")]
     said = {"Facts 1.": "ANSWER: Mia", "Facts 2.": "ANSWER: supported", "Facts 3.": "ANSWER: unsupported"}
 

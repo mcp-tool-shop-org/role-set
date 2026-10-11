@@ -74,6 +74,27 @@ def trait_name(heading: str) -> str:
     return (first + " " + tail).strip()
 
 
+def bare(text: str) -> str:
+    """A closed answer's item without case or a leading article: "The yard door" and "yard door" are one answer. No
+    word-span matching: "C" is not "ticket C" (R&D, 2026-10-11)."""
+
+    return re.sub(r"^(?:the|a|an)\s+", "", " ".join(str(text).lower().split()))
+
+
+def names_not_in_puzzle(answer: str, puzzle: str) -> list[str]:
+    """The items of a closed answer that the puzzle never names: a key must use the puzzle's own names for its people,
+    items and options, so a second solver can name them the same way (R&D, 2026-10-11). A verdict label is exempt."""
+
+    form = closed_answer(answer)
+    if form is None or form[0] == "label":
+        return []
+    kind, v = form
+    items = list(v.keys()) + list(v.values()) if kind == "map" else (v if kind == "list" else [v])
+    text = " ".join(puzzle.lower().split())
+    # A uniqueness question's key ("undetermined", yes or no) names no candidate.
+    return [i for i in items if bare(i) and bare(i) not in text and bare(i) not in ("yes", "no") and not OPEN_KEY.fullmatch(bare(i))]
+
+
 def three_lines(verdict: str, deciding: list[str], escalate: str) -> str:
     if verdict not in VERDICTS:
         raise AssemblyError(f"verdict {verdict!r}")
@@ -201,6 +222,9 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         if closed_answer(fields["answer"]) is None:
             raise AssemblyError(f"the answer is not in closed form (a verdict label, a single value, a comma list or "
                                 f"'name=value; name=value'), with no explanation: {fields['answer'].strip()[:60]!r}")
+        unnamed = names_not_in_puzzle(fields["answer"], fields["puzzle"])
+        if unnamed:
+            raise AssemblyError(f"the answer names {unnamed[0]!r}, which the puzzle doesn't; use the puzzle's own names")
         tags = [] if slot.verification else ["non-verification"]
         row = _base(slot, trait, [{"invented": "puzzle, written for this item"}], True, "puzzle", tags)
         row["answer"] = fields["answer"].strip()

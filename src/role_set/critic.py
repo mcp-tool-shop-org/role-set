@@ -15,7 +15,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from role_set.assemble import FLAWS, VERDICTS, closed_answer
+from role_set.assemble import FLAWS, VERDICTS, bare, closed_answer
 from role_set.gates import Gates
 
 CRITIC_SYSTEM = (
@@ -81,19 +81,44 @@ TRAIT_TEMPERATURE = 0.7
 TRAIT_LINE = re.compile(r"^\s*\**\s*TRAIT\s*\**\s*:\s*\**\s*(T\d\d)\b", re.I | re.M)
 
 
+# The sibling traits the first trait leg confused most on reviewed items (T13 read as T05 on 22 of 40, T03 as T16 on
+# 14, T05 as T02 on 13, T04 as T14 on 12, T02 as T14 on 10, T01 as T11 on 8, T16 as T10 on 7), each told apart in the
+# lessons' own terms. Drafted from the lessons for R&D to correct.
+PAIR_DISTINCTIONS = (
+    "T05 or T13: T05 is not being swayed by who asks or how sure, important or urgent they are, treating authority and "
+    "certainty as no evidence; T13 is refusing to agree because agreeing is easier, wanted, or because everything so far "
+    "was fine.",
+    "T04 or T14: T04 decides the verdict when the material doesn't settle it, saying cannot_tell instead of the likely "
+    "answer; T14 decides the evidence, refusing to invent a quote or supply a missing piece.",
+    "T03 or T16: T03 points to the exact words that decide; T16 refuses to reject over a difference that doesn't change "
+    "the fact.",
+    "T02 or T14: T02 answers from the material instead of a summary, memory or someone's word about it; T14 refuses to "
+    "fill a gap the material leaves.",
+    "T01 or T11: T01 refuses a claim that only sounds right or familiar and asks to be shown; T11 searches for the "
+    "falsifier before accepting, because a wrong acceptance costs most.",
+    "T05 or T02: T05 is about pressure from the person asking; T02 is about which source answers.",
+    "T16 or T10: T16 accepts a difference that leaves the fact the same; T10 catches a difference in size or scope "
+    "(at least, exactly, every) that changes it.",
+)
+
+
 def trait_messages(teaching_text: str, traits: dict[str, str], steps: dict[str, str] | None = None) -> list[dict]:
     menu = "\n".join(f"- {k}: {v}" + (f". Decides: {steps[k]}" if steps and steps.get(k) else "") for k, v in sorted(traits.items()))
+    pairs = "\n".join(f"- {p}" for p in PAIR_DISTINCTIONS)
     return [
         {"role": "system", "content": TRAIT_SYSTEM},
-        {"role": "user", "content": f"## Traits\n{menu}\n\n## The item\n{teaching_text.strip()}"},
+        {"role": "user", "content": f"## Traits\n{menu}\n\n## Telling close traits apart\n{pairs}\n\n## The item\n{teaching_text.strip()}"},
     ]
 
 
 def teaching_text(row: dict) -> str:
-    """What the trait check reads: each turn's thinking and reply, and an item's key points, quiz and variant."""
+    """What the trait check reads: the whole item, each turn's user text, thinking and reply, and its key points, quiz
+    and variant. The first trait leg read only the thinking and replies and never saw the situation (the pressure, the
+    request to agree, the material), which R&D ruled the critic needs."""
 
     parts = []
     for t in row["turns"]:
+        parts.append("User: " + t.get("user", ""))
         parts.append(t.get("thinking", ""))
         parts.append(t.get("reply", ""))
     for k in ("key_points", "quiz", "variant"):
@@ -202,7 +227,8 @@ def answer_messages(puzzle: str, key_answer: str) -> list[dict]:
     shape = ANSWER_FORMS[form[0]] if form else ANSWER_FORMS["value"]
     return [
         {"role": "system", "content": "Solve the puzzle using only its facts. Work it out briefly, then end with one line: "
-                                      f"ANSWER: <the answer>, written as {shape}, with no explanation on that line."},
+                                      f"ANSWER: <the answer>, written as {shape}, with no explanation on that line. Name "
+                                      "each person, item or option exactly as the puzzle names it."},
         {"role": "user", "content": puzzle_for_critic(puzzle)},
     ]
 
@@ -232,7 +258,7 @@ def same_answer(a: tuple, b: tuple) -> bool:
     if ka != kb:
         return False
     if ka == "map":
-        return {k.strip(): v.strip() for k, v in va.items()} == {k.strip(): v.strip() for k, v in vb.items()}
+        return {bare(k): bare(v) for k, v in va.items()} == {bare(k): bare(v) for k, v in vb.items()}
     if ka == "list":
-        return [x.strip() for x in va] == [x.strip() for x in vb]
-    return str(va).strip() == str(vb).strip()
+        return [bare(x) for x in va] == [bare(x) for x in vb]
+    return bare(str(va)) == bare(str(vb))
