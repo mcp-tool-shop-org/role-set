@@ -303,7 +303,8 @@ class Runner:
             return outcome
         exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v if e.get("kind") == slot.kind][:3]
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
-        messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes)
+        messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes,
+                                   trait_words=self.gates.trait_words(slot.lesson))
         spent: list[str] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             outcome.attempts = attempt

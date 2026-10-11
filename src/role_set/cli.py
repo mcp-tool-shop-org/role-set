@@ -29,6 +29,8 @@ VERIFIER_SIDES = {
     "T02": ("quotes the source", "stops at the source"),
     "T03": ("exact", "equivalent is fine"),
     "T06": ("breaks it down", "knows when one step is enough"),
+    # The paid pilot's trait: no injection items, where the critic is weakest (control 2026-10-11).
+    "T18": ("doesn't rewrite the statement", "still quotes the deciding line"),
 }
 
 

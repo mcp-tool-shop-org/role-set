@@ -23,8 +23,9 @@ FIELDS = {
 
 HOUSE_RULES = (
     "Write every field in fresh words of your own. Never copy a sentence from the lesson, the rules or an "
-    "exemplar. The user-facing text must not contain the word 'verifier', any trait name, or the words tree, "
-    "prune, falsifier, elimination, grid; the other party in a contrasting case is 'the other checker'. "
+    "exemplar. In kinds C and D and in verdict-type E, the user-facing text must not contain the word "
+    "'verifier', any trait name, or the words tree, prune, falsifier, elimination, grid; the other party in a "
+    "contrasting case is 'the other checker'. Kinds A, B and written E name the trait or the pattern by design. "
     "A prompt frames the task and never states the answer, the verdict, the flaw, or what the material "
     "contains. Quote material lines exactly, marks and all, whole table rows, and the version heading with "
     "its bullet. Thinking states what the claim asserts, the line found, the sweep for anything that "
@@ -45,7 +46,29 @@ def kind_key(slot: Slot) -> str:
     return slot.kind
 
 
-def slot_brief(slot: Slot, coverage_notes: list[str]) -> str:
+def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
+    """The gates' mechanical rules for this kind, stated before the first draft rather than after a refusal.
+    The 2026-10-11 rehearsal lost every kind-A slot to two rules the writer was never told."""
+
+    rules: list[str] = []
+    if slot.kind == "A":
+        names = ", ".join(f"'{w}'" for w in (trait_words or []))
+        rules.append("Kind A: the passage has at least two full sentences before the question, and it names the trait "
+                     + (f"in one of these exact words: {names}" if names else "by its name as the lesson heading gives it")
+                     + ". The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.")
+    if slot.kind == "B":
+        rules.append("Kind B: the thinking or the reply draws the pattern, as tree glyphs (├ └ │), a grid table of | rows, "
+                     "or numbered elimination steps (1. 2. 3.).")
+    if slot.kind == "E" and slot.e_type == "written":
+        rules.append("Written E: the variant re-asks the question in other words, and its key points share at least one "
+                     "point with the original's.")
+    if slot.kind == "E" and slot.e_type == "verdict":
+        rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
+                     "it never summarises the material or hints at the verdict.")
+    return rules
+
+
+def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | None = None) -> str:
     """What this slot fixes, and what the batch still needs, in plain words."""
 
     lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}."]
@@ -70,6 +93,7 @@ def slot_brief(slot: Slot, coverage_notes: list[str]) -> str:
         lines.append(f"The thinking pattern is: {slot.structure.replace('_', ' ')}. " + ("This is a verification case." if slot.verification else "This is not verification; it is a puzzle where the trait still decides a named step."))
     if slot.kind == "E":
         lines.append("Write a quiz item and a variant that re-asks the same point in new words." if slot.e_type == "written" else "Write a short verdict mini-case and a variant that re-asks it in new words.")
+    lines += hard_rules(slot, trait_words)
     if coverage_notes:
         lines.append("Still needed in this trait: " + "; ".join(coverage_notes) + ".")
     return "\n".join(lines)
@@ -84,6 +108,7 @@ def writer_messages(
     avoid: list[str],
     facts: dict | None = None,
     coverage_notes: list[str] | None = None,
+    trait_words: list[str] | None = None,
 ) -> list[dict]:
     trait = pack.get(f"traits/{slot.lesson}.md", "")
     kinds = pack.get("kinds.md", "")
@@ -100,7 +125,7 @@ def writer_messages(
         "## The trait lesson\n" + trait.strip(),
         "## Required parts for this kind\n" + kinds.strip(),
         "## Amendments\n" + amendments.strip(),
-        "## This slot\n" + slot_brief(slot, coverage_notes or []),
+        "## This slot\n" + slot_brief(slot, coverage_notes or [], trait_words),
     ]
     if material_text is not None:
         user_parts.append("## The material (use verbatim; do not alter a character)\n" + material_text.rstrip("\n"))

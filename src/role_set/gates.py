@@ -30,6 +30,11 @@ class Gates:
     def check_batch(self, rows: list[dict]) -> None:
         self.module.check_batch(rows)  # type: ignore[attr-defined]
 
+    def trait_words(self, lesson: str) -> list[str]:
+        """The words the gates accept as naming a trait in a kind-A passage (constants.TRAIT_NAMES), or []."""
+        names = getattr(getattr(self.module, "constants", None), "TRAIT_NAMES", None) or {}
+        return list(names.get(lesson, []))
+
     def parse_answer(self, reply: str) -> dict:
         return self.module.answer_format.parse_answer(reply)  # type: ignore[attr-defined]
 
