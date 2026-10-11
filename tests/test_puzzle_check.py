@@ -148,3 +148,20 @@ def test_skeletons_ignore_names_order_and_direction_but_keep_attribute_shape():
                         {"line": 3, "rule": ["offset", "A", "B", "s", 1]}, {"line": 4, "rule": ["count", "s", "1", "=", 1]},
                         {"line": 5, "rule": ["same", "C", {"s": "3"}]}, {"line": 6, "rule": ["not_adjacent", "A", "C", "s"]}]}
     assert skeleton(nested).startswith("[")
+
+
+def test_a_symmetric_clue_in_either_order_and_a_negative_offset_are_one_skeleton():
+    from role_set.puzzle_check import skeleton
+
+    def m(*rules):
+        return {"entities": ["X", "Y", "Z"], "attributes": {"h": {"values": ["1st", "2nd", "3rd"], "ordered": True}},
+                "facts": [{"line": i + 2, "rule": r} for i, r in enumerate(rules)]}
+
+    # R&D on role-set#37: swapping the names in one adjacent clue let a copy through.
+    assert skeleton(m(["is_not", "X", "h", "3rd"], ["adjacent", "Z", "X", "h"])) == skeleton(m(["is_not", "X", "h", "3rd"], ["adjacent", "X", "Z", "h"]))
+    assert skeleton(m(["if", ["is", "Y", "h", "1st"], ["different", "X", "Z"]], ["is_not", "X", "h", "1st"])) == \
+        skeleton(m(["is_not", "Y", "h", "1st"], ["if", ["is", "X", "h", "1st"], ["different", "Z", "Y"]]))
+    assert skeleton(m(["offset", "X", "Y", "h", -1])) == skeleton(m(["offset", "Y", "X", "h", 1]))
+    # Past the reading cap the facts are compared as written, still renamed.
+    many = m(*[["not_adjacent", "X", "Y", "h"]] * 9)
+    assert skeleton(many) == skeleton(m(*[["not_adjacent", "Y", "Z", "h"]] * 9))

@@ -19,6 +19,7 @@ from __future__ import annotations
 import hashlib
 import itertools
 import json
+import math
 from collections import Counter
 from pathlib import Path
 
@@ -29,18 +30,33 @@ from role_set.puzzle import PuzzleError, check_puzzle
 VERDICT_STRUCTURE = "verdict"
 STRUCTURES = tuple(name for name, _ in PUZZLE_STRUCTURES) + (VERDICT_STRUCTURE,)
 LOOKUPS_PER_LESSON = 1
-# Fact orders tried when canonicalising a skeleton; a puzzle with more facts is compared in its written order.
-SKELETON_PERMUTE_MAX = 7
+# Readings tried when canonicalising a skeleton (fact orders times argument orders of symmetric clues); past this,
+# a puzzle is compared as written.
+SKELETON_READINGS_MAX = 50_000
+SYMMETRIC = ("adjacent", "not_adjacent", "same", "different")
 
 
 def _canon(rule) -> list:
-    """`after a b` is `before b a`; every other form as written."""
+    """`after a b` is `before b a`, and `offset a b -k` is `offset b a k`; every other form as written."""
 
     if rule[0] == "after":
         return ["before", rule[2], rule[1], *rule[3:]]
+    if rule[0] == "offset" and rule[4] < 0:
+        return ["offset", rule[2], rule[1], rule[3], -rule[4]]
     if rule[0] in ("not", "and", "or", "if"):
         return [rule[0], *(_canon(r) for r in rule[1:])]
     return list(rule)
+
+
+def _variants(rule) -> list:
+    """Each way of writing a clue that says the same thing: a symmetric relation in either argument order (R&D on
+    role-set#37: `adjacent Z X` and `adjacent X Z` are one clue), nested ones included."""
+
+    if rule[0] in SYMMETRIC:
+        return [rule, [rule[0], rule[2], rule[1], *rule[3:]]]
+    if rule[0] in ("not", "and", "or", "if"):
+        return [[rule[0], *parts] for parts in itertools.product(*(_variants(r) for r in rule[1:]))]
+    return [rule]
 
 
 def _rename(model: dict, facts: list) -> str:
@@ -87,12 +103,15 @@ def _rename(model: dict, facts: list) -> str:
 
 def skeleton(model: dict) -> str:
     """A puzzle's fact skeleton: its facts renamed (see `_rename`), with flavour, the question and any claim dropped,
-    taken in the fact order whose serialisation sorts first, so line order and naming don't hide a copy (R&D found six
-    copies by hand in aspire-si#95)."""
+    taken in the reading (fact order, and argument order of each symmetric clue) whose serialisation sorts first, so line
+    order, naming and a swapped symmetric clue don't hide a copy (R&D found six copies by hand in aspire-si#95)."""
 
     facts = [_canon(f["rule"]) for f in model["facts"]]
-    orders = itertools.permutations(facts) if len(facts) <= SKELETON_PERMUTE_MAX else [facts]
-    return min(_rename(model, list(o)) for o in orders)
+    variants = [_variants(r) for r in facts]
+    readings = math.factorial(len(facts)) * math.prod(len(v) for v in variants)
+    if readings > SKELETON_READINGS_MAX:
+        return _rename(model, facts)
+    return min(_rename(model, list(choice)) for order in itertools.permutations(variants) for choice in itertools.product(*order))
 
 
 def models_path(data: Path) -> Path:
