@@ -22,10 +22,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
-from role_set.critic import compare_answer, compare_flaw, compare_trait, compare_verdict, flaw_messages, trait_messages, verdict_messages
+from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw, compare_trait_votes, compare_verdict,
+                             flaw_messages, teaching_text, trait_messages, verdict_messages)
 from role_set.gates import Gates
 from role_set.plan import Slot
 from role_set.prompts import FIELDS, kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
+from role_set.trait_steps import TRAIT_STEPS
 from role_set.transport import TransportError
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
@@ -324,15 +326,7 @@ def truth_checks(row: dict, facts: dict | None) -> tuple[str, str] | None:
     return None
 
 
-def _teaching_text(row: dict) -> str:
-    parts = []
-    for t in row["turns"]:
-        parts.append(t.get("thinking", ""))
-        parts.append(t.get("reply", ""))
-    for k in ("key_points", "quiz", "variant"):
-        if k in row:
-            parts.append(json.dumps(row[k], ensure_ascii=False))
-    return "\n".join(parts)
+_teaching_text = teaching_text  # the trait check reads the same text in a run and in critic-control
 
 
 class Runner:
@@ -527,12 +521,21 @@ class Runner:
                     self.status.critic_asked += 1
                     self._log("flaw_advisory", slot=slot.id, detail=f.detail, critic_raw=c.text[:2000])
         elif slot.kind == "B":
-            c = self.critic([{"role": "system", "content": "Solve the puzzle. Answer with the answer only."}, {"role": "user", "content": row["turns"][0]["user"]}])
+            for ask in range(2):
+                c = self.critic(answer_messages(row["turns"][0]["user"], row["answer"]))
+                self._count_tokens(c)
+                v = compare_answer(c.text, row["answer"])
+                if v.code != "VOID":
+                    break
+                self._log("critic_void", slot=slot.id, detail=v.detail)
+            verdicts.append((v, c.text))
+        # The trait is a majority of three calls (R&D, 2026-10-11): one call was unstable on 5 of 20 items.
+        votes = []
+        for seed in range(TRAIT_VOTES):
+            c = self.critic(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS), temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
-            verdicts.append((compare_answer(c.text, row["answer"]), c.text))
-        c = self.critic(trait_messages(_teaching_text(row), self.trait_names))
-        self._count_tokens(c)
-        verdicts.append((compare_trait(c.text, slot.lesson), c.text))
+            votes.append(c.text)
+        verdicts.append((compare_trait_votes(votes, slot.lesson), json.dumps(votes, ensure_ascii=False)))
         for v, raw in verdicts:
             self.status.critic_asked += 1
             if v.ok:

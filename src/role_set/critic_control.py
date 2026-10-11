@@ -167,3 +167,57 @@ def load_rows(paths: list[Path]) -> list[dict]:
             if line.strip():
                 rows.append(json.loads(line))
     return rows
+
+
+# ---- the trait leg ---------------------------------------------------------------------------------------------
+# R&D's bar (2026-10-11), on reviewed items whose trait is known (the slot's lesson), majority of three calls: overall
+# agreement at least 85%, every trait at least 70%, and the three calls unanimous on at least 90% of items. If the
+# critic misses it, its prompt changes before the trait check gates again; the gate is never relaxed to fit the critic.
+TRAIT_BAR = {"overall": 0.85, "per_trait": 0.70, "stability": 0.90}
+
+
+def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict[str, str] | None = None, *,
+              concurrency: int = 1, log=None) -> dict:
+    """Ask the critic, three times each, which trait every reviewed item teaches, and score it against the known trait."""
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    from role_set.critic import TRAIT_TEMPERATURE, TRAIT_VOTES, majority, teaching_text, trait_messages, trait_named
+
+    items = [r for r in rows if r.get("lesson") in trait_names and r.get("turns")]
+
+    def ask(r: dict) -> tuple[str, list[str]]:
+        msgs = trait_messages(teaching_text(r), trait_names, steps)
+        return r["lesson"], [trait_named(critic(msgs, temperature=TRAIT_TEMPERATURE, seed=s).text) for s in range(TRAIT_VOTES)]
+
+    if concurrency > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            answers = list(pool.map(ask, items))
+    else:
+        answers = [ask(r) for r in items]
+    per: dict[str, dict] = {}
+    confusion: dict[str, dict] = {}
+    agree = unanimous = with_majority = 0
+    for r, (known, votes) in zip(items, answers):
+        won = majority(votes)
+        cell = per.setdefault(known, {"items": 0, "agree": 0})
+        cell["items"] += 1
+        named = won or "split"
+        confusion.setdefault(known, {})[named] = confusion.setdefault(known, {}).get(named, 0) + 1
+        unanimous += len(set(votes)) == 1
+        with_majority += won is not None
+        if won == known:
+            agree += 1
+            cell["agree"] += 1
+        elif log:
+            log({"item": r.get("id"), "known": known, "votes": votes})
+    n = len(items)
+    for cell in per.values():
+        cell["rate"] = round(cell["agree"] / cell["items"], 3)
+    overall = round(agree / n, 3) if n else None
+    stability = round(unanimous / n, 3) if n else None
+    worst = min((c["rate"] for c in per.values()), default=None)
+    passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
+    return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
+            "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
+            "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}

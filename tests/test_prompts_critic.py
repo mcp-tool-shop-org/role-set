@@ -94,7 +94,9 @@ def test_compare_flaw_trait_answer_and_message_builders():
     assert compare_flaw("Caved, clearly", "guess").code == "FLAW_MISMATCH"
     assert compare_flaw("", "guess").code == "VOID"
     assert compare_trait("t02", "T02").ok and compare_trait("T05", "T02").code == "TRAIT_MISMATCH" and not compare_trait("", "T02").ok
-    assert compare_answer("Gold cup", "gold").ok is False and compare_answer("the gold cup", "cup gold the").ok
+    # Closed answers compared, never free text (R&D on the 235B pilot): a free word order doesn't pass, a missing ANSWER line is void.
+    assert compare_answer("Working.\nANSWER: gold cup", "gold cup").ok and compare_answer("ANSWER: Gold", "gold cup").code == "ANSWER_MISMATCH"
+    assert compare_answer("Gold cup", "gold cup").code == "VOID" and compare_answer("ANSWER: cup gold the", "the gold cup").code == "ANSWER_MISMATCH"
     assert "Statement: S" in verdict_messages("M", "S")[1]["content"]
     assert "answered: supported" in flaw_messages("M", "S", "trace", "supported")[1]["content"]
     assert "- T02: goes to the source" in trait_messages("item", {"T02": "goes to the source"})[1]["content"]

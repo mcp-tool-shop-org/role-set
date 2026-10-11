@@ -16,9 +16,11 @@ from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
 from role_set.store import counts, open_store, void_round
-from role_set.critic_control import FALSE_REFUSAL_CAP, cases_from_rows, load_rows, plant_errors, run_control
+from role_set.critic_control import FALSE_REFUSAL_CAP, cases_from_rows, load_rows, plant_errors, run_control, trait_leg
 from role_set.guards import require_grant, require_heartbeat, require_ollama_digest
-from role_set.write import allowed_critics
+from role_set.prompts import load_pack
+from role_set.trait_steps import TRAIT_STEPS
+from role_set.write import allowed_critics, trait_names_from_pack
 from role_set.transport import ollama_chat, unload
 from role_set.write import WriteConfig, WriteRefused
 from role_set.write import run as run_write
@@ -173,12 +175,27 @@ def _critic_control(args: argparse.Namespace) -> int:
         print(e, file=sys.stderr)
         return 2
     rows = load_rows([Path(p) for p in args.items])
-    cases = cases_from_rows(rows)
-    planted = plant_errors(cases, args.planted, seed=args.seed)
     log: list = []
 
-    def critic(messages):
-        return ollama_chat(endpoint, args.critic_model, messages)
+    def critic(messages, **sampling):
+        return ollama_chat(endpoint, args.critic_model, messages, **sampling)
+
+    if args.trait_leg:
+        # The trait leg alone: which trait each reviewed item teaches, three calls each, against R&D's bar.
+        if not args.pack:
+            print("REFUSED: --trait-leg needs --pack (the trait names come from the pack)", file=sys.stderr)
+            return 2
+        trait_names = trait_names_from_pack(load_pack(Path(args.pack)))
+        try:
+            leg = trait_leg(critic, rows, trait_names, TRAIT_STEPS, concurrency=args.concurrency, log=log.append)
+        finally:
+            unload(endpoint, args.critic_model)
+        out = {"critic_model": args.critic_model, "critic_digest": digest, "grant": args.grant, "trait_leg": leg, "misses": log}
+        Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+        print(json.dumps({k: v for k, v in leg.items() if k not in ("confusion", "per_trait")}))
+        return 0 if leg["passes"] else 2
+    cases = cases_from_rows(rows)
+    planted = plant_errors(cases, args.planted, seed=args.seed)
 
     try:
         report = run_control(gates, critic, cases, planted=planted, log=log.append)
@@ -260,6 +277,9 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--grant", required=True)
     cc.add_argument("--heartbeat", required=True)
     cc.add_argument("--out", default="critic-control.json")
+    cc.add_argument("--trait-leg", action="store_true", help="run only the trait leg: three calls per reviewed item against R&D's bar")
+    cc.add_argument("--pack", help="the synced role pack (for --trait-leg's trait names)")
+    cc.add_argument("--concurrency", type=int, default=1, help="parallel critic calls for --trait-leg (match OLLAMA_NUM_PARALLEL)")
     cc.set_defaults(func=_critic_control)
 
     h = sub.add_parser("harvest", help="real excerpts from pinned, licence-checked repos into a local pool")
