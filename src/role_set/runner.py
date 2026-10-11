@@ -833,7 +833,10 @@ class Runner:
                 # The halt fired on this slot's own call, after its row may already have been accepted. Its outcome
                 # is still reported: pilot 2 lost four accepted slots this way, and its readout's kinds summed to 45 of 49.
                 with self.lock:
-                    self.finished.append(Outcome(slot_id=slot.id, accepted=any(r.get("id") == slot.id for r in self.accepted), attempts=0))
+                    done = any(r.get("id") == slot.id for r in self.accepted)
+                    # Not accepted: the slot was cut short, not finished, so a relaunch (pilot-auto) runs it again.
+                    self.finished.append(Outcome(slot_id=slot.id, accepted=done, attempts=0, skipped=not done,
+                                                 skip_reason=None if done else "run halted during the slot"))
                 raise
             with self.lock:
                 self.finished.append(out)

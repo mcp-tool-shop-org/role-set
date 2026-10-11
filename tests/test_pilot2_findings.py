@@ -88,3 +88,68 @@ def test_each_accepted_row_is_written_beside_its_critic_checks(tmp_path: Path):
     review = [json.loads(x) for x in (tmp_path / "out" / "review.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(review) == len(accepted) and [x["row"] for x in review] == [json.loads(x) for x in accepted]
     assert any(x["critic"] for x in review) and all({"check", "code"} <= set(n) for x in review for n in x["critic"])
+
+
+def test_a_partial_quote_is_mislabelled_but_restating_the_statement_is_not():
+    material = "Desk hours\nThe front desk is open on Sundays from 10:00 to 14:00 for returns.\n"
+    assert rubber_stamp_mislabel("It's open on sundays from 10:00, fine.", material).startswith("quotes the material")
+    statement = "The front desk is open on Sundays."
+    assert rubber_stamp_mislabel("The front desk is open on Sundays, they say, and I agree.", material, statement) is None
+    for marker in ("It must be right.", "Otherwise how would it get there?", "That's reasonable to accept.", "I assume so.",
+                   "Presumably it holds.", "It's approximately the same."):
+        assert "which is a guess" in rubber_stamp_mislabel(marker, material), marker
+    # Dropped: each fired on a reviewed rubber_stamp row.
+    assert rubber_stamp_mislabel("Close enough, I agree.", material) is None
+    assert rubber_stamp_mislabel("Roughly what it says, I agree.", material) is None
+
+
+def test_a_flaw_reaches_the_verdict_its_name_says():
+    from role_set.assemble import FLAW_VERDICTS, slot_flaw
+
+    s = _slot("C")
+    s.verdict, s.pair = "unsupported", None
+    base = {"framing": "Check the other checker's work.", "statement": "The desk is closed on Sundays.", "deciding": [OPEN],
+            "thinking": "The claim asserts closure.", "reply": "They agreed without looking.",
+            "checker_trace": "The user is confident and it sounds right, so I agree."}
+    with pytest.raises(AssemblyError, match="a planted rubber_stamp reaches supported, not cannot_tell"):
+        assemble(s, "t", {**base, "planted_flaw": "rubber_stamp", "checker_verdict": "cannot_tell"}, NOTICE)
+    s.verdict = "cannot_tell"
+    with pytest.raises(AssemblyError, match="a planted reject_by_default reaches unsupported or cannot_tell, not supported"):
+        assemble(s, "t", {**base, "deciding": [], "planted_flaw": "reject_by_default", "checker_verdict": "supported"}, NOTICE)
+    s.verdict = "supported"
+    row = assemble(s, "t", {**base, "planted_flaw": "reject_by_default", "checker_verdict": "cannot_tell",
+                            "checker_trace": "The notice doesn't mention it, so no."}, NOTICE)
+    assert row["checker_verdict"] == "cannot_tell"
+    assert FLAW_VERDICTS["rubber_stamp"] == ("supported",)
+    # A rubber stamp can't be planted on a supported key: the slot gives way to the next flaw.
+    s.verdict = "supported"
+    s.id = "T02-C-01"
+    assert slot_flaw(s) == "guess"
+    s.verdict = "unsupported"
+    assert slot_flaw(s) == "rubber_stamp"
+    rules = slot_brief(s, [])
+    assert "checker_verdict is supported;" in rules
+
+
+def test_a_slot_cut_off_by_the_halt_is_reported_as_not_finished(tmp_path: Path):
+    import types
+
+    from role_set.runner import RunHalted
+
+    r, writer, _ = _runner(tmp_path)
+    slots = [s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A"][:2]
+    calls = []
+
+    def halting(messages, seed=0):
+        calls.append(1)
+        if len(calls) == 2:
+            r.status.halted = "systemic: 5 of the last 20 writer calls failed to parse or reach the writer"
+            return types.SimpleNamespace(text="no json", prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1)
+        return writer(messages, seed=seed)
+
+    r.writer = halting
+    with pytest.raises(RunHalted):
+        r.run(slots)
+    report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
+    cut = next(o for o in report["outcomes"] if o["slot"] == slots[0].id)
+    assert cut["skipped"] and cut["skip_reason"] == "run halted during the slot" and not cut["accepted"]

@@ -32,7 +32,8 @@ def _work(tmp_path: Path, n_slots=6) -> Path:
 
 
 def _fake_write(clock, endings, minutes=5):
-    """Each attempt reaches its plan's first two slots, accepts one, and ends as `endings` says."""
+    """Each attempt finishes its plan's first two slots (one accepted, one refused); the third was cut off by the stop,
+    has drafts, and must run again. It ends as `endings` says."""
 
     seen = []
 
@@ -42,9 +43,10 @@ def _fake_write(clock, endings, minutes=5):
         ended, halted, status = endings[len(seen) - 1]
         out = d / "out"
         out.mkdir()
-        reached = plan["slots"][:2]
+        reached = plan["slots"][:3]
+        outcomes = [{"slot": s["id"], "accepted": i == 0, "skipped": i == 2} for i, s in enumerate(reached)]
         (out / "drafts.jsonl").write_text("".join(json.dumps({"slot": s["id"]}) + "\n" for s in reached))
-        (out / "batch-report.json").write_text(json.dumps({"status": {"accepted": 1, "attempted": 2, **status}}))
+        (out / "batch-report.json").write_text(json.dumps({"status": {"accepted": 1, "attempted": 2, **status}, "outcomes": outcomes}))
         (d / "budget.json").write_text(json.dumps({"ended_by": ended, "halted": halted, "critic_unloaded": True, "ollama_ps_after": "empty"}))
         clock.t += minutes * 60
         return 2 if ended == "systemic stop" else 0
@@ -72,6 +74,7 @@ def test_it_waits_for_the_lane_then_relaunches_on_the_remaining_slots(tmp_path: 
     assert state["lane_served_at"] == T0 + 20  # two polls of 10 s before the lane answered
     assert [a["dir"] for a in state["attempts"]] == ["attempt-1", "attempt-2", "attempt-3"]
     assert len(seen[0]) == 12 and seen[1] == seen[0][2:] and not set(seen[0][:2]) & set(seen[1])
+    assert seen[0][2] in seen[1]  # cut off by the stop, with drafts: it runs again
     # The second attempt's halted cell carries over: no T01 B slot in the third attempt.
     assert not any(s.startswith("T01-B") for s in seen[2]) and state["attempts"][2]["carried_over"]["cell halted"] > 0
     assert state["done"] and state["ended_by"] == "queue" and state["accepted"] == 3 and state["card_free"]

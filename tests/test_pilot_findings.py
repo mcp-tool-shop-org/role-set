@@ -120,7 +120,7 @@ def test_the_c_brief_says_which_flaw_the_slot_plants():
     slots = [s for s in plan_lesson("T02", SIDES, seed=1) if s.kind == "C"]
     planted = next(s for s in slots if int(s.id.rsplit("-", 1)[1]) % 2 == 1)
     right = next(s for s in slots if int(s.id.rsplit("-", 1)[1]) % 2 == 0)
-    assert "The other checker is wrong through one flaw" in slot_brief(planted, []) and f"other than {planted.verdict}" in slot_brief(planted, [])
+    assert "The other checker is wrong through one flaw" in slot_brief(planted, []) and f"checker_verdict is {planted.verdict}" not in slot_brief(planted, [])
     assert f"The other checker was right: checker_verdict is {right.verdict}" in slot_brief(right, [])
 
 

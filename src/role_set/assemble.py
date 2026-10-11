@@ -322,14 +322,17 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         proposed = str(fields.get("checker_verdict") or "").strip()
         if flaw == "none":
             checker_verdict = slot.verdict
-        elif proposed in VERDICTS and proposed != slot.verdict:
+        elif proposed in VERDICTS and proposed != slot.verdict and proposed in FLAW_VERDICTS.get(flaw, VERDICTS):
             checker_verdict = proposed
+        elif proposed in VERDICTS and proposed != slot.verdict:
+            raise AssemblyError(f"a planted {flaw} reaches {' or '.join(FLAW_VERDICTS[flaw])}, not {proposed}: "
+                                + ("a rubber stamp approves" if flaw == "rubber_stamp" else "rejecting by default calls silence a denial"))
         else:
             # It used to be replaced silently, and the trace kept arguing for the writer's verdict: 10 of 21 pilot C rows
             # showed a "Checker verdict" line that contradicted the checker's own reasoning.
             raise AssemblyError(f"with a planted flaw, checker_verdict must be a verdict other than {slot.verdict}, and the trace must argue for it")
         if flaw == "rubber_stamp":
-            mislabel = rubber_stamp_mislabel(fields["checker_trace"], material.text)
+            mislabel = rubber_stamp_mislabel(fields["checker_trace"], material.text, fields["statement"])
             if mislabel:
                 raise AssemblyError(f"planted rubber_stamp, but the checker's trace {mislabel}; a rubber stamp quotes nothing and reasons only by agreement")
         argued = {v for v, rx in VERDICT_WORDS.items() if rx.search(fields["checker_trace"])} - {checker_verdict}
@@ -440,21 +443,35 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
     raise AssemblyError(f"unknown kind {k!r}")  # pragma: no cover
 
 
-# Reasons from outside the material, as the pilot-2 traces planted as rubber_stamp gave them ("must have been a
-# courier", "usually Thursdays", "the standard way", "close to 9:00"): each makes the flaw a guess.
-OUTSIDE_REASON = re.compile(r"\b(usually|typically|normally|generally|commonly|standard|must have|probably|likely|close to|"
-                            r"most (?:people|teams|companies)|in practice|as is common|everyone knows)\b", re.IGNORECASE)
-QUOTE_MIN_CHARS = 12
+# Reasons from outside the material, as the pilot-2 traces planted as rubber_stamp gave them: each makes the flaw a
+# guess. R&D's list, run over the 11 reviewed rubber_stamp rows (aspire-si a7ec783): "close enough" and "roughly"
+# fired on reviewed rows and were dropped.
+OUTSIDE_REASON = re.compile(
+    r"\b(usually|typically|normally|generally|commonly|standard|must have|must be|probably|likely|presumably|close to|"
+    r"most (?:people|teams|companies)|in practice|in general|as is common|everyone knows|otherwise how|reasonable|"
+    r"makes sense|always|of course|obviously|tend to|assume|assuming|about the same|approximately|basically|near enough)\b",
+    re.IGNORECASE)
+QUOTE_SPAN_WORDS = 5
+WORD = re.compile(r"[a-z0-9]+(?:['’][a-z]+)?")
+# The verdict a checker's trace must reach for the flaw to be what it says (R&D): a rubber stamp approves; rejecting
+# by default calls silence a denial. Flaws without an entry may reach any verdict other than the key.
+FLAW_VERDICTS = {"rubber_stamp": ("supported",), "reject_by_default": ("unsupported", "cannot_tell")}
 
 
-def rubber_stamp_mislabel(trace: str, material: str) -> str | None:
-    """Why a trace planted as rubber_stamp is another flaw: it quotes a material line, or reasons from outside it."""
+def _spans(text: str, n: int) -> set[str]:
+    words = WORD.findall(text.lower())
+    return {" ".join(words[i:i + n]) for i in range(len(words) - n + 1)}
 
-    flat = " ".join(trace.split()).lower()
+
+def rubber_stamp_mislabel(trace: str, material: str, statement: str = "") -> str | None:
+    """Why a trace planted as rubber_stamp is another flaw: it quotes the material (any 5-word span of a material line
+    that the statement doesn't share, so restating the statement stays allowed), or reasons from outside it."""
+
+    said = _spans(trace, QUOTE_SPAN_WORDS) - _spans(statement, QUOTE_SPAN_WORDS)
     for line in material.splitlines():
-        bit = " ".join(line.strip(" -*#|").split()).lower().rstrip(".,;:!?")
-        if len(bit) >= QUOTE_MIN_CHARS and bit in flat:
-            return f"quotes the material ('{line.strip()[:60]}')"
+        hit = sorted(_spans(line, QUOTE_SPAN_WORDS) & said)
+        if hit:
+            return f"quotes the material ('{hit[0]}')"
     m = OUTSIDE_REASON.search(trace)
     if m:
         return f"reasons from outside the material ('{m.group(0)}'), which is a guess"
@@ -462,11 +479,16 @@ def rubber_stamp_mislabel(trace: str, material: str) -> str | None:
 
 
 def slot_flaw(slot: Slot) -> str:
-    """Which flaw a C slot plants, from its position: four planted, four 'the checker was right', alternating."""
+    """Which flaw a C slot plants, from its position: four planted, four 'the checker was right', alternating. A flaw
+    that can't reach a verdict other than the slot's key (a rubber stamp on a supported key) gives way to the next."""
 
     n = int(slot.id.rsplit("-", 1)[1])
     if n % 2 == 0:
         return "none"
-    return FLAWS[(n // 2) % len(FLAWS)]
+    for j in range(len(FLAWS)):
+        flaw = FLAWS[(n // 2 + j) % len(FLAWS)]
+        if set(FLAW_VERDICTS.get(flaw, VERDICTS)) - {slot.verdict}:
+            return flaw
+    return FLAWS[(n // 2) % len(FLAWS)]  # pragma: no cover - every verdict leaves some flaw
 
 

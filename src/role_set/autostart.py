@@ -65,9 +65,13 @@ def wait_for_lane(port: int, deadline: float, *, serve_by: float | None = None, 
     return False
 
 
-def _status(attempt: Path) -> dict:
+def _report(attempt: Path) -> dict:
     reports = sorted((attempt / "out").rglob("batch-report.json"))
-    return json.loads(reports[0].read_text(encoding="utf-8")).get("status", {}) if reports else {}
+    return json.loads(reports[0].read_text(encoding="utf-8")) if reports else {}
+
+
+def _status(attempt: Path) -> dict:
+    return _report(attempt).get("status", {})
 
 
 def remainder(plan: dict, attempts: list[Path]) -> tuple[dict, dict]:
@@ -78,8 +82,9 @@ def remainder(plan: dict, attempts: list[Path]) -> tuple[dict, dict]:
     kinds: set[str] = set()
     lessons: set[str] = set()
     for a in attempts:
-        for f in (a / "out").rglob("drafts.jsonl"):
-            reached.update(json.loads(x)["slot"] for x in f.read_text(encoding="utf-8").splitlines() if x.strip())
+        # Reached means finished: accepted, or ended by its own refusals. A slot whose calls were cut off by the stop
+        # (skipped, or never reported) runs again (R&D on #28: counting drafts lost exactly those slots).
+        reached.update(o["slot"] for o in _report(a).get("outcomes", []) if o.get("accepted") or not o.get("skipped"))
         st = _status(a)
         cells.update(st.get("cell_halts") or {})
         kinds.update(st.get("kinds_off") or {})

@@ -10,7 +10,7 @@ import json
 import re
 from pathlib import Path
 
-from role_set.assemble import slot_flaw
+from role_set.assemble import FLAW_VERDICTS, VERDICTS, slot_flaw
 from role_set.critic import FLAW_DEFINITIONS
 from role_set.plan import Slot
 from role_set.trait_steps import DEFAULTS_NOTE, trait_step
@@ -155,8 +155,9 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
         if flaw == "none":
             lines.append(f"The other checker was right: checker_verdict is {slot.verdict}, and checker_trace is sound reasoning for it.")
         else:
-            lines.append(f"The other checker is wrong through one flaw, {flaw}: it {FLAW_DEFINITIONS[flaw]}. checker_verdict is a "
-                         f"verdict other than {slot.verdict}; checker_trace argues for that verdict, names no other, and shows the flaw.")
+            reach = [v for v in FLAW_VERDICTS.get(flaw, VERDICTS) if v != slot.verdict]
+            lines.append(f"The other checker is wrong through one flaw, {flaw}: it {FLAW_DEFINITIONS[flaw]}. checker_verdict is "
+                         f"{' or '.join(reach)}; checker_trace argues for that verdict, names no other, and shows the flaw.")
     if slot.pair:
         lines.append(f"This item is one half of contrast pair {slot.pair}: the same statement is checked against other material in its twin.")
     if slot.two_turn == "stands":
