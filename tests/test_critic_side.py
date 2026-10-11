@@ -142,9 +142,26 @@ def test_the_trait_leg_scores_against_the_known_trait_with_a_confusion_matrix():
     leg = trait_leg(critic, _rows() + [{"id": "x", "lesson": "T99", "turns": []}], {"T02": "goes to the source", "T14": "doesn't fill gaps"},
                     concurrency=2, log=misses.append)
     assert leg["items"] == 20 and leg["agree"] == 16 and leg["overall"] == 0.8
-    assert leg["per_trait"]["T14"] == {"items": 10, "agree": 6, "rate": 0.6, "thin": False} and leg["worst_trait"] == 0.6
+    assert leg["per_trait"]["T14"] == {"items": 10, "agree": 6, "family_agree": 6, "rate": 0.6, "thin": False} and leg["worst_trait"] == 0.6
     assert leg["confusion"]["T14"] == {"T02": 3, "T14": 6, "split": 1} and leg["stability_unanimous"] == 0.95
     assert leg["bar"] == TRAIT_BAR and leg["passes"] is False and len(misses) == 4
+    # T02 is deliberately not T14's family (R&D): naming T02 for a T14 item is a far miss.
+    assert leg["family_agreement"] == 0.8
+
+
+def test_family_agreement_is_reported_beside_exact_and_never_gates():
+    from role_set.critic_control import TRAIT_FAMILIES, same_family
+
+    assert same_family("T05", "T13") and same_family("T16", "T10") and same_family("T03", "T16")
+    assert not same_family("T02", "T14") and not same_family("T02", "T05") and not same_family(None, "T05")
+    assert len(TRAIT_FAMILIES) == 5
+
+    def sibling(messages, temperature=0.0, seed=0):
+        return _said("TRAIT: T05")  # every T13 item read as its family sibling T05
+
+    rows = [{"id": f"T13-A-{i:02d}", "lesson": "T13", "kind": "A", "turns": [{"user": "u", "thinking": "", "reply": f"r {i}"}]} for i in range(10)]
+    leg = trait_leg(sibling, rows, {"T13": "doesn't agree just to please", "T05": "independent"})
+    assert leg["overall"] == 0.0 and leg["family_agreement"] == 1.0 and leg["passes"] is False
 
 
 def test_the_trait_leg_passes_only_when_every_part_of_the_bar_is_met():

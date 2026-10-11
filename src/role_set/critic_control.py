@@ -174,6 +174,15 @@ def load_rows(paths: list[Path]) -> list[dict]:
 # agreement at least 85%, every trait at least 70%, and the three calls unanimous on at least 90% of items. If the
 # critic misses it, its prompt changes before the trait check gates again; the gate is never relaxed to fit the critic.
 TRAIT_BAR = {"overall": 0.85, "per_trait": 0.70, "stability": 0.90}
+# Declared by R&D before dev iteration 2 was scored (2026-10-11): sibling pairs one step apart in meaning. Agreement
+# within a family is reported beside exact agreement and never gates by itself. T02/T14 and T05/T02 are deliberately
+# not families: the pilot's failure was T02 items decided by a silence call, and the check must keep catching that.
+TRAIT_FAMILIES = (frozenset({"T05", "T13"}), frozenset({"T03", "T16"}), frozenset({"T01", "T11"}), frozenset({"T04", "T14"}),
+                  frozenset({"T10", "T16"}))
+
+
+def same_family(named: str | None, known: str) -> bool:
+    return named == known or any({named, known} <= f for f in TRAIT_FAMILIES)
 
 
 def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict[str, str] | None = None, *,
@@ -203,11 +212,14 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
         answers = [ask(r) for r in items]
     per: dict[str, dict] = {}
     confusion: dict[str, dict] = {}
-    agree = unanimous = with_majority = 0
+    agree = unanimous = with_majority = family = 0
     for r, (known, votes) in zip(items, answers):
         won = majority(votes)
-        cell = per.setdefault(known, {"items": 0, "agree": 0})
+        cell = per.setdefault(known, {"items": 0, "agree": 0, "family_agree": 0})
         cell["items"] += 1
+        if same_family(won, known):
+            family += 1
+            cell["family_agree"] += 1
         named = won or "split"
         confusion.setdefault(known, {})[named] = confusion.setdefault(known, {}).get(named, 0) + 1
         # Unanimous only on a trait id: three unreadable replies agree on nothing (R&D on #23).
@@ -227,6 +239,8 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
     worst = min((c["rate"] for c in per.values()), default=None)
     passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
     return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
+            "family_agreement": round(family / n, 3) if n else None,  # reported only; never part of `passes`
+            "families": [sorted(f) for f in TRAIT_FAMILIES],
             "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
             "seconds_per_call": _timing(seconds),
             "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}
