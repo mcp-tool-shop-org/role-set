@@ -1,4 +1,4 @@
-"""role-set: plan (no model), cost (no model), write (refused until the gates are pinned)."""
+"""role-set: plan and cost (no model), write (the runner; paid unless --mock), pack, harvest, ingest, store, critic-control."""
 
 from __future__ import annotations
 

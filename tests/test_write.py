@@ -45,11 +45,13 @@ def test_mock_write_runs_a_whole_lesson_through_the_cli(pack_dir: Path, plan_fil
     assert len(rows) == 40 and rows[0]["trait"] == "goes to the source"
     receipt = json.loads((tmp_path / "o" / "mock" / "receipts.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert receipt["mock"] is True and receipt["pack_commit"] == "abc1234" and receipt["plan_sha256"]
+    # The pinned aspire-si-gates passed every item and the finished lesson: the real gates, not the stand-in.
+    assert receipt["gates"]["version"] == "1.1.0" and result["batch_check"] == "clean"
 
 
 def test_mock_write_without_the_critic(pack_dir: Path, plan_file: Path, tmp_path: Path):
     result = run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", mock=True, no_critic=True))
-    assert result["accepted"] == 40 and result["halted"] is None
+    assert result["accepted"] == 40 and result["halted"] is None and result["batch_check"] == "clean"
 
 
 def test_plan_and_pack_helpers(pack_dir: Path, plan_file: Path):
@@ -138,6 +140,7 @@ def test_write_halts_are_reported_and_cleanup_runs(pack_dir: Path, plan_file: Pa
             from role_set.runner import Status
 
             self.status = Status(started_at=0.0)
+            self.batch_check = None  # a halted run never reaches the batch check
 
         def run(self, slots, sides):
             raise RunHalted("andon: test")

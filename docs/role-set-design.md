@@ -475,17 +475,27 @@ sealed and interview aggregates as a separate section the generator never read.
 
 ## 10. CLI
 
+Built (`role-set --help`; each command prints a refusal and exits 2 when something it needs is missing):
+
 ```
-role-set plan     --role verifier --lessons T02,T03,T06 --seed 7 --out plan.json     # no model
-role-set harvest  --role verifier --out sources/                                      # git only
-role-set warmup   --plan plan.json --endpoint … --model <id>                           # quiz the builder, no items
-role-set write    --plan plan.json --endpoint http://127.0.0.1:11435/v1 --model <id> [--resume] [--status-port N]  # the runner; paid
-role-set check    batch4-*.jsonl                                                       # gates only
-role-set report   --out batch-report.json                                              # receipts + diagnostics
-role-set ingest   outputs/stage1-train/<round>/receipts/                               # into the store; firewall at the door
-role-set weakness --round N                                                             # the weakness view the next plan reads
-role-set round    --round N --out round-report.md                                       # the per-round report
+role-set plan     --lessons T02 --seed 7 --out plan.json                     # no model
+role-set cost     --plan plan.json --profile two-card                        # no model
+role-set pack     sync --repo <aspire-si clone> --commit <sha> --out pack/   # git only; verify --pack pack/
+role-set harvest  --allow-list roles/verifier/sources.json --clones <dir> --out pool.jsonl  # git only
+role-set write    --plan plan.json --pack pack/ --out <dir> --endpoint http://127.0.0.1:<lane port>/v1                   --model <served name> --grant <id> --heartbeat <file> [--pool pool.jsonl] [--exemplar-*]  # the runner; paid
+role-set write    --plan plan.json --pack pack/ --out <dir> --mock           # no model; output is marked, never data
+role-set critic-control --items <reviewed items> --grant <id> --heartbeat <file> --out control.json  # 5090, local critic
+role-set ingest   --receipts outputs/stage1-train/<round>/<arm>/<seed>/receipts --store <db> --repo <aspire-si> --commit <sha>
+role-set store    status --store <db>  |  void --store <db> --round N --reason <text>
 ```
+
+The gates are aspire-si-gates 1.1.0, a pinned dependency (`pyproject.toml`, at aspire-si's merge commit). `write`
+runs `check_item` and `check_against` per item and `check_batch` once on a finished, unhalted run; the batch
+report and the result carry `batch_check` ("clean" or the refusal). The mock run goes through the same real gates:
+its writer varies its wording per draft, so CI proves a whole mock lesson passes every gate.
+
+Planned, not built: `warmup` as its own command (it runs inside `write` today), `check` (gates on files),
+`report`, `weakness` and `round` (the learning loop, §9b), and `write --resume` / `--status-port`.
 
 ## 11. Standards compliance
 

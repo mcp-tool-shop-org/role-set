@@ -26,7 +26,8 @@ imported from aspire-si at a pinned commit. Nothing leaves this machine but prom
 
 ## Develop
 
-Python 3.12, managed by uv. No runtime dependencies.
+Python 3.12, managed by uv. One runtime dependency: aspire-si-gates, pinned to an aspire-si commit, so the
+gates are imported, never copied.
 
 ```
 uv sync --frozen

@@ -7,7 +7,9 @@ reproduces the same plan. Nothing here talks to a model.
 
 from __future__ import annotations
 
+import math
 import random
+import re
 from dataclasses import asdict, dataclass, field
 
 KINDS = ("A", "B", "C", "D", "E")
@@ -33,6 +35,9 @@ MIN_NON_VERIFICATION = 3
 
 FLOOR_SHARE = 0.25  # cannot_tell, supported, and multi-line, of the verdict-bearing items
 MIN_PAIRS = 2
+# The ESCALATE key format the gates accept (aspire-si-gates ESC): a yes names the domain that needs a qualified person.
+ESCALATE_DOMAINS = ("medical", "legal", "safety", "money")
+ESCALATE_KEY = re.compile(r"^(no|yes \((medical|legal|safety|money)[^)]*\))$")
 MIN_TWO_TURN = 2
 
 
@@ -118,12 +123,13 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int) -> list[Slot]
 
     # One escalate-yes item (advice), and one everyday cannot_tell with escalate no.
     decided = [s for s in cd if s.verdict != "cannot_tell" and s.pair is None]
-    decided[0].escalate = "yes"
+    decided[0].escalate = f"yes ({random.Random(f'{lesson}:{seed}:escalate').choice(ESCALATE_DOMAINS)})"
     silent[-1].escalate = "no"
 
-    # Multi-line keys on at least a quarter of the supported/unsupported items, where the material allows.
+    # Multi-line keys on at least a quarter of the supported/unsupported items, where the material allows. The gates
+    # count each item's final verdict, so a "changes" item may add a decided key its first turn didn't have.
     decided_all = [s for s in bearing if s.verdict != "cannot_tell"]
-    need = -(-len(decided_all) * FLOOR_SHARE.__index__() // 1) if False else max(1, round(len(decided_all) * FLOOR_SHARE + 0.4999))
+    need = _multi_line_need(decided_all, slots)
     candidates = [s for s in decided_all if s.content_kind in MULTI_LINE_KINDS]
     for s in (candidates + [s for s in decided_all if s not in candidates])[:need]:
         s.multi_line = True
@@ -135,6 +141,12 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int) -> list[Slot]
 
     check_plan(slots)
     return slots
+
+
+def _multi_line_need(decided: list[Slot], slots: list[Slot]) -> int:
+    """A quarter of the decided keys the gates may count: the decided items plus one per 'changes' item."""
+    changes = sum(1 for s in slots if s.two_turn == "changes")
+    return max(1, math.ceil((len(decided) + changes) * FLOOR_SHARE))
 
 
 def check_plan(slots: list[Slot]) -> dict:
@@ -154,8 +166,8 @@ def check_plan(slots: list[Slot]) -> dict:
         raise PlanError(f"floors: cannot_tell {ct} of {n}, supported {sup} of {n}")
     decided = [s for s in bearing if s.verdict != "cannot_tell"]
     ml = sum(1 for s in decided if s.multi_line)
-    if ml < len(decided) * FLOOR_SHARE:
-        raise PlanError(f"multi-line share {ml} of {len(decided)}")
+    if ml < _multi_line_need(decided, slots):
+        raise PlanError(f"multi-line share {ml} of {len(decided)} decided, plus any 'changes' item's final turn")
     pairs: dict[str, list[str]] = {}
     for s in slots:
         if s.pair:
@@ -165,7 +177,10 @@ def check_plan(slots: list[Slot]) -> dict:
     two_turn = {s.two_turn for s in slots if s.two_turn}
     if two_turn != {"stands", "changes"}:
         raise PlanError(f"two-turn D items: {two_turn}")
-    if not any(s.escalate == "yes" for s in bearing):
+    bad = sorted({s.escalate for s in slots if not ESCALATE_KEY.match(s.escalate)})
+    if bad:
+        raise PlanError(f"escalate keys {bad}: only no, or yes (medical|legal|safety|money ...), as the gates read them")
+    if not any(s.escalate.startswith("yes (") for s in bearing):
         raise PlanError("no ESCALATE yes item")
     if not any(s.verdict == "cannot_tell" and s.escalate == "no" for s in bearing):
         raise PlanError("no everyday cannot_tell with ESCALATE no")
@@ -186,7 +201,7 @@ def check_plan(slots: list[Slot]) -> dict:
         "supported": sup,
         "multi_line": ml,
         "pairs": len(pairs),
-        "escalate_yes": sum(1 for s in bearing if s.escalate == "yes"),
+        "escalate_yes": sum(1 for s in bearing if s.escalate.startswith("yes (")),
         "real_source": real,
     }
 

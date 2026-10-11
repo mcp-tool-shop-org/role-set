@@ -185,6 +185,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         "dropped": runner.status.dropped,
         "attempted": runner.status.attempted,
         "halted": halted,
+        "batch_check": runner.batch_check,
         "mock": cfg.mock,
         "slots": len(slots),
         "outcomes": len(outcomes),

@@ -161,6 +161,7 @@ class Runner:
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
         self.accepted: list[dict] = []
         self.lesson_drops: dict[str, int] = {}
+        self.batch_check: str | None = None  # "clean" or "REFUSED: ..." once a run finishes unhalted
         self.lock = threading.Lock()
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
@@ -326,7 +327,7 @@ class Runner:
                         return outcome
             outcome.refusals.append(refusal)
             self.status.refused[refusal["code"]] = self.status.refused.get(refusal["code"], 0) + 1
-            self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"])
+            self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"], detail=refusal["detail"][:200])
             messages = messages + [
                 {"role": "assistant", "content": c.text},
                 {"role": "user", "content": "Refused: " + refusal["suggestion"] + " Return a corrected JSON object with all fields."},
@@ -392,8 +393,18 @@ class Runner:
                 with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
                     outcomes = list(pool.map(one, slots))
         finally:
+            # The share-based gates (floors, pairs, multi-line share, phrases, formulas) need the finished set, so
+            # they run once here, on a run that was not halted. A refusal is reported for the human, not retried.
+            if self.status.halted is None and self.accepted:
+                try:
+                    self.gates.check_batch(list(self.accepted))
+                    self.batch_check = "clean"
+                except self.gates.error_type() as e:
+                    self.batch_check = f"REFUSED: {e}"
+                self._log("batch_check", result=self.batch_check)
             self._log("end", reminder="shut the pod down with offrig; the window closes 30 minutes after this run")
             report = {
+                "batch_check": self.batch_check,
                 "status": self.status.as_dict(self.clock()),
                 "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals} for o in outcomes],
             }

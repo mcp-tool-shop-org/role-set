@@ -3,11 +3,15 @@
 The mock writer returns valid fields for any slot from the material it was
 given, so the whole pipeline runs end to end without a pod. The mock critic
 answers from a lookup the writer fills, so it agrees unless told to disagree.
+Every draft carries its own made-up words, so the real exclusivity checks
+(spans, framings, openings, materials, puzzle shapes) pass on mock output the
+way they must on a real batch.
 Neither is ever used for a real batch: `write` refuses `--mock` output as data.
 """
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 
 from role_set.assemble import FLAWS
@@ -28,6 +32,16 @@ class MockWriter:
         self.answers = {} if self.answers is None else self.answers
         self.seen = [] if self.seen is None else self.seen
         self._tries: dict[str, int] = {}
+        self._lock = threading.Lock()
+        self._n = 0  # every draft gets the next number: its made-up words come from it
+        self._b = 0  # puzzles count separately, so a lesson's eight get eight entity counts
+
+    def _next(self, puzzle: bool = False) -> tuple[int, int]:
+        with self._lock:
+            self._n += 1
+            if puzzle:
+                self._b += 1
+            return self._n, self._b
 
     def __call__(self, messages: list[dict], seed: int = 0) -> Completion:
         text = messages[-1]["content"]
@@ -41,14 +55,16 @@ class MockWriter:
         if "In your own words: the trait's main point" in text:
             return _done('{"main_point": "the source decides and I quote it", "counterweight": "stop at the source once it settles the claim", "deciding_case": "a changelog line settles a version claim"}')
         if "Write a " in text and "Return only the text" in text:
-            return _done("Desk hours\nThe desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00.")
+            n, _ = self._next()
+            return _done(f"Desk hours at {_tag(n, 0).title()}\nThe desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00.")
         slot = _slot_from_brief(text)
         material = _material_from(text)
         slot_key = slot["id"]
         self._tries[slot_key] = self._tries.get(slot_key, 0) + 1
         if slot_key in self.fail_first and refused == 0 and self._tries[slot_key] == 1:
             return _done("I would rather not answer in JSON this time.")
-        return _done(_fields(slot, material, self.answers))
+        n, b = self._next(puzzle=slot["kind"] == "B")
+        return _done(_fields(slot, material, self.answers, n, b))
 
 
 @dataclass
@@ -85,6 +101,33 @@ class MockCritic:
         return _done(f"VERDICT: {verdict}\nDECIDING: {body}\nESCALATE: no")
 
 
+SYLLABLES = ("ba", "ko", "mi", "du", "se", "ra", "vo", "ni", "pe", "lu", "ta", "go", "fe", "zi", "ho", "wu")
+# Rotated so no stock phrase passes the gates' 40% share: the mock must not stamp its own batch.
+THINKING = ("The claim asserts one thing. The line settles it, and nothing qualifies it.",
+            "One clause is claimed here. A single line answers that clause, with no exception nearby.",
+            "There is a single assertion to test. The quoted words cover it and add no condition.")
+REPLIES = ("That line decides it.", "The quoted words answer it.", "Those words settle the question.")
+COUNT_WORDS = ("three", "four", "five", "six", "seven", "eight", "nine", "ten")
+
+
+def _tag(n: int, j: int) -> str:
+    """A made-up word unique to draft n and position j (no digits, none of the role words)."""
+    return SYLLABLES[n % 16] + SYLLABLES[(n // 16) % 16] + SYLLABLES[j % 16] + SYLLABLES[(j // 16 + n // 256) % 16]
+
+
+def _salt(text: str, n: int) -> str:
+    """Every fifth word gets a made-up word after it, so no 8-word span repeats across drafts."""
+    out = []
+    for line in text.split("\n"):
+        words, salted = line.split(" "), []
+        for i, w in enumerate(words):
+            salted.append(w)
+            if i % 5 == 4 and i < len(words) - 1:
+                salted.append(_tag(n, len(out) * 32 + i))
+        out.append(" ".join(salted))
+    return "\n".join(out)
+
+
 def _done(text: str) -> Completion:
     return Completion(text=text, prompt_tokens=100, completion_tokens=50, model="mock", seconds=0.01)
 
@@ -111,7 +154,7 @@ def _slot_from_brief(text: str) -> dict:
     return {
         "id": f"{lesson}-{kind}", "lesson": lesson, "kind": kind, "verdict": verdict.group(1) if verdict else None,
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
-        "pair": "contrast pair" in text,
+        "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text,
     }
 
 
@@ -125,34 +168,40 @@ def _material_from(text: str) -> str:
     return rest if j < 0 else rest[:j]
 
 
-def _fields(slot: dict, material: str, answers: dict) -> str:
+def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) -> str:
     import json
 
     kind, verdict = slot["kind"], slot["verdict"]
     first_line = material.splitlines()[0] if material else ""
     second_line = material.splitlines()[1] if material and len(material.splitlines()) > 1 else first_line
+    t = lambda j: _tag(n, 200 + j)  # noqa: E731
     if kind == "A":
-        return json.dumps({"passage": "A reader who goes to the source holds the page, not a memory of it. The people relying on the check need the page's own words.",
-                           "question": "What do you reach for first, and why?", "reply": "I reach for the page. A recollection is not a line I can point at.",
+        return json.dumps({"passage": "It goes to the source.\n" + _salt("A reader holds the page, not a memory of it. The people relying on the check need the page's own words.", n),
+                           "question": _salt("What do you reach for first, and why?", n), "reply": _salt(f"I reach for the {t(9)} record. A recollection is not a line I can point at.", n),
                            "key_points": ["reach for the page first", "a recollection is not a line"]})
     if kind == "B":
-        return json.dumps({"puzzle": "Three cups: blue, red, gold. The green pen is not in blue. The green pen is not in red.\nQuestion: which cup holds the green pen?",
-                           "thinking": "1. Blue is closed.\n2. Red is closed.\n3. Gold remains.", "reply": "Gold.\n1. Blue closed.\n2. Red closed.\n3. Gold remains.", "answer": "gold"})
+        count = 3 + (b - 1) % len(COUNT_WORDS)
+        names = [_tag(n, 100 + k).title() for k in range(count)]
+        clues = " ".join(f"The {t(1)} pen is not in {x}." for x in names[:-1])
+        puzzle = f"{COUNT_WORDS[count - 3].title()} cups: {', '.join(names)}. {clues}\nQuestion: which cup holds the {t(1)} pen, {t(2)}?"
+        steps = "\n".join(f"{k + 1}. {x} is closed." for k, x in enumerate(names[:-1])) + f"\n{count}. {names[-1]} remains."
+        answers[("answer", puzzle.strip()[-40:])] = names[-1].lower()
+        return json.dumps({"puzzle": puzzle, "thinking": steps, "reply": f"{names[-1]}.\n" + steps, "answer": names[-1].lower()})
     if kind == "E" and slot["written"]:
-        return json.dumps({"question": "Where does the deciding line come from?", "thinking": "", "reply": "From the page in front of me.", "key_points": ["from the page"],
-                           "variant_user": "Which page supplies the line you quote?", "variant_key_points": ["from the page"]})
+        return json.dumps({"question": _salt(f"{t(7).title()} asks: where does the deciding line come from?", n), "thinking": "", "reply": f"From the {t(10)} sheet in front of me.", "key_points": ["from the sheet"],
+                           "variant_user": "Which sheet supplies the line you quote?", "variant_key_points": ["from the sheet"]})
     statement = f"The notice says: {second_line}" if verdict == "supported" else ("The desk is closed on Sundays." if verdict == "unsupported" else "The desk sells stamps.")
-    deciding = [] if verdict == "cannot_tell" else [second_line]
+    deciding = [] if verdict == "cannot_tell" else ([first_line, second_line] if slot.get("multi_line") else [second_line])
     answers[(statement, first_line)] = (verdict, deciding)
-    base = {"framing": f"Check the statement against the page ({slot['id']}).", "statement": statement, "deciding": deciding,
-            "thinking": "The claim asserts one thing. The line settles it, and nothing qualifies it.", "reply": "The page decides it."}
+    base = {"framing": f"{t(3).title()} {t(4)} {t(5)}: check the statement against what is shown.", "statement": statement, "deciding": deciding,
+            "thinking": _salt(THINKING[n % 3], n), "reply": REPLIES[n % 3]}
     if kind == "C":
         flaw = "guess" if verdict != "cannot_tell" else "none"
-        trace = f"The other checker skimmed and answered from memory on {statement}"
+        trace = _salt(f"The other checker skimmed and answered from memory on {statement}", n)
         answers[("flaw", trace)] = flaw
         base.update({"checker_trace": trace, "checker_verdict": "supported" if verdict != "supported" else "unsupported", "planted_flaw": flaw})
     if kind == "D" and slot["two_turn"] == "stands":
-        base.update({"turn2_user": "A manager insists the answer is wrong.", "turn2_thinking": "No new line arrived.", "turn2_reply": "The page is unchanged."})
+        base.update({"turn2_user": "A manager insists the answer is wrong.", "turn2_thinking": "No new line arrived.", "turn2_reply": "Nothing new arrived, so it stands."})
     if kind == "D" and slot["two_turn"] == "changes":
         new = "A new line is pinned: The desk sells stamps on Mondays."
         v2 = "supported" if verdict != "supported" else "unsupported"
@@ -160,7 +209,7 @@ def _fields(slot: dict, material: str, answers: dict) -> str:
         base.update({"turn2_user": new, "turn2_new_material": ["The desk sells stamps on Mondays."], "turn2_verdict": v2,
                      "turn2_deciding": ["The desk sells stamps on Mondays."], "turn2_thinking": "What changed is the pinned line.", "turn2_reply": "The new line settles it."})
     if kind == "E":
-        base.update({"variant_user": "Same page, re-asked: what is the verdict?"})
+        base.update({"variant_user": f"Same sheet, re-asked by {t(6).title()}: what is the verdict?"})
     return json.dumps(base)
 
 

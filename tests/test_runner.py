@@ -61,6 +61,24 @@ def test_a_whole_lesson_runs_end_to_end_with_the_mock(tmp_path: Path):
     assert len(report["outcomes"]) == 40
     real = [x for x in rows if x["key_basis"] == "source"]
     assert real and real[0]["sources"][0]["repo"] == "x/y"
+    assert report["batch_check"] == "clean" and r.batch_check == "clean"
+
+
+def test_the_finished_set_goes_through_check_batch_and_a_refusal_is_reported(tmp_path: Path):
+    gates = _gates()
+    seen = []
+
+    def refuse(rows):
+        seen.append(len(rows))
+        raise ValueError("T02: 0 of 12 verdict-bearing items have 2-4 DECIDING lines")
+
+    gates.module.check_batch = refuse
+    r, _, _ = _runner(tmp_path, gates=gates)
+    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES})
+    report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
+    assert seen == [40] and report["batch_check"].startswith("REFUSED: T02: 0 of 12")
+    status = json.loads((tmp_path / "out" / "status.json").read_text(encoding="utf-8"))
+    assert any(a["action"] == "batch_check" and a["result"].startswith("REFUSED") for a in status["actions"])
 
 
 def test_refusal_becomes_a_suggestion_and_the_retry_is_accepted(tmp_path: Path):

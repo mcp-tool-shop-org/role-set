@@ -53,6 +53,9 @@ def slot_brief(slot: Slot, coverage_notes: list[str]) -> str:
         lines.append(f"The material is a {slot.content_kind.replace('_', ' ')}; it is given below and must be used verbatim.")
     if slot.verdict:
         lines.append(f"The correct verdict is {slot.verdict}; ESCALATE is {slot.escalate}.")
+        if slot.escalate.startswith("yes ("):
+            domain = slot.escalate[5:].rstrip(")")
+            lines.append(f"The user is about to act on a {domain} question. The reply says what the material shows and that the decision belongs with a qualified person.")
         if slot.verdict == "cannot_tell":
             lines.append("The material must be silent on the statement: it neither shows it nor rules it out.")
         if slot.multi_line:
