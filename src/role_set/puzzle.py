@@ -332,6 +332,11 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
         _check_order_stated(m, lines)
     except PuzzleError as e:
         problems.append(str(e))
+    for n in sorted(cited):
+        m_ = MODEL_SYNTAX.search(lines[n])
+        if m_:
+            problems.append(f"line {n} reads as model syntax ('{m_.group(0)}'); write the fact in plain English, e.g. "
+                            "'Exactly one switch is wired'")
     leaked = brief_leak(puzzle)
     if leaked:
         problems.append(f"the puzzle repeats the brief's instruction ({leaked!r}); a puzzle states facts and a question only")
@@ -346,6 +351,10 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
     return lines, question
 
 
+# The solver's dialect written into a fact line (fix round 2: "The count of wired is 1"). Only the forms that can be
+# told mechanically; R&D reads the rest. A bare number as the predicate ("The choir line is 1.") is the other form.
+# Word values ("is open", "is not container") can't be told from good English by rule, so the key-check reads those.
+MODEL_SYNTAX = re.compile(r"\bthe count of\b|\bcount of \w+ is\b|\bis (?:not )?\d+(?:\.\d+)?\s*\.?\s*$", re.IGNORECASE)
 # The brief's own words about laying out the working, copied into a puzzle (rehearsal 3: "Show your thinking as a
 # constraint grid, and stop when it's settled").
 BRIEF_SPANS = re.compile(r"show your thinking|constraint grid|stop when it'?s settled|tree glyphs|numbered elimination steps", re.IGNORECASE)
@@ -503,12 +512,40 @@ class Table:
         return "supported" if claims == {True} else "unsupported" if claims == {False} else "cannot_tell"
 
 
-def _direct(rule) -> bool:
-    """A fact that states a value outright: is, in with one value, same between an entity and a value reference."""
+def _plain_direct(m: Model, rule) -> bool:
+    """A fact that states a value outright: is, in with one value, same between an entity and a value reference, or
+    is_not on an attribute with exactly two values (the other value, stated by negation; R&D on #95)."""
 
     if rule[0] == "is" or (rule[0] == "in" and len(rule[3]) == 1):
         return True
+    if rule[0] == "is_not" and len(m.attrs[rule[2]]["values"]) == 2:
+        return True
     return rule[0] == "same" and sum(isinstance(r, dict) for r in rule[1:]) == 1
+
+
+def _direct(m: Model, rule) -> bool:
+    """A direct fact, or an `if` whose antecedent is itself one of the model's direct facts (the answer stated as an
+    if plus its own antecedent, as fix round 2's T13-B-07 did)."""
+
+    if _plain_direct(m, rule):
+        return True
+    if rule[0] == "if":
+        stated = [r for _, r in m.facts if _plain_direct(m, r)]
+        return rule[1] in stated and _plain_direct(m, rule[2])
+    return False
+
+
+def _count_decoration(m: Model) -> str | None:
+    """A count equal to the number of entities, or 0, that is the only fact on its value: it gives every entity the
+    value (or none), so it decorates rather than constrains (fix round 2's T05-B-01 and T06-B-01)."""
+
+    for n, rule in m.facts:
+        if rule[0] != "count" or rule[3] != "=" or rule[4] not in (0, len(m.entities)):
+            continue
+        value = str(rule[2]).lower()
+        if not any(value in (x.lower() for x in rule_names(r)) for k, r in m.facts if r is not rule):
+            return f"line {n} sets the count of {rule[2]!r} to {rule[4]}, which settles every entity at once; that's a statement, not a clue"
+    return None
 
 
 def _mask(indices) -> int:
@@ -519,6 +556,9 @@ def _mask(indices) -> int:
 
 
 def solve(m: Model, structure: str | None, question: str) -> Checked:
+    decoration = _count_decoration(m)
+    if decoration:
+        raise PuzzleError(decoration)
     t = Table(m)
     full = t.all
     if m.claim is not None:
@@ -531,7 +571,11 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
             # survives losing almost anything, so there a fact must also leave the solutions as they were (R&D on #29).
             if t.verdict(without) == v and (v != "cannot_tell" or len(t.matching(without)) == len(t.matching(full))):
                 raise PuzzleError(f"line {n} changes nothing; drop it, or list it in flavour if it states no fact")
-        return Checked(answer=v, lookup=False, solutions=len(t.matching(full)))
+        direct = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(m, r))
+        settled = [direct] if direct else []
+        settled += [1 << i for i in range(len(m.facts))]
+        lookup = v != "cannot_tell" and any(t.verdict(x) == v for x in settled)
+        return Checked(answer=v, lookup=lookup, solutions=len(t.matching(full)))
 
     projs = t.projections(full)
     if not projs:
@@ -562,8 +606,11 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
     for i in considered:
         if t.projections(need & ~(1 << i)) == base:
             raise PuzzleError(f"line {m.facts[i][0]} changes nothing about the answer; drop it, or list it in flavour if it states no fact")
-    is_only = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(r))
-    lookup = is_only != 0 and len(t.projections(is_only)) == 1 and structure != "underdetermined_with_explicit_set"
+    direct = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(m, r))
+    lookup = False
+    if structure not in ("underdetermined_with_explicit_set",) + STOPPING_STRUCTURES:
+        # A lookup: the direct facts alone settle the answer, or any single fact does by itself (R&D on #95).
+        lookup = (direct != 0 and len(t.projections(direct)) == 1) or any(len(t.projections(1 << i)) == 1 for i in considered)
     if structure == "underdetermined_with_explicit_set":
         answer = ", ".join(sorted({render(m, p) for p in projs}))
     elif stop_at is not None:

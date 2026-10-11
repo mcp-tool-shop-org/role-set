@@ -420,3 +420,74 @@ def test_halts_key_assembly_and_puzzle_refusals_by_their_rule():
     p1 = refusal_rule({"code": "PUZZLE", "detail": "1) flavour cites line 3, and the puzzle has no line 3; 2) x"})
     p2 = refusal_rule({"code": "PUZZLE", "detail": "flavour cites line 4, and the puzzle has no line 4"})
     assert p1 == p2 == "PUZZLE: flavour cites line N, and the puzzle has no line N"
+
+
+# ---- fix round 2's shapes (R&D on aspire-si #95) -----------------------------------------------------------------
+PAIRS = ["Ana and Bo", "Ana and Cal", "Ana and Dee", "Bo and Cal", "Bo and Dee", "Cal and Dee"]
+
+
+def _pairs(line2, count):
+    puzzle = ("1. Six pairs are " + ", ".join(PAIRS[:-1]) + ", and " + PAIRS[-1] + ". A pair is yes or no.\n2. " + line2 +
+              "\nQuestion: Which pairs may sit in front?")
+    model = {"entities": PAIRS, "attributes": {"seat": {"values": ["yes", "no"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["count", "seat", "yes", "=", count]}], "flavour": [1], "asks": {"entity_with": {"seat": "yes"}}}
+    return puzzle, model
+
+
+def test_t05_b01_a_count_written_as_model_syntax_or_settling_every_entity_is_refused():
+    puzzle, model = _pairs("The count of yes is 6.", 6)
+    key = ", ".join(PAIRS)
+    with pytest.raises(PuzzleError, match="reads as model syntax"):
+        check_puzzle(_f(puzzle=puzzle, model=model, answer=key, reply="x\nAnswer: " + key), "elimination_from_a_set")
+    puzzle, model = _pairs("Every pair says yes.", 6)
+    with pytest.raises(PuzzleError, match="settles every entity at once"):
+        check_puzzle(_f(puzzle=puzzle, model=model, answer=key, reply="x\nAnswer: " + key), "elimination_from_a_set")
+
+
+def test_t06_b01_a_stopping_line_that_is_a_count_of_everyone_is_refused():
+    pegs = [f"peg {c}" for c in "ABCDEF"]
+    puzzle = ("1. Six pegs are " + ", ".join(pegs) + ". A peg may or may not take the cord.\n2. Every peg may take the cord.\n"
+              "Question: After which line is it settled which pegs may take the cord?")
+    model = {"entities": pegs, "attributes": {"take": {"values": ["may", "may not"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["count", "take", "may", "=", 6]}], "flavour": [1], "asks": {"entity_with": {"take": "may"}}}
+    with pytest.raises(PuzzleError, match="settles every entity at once"):
+        check_puzzle(_f(puzzle=puzzle, model=model, answer="2", reply="x\nAnswer: 2"), "stopping_problem")
+
+
+def test_t03_b01_is_not_on_a_two_value_attribute_is_a_lookup():
+    puzzle = ("1. Eight bins stand in a row. The third bin and the catalogue use the words tin and container.\n"
+              "2. The third bin is not marked container.\nQuestion: Which word does the row paint on the third bin?")
+    model = {"entities": ["the third bin", "the catalogue"], "attributes": {"word": {"values": ["tin", "container"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["is_not", "the third bin", "word", "container"]}], "flavour": [1],
+             "asks": {"attribute": "word", "of": "the third bin"}}
+    assert check_puzzle(_f(puzzle=puzzle, model=model, answer="tin", reply="x\nAnswer: tin"), "elimination_from_a_set").lookup
+
+
+def test_t13_b07_an_if_on_its_own_stated_antecedent_is_a_lookup():
+    puzzle = ("1. Two markers are the seal and the red crate. A marker sits at bay 1 or bay 2.\n"
+              "2. If the seal is at bay 2, then the red crate is at bay 2.\n3. The seal is at bay 2.\nQuestion: Which bay sends the red crate?")
+    model = {"entities": ["the seal", "the red crate"], "attributes": {"bay": {"values": ["bay 1", "bay 2"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["if", ["is", "the seal", "bay", "bay 2"], ["is", "the red crate", "bay", "bay 2"]]},
+                       {"line": 3, "rule": ["is", "the seal", "bay", "bay 2"]}], "flavour": [1], "asks": {"attribute": "bay", "of": "the red crate"}}
+    assert check_puzzle(_f(puzzle=puzzle, model=model, answer="bay 2", reply="x\nAnswer: bay 2"), "scheduling_with_exclusions").lookup
+
+
+def test_any_single_fact_that_settles_the_answer_makes_a_lookup_and_a_claim_can_be_one():
+    from role_set.puzzle import parse_model, solve
+
+    m = parse_model({"entities": ["Ana", "Ben", "Cy"], "attributes": {"dish": {"values": ["soup", "salad", "pasta"]}},
+                     "facts": [{"line": 2, "rule": ["not_in", "Ben", "dish", ["soup", "pasta"]]}],
+                     "flavour": [1], "asks": {"attribute": "dish", "of": "Ben"}})
+    assert solve(m, "constraint_grid", "").lookup is True  # line 2 alone fixes Ben's dish
+    claim = parse_model({"entities": ["the white boat", "the grey boat"], "attributes": {"time": {"values": ["dusk", "dawn"]}},
+                         "facts": [{"line": 2, "rule": ["is", "the white boat", "time", "dusk"]}], "flavour": [1],
+                         "claim": ["is", "the grey boat", "time", "dawn"]})
+    assert solve(claim, "tree_with_pruning", "").lookup is True
+
+
+def test_a_bare_number_as_a_predicate_reads_as_model_syntax():
+    puzzle = "1. Two lines are the choir line and the margin. A count is 1 or 2.\n2. The choir line is 1.\nQuestion: What count does the choir line give?"
+    model = {"entities": ["the choir line", "the margin"], "attributes": {"count": {"values": ["1", "2"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["is", "the choir line", "count", "1"]}], "flavour": [1], "asks": {"attribute": "count", "of": "the choir line"}}
+    with pytest.raises(PuzzleError, match="reads as model syntax"):
+        check_puzzle(_f(puzzle=puzzle, model=model, answer="1", reply="x\nAnswer: 1"), "elimination_from_a_set")
