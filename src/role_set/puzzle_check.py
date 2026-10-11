@@ -46,24 +46,42 @@ def _canon(rule, attrs: dict | None = None) -> list:
         return ["before", rule[2], rule[1], *rule[3:]]
     if rule[0] == "offset" and rule[4] < 0:
         return ["offset", rule[2], rule[1], rule[3], -rule[4]]
-    if rule[0] == "is_not":
-        values = [str(v) for v in (attrs.get(rule[2]) or {}).get("values", [])]
-        if len(values) == 2 and str(rule[3]) in values:
-            other = (attrs[rule[2]]["values"])[1 - values.index(str(rule[3]))]
-            return ["is", rule[1], rule[2], other]
-    if rule[0] in ("not", "and", "or", "if"):
+    if rule[0] == "is_not" and _other(attrs, rule[2], rule[3]) is not None:
+        return ["is", rule[1], rule[2], _other(attrs, rule[2], rule[3])]
+    if rule[0] == "not":
+        inner = _canon(rule[1], attrs)
+        # `not (is x a v)` on two values is `is x a w` (R&D on role-set#42).
+        if inner[0] == "is" and _other(attrs, inner[2], inner[3]) is not None:
+            return ["is", inner[1], inner[2], _other(attrs, inner[2], inner[3])]
+        return ["not", inner]
+    if rule[0] in ("and", "or", "if"):
         return [rule[0], *(_canon(r, attrs) for r in rule[1:])]
     return list(rule)
 
 
-def _variants(rule) -> list:
-    """Each way of writing a clue that says the same thing: a symmetric relation in either argument order (R&D on
-    role-set#37: `adjacent Z X` and `adjacent X Z` are one clue), nested ones included."""
+def _other(attrs: dict, attr, value):
+    """The other value of a two-value attribute, or None when the attribute has any other number of values."""
 
+    values = (attrs.get(attr) or {}).get("values", [])
+    names = [str(v) for v in values]
+    return values[1 - names.index(str(value))] if len(values) == 2 and str(value) in names else None
+
+
+COUNT_FLIP = {">=": "<=", "<=": ">=", "=": "="}
+
+
+def _variants(rule, attrs: dict | None = None, entities: int = 0) -> list:
+    """Each way of writing a clue that says the same thing: a symmetric relation in either argument order (R&D on
+    role-set#37: `adjacent Z X` and `adjacent X Z` are one clue), and on a two-value attribute over N entities,
+    `count a v >= n` as `count a w <= N-n` (R&D on role-set#42), nested ones included."""
+
+    attrs = attrs or {}
     if rule[0] in SYMMETRIC:
         return [rule, [rule[0], rule[2], rule[1], *rule[3:]]]
+    if rule[0] == "count" and entities and rule[3] in COUNT_FLIP and _other(attrs, rule[1], rule[2]) is not None:
+        return [rule, ["count", rule[1], _other(attrs, rule[1], rule[2]), COUNT_FLIP[rule[3]], entities - rule[4]]]
     if rule[0] in ("not", "and", "or", "if"):
-        return [[rule[0], *parts] for parts in itertools.product(*(_variants(r) for r in rule[1:]))]
+        return [[rule[0], *parts] for parts in itertools.product(*(_variants(r, attrs, entities) for r in rule[1:]))]
     return [rule]
 
 
@@ -111,11 +129,12 @@ def _rename(model: dict, facts: list) -> str:
 
 def skeleton(model: dict) -> str:
     """A puzzle's fact skeleton: its facts renamed (see `_rename`), with flavour, the question and any claim dropped,
-    taken in the reading (fact order, and argument order of each symmetric clue) whose serialisation sorts first, so line
-    order, naming and a swapped symmetric clue don't hide a copy (R&D found six copies by hand in aspire-si#95)."""
+    taken in the reading (fact order, argument order of each symmetric clue, and either side of a two-value count) whose
+    serialisation sorts first, so line order, naming and a swapped symmetric clue don't hide a copy (R&D found six copies
+    by hand in aspire-si#95)."""
 
     facts = [_canon(f["rule"], model["attributes"]) for f in model["facts"]]
-    variants = [_variants(r) for r in facts]
+    variants = [_variants(r, model["attributes"], len(model.get("entities") or [])) for r in facts]
     readings = math.factorial(len(facts)) * math.prod(len(v) for v in variants)
     if readings > SKELETON_READINGS_MAX:
         return _rename(model, facts)

@@ -172,8 +172,16 @@ def test_a_symmetric_clue_in_either_order_and_a_negative_offset_are_one_skeleton
     assert skeleton(lamps) == skeleton(mugs)
     assert skeleton(binary("state", ["lit", "dark"], ["not", ["is_not", "P", "state", "dark"]], ["is", "Q", "state", "lit"])) == \
         skeleton(binary("state", ["lit", "dark"], ["not", ["is", "P", "state", "lit"]], ["is", "Q", "state", "lit"]))
+    # R&D on role-set#42: `not (is …)` on two values is the other value, and "at least 2 of 3 lit" is "at most 1 of 3 dark".
+    assert skeleton(binary("state", ["lit", "dark"], ["not", ["is", "P", "state", "lit"]], ["is", "Q", "state", "lit"])) == \
+        skeleton(binary("state", ["lit", "dark"], ["is", "P", "state", "dark"], ["is", "Q", "state", "lit"]))
+    assert skeleton(lamps) == skeleton(binary("state", ["lit", "dark"], ["count", "state", "dark", "<=", 1], ["is", "P", "state", "dark"]))
+    assert skeleton(binary("state", ["lit", "dark"], ["count", "state", "lit", "=", 1], ["is", "P", "state", "dark"])) == \
+        skeleton(binary("state", ["lit", "dark"], ["count", "state", "dark", "=", 2], ["is", "Q", "state", "dark"]))
+    assert skeleton(lamps) != skeleton(binary("state", ["lit", "dark"], ["count", "state", "dark", "<=", 2], ["is", "P", "state", "dark"]))
     three = binary("fill", ["full", "half", "empty"], ["count", "fill", "full", ">=", 2], ["is", "R", "fill", "empty"])
     assert skeleton(binary("fill", ["full", "half", "empty"], ["count", "fill", "full", ">=", 2], ["is_not", "P", "fill", "full"])) != skeleton(three)
+    assert skeleton(three) != skeleton(binary("fill", ["full", "half", "empty"], ["count", "fill", "half", "<=", 1], ["is", "R", "fill", "empty"]))
     # Past the reading cap the facts are compared as written, still renamed.
     many = m(*[["not_adjacent", "X", "Y", "h"]] * 9)
     assert skeleton(many) == skeleton(m(*[["not_adjacent", "Y", "Z", "h"]] * 9))
