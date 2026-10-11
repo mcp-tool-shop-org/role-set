@@ -44,6 +44,7 @@ SIDE_REVERSED = re.compile(r"\bright to left\b", re.IGNORECASE)
 NUMBERED = re.compile(r"^\s*(\d+)[.)]\s+(\S.*)$")
 VERDICT_STRUCTURES = ("tree_with_pruning", "falsifier_first", "when_to_stop")
 STOPPING_STRUCTURES = ("stopping_problem", "when_to_stop")
+ANSWER_LABEL = re.compile(r"^\s*answer\s*:\s*", re.IGNORECASE)
 
 
 class PuzzleError(ValueError):
@@ -662,7 +663,9 @@ def check_puzzle(fields: dict, structure: str | None) -> Checked:
     elif not _same(key, got.answer):
         raise PuzzleError(f"the facts give {got.answer!r}, and the key says {key!r}")
     last = [x for x in str(fields.get("reply") or "").splitlines() if x.strip()]
-    tail = last[-1].split(":", 1)[-1] if last else ""
+    # Strip only a leading "Answer:" label; a bare key may hold colons of its own ("Ana=06:30; Ben=08:30", R&D on
+    # aspire-si#99).
+    tail = ANSWER_LABEL.sub("", last[-1], count=1) if last else ""
     loose = got.stop_at is not None or structure == "underdetermined_with_explicit_set"
     if not last or not (_same(tail, key) or (loose and " ".join(tail.lower().split()).strip(" .") == " ".join(key.lower().split()).strip(" ."))
                         or (got.stop_at is not None and re.search(rf"\b{got.stop_at}\b", tail))):

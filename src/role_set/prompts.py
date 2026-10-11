@@ -55,7 +55,7 @@ B_MODEL_RULE = (
 )
 # One worked example of clues encoded as rules (R&D and the Publisher, after rehearsal 3: the 8B wrote the solution
 # into the model as facts, having never seen a clue encoded). Its domain is in no batch, the pool or the sealed set
-# (leakage-checked 2026-10-12), and a test solves it, so the brief never shows a model the code would refuse.
+# (leakage-checked 2026-10-11), and a test solves it, so the brief never shows a model the code would refuse.
 B_EXAMPLE_PUZZLE = ("1. Three canoes, Ash, Briar and Cole, launch in turn 1, turn 2 and turn 3.\n"
                     "2. Ash does not launch in turn 1.\n"
                     "3. Briar launches after Ash.\n"
