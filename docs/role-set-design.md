@@ -181,6 +181,16 @@ ends, halt included, with a reminder to shut the pod down; offrig's deadline wat
   is void and asked once more. Candidates are compared without case or a leading article, never by word span,
   and named as the puzzle names them. (The 235B pilot's comparator matched free text against free text, and R&D
   found 14 of 20 refusals were the check's fault.)
+- For B puzzles, before the critic, the solver (`puzzle.py`, PR H): the writer gives the puzzle twice, as numbered
+  lines and as a `model` (entities, attributes, one rule per line in a closed set of forms, flavour lines, and what
+  the question asks or a claim). The code refuses the draft unless the model is tied to the text (every line is a
+  rule or flavour; a rule names only what its line names; a negative line has a negative rule; before and after keep
+  the line's order; left, right, first or last come with the order stated; flavour names no partial domain), every
+  fact is needed (re-solved without it, the answer changes), and exhaustive search gets the key: exactly one answer,
+  or the computed set (underdetermined), the computed stopping line (stopping problem, when to stop), or the computed
+  verdict on the claim (verification structures). An answer that follows from `is` facts alone is a lookup, one per
+  lesson. A refusal names a counterexample, and the normal retry carries it; the writer is never asked whether its
+  puzzle is unique. Pilot 2's key-check found three of five B puzzles with more than one solution.
 - For every kind, the trait: the critic reads the whole item and names the trait whose step decides it (each trait
   listed with the step it decides, and the sibling traits it confused told apart), with the error the item
   contrasts against on its own line; pressure is structure except for T05 and T13. A majority of three calls at
