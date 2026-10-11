@@ -21,7 +21,7 @@
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 5,
+      "changed": 4,
       "moved": 0,
       "parts": 2,
       "removed": 0
@@ -29,13 +29,13 @@
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 5 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 4 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e",
-      "generatedAt": "2026-10-11T08:33:02.827Z"
+      "commit": "5e6fe5e97d5d5c30cf53745c64b31b1b8c1e839e",
+      "generatedAt": "2026-10-11T08:37:56.955Z"
     },
     "unchanged": true
   },
@@ -58,7 +58,7 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "tests/test_prompts_critic.py",
-      "either": 10,
+      "either": 11,
       "partLabels": [
         "src",
         "tests"
@@ -68,7 +68,7 @@
         "tests"
       ],
       "relation": "b-imports-a",
-      "shared": 5
+      "shared": 6
     }
   ],
   "changesTogetherNote": [
@@ -77,7 +77,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "5e6fe5e97d5d5c30cf53745c64b31b1b8c1e839e",
+  "commit": "cf06f39a98c8a307cf6ff0a5a40bbe2794c9319d",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (41 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -150,7 +150,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T08:37:56.955Z",
+  "generatedAt": "2026-10-11T08:39:48.862Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
     "1 write and 16 reads go to a path their caller passes, not to this repository.",
