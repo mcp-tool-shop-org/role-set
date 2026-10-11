@@ -40,6 +40,9 @@ class Gates:
         return self.module.DataError  # type: ignore[attr-defined]
 
 
+REQUIRED_RULES = ("norm", "critic_mismatch")
+
+
 def load_gates(importer=importlib.import_module) -> Gates:
     try:
         module = importer("aspire_si_gates")
@@ -49,4 +52,9 @@ def load_gates(importer=importlib.import_module) -> Gates:
             "REFUSED: aspire-si-gates is not installed; pin it from aspire-si at the merged commit before `write`"
         ) from e
     ident = module.gates_identity()
+    # The critic compares quotes with the scorer's `norm` and evidence with `critic_mismatch` (gates 1.1.0). A package
+    # without them is refused here, before anything is sent, rather than falling back to a weaker rule.
+    missing = [name for name in REQUIRED_RULES if not callable(getattr(module, name, None))]
+    if missing:
+        raise GatesUnavailable(f"REFUSED: aspire-si-gates {ident['version']} has no {', '.join(missing)}; pin 1.1.0 or later")
     return Gates(module=module, version=str(ident["version"]), sha256=str(ident["sha256"]))

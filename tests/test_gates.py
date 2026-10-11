@@ -15,6 +15,8 @@ def _fake_module():
     m.DataError = ValueError
     m.answer_format = types.SimpleNamespace(parse_answer=lambda reply: {"verdict": reply.split()[-1]})
     m.gates_identity = lambda: {"version": "1.0.0", "sha256": "ab" * 32}
+    m.norm = lambda x: " ".join(x.split())
+    m.critic_mismatch = lambda key, critic, material: False
     return m
 
 
@@ -37,3 +39,11 @@ def test_missing_package_is_a_refusal():
 
     with pytest.raises(GatesUnavailable, match="pin it"):
         load_gates(importer=importer)
+
+
+def test_gates_without_the_scorer_rules_are_refused_at_load():
+    for missing in ("norm", "critic_mismatch"):
+        fake = _fake_module()
+        delattr(fake, missing)
+        with pytest.raises(GatesUnavailable, match=f"has no {missing}; pin 1.1.0 or later"):
+            load_gates(importer=lambda name, f=fake: f)

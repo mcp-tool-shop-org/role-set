@@ -78,10 +78,6 @@ def _lines(deciding: str | None) -> list[str]:
     return [x.strip() for x in deciding.split(" | ") if x.strip()]
 
 
-def _ws(x: str) -> str:
-    return " ".join(x.split())
-
-
 def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: list[str], material: str) -> CriticVerdict:
     parsed = gates.parse_answer(reply)
     cv = parsed.get("verdict")
@@ -90,7 +86,9 @@ def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: li
         return CriticVerdict(False, "VOID", "the critic gave no verdict line", cv, cd)
     # Compare as the frozen scorer does (gates `norm`: whitespace and ** / __ emphasis dropped), so a quote
     # copied without its markdown is still the material's words. Window A voided three good answers on this.
-    n = getattr(gates.module, "norm", None) or _ws
+    n = getattr(gates.module, "norm", None)
+    if n is None:
+        return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no norm rule; pin aspire-si-gates 1.1.0 or later", cv, cd)
     flat = n(material)
     if any(n(x) not in flat for x in cd):
         return CriticVerdict(False, "VOID", "the critic's DECIDING is not verbatim in the material; ask once more", cv, cd)

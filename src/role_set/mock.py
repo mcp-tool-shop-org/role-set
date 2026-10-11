@@ -233,6 +233,7 @@ def mock_gates():
     m.check_against = lambda row, accepted: []
     m.check_batch = lambda rows: None
     m.role_words_in_prompt = lambda row: []
+    m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})
     m.answer_format = types.SimpleNamespace(parse_answer=lambda reply: {
         "verdict": next((l.split(":", 1)[1].strip() for l in reply.splitlines() if l.startswith("VERDICT:")), None),

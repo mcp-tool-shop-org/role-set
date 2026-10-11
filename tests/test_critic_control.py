@@ -10,6 +10,7 @@ MATERIAL = "Desk hours\nThe desk is open on Sundays from 10:00 to 14:00.\n"
 
 def _gates():
     m = types.SimpleNamespace()
+    m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})
     m.answer_format = types.SimpleNamespace(parse_answer=lambda reply: {
         "verdict": next((l.split(":", 1)[1].strip() for l in reply.splitlines() if l.startswith("VERDICT:")), None),
