@@ -19,7 +19,7 @@ O conjunto de funções define os elementos de modelagem de funções, escreve a
 
 O escritor e o crítico são acessados apenas em `http://127.0.0.1`, com uma porta explícita. Qualquer outra coisa é rejeitada antes que um byte seja enviado. O conjunto de funções nunca aluga uma máquina e nunca acessa um pod. Quando uma execução usa um pod, o "offrig" é o que o aluga, e o conjunto de funções apenas vê o túnel de loopback.
 
-O rascunho do projeto é [docs/role-set-design.md](docs/role-set-design.md). Onde esse rascunho ainda diz que uma incompatibilidade de características é uma rejeição, ou que este programa escreve em um pod alugado, o programa está à frente do rascunho: a verificação de características é consultiva, e um pod pertence ao "offrig". As notas da execução estão em [docs/runs/](docs/runs/).
+O projeto está disponível em [docs/role-set-design.md](docs/role-set-design.md) e foi concebido em consonância com o programa. As notas sobre a execução estão em [docs/runs/](docs/runs/).
 
 ## Instalação
 
