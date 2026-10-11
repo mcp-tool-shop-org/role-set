@@ -170,6 +170,21 @@ def refusal_rule(refusal: dict) -> str:
     return code
 
 
+def trait_words_note(words: list[str], spent: list[str]) -> str:
+    """For kind A: the trait words stay required on every retry. Rehearsal 11e: told that a span holding the trait
+    words was spent, the writer dropped the trait name and was refused for not naming it. When a spent span holds a
+    trait word, the note says which words are required and that only the wording around them is spent."""
+
+    if not words:
+        return ""
+    note = " Keep naming the trait with one of these exact words, which are required: " + ", ".join(f"'{w}'" for w in words) + "."
+    held = [x for x in dict.fromkeys(spent) if any(w in x.lower() for w in words)]
+    if held:
+        note += (" In " + "; ".join(f"'{x}'" for x in held) + " only the wording around the trait words is spent:"
+                 " reword that, and keep the trait words.")
+    return note
+
+
 def spent_wording(refusal: dict) -> list[str]:
     """The wording a refusal names as spent ("the wording 'x' is already in 2 items", or a copied lesson span), or []."""
 
@@ -528,6 +543,7 @@ class Runner:
             if spent:
                 # The 8B rehearsal repeated the same span on every retry when told only the reason (Window B).
                 ask += " Do not use any of these wordings, in any order or form: " + "; ".join(f"'{x}'" for x in dict.fromkeys(spent)) + "."
+            ask += trait_words_note(self.gates.trait_words(slot.lesson) if slot.kind == "A" else [], spent)
             messages = messages + [
                 {"role": "assistant", "content": c.text},
                 {"role": "user", "content": ask + " Return a corrected JSON object with all fields."},

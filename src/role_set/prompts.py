@@ -56,7 +56,9 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
         names = ", ".join(f"'{w}'" for w in (trait_words or []))
         rules.append("Kind A: the passage has at least two full sentences before the question, and it names the trait "
                      + (f"in one of these exact words: {names}" if names else "by its name as the lesson heading gives it")
-                     + ", written with a straight apostrophe (don't, not don’t). The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.")
+                     + ", written with a straight apostrophe (don't, not don’t). Put the trait words inside a sentence of your own;"
+                     " don't open the passage with 'As a verifier, you' followed by the trait words, which other items of this trait"
+                     " already use. The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.")
     if slot.kind == "B":
         rules.append("Kind B: the thinking or the reply draws the pattern, as tree glyphs (├ └ │), a grid table of | rows, "
                      "or numbered elimination steps (1. 2. 3.).")
