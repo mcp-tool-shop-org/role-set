@@ -63,6 +63,29 @@ def keyed_letters(rows: list[dict]) -> dict:
     return {lesson: dict(c) for lesson, c in sorted(out.items())}
 
 
+def keyed_longest(rows: list[dict]) -> dict:
+    """Per lesson, of the accepted closed-form written variants, how many have the keyed option as the strictly longest:
+    a length cue a model could pick up instead of the trait (R&D on #27)."""
+
+    from role_set.assemble import OPTION_LABEL
+
+    out: dict[str, list[int]] = {}
+    for r in rows:
+        v = r.get("variant") or {}
+        key = v.get("key")
+        if (r.get("quiz") or {}).get("type") != "written" or not isinstance(key, dict) or "answer" not in key:
+            continue
+        opts = {line[0]: OPTION_LABEL.sub("", line) for line in str(v.get("user", "")).splitlines() if OPTION_LABEL.match(line)}
+        if key["answer"] not in opts:
+            continue
+        mine = len(opts[key["answer"]])
+        longest = all(mine > len(t) for k, t in opts.items() if k != key["answer"])
+        cell = out.setdefault(r.get("lesson", "?"), [0, 0])
+        cell[0] += longest
+        cell[1] += 1
+    return {lesson: {"keyed_longest": a, "items": n} for lesson, (a, n) in sorted(out.items())}
+
+
 def summarize(run_dir: Path) -> dict:
     report = json.loads((run_dir / "batch-report.json").read_text(encoding="utf-8"))
     status, outcomes = report.get("status", {}), report.get("outcomes", [])
@@ -120,6 +143,7 @@ def summarize(run_dir: Path) -> dict:
         "cell_halts": status.get("cell_halts", {}),
         "warmups": dict(Counter("passed" if w.get("passed") else "missed" for w in _lines(run_dir / "warmups.jsonl"))),
         "keyed_letters": keyed_letters(_lines(run_dir / "accepted.jsonl")),
+        "keyed_longest": keyed_longest(_lines(run_dir / "accepted.jsonl")),
         "kinds_off": status.get("kinds_off", {}),
         "skipped": status.get("skipped", {}),
         "batch_check": report.get("batch_check"),
@@ -158,6 +182,9 @@ def markdown(main: dict, others: list[dict]) -> str:
     if main.get("keyed_letters"):
         lines += ["", "Closed-form keyed letters (accepted written E): " + "; ".join(
             f"{lesson} " + " ".join(f"{k}{n}" for k, n in sorted(c.items())) for lesson, c in sorted(main["keyed_letters"].items())) + "."]
+    if main.get("keyed_longest"):
+        lines += ["", "Keyed option is the longest: " + "; ".join(
+            f"{lesson} {c['keyed_longest']} of {c['items']}" for lesson, c in sorted(main["keyed_longest"].items())) + "."]
     if main.get("kinds_off"):
         lines += ["", "Kinds switched off: " + "; ".join(f"{k} ({r})" for k, r in main["kinds_off"].items()) + "."]
     lines += ["", "| Lesson | Accepted | Dropped | Skipped | Accept rate | Skipped by reason |", "|---|---|---|---|---|---|"]

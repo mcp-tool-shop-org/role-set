@@ -139,7 +139,7 @@ def test_the_brief_states_each_kinds_gate_rules_before_the_first_draft():
     assert any("draws the pattern" in r for r in hard_rules(b))
     written = next(s for s in slots if s.kind == "E" and s.e_type == "written")
     verdict = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
-    assert any("closed-form variant" in r and "not contained in any key point" in r for r in hard_rules(written)) and any("never summarises the material" in r for r in hard_rules(verdict))
+    assert any("closed-form variant" in r and "variant_correct" in r and "sibling trait's key point" in r and "swapping one part" in r and "similar in length" in r for r in hard_rules(written)) and any("never summarises the material" in r for r in hard_rules(verdict))
     c = next(s for s in slots if s.kind == "C")
     assert hard_rules(c)[0].startswith("These fields are required and must not be empty: framing, statement, checker_trace")
     # The role-neutral rule is scoped: kind A must name its trait, so the house rules no longer forbid it there.
