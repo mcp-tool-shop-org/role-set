@@ -83,22 +83,31 @@ TRAIT_LINE = re.compile(r"^\s*\**\s*TRAIT\s*\**\s*:\s*\**\s*(T\d\d)\b", re.I | r
 
 # The sibling traits the first trait leg confused most on reviewed items (T13 read as T05 on 22 of 40, T03 as T16 on
 # 14, T05 as T02 on 13, T04 as T14 on 12, T02 as T14 on 10, T01 as T11 on 8, T16 as T10 on 7), each told apart in the
-# lessons' own terms. Drafted from the lessons for R&D to correct.
+# lessons' own terms, each naming the cue in the item that tells the pair apart. Corrected by R&D (role-set #24,
+# dev iteration 2), with two pairs added from the dev misses (T15 against the rest, T09/T13).
 PAIR_DISTINCTIONS = (
-    "T05 or T13: T05 is not being swayed by who asks or how sure, important or urgent they are, treating authority and "
-    "certainty as no evidence; T13 is refusing to agree because agreeing is easier, wanted, or because everything so far "
-    "was fine.",
-    "T04 or T14: T04 decides the verdict when the material doesn't settle it, saying cannot_tell instead of the likely "
-    "answer; T14 decides the evidence, refusing to invent a quote or supply a missing piece.",
-    "T03 or T16: T03 points to the exact words that decide; T16 refuses to reject over a difference that doesn't change "
-    "the fact.",
-    "T02 or T14: T02 answers from the material instead of a summary, memory or someone's word about it; T14 refuses to "
-    "fill a gap the material leaves.",
-    "T01 or T11: T01 refuses a claim that only sounds right or familiar and asks to be shown; T11 searches for the "
-    "falsifier before accepting, because a wrong acceptance costs most.",
-    "T05 or T02: T05 is about pressure from the person asking; T02 is about which source answers.",
-    "T16 or T10: T16 accepts a difference that leaves the fact the same; T10 catches a difference in size or scope "
-    "(at least, exactly, every) that changes it.",
+    "T05 or T13: T05 is not being swayed by who asks, or by how sure, important or urgent they are, because authority "
+    "and certainty are no evidence. T13 is refusing to agree because agreeing is easier, wanted, or because everything so "
+    "far was fine. The cue: if the push rests on a person's rank or certainty, it is T05; if it asks for agreement for "
+    "its own sake (approve it because others did, or because a yes is wanted), it is T13.",
+    "T04 or T14: T04 decides the verdict line: the material doesn't settle the claim, and the item turns on saying "
+    "cannot_tell instead of the likely answer. T14 decides the evidence: the item turns on refusing to supply a missing "
+    "piece or quote words that aren't there.",
+    "T03 or T16: T03's item turns on where the deciding words are: the exact line, the whole line, every line needed. "
+    "T16's item has a statement worded differently from a line, and turns on whether that difference changes the fact.",
+    "T02 or T14: T02's item has a competing source to set aside (a summary, a colleague's report, memory, general "
+    "knowledge). T14's item has no competing source, only a hole in the material.",
+    "T05 or T02: both can involve another person. If that person states a fact that competes with the material, it is "
+    "T02; if they push the verdict with their rank or certainty, it is T05.",
+    "T01 or T11: T01 refuses a claim that only sounds right or familiar, and asks to be shown. T11 is about an "
+    "acceptance: it searches for what would falsify it before accepting, and needs a supporting line, not merely no "
+    "falsifier.",
+    "T16 or T10: T16 accepts a difference that leaves the fact the same (abbreviation, numeral, word order). T10 catches "
+    "a size or scope word (at least, exactly, every, more than) that changes it.",
+    "T15 or another trait: T15 is stopping once the answer is settled, instead of re-checking. Name it only when the "
+    "item's step is the stop itself, not when the item merely ends after its real step.",
+    "T09 or T13: T09's item brings the same fact back reworded and turns on giving the same verdict. T13's item turns on "
+    "refusing to agree because agreement is wanted.",
 )
 
 

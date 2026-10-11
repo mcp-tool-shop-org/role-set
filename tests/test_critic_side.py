@@ -33,7 +33,8 @@ def test_the_trait_check_reads_the_whole_item_and_tells_close_traits_apart():
     assert "User: The manager insists it shipped." in text and "No new line." in text and '["k"]' in text
     user = trait_messages(text, {"T05": "independent", "T13": "doesn't agree just to please"})[1]["content"]
     assert "## Telling close traits apart" in user and all(p in user for p in PAIR_DISTINCTIONS)
-    assert {p.split(":")[0] for p in PAIR_DISTINCTIONS} == {"T05 or T13", "T04 or T14", "T03 or T16", "T02 or T14", "T01 or T11", "T05 or T02", "T16 or T10"}
+    assert {p.split(":")[0] for p in PAIR_DISTINCTIONS} == {"T05 or T13", "T04 or T14", "T03 or T16", "T02 or T14", "T01 or T11", "T05 or T02", "T16 or T10",
+                                                        "T15 or another trait", "T09 or T13"}
 
 
 def test_answers_compare_without_case_or_a_leading_article_but_never_by_word_span():
