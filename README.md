@@ -19,7 +19,7 @@ role-set plans role-shaping items, writes the parts a writer should write, and r
 
 The writer and the critic are reached only at `http://127.0.0.1` with an explicit port. Anything else is refused before a byte is sent. role-set never rents a machine and never touches a pod. When a run uses a pod, offrig is what rents it, and role-set only sees the loopback tunnel.
 
-The design draft is [docs/role-set-design.md](docs/role-set-design.md). Where that draft still says a trait mismatch is a refusal, or that this program writes on a rented pod, the program is ahead of the draft: the trait check is advisory, and a pod is offrig's. The run notes are in [docs/runs/](docs/runs/).
+The design is [docs/role-set-design.md](docs/role-set-design.md), kept in line with the program. The run notes are in [docs/runs/](docs/runs/).
 
 ## Install
 

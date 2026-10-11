@@ -6,6 +6,10 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- `docs/role-set-design.md` matches the program. The critic's trait, answer and flaw checks are advisory until their controls pass, a pod is offrig's, and the lookup and skeleton rules are the current ones. The README and handbook no longer carry a caveat about the draft.
+
 ## [0.1.0] - 2026-10-11
 
 First release. Prototype. Interfaces and data shapes can change without notice.

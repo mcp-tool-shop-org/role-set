@@ -15,7 +15,7 @@ The plan assigns every slot a kind. The runner does not ask the model to pick on
 | D | Two turns | Verdict and evidence, each turn against the material available then | The trait check |
 | E | A written quiz, or a verdict quiz | Verdict and evidence, on a verdict-type E only | The trait check. A written E has no verdict check. |
 
-Verdict and evidence checks refuse. Trait, answer, and flaw checks are recorded and do not refuse, until their controls pass. That split is the program. An earlier sentence in the design draft still says a trait mismatch is a refusal. The draft's later section, and the runner, say otherwise.
+Verdict and evidence checks refuse. Trait, answer, and flaw checks are recorded and do not refuse, until their controls pass. That split is the program, and the design says the same.
 
 ## Why the critic does not gate
 
