@@ -30,4 +30,4 @@ Three paid pilots are written up under `docs/runs/` in the repository. Pilot 1 c
 - [Store and firewall](./store/) is ingest, voids, and what is refused at the door.
 - [Security](./security/) is what a run touches.
 
-The design draft is `docs/role-set-design.md` in the repository. A few early sentences there still say that a trait mismatch refuses, and that the model writes on a rented pod. The program has moved on: the trait check is advisory, and a pod is offrig's.
+The design is `docs/role-set-design.md` in the repository, kept in line with the program.

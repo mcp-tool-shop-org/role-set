@@ -19,7 +19,7 @@ Il set di ruoli definisce gli elementi che modellano il ruolo, scrive le parti c
 
 Lo scrittore e il critico sono raggiungibili solo tramite `http://127.0.0.1` con una porta esplicita. Qualsiasi altra richiesta viene rifiutata prima che venga inviato un singolo byte. Il set di ruoli non noleggia mai una macchina e non interagisce mai con un "pod". Quando un'esecuzione utilizza un pod, è "offrig" che lo noleggia e il set di ruoli vede solo il tunnel di loopback.
 
-La bozza del progetto è [docs/role-set-design.md](docs/role-set-design.md). Laddove tale bozza afferma ancora che una mancata corrispondenza delle caratteristiche è un rifiuto, o che questo programma scrive su un pod noleggiato, il programma è più avanzato della bozza: il controllo delle caratteristiche è solo a scopo di consulenza e un pod appartiene a "offrig". Le note sull'esecuzione sono disponibili in [docs/runs/](docs/runs/).
+Il progetto è descritto nel documento [docs/role-set-design.md](docs/role-set-design.md) e rispetta le linee guida del programma. Le note relative all’esecuzione sono disponibili in [docs/runs/](docs/runs/).
 
 ## Installazione
 

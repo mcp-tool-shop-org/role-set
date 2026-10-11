@@ -19,7 +19,7 @@
 
 作者和评论者只能通过 `http://127.0.0.1` 明确的端口进行访问。任何其他访问方式都会在发送任何字节之前被拒绝。角色集绝不会租用机器，也不会触及任何 Pod。当一个运行使用 Pod 时，offrig 负责租用，而角色集只会看到环回隧道。
 
-设计草案为 [docs/role-set-design.md](docs/role-set-design.md)。如果该草案仍然指出特征不匹配会导致拒绝，或者该程序会在租用的 Pod 上进行编写，那么该程序就比草案更先进：特征检查仅供参考，而 Pod 属于 offrig。运行说明位于 [docs/runs/](docs/runs/)。
+设计方案请参考[docs/role-set-design.md](docs/role-set-design.md)，该方案与程序保持一致。运行记录请查看[docs/runs/](docs/runs/)。
 
 ## 安装
 

@@ -19,7 +19,7 @@ Le jeu de rôles définit les éléments de définition des rôles, écrit les p
 
 L’auteur et le critique ne sont accessibles qu’à l’adresse `http://127.0.0.1`, via un port explicite. Tout autre accès est refusé avant l’envoi d’un octet. Le jeu de rôles ne loue jamais de machine et n’accède jamais à un pod. Lorsqu’une exécution utilise un pod, c’est offrig qui le loue, et le jeu de rôles ne voit que le tunnel de boucle.
 
-Le brouillon de conception est [docs/role-set-design.md](docs/role-set-design.md). Si ce brouillon indique encore qu’une incompatibilité de traits est un refus, ou que ce programme écrit sur un pod loué, le programme est en avance sur le brouillon : la vérification des traits est indicative, et un pod appartient à offrig. Les notes d’exécution se trouvent dans [docs/runs/](docs/runs/).
+La conception est décrite dans le document [docs/role-set-design.md](docs/role-set-design.md), et elle est conforme aux exigences du programme. Les notes relatives à l’exécution se trouvent dans le dossier [docs/runs/](docs/runs/).
 
 ## Installation
 

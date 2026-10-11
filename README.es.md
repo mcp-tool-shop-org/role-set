@@ -19,7 +19,7 @@ El conjunto de roles planifica los elementos de configuración de roles, escribe
 
 El escritor y el crítico solo se pueden contactar en `http://127.0.0.1` con un puerto explícito. Cualquier otra cosa se rechaza antes de que se envíe un byte. El conjunto de roles nunca alquila una máquina ni manipula un pod. Cuando una ejecución utiliza un pod, offrig es quien lo alquila, y el conjunto de roles solo ve el túnel de bucle.
 
-El borrador del diseño es [docs/role-set-design.md](docs/role-set-design.md). Donde ese borrador aún indique que una incompatibilidad de características es un rechazo, o que este programa escribe en un pod alquilado, el programa está por delante del borrador: la verificación de características es consultiva, y un pod pertenece a offrig. Las notas de la ejecución están en [docs/runs/](docs/runs/).
+El diseño se encuentra en [docs/role-set-design.md](docs/role-set-design.md) y se ha mantenido coherente con el programa. Las notas sobre la ejecución se encuentran en [docs/runs/](docs/runs/).
 
 ## Instalación
 
