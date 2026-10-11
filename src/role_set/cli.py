@@ -101,6 +101,7 @@ def _write(args: argparse.Namespace) -> int:
         pool=Path(args.pool) if args.pool else None,
         exemplar_repo=Path(args.exemplar_repo) if args.exemplar_repo else None,
         exemplar_commit=args.exemplar_commit, exemplar_files=tuple(args.exemplar_files or ()),
+        exemplar_exclude=Path(args.exemplar_exclude) if args.exemplar_exclude else None,
         stuck_repo=Path(args.stuck_repo) if args.stuck_repo else None, stuck_commit=args.stuck_commit,
         stop_after_minutes=args.stop_after_minutes,
     )
@@ -321,6 +322,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
     w.add_argument("--exemplar-commit", default=None)
     w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")
+    w.add_argument("--exemplar-exclude", default=None, help="roles/<role>/exemplar-exclude.json: reviewed ids never shown as exemplars")
     w.add_argument("--stuck-repo", default=None, help="aspire-si checkout for the frozen stuck rule (default: --exemplar-repo)")
     w.add_argument("--stuck-commit", default=None, help="commit for the frozen stuck rule (default: --exemplar-commit)")
     w.add_argument("--stop-after-minutes", type=float, default=None, help="no new slot starts after this many minutes")

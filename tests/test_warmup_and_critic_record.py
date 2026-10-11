@@ -93,3 +93,29 @@ def test_the_pilot_launch_script_carries_no_machine_paths():
     for needle in ("C:/", "C:\\", "E:/", "/e/AI", "Users/", "mikey"):
         assert needle not in script, needle
     assert "RS_HEARTBEAT:?" in script and "RS_EXEMPLAR_REPO:?" in script and "keep_alive" in script and "timeout -k 15" in script
+    assert "RS_DRY_RUN" in script and "--mock" in script and "--exemplar-exclude" in script and "exemplar_excluded" in script
+
+
+def test_lesson_terms_widely_shared_across_the_pack_do_not_count(tmp_path: Path):
+    # R&D on #25: a term counts only if at most two other lessons' paragraphs use it.
+    def lesson(n, body):
+        return f"## {n}. As a verifier, you do thing {n}\n\n{body}\n\n**Worked thinking.** x\n"
+
+    shared = "As a verifier, you weigh careful evidence with a simple, careful approach to every claim you meet."
+    others = [lesson(i, shared) for i in range(3)]
+    terms = lesson_terms(T07, others)
+    assert "careful" not in terms and "simple" not in terms and "overthinking" in terms
+    r, asked = _t07_runner(tmp_path, [json.dumps({"main_point": "Be careful.", "counterweight": "Keep it simple.", "deciding_case": "Any case."})])
+    r.pack = {**r.pack, **{f"traits/T9{i}.md": t for i, t in enumerate(others)}}
+    assert not r.warmup("T07")
+
+
+def test_excluded_ids_are_never_loaded_as_exemplars(monkeypatch):
+    import role_set.exemplars as ex
+
+    rows = [{"id": "T01-A-05", "lesson": "T01", "kind": "A"}, {"id": "T01-A-06", "lesson": "T01", "kind": "A"}]
+    monkeypatch.setattr(ex, "_git_show", lambda repo, commit, path: "\n".join(json.dumps(r) for r in rows))
+    got = ex.load_exemplars(Path("."), "abc", ["batch2-t01.jsonl"], frozenset({"T01-A-05"}))
+    assert [r["id"] for r in got["T01"]] == ["T01-A-06"]
+    ids, sha = ex.load_exclusions(Path(__file__).resolve().parents[1] / "roles" / "verifier" / "exemplar-exclude.json")
+    assert len(ids) == 10 and {"T01-A-05", "T17-C-08", "T14-C-04"} <= ids and len(sha) == 64

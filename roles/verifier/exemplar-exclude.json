@@ -1,0 +1,16 @@
+{
+ "purpose": "Reviewed items never shown to the writer as exemplars: R&D found each one teaches a sibling trait's step instead of its slot's, so showing it would teach the blur the fix round removes. The list grows with the fix round; an item leaves it only once its fix has merged.",
+ "source": "R&D's rulings on the critic-control dev subset, 2026-10-11 (dev iterations 1 and 2)",
+ "excluded": [
+  {"id": "T01-A-05", "reads_as": "T05"},
+  {"id": "T01-E-01", "reads_as": "T11"},
+  {"id": "T01-B-01", "reads_as": "T11"},
+  {"id": "T03-B-04", "reads_as": "T07"},
+  {"id": "T03-E-08", "reads_as": "T14"},
+  {"id": "T05-E-03", "reads_as": "T15"},
+  {"id": "T05-A-08", "reads_as": "T05 or T13 (both)"},
+  {"id": "T05-D-02", "reads_as": "T02"},
+  {"id": "T14-C-04", "reads_as": "nearer T03 or T12 (both)"},
+  {"id": "T17-C-08", "reads_as": "T07"}
+ ]
+}

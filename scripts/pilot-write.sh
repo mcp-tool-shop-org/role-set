@@ -16,6 +16,12 @@ PORT="$1"; GRANT="$2"; DEADLINE="$3"; WORK="$4"
 CRITIC="${RS_CRITIC:-gemma4:31b}"
 EXEMPLAR_COMMIT="${RS_EXEMPLAR_COMMIT:-a7ec78393a82681278f73a7a7e6ccbda20a1ac73}"
 CONCURRENCY="${RS_CONCURRENCY:-8}"
+# RS_DRY_RUN=1 runs the same line with the mock writer and critic (no pod, no card; output under out/mock, never
+# data), so the first real paste is not the first test of the paths, quoting and budget.
+MOCK=""; [ -n "${RS_DRY_RUN:-}" ] && MOCK="--mock"
+# Reviewed items R&D found teaching a sibling trait's step are never shown as exemplars (the list grows with the fix round).
+EXCLUDE="${RS_EXEMPLAR_EXCLUDE:-roles/verifier/exemplar-exclude.json}"
+EXCLUDED=$(python -c "import json,sys; print(','.join(e['id'] for e in json.load(open(sys.argv[1], encoding='utf-8'))['excluded']))" "$EXCLUDE") || exit 3
 BIN=.venv/Scripts/role-set.exe; [ -x "$BIN" ] || BIN=.venv/bin/role-set
 mkdir -p "$WORK/out"
 
@@ -23,12 +29,12 @@ DL=$(date -u -d "$(date -u +%Y-%m-%d) $DEADLINE:00" +%s); NOW=$(date -u +%s)
 MIN=$(( (DL - NOW) / 60 - 8 )); [ "$MIN" -gt 40 ] && MIN=40
 [ "$MIN" -lt 5 ] && { echo "refused: only $MIN budget minutes left before $DEADLINE UTC"; exit 3; }
 KILL=$(( DL - NOW - 120 ))
-echo "{\"deadline_utc\": \"$DEADLINE\", \"start_epoch\": $NOW, \"stop_after_minutes\": $MIN, \"kill_after_s\": $KILL, \"commit\": \"$(git rev-parse HEAD)\"}" > "$WORK/budget.json"
+echo "{\"deadline_utc\": \"$DEADLINE\", \"start_epoch\": $NOW, \"stop_after_minutes\": $MIN, \"kill_after_s\": $KILL, \"commit\": \"$(git rev-parse HEAD)\", \"dry_run\": \"${RS_DRY_RUN:-}\", \"exemplar_excluded\": \"$EXCLUDED\"}" > "$WORK/budget.json"
 
-timeout -k 15 "$KILL" "$BIN" write --plan "$WORK/plan.json" --pack "$WORK/pack" --out "$WORK/out" --stop-after-minutes "$MIN" \
+timeout -k 15 "$KILL" "$BIN" write $MOCK --plan "$WORK/plan.json" --pack "$WORK/pack" --out "$WORK/out" --stop-after-minutes "$MIN" \
   --endpoint "http://127.0.0.1:$PORT/v1" --model qwen3-235b-instruct-2507 --critic-endpoint http://127.0.0.1:11434 --critic-model "$CRITIC" \
   --grant "$GRANT" --heartbeat "$RS_HEARTBEAT" --concurrency "$CONCURRENCY" --pool "$WORK/pool.jsonl" \
-  --exemplar-repo "$RS_EXEMPLAR_REPO" --exemplar-commit "$EXEMPLAR_COMMIT" --exemplar-files pilot-t04.jsonl batch2-t01.jsonl \
+  --exemplar-repo "$RS_EXEMPLAR_REPO" --exemplar-commit "$EXEMPLAR_COMMIT" --exemplar-exclude "$EXCLUDE" --exemplar-files pilot-t04.jsonl batch2-t01.jsonl \
   batch2-t14.jsonl batch2-t16.jsonl batch3-t05.jsonl batch3-t13.jsonl batch3-t17.jsonl batch4-t02.jsonl batch4-t03.jsonl batch4-t06.jsonl \
   > "$WORK/run.log" 2>&1
 RC=$?; END=$(date -u +%s)

@@ -85,14 +85,29 @@ LESSON_COMMON = {"verifier", "verifiers", "statement", "statements", "material",
                  "those", "makes", "means", "within", "without", "being", "while", "rather"}
 
 
-def lesson_terms(lesson_text: str) -> set[str]:
-    """Content words of a lesson's teaching paragraph, the prose the writer is shown: five letters or more, minus the
-    words every lesson uses."""
+LESSON_TERM_SHARED_MAX = 2  # a term also in more than this many other lessons' paragraphs doesn't identify the trait
 
+
+def _paragraph_words(lesson_text: str) -> set[str]:
     from role_set.prompts import lesson_sentences
 
     words = re.findall(r"[a-z']+", " ".join(lesson_sentences(lesson_text)).lower())
-    return {w for w in words if len(w) >= 5 and w not in LESSON_COMMON}
+    return {w for w in words if len(w) >= 5 and "'" not in w and w not in LESSON_COMMON}  # contractions say nothing of the trait
+
+
+def lesson_terms(lesson_text: str, other_lessons: list[str] | None = None) -> set[str]:
+    """Distinctive content words of a lesson's teaching paragraph, the prose the writer is shown: five letters or more,
+    not in LESSON_COMMON, and in at most two other lessons' paragraphs (R&D on #25), so a restatement can't pass on
+    words the whole pack shares."""
+
+    own = _paragraph_words(lesson_text)
+    if not other_lessons:
+        return own
+    elsewhere: dict[str, int] = {}
+    for text in other_lessons:
+        for w in _paragraph_words(text) & own:
+            elsewhere[w] = elsewhere.get(w, 0) + 1
+    return {w for w in own if elsewhere.get(w, 0) <= LESSON_TERM_SHARED_MAX}
 
 
 def warmup_retry(trait_name: str, empty: list[str]) -> str:
@@ -477,7 +492,8 @@ class Runner:
         lesson_text = self.pack.get(f"traits/{lesson}.md", "")
         trait_name = self.trait_names.get(lesson, "")
         must = warmup_terms(trait_name)
-        taught = lesson_terms(lesson_text)
+        others = [v for k, v in self.pack.items() if k.startswith("traits/") and k != f"traits/{lesson}.md"]
+        taught = lesson_terms(lesson_text, others)
         messages = warmup_messages(self.pack, lesson)
         for attempt in range(1, WARMUP_MISSES + 1):
             c = self.writer(messages, seed=attempt)

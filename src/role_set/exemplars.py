@@ -31,8 +31,9 @@ def _git_show(repo: Path, commit: str, path: str) -> str:
     return proc.stdout
 
 
-def load_exemplars(repo: Path, commit: str, files: list[str]) -> dict[str, list[dict]]:
-    """{lesson: [rows]} from the named data files (e.g. pilot-t04.jsonl, batch2-t01.jsonl) at one commit."""
+def load_exemplars(repo: Path, commit: str, files: list[str], exclude_ids: frozenset[str] = frozenset()) -> dict[str, list[dict]]:
+    """{lesson: [rows]} from the named data files (e.g. pilot-t04.jsonl, batch2-t01.jsonl) at one commit, without the
+    excluded ids: reviewed items R&D found teaching a sibling trait's step, which would teach the writer the same blur."""
 
     by_lesson: dict[str, list[dict]] = {}
     for name in files:
@@ -40,8 +41,20 @@ def load_exemplars(repo: Path, commit: str, files: list[str]) -> dict[str, list[
         for line in text.splitlines():
             if line.strip():
                 row = json.loads(line)
+                if row.get("id") in exclude_ids:
+                    continue
                 by_lesson.setdefault(row["lesson"], []).append(row)
     return by_lesson
+
+
+def load_exclusions(path: Path) -> tuple[frozenset[str], str]:
+    """The exemplar exclusion list (roles/<role>/exemplar-exclude.json): its ids, and the file's sha256 for the pins."""
+
+    import hashlib
+
+    raw = path.read_bytes()
+    data = json.loads(raw.decode("utf-8"))
+    return frozenset(e["id"] for e in data["excluded"]), hashlib.sha256(raw).hexdigest()
 
 
 def pick(by_lesson: dict[str, list[dict]], *, kind: str, exclude_lesson: str, n: int = 3, seed: int = 0) -> list[dict]:
