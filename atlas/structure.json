@@ -55,7 +55,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "2aed9002127fc79d5f3312208adaa334f929ce5e221302b0c0b6e93db4e80f09",
+          "hash": "2abf82bc2383f0332d1f92be35464ed8ecc23cd212b9788d4eb4d198ab915970",
           "path": "docs/role-set-design.md"
         }
       ],
@@ -334,6 +334,7 @@
           "hash": "0a76bc3efbf1f0e9a94bdfe6e83141a728f01bc130df3d02f7ac8f5f9a793426",
           "importOrder": [
             "src/role_set/__init__.py",
+            "src/role_set/readout.py",
             "src/role_set/cost.py",
             "src/role_set/gates.py",
             "src/role_set/guards.py",
@@ -356,6 +357,7 @@
             "src/role_set/ingest.py",
             "src/role_set/pack.py",
             "src/role_set/plan.py",
+            "src/role_set/readout.py",
             "src/role_set/store.py",
             "src/role_set/transport.py",
             "src/role_set/write.py"
@@ -398,6 +400,21 @@
               "invokedAtTopLevel": false,
               "isDefaultExport": false,
               "name": "_cost"
+            },
+            {
+              "calls": [
+                {
+                  "line": 84,
+                  "name": "readout",
+                  "target": {
+                    "file": "src/role_set/readout.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_readout"
             },
             {
               "calls": [
@@ -1224,7 +1241,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "dfbe141da8e59763d951114339ba9307cdb9c76005df2bca6a25b6a7efd3a0b3",
+          "hash": "d59ab25a9b8c42d21cd716ad9e5dc6e105ed11879c202e464655bf68986559e8",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -1440,10 +1457,82 @@
           "path": "src/role_set/prompts.py"
         },
         {
+          "entry": "readout",
+          "entryRule": 3,
+          "exports": [
+            "markdown",
+            "readout",
+            "summarize"
+          ],
+          "hash": "29556ec38c2a51677ca568c835ea69c61ba6845286db8664ebbc8c8c63846bf7",
+          "path": "src/role_set/readout.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 19,
+                  "name": "exists",
+                  "target": null
+                },
+                {
+                  "line": 21,
+                  "name": "read_text",
+                  "target": null
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_lines"
+            },
+            {
+              "calls": [
+                {
+                  "line": 19,
+                  "name": "exists",
+                  "target": null,
+                  "via": "_lines"
+                },
+                {
+                  "line": 21,
+                  "name": "read_text",
+                  "target": null,
+                  "via": "_lines"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "summarize"
+            },
+            {
+              "calls": [
+                {
+                  "line": 19,
+                  "name": "exists",
+                  "target": null,
+                  "via": "_lines"
+                },
+                {
+                  "line": 21,
+                  "name": "read_text",
+                  "target": null,
+                  "via": "_lines"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "readout"
+            }
+          ]
+        },
+        {
           "exports": [
             "lesson_copy",
             "lesson_spans",
             "normalize_glyphs",
+            "refusal_rule",
             "spent_wording",
             "truth_checks"
           ],
@@ -1451,37 +1540,27 @@
             {
               "in": "_record_call",
               "kind": "except",
-              "line": 311
+              "line": 331
             },
             {
               "in": "_record_call",
               "kind": "raise",
-              "line": 322
+              "line": 342
             },
             {
               "in": "warmup",
               "kind": "except",
-              "line": 344
+              "line": 364
             },
             {
               "in": "_material_for",
               "kind": "raise",
-              "line": 367
+              "line": 387
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 433
-            },
-            {
-              "in": "run_slot",
-              "kind": "except",
-              "line": 445
-            },
-            {
-              "in": "run_slot",
-              "kind": "except",
-              "line": 458
+              "line": 453
             },
             {
               "in": "run_slot",
@@ -1496,30 +1575,40 @@
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 490
+              "line": 485
+            },
+            {
+              "in": "run_slot",
+              "kind": "except",
+              "line": 498
+            },
+            {
+              "in": "run_slot",
+              "kind": "except",
+              "line": 510
             },
             {
               "in": "_halt_lesson",
               "kind": "raise",
-              "line": 558
+              "line": 589
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 581
+              "line": 615
             },
             {
               "in": "run",
               "kind": "raise",
-              "line": 583
+              "line": 617
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 620
+              "line": 654
             }
           ],
-          "hash": "ec3b2e30ee2420a40a8e581e65b56cb87954a408208ffe30c489befece2308fd",
+          "hash": "2f45390fd0017e5c1e564965c0f6e776564fc0cee664f4e0ee252e1c789f2d80",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1658,6 +1747,41 @@
               "name": "counts"
             }
           ]
+        },
+        {
+          "exports": [
+            "load",
+            "rule_for_judge"
+          ],
+          "failurePaths": [
+            {
+              "in": "_show",
+              "kind": "except",
+              "line": 31
+            },
+            {
+              "in": "_show",
+              "kind": "raise",
+              "line": 32
+            },
+            {
+              "in": "rule_for_judge",
+              "kind": "except",
+              "line": 42
+            },
+            {
+              "in": "rule_for_judge",
+              "kind": "raise",
+              "line": 43
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 53
+            }
+          ],
+          "hash": "0b534e9df1040e554c22a49863da3a7508fd0eecb2ca01f352bead1ef647981d",
+          "path": "src/role_set/stuckrule.py"
         },
         {
           "entry": "post_with_retries",
@@ -1910,6 +2034,7 @@
             "src/role_set/plan.py",
             "src/role_set/prompts.py",
             "src/role_set/runner.py",
+            "src/role_set/stuckrule.py",
             "src/role_set/transport.py"
           ],
           "path": "src/role_set/write.py",
@@ -2367,7 +2492,7 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 13,
+          "reads": 15,
           "where": [
             "caller"
           ],
@@ -2434,31 +2559,14 @@
           "writes": 0
         }
       ],
-      "outsideReads": 22,
+      "outsideReads": 24,
       "outsideWrites": 7,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 14,
-      "unresolvedNamed": [
-        {
-          "path": "src/role_set/cli.py",
-          "specifier": "role_set.readout",
-          "why": "unplaced"
-        },
-        {
-          "path": "src/role_set/write.py",
-          "specifier": "role_set.stuckrule",
-          "why": "unplaced"
-        },
-        {
-          "path": "src/role_set/write.py",
-          "specifier": "role_set.stuckrule",
-          "why": "unplaced"
-        }
-      ],
-      "unresolvedSites": 3
+      "testedBy": 16,
+      "unresolvedSites": 0
     },
     {
       "dynamicReads": 0,
@@ -2565,6 +2673,24 @@
         },
         {
           "exports": [
+            "test_a_curly_trait_name_passes_the_real_gate_once_normalised",
+            "test_normalize_glyphs_makes_prose_plain_and_leaves_verbatim_lines",
+            "test_refused_drafts_are_kept_and_receipts_record_the_glyphs",
+            "test_truth_checks_compare_quotes_without_the_glyphs"
+          ],
+          "hash": "fdffa828677309e2a394fcd8f4bfa8ab2a33a3aecb493fc0b8b387e189444bff",
+          "importsFiles": [
+            "src/role_set/assemble.py",
+            "src/role_set/gates.py",
+            "src/role_set/plan.py",
+            "src/role_set/runner.py",
+            "tests/test_runner.py"
+          ],
+          "path": "tests/test_glyphs_refusals.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_grant_is_required_only_for_the_card",
             "test_heartbeat_uses_mtime_and_never_opens_the_file",
             "test_ollama_digest_is_checked_against_the_pin_and_cloud_tags_are_refused",
@@ -2631,6 +2757,38 @@
         },
         {
           "exports": [
+            "test_a_writer_that_cannot_be_reached_ends_the_slot_not_the_run",
+            "test_every_writer_call_is_kept_with_tokens_latency_and_the_stuck_measures",
+            "test_more_than_a_fifth_of_ten_calls_unparsable_is_systemic",
+            "test_the_frozen_rule_is_read_by_git_hash_checked_and_mapped",
+            "test_the_readout_reads_a_failing_run_as_well_as_a_passing_one"
+          ],
+          "hash": "d6a0f864620b433990762e3c99b5755abb2387e1bed580a5deb21e94a749285c",
+          "importOrder": [
+            "src/role_set/plan.py",
+            "src/role_set/runner.py",
+            "src/role_set/transport.py",
+            "tests/test_runner.py",
+            "src/role_set/__init__.py",
+            "src/role_set/stuckrule.py",
+            "src/role_set/cli.py",
+            "src/role_set/readout.py"
+          ],
+          "importsFiles": [
+            "src/role_set/__init__.py",
+            "src/role_set/cli.py",
+            "src/role_set/plan.py",
+            "src/role_set/readout.py",
+            "src/role_set/runner.py",
+            "src/role_set/stuckrule.py",
+            "src/role_set/transport.py",
+            "tests/test_runner.py"
+          ],
+          "path": "tests/test_paid_run_data.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_a_batch_of_three_lessons_needs_a_bigger_menu",
             "test_a_batch_of_two_lessons_keeps_every_structure_at_most_twice",
             "test_a_lesson_plan_meets_every_floor_and_is_reproducible",
@@ -2688,11 +2846,13 @@
             "test_suggestion_table_is_pinned",
             "test_the_finished_set_goes_through_check_batch_and_a_refusal_is_reported",
             "test_the_flaw_check_is_advisory_unless_gated",
+            "test_the_run_stops_only_when_every_kind_is_off",
             "test_the_time_budget_starts_no_new_slot_after_it",
             "test_two_drops_finish_the_lesson_and_a_halted_lesson_starts_no_new_slot",
-            "test_two_lessons_halting_on_one_code_is_systemic"
+            "test_two_lessons_halting_on_one_kind_and_rule_switch_that_kind_off",
+            "test_two_unrelated_gate_rules_are_not_the_same_key"
           ],
-          "hash": "57d2d33a6d5318dd88b4addb50c71336be9e222767e73eb0f6a217d954ec99be",
+          "hash": "cefff88f199cc87b83e1479342eeada10b1f8a2f04588f8b63317c602a2f0f53",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/gates.py",
@@ -2839,7 +2999,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 14
+          "files": 16
         },
         {
           "boundary": "src",
@@ -2848,7 +3008,7 @@
             "file": "src/role_set/assemble.py",
             "from": "tests/test_assemble.py"
           },
-          "files": 19
+          "files": 21
         }
       ],
       "readers": [],
@@ -2879,7 +3039,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 14,
+          "files": 16,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -2946,7 +3106,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 19
+          "files": 21
         }
       ],
       "readers": [],
@@ -2984,8 +3144,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "4477f59dce9f102dc534c4b974368d1e626d214c",
-    "tracked": 47
+    "commit": "d43eb1b00f6454ddff972bafe7c0206d3ee97f62",
+    "tracked": 51
   },
   "landings": [
     {
@@ -3025,6 +3185,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 14,
+  "testFiles": 16,
   "unassigned": []
 }

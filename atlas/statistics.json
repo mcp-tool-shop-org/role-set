@@ -99,7 +99,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 12,
+      "qualifyingSourceCommits": 14,
       "rebaseline": null
     },
     {
@@ -117,7 +117,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 13,
+      "qualifyingSourceCommits": 15,
       "rebaseline": null
     }
   ],
@@ -160,8 +160,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 2,
-        "lines": 117,
+        "commits": 3,
+        "lines": 146,
         "path": "atlas/README.md"
       },
       {
@@ -170,18 +170,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 2,
-        "lines": 329,
+        "commits": 3,
+        "lines": 381,
         "path": "atlas/page.json"
       },
       {
-        "commits": 2,
-        "lines": 368,
+        "commits": 3,
+        "lines": 578,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 2,
-        "lines": 1460,
+        "commits": 3,
+        "lines": 3358,
         "path": "atlas/structure.json"
       },
       {
@@ -190,8 +190,8 @@
         "path": "codecov.yml"
       },
       {
-        "commits": 4,
-        "lines": 581,
+        "commits": 6,
+        "lines": 602,
         "path": "docs/role-set-design.md"
       },
       {
@@ -220,8 +220,8 @@
         "path": "src/role_set/assemble.py"
       },
       {
-        "commits": 8,
-        "lines": 298,
+        "commits": 9,
+        "lines": 332,
         "path": "src/role_set/cli.py"
       },
       {
@@ -265,8 +265,8 @@
         "path": "src/role_set/ingest.py"
       },
       {
-        "commits": 4,
-        "lines": 276,
+        "commits": 5,
+        "lines": 278,
         "path": "src/role_set/mock.py"
       },
       {
@@ -280,13 +280,18 @@
         "path": "src/role_set/plan.py"
       },
       {
-        "commits": 4,
-        "lines": 204,
+        "commits": 5,
+        "lines": 206,
         "path": "src/role_set/prompts.py"
       },
       {
-        "commits": 5,
-        "lines": 515,
+        "commits": 2,
+        "lines": 146,
+        "path": "src/role_set/readout.py"
+      },
+      {
+        "commits": 7,
+        "lines": 809,
         "path": "src/role_set/runner.py"
       },
       {
@@ -296,12 +301,17 @@
       },
       {
         "commits": 1,
+        "lines": 70,
+        "path": "src/role_set/stuckrule.py"
+      },
+      {
+        "commits": 1,
         "lines": 147,
         "path": "src/role_set/transport.py"
       },
       {
-        "commits": 3,
-        "lines": 261,
+        "commits": 4,
+        "lines": 281,
         "path": "src/role_set/write.py"
       },
       {
@@ -310,8 +320,8 @@
         "path": "tests/test_assemble.py"
       },
       {
-        "commits": 7,
-        "lines": 147,
+        "commits": 8,
+        "lines": 156,
         "path": "tests/test_cli.py"
       },
       {
@@ -328,6 +338,11 @@
         "commits": 4,
         "lines": 62,
         "path": "tests/test_gates.py"
+      },
+      {
+        "commits": 1,
+        "lines": 79,
+        "path": "tests/test_glyphs_refusals.py"
       },
       {
         "commits": 2,
@@ -351,6 +366,11 @@
       },
       {
         "commits": 2,
+        "lines": 126,
+        "path": "tests/test_paid_run_data.py"
+      },
+      {
+        "commits": 2,
         "lines": 130,
         "path": "tests/test_plan.py"
       },
@@ -360,8 +380,8 @@
         "path": "tests/test_prompts_critic.py"
       },
       {
-        "commits": 5,
-        "lines": 268,
+        "commits": 7,
+        "lines": 394,
         "path": "tests/test_runner.py"
       },
       {
@@ -370,8 +390,8 @@
         "path": "tests/test_transport.py"
       },
       {
-        "commits": 3,
-        "lines": 267,
+        "commits": 4,
+        "lines": 271,
         "path": "tests/test_write.py"
       },
       {
@@ -390,21 +410,35 @@
     "level": "low",
     "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
   },
-  "generatedAt": "2026-10-11T06:00:40.178Z",
+  "generatedAt": "2026-10-11T06:05:42.924Z",
   "generatedFrom": {
-    "commit": "4477f59dce9f102dc534c4b974368d1e626d214c"
+    "commit": "d43eb1b00f6454ddff972bafe7c0206d3ee97f62"
   },
   "pairs": [
     {
       "a": "src/role_set/cli.py",
       "b": "tests/test_cli.py",
-      "either": 6,
+      "either": 7,
       "shared": 6,
-      "strength": 1
+      "strength": 0.857143
+    },
+    {
+      "a": "src/role_set/mock.py",
+      "b": "tests/test_runner.py",
+      "either": 7,
+      "shared": 4,
+      "strength": 0.571429
+    },
+    {
+      "a": "src/role_set/runner.py",
+      "b": "tests/test_runner.py",
+      "either": 7,
+      "shared": 5,
+      "strength": 0.714286
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 13,
+    "appliedChangesetLimit": 14,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -413,16 +447,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "both",
-    "headDate": "2026-10-10T22:44:59-07:00",
-    "inScopeFiles": 52,
+    "headDate": "2026-10-11T02:05:39-04:00",
+    "inScopeFiles": 56,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 17,
+    "qualifyingCommits": 19,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T05:44:59.000Z",
+    "since": "2026-04-14T06:05:39.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
