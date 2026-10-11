@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from role_set.assemble import trait_name
-from role_set.exemplars import ExemplarError, load_exemplars
+from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
 from role_set.harvest import load_pool
 from role_set.guards import GuardError, require_grant, require_heartbeat, require_local_endpoint, require_model_allowed, require_ollama_digest
@@ -58,6 +58,7 @@ class WriteConfig:
     exemplar_repo: Path | None = None
     exemplar_commit: str | None = None
     exemplar_files: tuple[str, ...] = ()
+    exemplar_exclude: Path | None = None  # roles/<role>/exemplar-exclude.json: reviewed ids never shown as exemplars
     stuck_repo: Path | None = None  # aspire-si checkout for the frozen stuck rule; defaults to the exemplar repo
     stuck_commit: str | None = None  # defaults to the exemplar commit
     stop_after_minutes: float | None = None  # no new slot starts after this; running slots finish
@@ -213,7 +214,11 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
         try:
-            exemplars = load_exemplars(cfg.exemplar_repo, cfg.exemplar_commit, list(cfg.exemplar_files))
+            excluded: frozenset[str] = frozenset()
+            if cfg.exemplar_exclude:
+                excluded, sha = load_exclusions(cfg.exemplar_exclude)
+                pins.update({"exemplar_exclude_sha256": sha, "exemplar_excluded": sorted(excluded)})
+            exemplars = load_exemplars(cfg.exemplar_repo, cfg.exemplar_commit, list(cfg.exemplar_files), excluded)
             pins["exemplar_commit"] = cfg.exemplar_commit
         except ExemplarError as e:
             raise WriteRefused(str(e)) from e

@@ -77,6 +77,46 @@ def row_shaped(fields: dict, slot: Slot) -> bool:
     return any(k in fields for k in ("turns", "kind")) and "turns" not in wanted and not all(k in fields for k in wanted)
 
 
+WARMUP_LESSON_TERMS = 2  # content words of the lesson's teaching paragraph a restatement must use, if it doesn't name the trait
+# Words every lesson uses, which say nothing about which trait a restatement is about.
+LESSON_COMMON = {"verifier", "verifiers", "statement", "statements", "material", "matters", "because", "something", "someone",
+                 "people", "there", "their", "which", "where", "would", "could", "should", "every", "whole", "check", "checks",
+                 "checking", "answer", "verdict", "about", "other", "thing", "things", "still", "never", "always", "these",
+                 "those", "makes", "means", "within", "without", "being", "while", "rather"}
+
+
+LESSON_TERM_SHARED_MAX = 2  # a term also in more than this many other lessons' paragraphs doesn't identify the trait
+
+
+def _paragraph_words(lesson_text: str) -> set[str]:
+    from role_set.prompts import lesson_sentences
+
+    words = re.findall(r"[a-z']+", " ".join(lesson_sentences(lesson_text)).lower())
+    return {w for w in words if len(w) >= 5 and "'" not in w and w not in LESSON_COMMON}  # contractions say nothing of the trait
+
+
+def lesson_terms(lesson_text: str, other_lessons: list[str] | None = None) -> set[str]:
+    """Distinctive content words of a lesson's teaching paragraph, the prose the writer is shown: five letters or more,
+    not in LESSON_COMMON, and in at most two other lessons' paragraphs (R&D on #25), so a restatement can't pass on
+    words the whole pack shares."""
+
+    own = _paragraph_words(lesson_text)
+    if not other_lessons:
+        return own
+    elsewhere: dict[str, int] = {}
+    for text in other_lessons:
+        for w in _paragraph_words(text) & own:
+            elsewhere[w] = elsewhere.get(w, 0) + 1
+    return {w for w in own if elsewhere.get(w, 0) <= LESSON_TERM_SHARED_MAX}
+
+
+def warmup_retry(trait_name: str, empty: list[str]) -> str:
+    ask = f"Your restatement must name this trait as the lesson does: '{trait_name}'." if trait_name else "Restate the trait as the lesson does."
+    if empty:
+        ask += " Answer every part: " + ", ".join(empty) + "."
+    return ask + " Return the JSON object again, in your own words."
+
+
 def warmup_terms(trait_name: str) -> set[str]:
     """The content words of a trait's name: the warm-up's restatement names the trait by at least one of them."""
 
@@ -374,6 +414,7 @@ class Runner:
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
+        self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
 
     def _lesson_spans(self, lesson: str) -> set[str]:
         if lesson not in self._spans_by_lesson:
@@ -411,6 +452,12 @@ class Runner:
         record = {"slot": slot.id, "lesson": slot.lesson, "kind": slot.kind, "attempt": attempt, "outcome": outcome,
                   "prompt_tokens": getattr(c, "prompt_tokens", None), "completion_tokens": getattr(c, "completion_tokens", None),
                   "seconds": round(getattr(c, "seconds", 0.0) or 0.0, 2), "glyphs_normalized": glyphs, "draft": text}
+        # Every critic check this draft went through, agreeing or not (gating or advisory), so the critic's behaviour
+        # on a paid run can be read per draft. Absent when the draft never reached the critic.
+        with self.lock:
+            checks = self._critic_notes.pop(slot.id, None)
+        if checks is not None:
+            record["critic"] = checks
         if self.stuck is not None and text:
             try:
                 thinking = str(parse_json_object(text).get("thinking") or "")
@@ -443,9 +490,13 @@ class Runner:
         never shown, and filler words: T07 and T10 could not pass at any seed, and 21 of 64 chunks lost their warm-up."""
 
         lesson_text = self.pack.get(f"traits/{lesson}.md", "")
-        must = warmup_terms(self.trait_names.get(lesson, ""))
+        trait_name = self.trait_names.get(lesson, "")
+        must = warmup_terms(trait_name)
+        others = [v for k, v in self.pack.items() if k.startswith("traits/") and k != f"traits/{lesson}.md"]
+        taught = lesson_terms(lesson_text, others)
+        messages = warmup_messages(self.pack, lesson)
         for attempt in range(1, WARMUP_MISSES + 1):
-            c = self.writer(warmup_messages(self.pack, lesson), seed=attempt)
+            c = self.writer(messages, seed=attempt)
             self._count_tokens(c)
             answer: dict = {}
             try:
@@ -454,15 +505,22 @@ class Runner:
                 pass
             text = " ".join(str(answer.get(k, "")) for k in WARMUP_PARTS).lower()
             hit = {w for w in must if re.search(rf"\b{re.escape(w)}", text)}
+            taught_hit = {w for w in taught if re.search(rf"\b{re.escape(w)}", text)}
             empty = [k for k in WARMUP_PARTS if not str(answer.get(k, "")).strip()]
-            passed = bool(hit or not must) and not empty
+            # Named by its own name, or restated in the lesson's own terms (two of them). A restatement that is vague
+            # or about another trait hits neither.
+            passed = bool(hit or not must or len(taught_hit) >= WARMUP_LESSON_TERMS) and not empty
             self._append("warmups.jsonl", {"lesson": lesson, "attempt": attempt, "passed": passed, "terms": sorted(hit),
-                                           "empty_parts": empty, "reply": c.text})
+                                           "lesson_terms": sorted(taught_hit), "empty_parts": empty, "reply": c.text})
             if passed:
-                self._log("warmup_pass", lesson=lesson, attempt=attempt, terms=sorted(hit))
+                self._log("warmup_pass", lesson=lesson, attempt=attempt, terms=sorted(hit), lesson_terms=sorted(taught_hit))
                 (self.out_dir / f"warmup-{lesson}.json").write_text(json.dumps({"attempt": attempt, "answer": answer, "lesson_chars": len(lesson_text)}, indent=1), encoding="utf-8")
                 return True
             self._log("warmup_miss", lesson=lesson, attempt=attempt, missing=sorted(must)[:6], empty_parts=empty)
+            # The retry marks the missed point, as the design asks. The rehearsal's 8B gave the identical reply to an
+            # unchanged prompt, seed or no seed.
+            messages = messages + [{"role": "assistant", "content": c.text},
+                                   {"role": "user", "content": warmup_retry(trait_name, empty)}]
         return False
 
     # ---- one slot ---------------------------------------------------------------------------------------------
@@ -495,9 +553,15 @@ class Runner:
         self.status.critic_asked += 1
         self._log(action, slot=slot.id, code=v.code, detail=v.detail, critic_raw=raw[:2000])
 
+    def _note(self, slot: Slot, check: str, v, raw: str) -> None:
+        with self.lock:
+            self._critic_notes.setdefault(slot.id, []).append({"check": check, "code": v.code, "detail": v.detail, "raw": raw[:2000]})
+
     def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
         if self.critic is None:
             return None
+        with self.lock:
+            self._critic_notes[slot.id] = []
         material = row.get("material") or ""
         verdicts = []
         if slot.kind in ("C", "D") or (slot.kind == "E" and slot.e_type == "verdict"):
@@ -521,6 +585,7 @@ class Runner:
                     if v.code != "VOID":
                         break
                     self._log("critic_void", slot=slot.id, detail=v.detail)
+                self._note(slot, "verdict", v, c.text)
                 verdicts.append((v, c.text))
                 if not v.ok:
                     break
@@ -528,6 +593,7 @@ class Runner:
                 c = self.critic(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]))
                 self._count_tokens(c)
                 f = compare_flaw(c.text, row["planted_flaw"])
+                self._note(slot, "flaw", f, c.text)
                 if f.ok or self.flaw_gate:
                     verdicts.append((f, c.text))
                 else:
@@ -542,6 +608,7 @@ class Runner:
                 if v.code != "VOID":
                     break
                 self._log("critic_void", slot=slot.id, detail=v.detail)
+            self._note(slot, "answer", v, c.text)
             self._gated_or_advisory(verdicts, slot, v, c.text, self.answer_gate, "answer_advisory")
         # The trait is a majority of three calls (R&D, 2026-10-11): one call was unstable on 5 of 20 items.
         votes = []
@@ -549,8 +616,9 @@ class Runner:
             c = self.critic(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS), temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
             votes.append(c.text)
-        self._gated_or_advisory(verdicts, slot, compare_trait_votes(votes, slot.lesson), json.dumps(votes, ensure_ascii=False),
-                                self.trait_gate, "trait_advisory")
+        trait = compare_trait_votes(votes, slot.lesson)
+        self._note(slot, "trait", trait, json.dumps(votes, ensure_ascii=False))
+        self._gated_or_advisory(verdicts, slot, trait, json.dumps(votes, ensure_ascii=False), self.trait_gate, "trait_advisory")
         for v, raw in verdicts:
             self.status.critic_asked += 1
             if v.ok:
