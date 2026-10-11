@@ -156,7 +156,7 @@ def test_a_row_shaped_draft_is_refused_as_shape_with_the_fields_named(tmp_path: 
 
     r.writer = row_first
     out = r.run_slot(_slot("B", seed=0))
-    assert out.refusals[0]["code"] == "SHAPE" and "puzzle, thinking, reply, answer" in out.refusals[0]["detail"]
+    assert out.refusals[0]["code"] == "SHAPE" and "puzzle, model, thinking, reply, answer" in out.refusals[0]["detail"]
 
 
 def test_the_critics_own_words_are_kept_with_its_refusal(tmp_path: Path):
