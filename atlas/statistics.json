@@ -160,8 +160,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 13,
-        "lines": 298,
+        "commits": 14,
+        "lines": 308,
         "path": "atlas/README.md"
       },
       {
@@ -170,18 +170,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 13,
-        "lines": 924,
+        "commits": 14,
+        "lines": 943,
         "path": "atlas/page.json"
       },
       {
-        "commits": 13,
-        "lines": 1922,
+        "commits": 14,
+        "lines": 1990,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 13,
-        "lines": 6691,
+        "commits": 14,
+        "lines": 6786,
         "path": "atlas/structure.json"
       },
       {
@@ -321,7 +321,7 @@
       },
       {
         "commits": 3,
-        "lines": 720,
+        "lines": 732,
         "path": "src/role_set/puzzle.py"
       },
       {
@@ -461,7 +461,7 @@
       },
       {
         "commits": 3,
-        "lines": 493,
+        "lines": 504,
         "path": "tests/test_puzzle.py"
       },
       {
@@ -505,51 +505,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-11T16:32:05.754Z",
+  "generatedAt": "2026-10-11T17:37:41.101Z",
   "generatedFrom": {
-    "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7"
+    "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 11,
-      "shared": 11,
+      "either": 12,
+      "shared": 12,
       "strength": 1
     },
     {
@@ -633,7 +633,7 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-11T12:32:01-04:00",
+    "headDate": "2026-10-11T09:36:16-07:00",
     "inScopeFiles": 75,
     "pinnedStart": null,
     "priorFloor": "fallen",
@@ -642,7 +642,7 @@
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T16:32:01.000Z",
+    "since": "2026-04-14T16:36:16.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

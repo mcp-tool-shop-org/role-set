@@ -71,8 +71,8 @@
           "path": "docs/runs/2026-10-11-pilot-2.md"
         },
         {
-          "hash": "36294a6708b11f6da36cbd6e29c14809493306201dc49ec60d95cddcdc8cc720",
-          "path": "docs/runs/2026-10-12-pilot-3.md"
+          "hash": "399d6d50485e9601d5094d4249d1ed942e79b2bd37f29ac659468731d68ebf07",
+          "path": "docs/runs/2026-10-11-pilot-3.md"
         }
       ],
       "globs": [
@@ -2149,80 +2149,80 @@
             {
               "in": "solve",
               "kind": "raise",
-              "line": 561
-            },
-            {
-              "in": "solve",
-              "kind": "raise",
-              "line": 567
-            },
-            {
-              "in": "solve",
-              "kind": "raise",
               "line": 573
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 582
+              "line": 579
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 592
+              "line": 585
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 597
+              "line": 594
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 599
+              "line": 604
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 602
+              "line": 609
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 608
+              "line": 611
+            },
+            {
+              "in": "solve",
+              "kind": "raise",
+              "line": 614
+            },
+            {
+              "in": "solve",
+              "kind": "raise",
+              "line": 620
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 636
+              "line": 648
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 643
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 645
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 649
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 651
+              "line": 655
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
               "line": 657
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 661
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 663
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 669
             }
           ],
-          "hash": "5c19e943def23c803374c7335df3edde9ba8169318fb4c610b9260e6b82d9719",
+          "hash": "41c04f73f6e8bfe5518967f0b813649d1af65ac05e7096c3f5cf54df0e08cd86",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py"
@@ -3944,6 +3944,7 @@
             "test_polarity_must_match_the_line",
             "test_right_to_left_is_refused_because_it_reverses_left_and_right",
             "test_t03_b01_is_not_on_a_two_value_attribute_is_a_lookup",
+            "test_t03_b06_an_if_on_a_stated_before_is_a_lookup",
             "test_t05_b01_a_count_written_as_model_syntax_or_settling_every_entity_is_refused",
             "test_t06_b01_a_stopping_line_that_is_a_count_of_everyone_is_refused",
             "test_t13_b07_an_if_on_its_own_stated_antecedent_is_a_lookup",
@@ -3952,7 +3953,7 @@
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "1e7390c149aee26a678ca233e11278d6fbd16861d66d165e33e8213b6d670169",
+          "hash": "82be676528d944f768be7275f04b2c2c2a1de56be81ebdcfbbbf8232b9d64538",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
@@ -4335,7 +4336,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7",
+    "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
     "tracked": 70
   },
   "landings": [

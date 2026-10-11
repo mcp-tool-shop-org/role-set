@@ -20,22 +20,22 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 5,
+      "added": 1,
+      "changed": 2,
       "moved": 0,
-      "parts": 2,
-      "removed": 0
+      "parts": 3,
+      "removed": 1
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 5 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 1 file added, 1 removed and 2 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "8ec75706451f2974b978e46cdf5261d1dd6cd696",
-      "generatedAt": "2026-10-11T15:20:38.816Z"
+      "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7",
+      "generatedAt": "2026-10-11T16:32:05.754Z"
     },
     "unchanged": true
   },
@@ -107,7 +107,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 3 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 3,
-  "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7",
+  "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (48 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -180,7 +180,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T16:32:05.754Z",
+  "generatedAt": "2026-10-11T17:37:41.101Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 22 reads go to a path their caller passes, not to this repository.",
