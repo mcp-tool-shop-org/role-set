@@ -152,7 +152,7 @@ def test_concurrency_path_and_truth_checks(tmp_path: Path):
 
 def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
-                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE"}
+                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "LESSON_COPY"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
 
 
@@ -230,3 +230,37 @@ def test_the_flaw_check_is_advisory_unless_gated(tmp_path: Path):
     r2.critic = wrong_flaw(critic2)
     out2 = r2.run_slot(slot)
     assert not out2.accepted and out2.refusals[0]["code"] == "FLAW_MISMATCH"
+
+
+def test_a_draft_that_copies_the_lesson_is_refused_and_the_retry_names_the_span(tmp_path: Path):
+    from role_set.runner import lesson_copy, lesson_spans, spent_wording
+
+    lesson = "## 2. As a verifier, you go to the source\n\nA verifier who rewrites is no longer\nchecking anything at all here.\n"
+    spans = lesson_spans(lesson)
+    assert "a verifier who rewrites is no longer checking" in spans  # across the line break
+    row = {"material": "a verifier who rewrites is no longer checking anything", "turns": [
+        {"user": "Material:\na verifier who rewrites is no longer checking anything", "thinking": "", "reply": "My own words, no copy."}]}
+    assert lesson_copy(row, spans) is None  # a material line is content, not copying
+    row["turns"][0]["reply"] = "I hold that a verifier who rewrites is no longer checking at all."
+    assert lesson_copy(row, spans) == "a verifier who rewrites is no longer checking"
+    assert lesson_copy(row, set()) is None
+    assert spent_wording({"code": "LESSON_COPY", "detail": "x y z"}) == ["x y z"]
+
+    # In a run: the first draft echoes the lesson, is refused with LESSON_COPY, and the retry carries the span.
+    r, _, _ = _runner(tmp_path)
+    r.pack = {**PACK, "traits/T02.md": PACK["traits/T02.md"] + "\nA reader holds the page, not a memory of it, every time.\n"}
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
+    asks = []
+    real = r.writer
+
+    def first_copies(messages, seed=0):
+        asks.append(messages[-1]["content"])
+        c = real(messages, seed)
+        if len(asks) == 1:
+            c = types.SimpleNamespace(**{**c.__dict__, "text": c.text.replace("A reader holds the page", "A reader holds the page, not a memory of it, every time. A reader holds the page")})
+        return c
+
+    r.writer = first_copies
+    out = r.run_slot(slot)
+    assert out.refusals and out.refusals[0]["code"] == "LESSON_COPY"
+    assert "Do not use any of these wordings" in asks[1] and "handoff rule 11" in out.refusals[0]["suggestion"]

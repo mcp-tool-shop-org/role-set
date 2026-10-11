@@ -7,6 +7,7 @@ material. Everything it must not be free to repeat is fixed in the slot.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 from role_set.plan import Slot
@@ -136,6 +137,10 @@ def writer_messages(
         user_parts.append("## Exemplars of this kind from a different trait (form only; never reuse their words)\n" + json.dumps(shown, ensure_ascii=False, indent=1))
     if avoid:
         user_parts.append("## Do not use these framings or phrases; they are spent\n" + "\n".join(f"- {a}" for a in avoid))
+    taught = lesson_sentences(trait)
+    if taught:
+        # Rule 11, stated before the first draft: the rehearsal's writer copied the lesson's own sentence into every passage.
+        user_parts.append("## The lesson's sentences: never reuse them, not even eight words in a row\n" + "\n".join(f"- {s}" for s in taught))
     user_parts.append("Return the JSON object now.")
     return [{"role": "system", "content": system}, {"role": "user", "content": "\n\n".join(user_parts)}]
 
@@ -148,6 +153,22 @@ def material_messages(slot: Slot, needs: str) -> list[dict]:
         {"role": "system", "content": "You write a short, realistic piece of everyday material for a verification exercise. Return plain text only, no commentary, no JSON."},
         {"role": "user", "content": f"Write a {kind}, 2 to 8 lines, invented, with no real names, paths, emails or brands. {needs} Do not include any instruction addressed to a reader or reviewer unless asked. Return only the text."},
     ]
+
+
+def lesson_sentences(trait_text: str) -> list[str]:
+    """The sentences of a trait lesson's teaching paragraph (after the heading, before the worked thinking): the
+    prose a writer is most tempted to restate."""
+
+    body: list[str] = []
+    for line in trait_text.splitlines()[1:]:
+        if line.startswith("**") or line.startswith("```"):
+            break
+        if line.strip():
+            body.append(line.strip())
+        elif body:
+            break
+    text = " ".join(body)
+    return [s.strip() for s in re.split(r"(?<=[.!?])\s+", text) if len(s.split()) >= 8]
 
 
 def warmup_messages(pack: dict[str, str], lesson: str) -> list[dict]:

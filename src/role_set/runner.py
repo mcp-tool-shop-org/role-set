@@ -49,6 +49,7 @@ SUGGESTIONS = {
     "VOID": "The second reader's answer was unusable ({detail}); it was asked again.",
     "AGAINST": "{detail}",
     "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
+    "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
 }
 
 
@@ -105,10 +106,46 @@ def _quoted_spans(text: str) -> list[str]:
     return [s.strip() for s in spans]
 
 
+LESSON_SPAN_WORDS = 8  # the gates' span length
+
+
+def _words(text: str) -> list[str]:
+    return re.findall(r"[a-z0-9']+", text.lower())
+
+
+def lesson_spans(lesson_text: str) -> set[str]:
+    """Every 8-word span of a trait lesson, across line breaks, in the gates' tokenisation."""
+
+    w = _words(lesson_text)
+    return {" ".join(w[i:i + LESSON_SPAN_WORDS]) for i in range(len(w) - LESSON_SPAN_WORDS + 1)}
+
+
+def lesson_copy(row: dict, spans: set[str]) -> str | None:
+    """The first 8-word span (in sorted order) that an item's user turns, thinking or replies share with its trait
+    lesson, outside material lines, or None. Handoff rule 11 (fresh wording) had no check behind it until the
+    2026-10-11 rehearsal, where the writer copied a lesson sentence into every kind-A passage."""
+
+    if not spans:
+        return None
+    content = {ln.strip() for ln in (row.get("material") or "").splitlines() if ln.strip()}
+    found: set[str] = set()
+    for t in row["turns"]:
+        content |= {x.strip() for x in t.get("new_material", []) if x.strip()}
+        for text in (t["user"], t["thinking"], t["reply"]):
+            for line in text.splitlines():
+                if line.strip() in content:
+                    continue
+                w = _words(line)
+                found |= {" ".join(w[i:i + LESSON_SPAN_WORDS]) for i in range(len(w) - LESSON_SPAN_WORDS + 1)} & spans
+    return sorted(found)[0] if found else None
+
+
 def spent_wording(refusal: dict) -> list[str]:
-    """The wording a check_against refusal names as spent ("the wording 'x' is already in 2 items"), or []."""
+    """The wording a refusal names as spent ("the wording 'x' is already in 2 items", or a copied lesson span), or []."""
 
     detail = refusal.get("detail") or ""
+    if refusal.get("code") == "LESSON_COPY":
+        return [detail] if detail else []
     if refusal.get("code") != "AGAINST" or not detail.startswith(SPENT_CODES):
         return []
     # The gates' messages put the wording between quotes before "is already" / "already opens"; the wording itself
@@ -183,6 +220,12 @@ class Runner:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
         self.flaw_gate = flaw_gate
+        self._spans_by_lesson: dict[str, set[str]] = {}
+
+    def _lesson_spans(self, lesson: str) -> set[str]:
+        if lesson not in self._spans_by_lesson:
+            self._spans_by_lesson[lesson] = lesson_spans(self.pack.get(f"traits/{lesson}.md", ""))
+        return self._spans_by_lesson[lesson]
 
     # ---- status and log -------------------------------------------------------------------------------------
     def _log(self, action: str, **kw) -> None:
@@ -327,6 +370,10 @@ class Runner:
                 t = truth_checks(row, facts)
                 if t:
                     refusal = self._refusal(*t)
+            if refusal is None:
+                copied = lesson_copy(row, self._lesson_spans(slot.lesson))
+                if copied:
+                    refusal = self._refusal("LESSON_COPY", copied)
             if refusal is None:
                 try:
                     self.gates.check_item(row)
