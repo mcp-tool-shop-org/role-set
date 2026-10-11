@@ -464,7 +464,7 @@
               "line": 177
             }
           ],
-          "hash": "91c09ffd14c2d100061215acb7ce9a4d7be5ea3614174a452079a87cdfed68a6",
+          "hash": "d992bbc356082a419a2e9d7b64e5cd0fec6715b7a1d2029b15210727be7e81b7",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/autostart.py",
@@ -866,14 +866,21 @@
             {
               "calls": [
                 {
-                  "line": 355,
-                  "name": "check_file",
+                  "line": 358,
+                  "name": "stamp",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 359,
+                  "name": "check_file",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 363,
                   "name": "render",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -888,7 +895,7 @@
             {
               "calls": [
                 {
-                  "line": 364,
+                  "line": 368,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -2107,110 +2114,115 @@
             {
               "in": "check_text",
               "kind": "raise",
-              "line": 345
+              "line": 350
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 373
+              "line": 382
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 378
+              "line": 387
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 395
+              "line": 404
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 397
+              "line": 406
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 400
+              "line": 409
             },
             {
               "in": "__init__",
               "kind": "raise",
-              "line": 479
+              "line": 488
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 527
+              "line": 561
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 533
+              "line": 567
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 538
+              "line": 573
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 548
+              "line": 582
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 553
+              "line": 592
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 555
+              "line": 597
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 558
+              "line": 599
             },
             {
               "in": "solve",
-              "kind": "raise",
-              "line": 564
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 589
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 596
-            },
-            {
-              "in": "check_puzzle",
-              "kind": "raise",
-              "line": 598
-            },
-            {
-              "in": "check_puzzle",
               "kind": "raise",
               "line": 602
             },
             {
-              "in": "check_puzzle",
+              "in": "solve",
               "kind": "raise",
-              "line": 604
+              "line": 608
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 610
+              "line": 636
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 643
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 645
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 649
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 651
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 657
             }
           ],
-          "hash": "d916029fe168de843949b63b044fbeabd8fffd4cd73bc84272b03afee42c9d7b",
+          "hash": "5c19e943def23c803374c7335df3edde9ba8169318fb4c610b9260e6b82d9719",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py"
@@ -2222,17 +2234,20 @@
             "check_file",
             "models_path",
             "render",
-            "row_sha256"
+            "row_sha256",
+            "stamp"
           ],
           "failurePaths": [
             {
               "in": "check_file",
               "kind": "except",
-              "line": 69
+              "line": 81
             }
           ],
-          "hash": "7325d5f4668d08b36770a4294fc7c1154d23873fa539a134d4ee869da813ee3b",
+          "hash": "f8123a59aeac8a98162484dd15d8c7f726b31635ca0464a2eb0f92cd3a6807e7",
           "importsFiles": [
+            "src/role_set/assemble.py",
+            "src/role_set/plan.py",
             "src/role_set/puzzle.py"
           ],
           "path": "src/role_set/puzzle_check.py"
@@ -3395,11 +3410,11 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 21,
+          "reads": 22,
           "where": [
             "caller"
           ],
-          "writes": 4
+          "writes": 5
         },
         {
           "reads": 0,
@@ -3476,8 +3491,8 @@
           "writes": 0
         }
       ],
-      "outsideReads": 33,
-      "outsideWrites": 11,
+      "outsideReads": 34,
+      "outsideWrites": 12,
       "role": "code",
       "testRunners": [
         "pytest"
@@ -3901,6 +3916,7 @@
         {
           "exports": [
             "test_a_b_trace_that_trips_the_stuck_rule_is_refused",
+            "test_a_bare_number_as_a_predicate_reads_as_model_syntax",
             "test_a_claim_is_keyed_by_the_computed_verdict",
             "test_a_closed_grid_passes_and_its_key_is_computed",
             "test_a_fact_that_changes_nothing_is_refused_naming_its_line",
@@ -3912,6 +3928,7 @@
             "test_a_stopping_problem_is_keyed_by_the_computed_line",
             "test_a_wrong_key_and_a_reply_without_the_answer_line_are_refused",
             "test_an_underdetermined_set_is_computed_and_must_have_two_members",
+            "test_any_single_fact_that_settles_the_answer_makes_a_lookup_and_a_claim_can_be_one",
             "test_contradictory_facts_are_refused",
             "test_elimination_with_a_count",
             "test_every_form_evaluates",
@@ -3926,12 +3943,16 @@
             "test_order_words_map_to_their_form_in_the_line_order",
             "test_polarity_must_match_the_line",
             "test_right_to_left_is_refused_because_it_reverses_left_and_right",
+            "test_t03_b01_is_not_on_a_two_value_attribute_is_a_lookup",
+            "test_t05_b01_a_count_written_as_model_syntax_or_settling_every_entity_is_refused",
+            "test_t06_b01_a_stopping_line_that_is_a_count_of_everyone_is_refused",
+            "test_t13_b07_an_if_on_its_own_stated_antecedent_is_a_lookup",
             "test_the_briefs_worked_example_is_a_model_the_code_accepts",
             "test_the_lookup_cap_is_read_again_under_the_accept_lock",
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "2826fed7a11a287e23cf8ef760a1d427753362a318f5ef8f41edd26348fe7d94",
+          "hash": "1e7390c149aee26a678ca233e11278d6fbd16861d66d165e33e8213b6d670169",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
@@ -3954,9 +3975,11 @@
             "test_a_modelled_puzzle_passes_and_a_verdict_item_is_out_of_scope",
             "test_a_row_changed_after_its_model_was_written_is_refused",
             "test_refusals_missing_lines_stray_ids_and_a_second_lookup",
+            "test_stamp_writes_the_hashes_then_a_later_edit_shows_up",
+            "test_structure_must_be_a_menu_name_and_verdict_needs_a_verdict_key",
             "test_the_cli_reports_and_exits_on_the_result"
           ],
-          "hash": "763c0e96e2a49df52a86a3ab316afd6b5d1d44a9d48f6bebed1f62ce7e3c7d4e",
+          "hash": "0929e382fefb41d24988d6d249cea3fe9c9f1f93bc77612a25743ce033e27bdf",
           "importsFiles": [
             "src/role_set/cli.py",
             "src/role_set/puzzle_check.py"
@@ -4312,7 +4335,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "8ec75706451f2974b978e46cdf5261d1dd6cd696",
+    "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7",
     "tracked": 70
   },
   "landings": [
