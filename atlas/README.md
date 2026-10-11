@@ -1,16 +1,16 @@
 # role-set: how it works
 
-Mapped at 2026-10-11 from commit 0013acd by Atlas 1.24.0.
+Mapped at 2026-10-11 from commit 8ec7570 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates. (written by a person)
 
-7 parts, mostly Python (46 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
+7 parts, mostly Python (48 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
 
-## What changed since 2026-10-11 (b879887)
+## What changed since 2026-10-11 (0013acd)
 
-Nothing structural changed since 2026-10-11; 9 files changed content.
+Nothing structural changed since 2026-10-11; 5 files added and 4 changed content.
 
 ## What comes in
 
@@ -20,7 +20,7 @@ Nothing structural changed since 2026-10-11; 9 files changed content.
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (24 files).
+2. That reaches src (25 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -38,16 +38,15 @@ CI writes nothing this map can see.
 ## What tends to change together
 
 - **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 7 commits, and the tests part imports the src part.
-- **src/role_set/cli.py** and **src/role_set/write.py** changed together in 6 of 11 commits, inside the src part.
-- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 8 of 15 commits, inside the src part.
+- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 9 of 16 commits, inside the src part.
+- **src/role_set/assemble.py** and **src/role_set/prompts.py** changed together in 6 of 12 commits, inside the src part.
 - **src/role_set/mock.py** and **tests/test_runner.py** changed together in 6 of 12 commits, and the tests part imports the src part.
-- **src/role_set/prompts.py** and **tests/test_paid_run_data.py** changed together in 6 of 12 commits, and the tests part imports the src part.
 
 3 files changed together with their own tests, as expected.
 
-Confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions.
+Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits.
+Window: 180 days; a pair counts from 3 shared commits, since 3 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -71,17 +70,17 @@ People write .github/, assets/, docs/, roles/ and the repository root; 1 write w
 
 ## Where to start
 
-src/role_set/cli.py → src/role_set/readout.py → src/role_set/runner.py → src/role_set/assemble.py → src/role_set/plan.py
+src/role_set/cli.py → src/role_set/puzzle_check.py → src/role_set/puzzle.py → src/role_set/assemble.py → src/role_set/plan.py
 
 Read those in order to follow one run of role-set end to end. This path follows role-set (a command people run) from its entry, since CI runs only tests.
 
 ## What this map cannot see
 
 - 1 write and 4 reads use paths built at run time and are not named here.
-- 4 writes and 19 reads go to a path their caller passes, not to this repository.
+- 4 writes and 21 reads go to a path their caller passes, not to this repository.
 - 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
 - 8 reads go to the directory the command is run in, not to this repository.
 - 1 file belongs to no part: scripts/pilot-write.sh.
-- Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions.
+- Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.

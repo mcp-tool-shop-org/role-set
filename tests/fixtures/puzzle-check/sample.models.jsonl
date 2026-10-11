@@ -1,0 +1,2 @@
+{"id": "T00-B-01", "structure": "constraint_grid", "model": {"entities": ["Ash", "Briar", "Cole"], "attributes": {"turn": {"values": ["turn 1", "turn 2", "turn 3"], "ordered": true}}, "facts": [{"line": 2, "rule": ["is_not", "Ash", "turn", "turn 1"]}, {"line": 3, "rule": ["after", "Briar", "Ash", "turn"]}], "flavour": [1], "asks": {"attribute": "turn"}}, "row_sha256": "213d513f26648097448153aac7360445e0a1022833000f9b767581b1c8623da4"}
+{"id": "T00-B-02", "structure": "verdict", "row_sha256": "3de39a1933481da1b300395d672f42ab2006301fcd82d9cc9507c292e92006ce"}
