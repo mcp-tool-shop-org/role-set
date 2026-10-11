@@ -61,7 +61,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-On this tree that is 237 tests and 97.59% line coverage. The floor is 90, set in `pyproject.toml`, and CI fails the job under it. CI also runs `plan` on lessons `T02,T03` and `puzzle-check` on `tests/fixtures/puzzle-check/sample.jsonl`. No step loads a model.
+On this tree that is 241 tests and 97.64% line coverage. The floor is 90, set in `pyproject.toml`, and CI fails the job under it. CI also runs `plan` on lessons `T02,T03` and `puzzle-check` on `tests/fixtures/puzzle-check/sample.jsonl`. No step loads a model.
 
 `scripts/verify.ps1` (and `scripts/verify.sh`) runs that same local set: sync, pytest, one plan, one puzzle-check.
 

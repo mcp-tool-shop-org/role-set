@@ -86,7 +86,7 @@ export const config: SiteConfig = {
       cards: [
         {
           title: 'Install',
-          code: '# Python 3.12, uv\nuv sync --frozen\nuv run pytest\n\n# 237 tests, 97.59% coverage on this tree.\n# the floor is 90.',
+          code: '# Python 3.12, uv\nuv sync --frozen\nuv run pytest\n\n# 241 tests, 97.64% coverage on this tree.\n# the floor is 90.',
         },
         {
           title: 'A mock batch',

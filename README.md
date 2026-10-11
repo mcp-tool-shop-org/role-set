@@ -85,7 +85,7 @@ uv run role-set store status --store store.sqlite
 uv run role-set pilot-auto <port> <grant> <HH:MM UTC> <work directory>
 ```
 
-`puzzle-check` runs the kind B solver over a data file and the `.models.jsonl` sidecar beside it.
+`puzzle-check` runs the kind B solver over a data file and the `.models.jsonl` sidecar beside it. Give it every data file in the directory at once: a puzzle whose fact skeleton repeats an earlier one, with names, line order and direction set aside, is refused, naming the first.
 
 ```text
 uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
@@ -144,7 +144,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-On this tree that is 237 tests and 97.59% coverage. The floor is 90, in `pyproject.toml` and in CI, and the run fails under it. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
+On this tree that is 241 tests and 97.64% coverage. The floor is 90, in `pyproject.toml` and in CI, and the run fails under it. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
 
 The handbook is published with the [landing page](https://mcp-tool-shop-org.github.io/role-set/). This README stands on its own.
 

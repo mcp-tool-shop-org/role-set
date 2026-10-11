@@ -79,4 +79,4 @@ uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 uv run role-set puzzle-check --json path/to/batch.jsonl
 ```
 
-Each data file `<name>.jsonl` is read beside `<name>.models.jsonl`. `--stamp` writes `row_sha256` onto sidecar lines from the rows as they stand. Use that once, on purpose, when you are creating the sidecar. After that, a changed row no longer matches, which is the point. Exit 1 means some check failed. The limits are on the [kinds page](./kinds/).
+Each data file `<name>.jsonl` is read beside `<name>.models.jsonl`. `--stamp` writes `row_sha256` onto sidecar lines from the rows as they stand. Use that once, on purpose, when you are creating the sidecar. After that, a changed row no longer matches, which is the point. Give every data file in the directory in one run: a puzzle whose fact skeleton repeats an earlier one in any file given is refused, naming the first. Exit 1 means some check failed. The limits are on the [kinds page](./kinds/).
