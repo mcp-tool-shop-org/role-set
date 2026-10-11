@@ -103,8 +103,9 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "half-learned the trait would pick, never absurd and never 'none of the above'. Build them from this "
                      "item's own vocabulary or from a sibling trait's key point, so familiar wording doesn't single out the "
                      "right one. No distractor may contain any key point or sit inside one: don't build one by swapping one "
-                     "part of the right answer, and write each as a full phrase. Give the options without letters; they are "
-                     "lettered and shuffled for you.")
+                     "part of the right answer, and write each as a full phrase. Keep all options similar in length and "
+                     "form, so the right one isn't the longest. Give the options without letters; they are lettered and "
+                     "shuffled for you.")
     if slot.kind == "E" and slot.e_type == "verdict":
         rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
                      "it never summarises the material or hints at the verdict.")

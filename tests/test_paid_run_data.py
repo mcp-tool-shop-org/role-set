@@ -185,3 +185,15 @@ def test_the_readout_counts_keyed_letters_of_closed_form_variants(tmp_path: Path
 
     rows = [row("T07", "B"), row("T07", "B"), row("T07", "D"), row("T08", "A"), {"lesson": "T07", "quiz": {"type": "verdict"}, "variant": {"key": {"verdict": "supported"}}}]
     assert keyed_letters(rows) == {"T07": {"B": 2, "D": 1}, "T08": {"A": 1}}
+
+
+def test_the_readout_reports_how_often_the_keyed_option_is_the_longest():
+    from role_set.readout import keyed_longest
+
+    def row(lesson, letter, opts):
+        user = "Which?\n\n" + "\n".join(f"{k}. {t}" for k, t in zip("ABC", opts)) + "\n\nANSWER: <letter>"
+        return {"lesson": lesson, "quiz": {"type": "written"}, "variant": {"user": user, "key": {"answer": letter}}}
+
+    rows = [row("T07", "B", ["short", "the much longer keyed option", "brief"]), row("T07", "A", ["equal one", "equal two", "equal six"]),
+            row("T08", "C", ["a long distractor here", "x", "keyed"])]
+    assert keyed_longest(rows) == {"T07": {"keyed_longest": 1, "items": 2}, "T08": {"keyed_longest": 0, "items": 1}}
