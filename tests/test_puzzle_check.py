@@ -105,3 +105,46 @@ def test_structure_must_be_a_menu_name_and_verdict_needs_a_verdict_key(tmp_path:
     assert by["T02-B-01"]["result"] == "refused" and "is not one of constraint_grid" in by["T02-B-01"]["detail"]
     assert by["T02-B-02"]["result"] == "refused" and "keyed by a value" in by["T02-B-02"]["detail"]
     assert len(STRUCTURES) == 9 and STRUCTURES[-1] == "verdict"
+
+
+# The same skeleton as GRID ("X is A. Y is not B." over three values), renamed and with its two facts in the other order.
+BOATS = """1. Three boats, Oak, Elm and Ash, each take one berth: north, east or west.
+2. Ash doesn't take west.
+3. Elm takes east.
+Question: Which boat takes which berth?"""
+BOATS_MODEL = {"entities": ["Oak", "Elm", "Ash"], "attributes": {"berth": {"values": ["north", "east", "west"]}},
+               "facts": [{"line": 2, "rule": ["is_not", "Ash", "berth", "west"]}, {"line": 3, "rule": ["is", "Elm", "berth", "east"]}],
+               "flavour": [1], "asks": {"attribute": "berth"}}
+BOATS_KEY = "Oak=west; Elm=east; Ash=north"
+
+
+def test_a_skeleton_repeated_in_another_file_is_refused_naming_the_first(tmp_path: Path, capsys):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "b").mkdir()
+    first = _write(tmp_path / "a", [_row("T02-B-01")], [{"id": "T02-B-01", "structure": "constraint_grid", "model": MODEL}])
+    second = _write(tmp_path / "b", [_row("T05-B-03", puzzle=BOATS, answer=BOATS_KEY, lesson="T05")],
+                    [{"id": "T05-B-03", "structure": "constraint_grid", "model": BOATS_MODEL}])
+    assert check_file(first)["ok"] and check_file(second)["ok"]  # each file alone passes
+    assert main(["puzzle-check", str(first), str(second)]) == 1
+    out = capsys.readouterr().out
+    assert "T05-B-03: REFUSED: repeats the fact skeleton of T02-B-01 (batch9-t02.jsonl)" in out
+    assert "pass 1, verdict, outside solver scope: 0, refused 0" in out  # the first stays a pass
+
+
+def test_skeletons_ignore_names_order_and_direction_but_keep_attribute_shape():
+    from role_set.puzzle_check import skeleton
+
+    assert skeleton(MODEL) == skeleton(BOATS_MODEL)
+    chain = {"entities": ["A", "B", "C"], "attributes": {"seat": {"values": ["1", "2", "3"], "ordered": True}},
+             "facts": [{"line": 2, "rule": ["before", "A", "B", "seat"]}, {"line": 3, "rule": ["before", "B", "C", "seat"]}]}
+    mirrored = {"entities": ["P", "Q", "R"], "attributes": {"place": {"values": ["x", "y", "z"], "ordered": True}},
+                "facts": [{"line": 2, "rule": ["after", "R", "Q", "place"]}, {"line": 3, "rule": ["after", "Q", "P", "place"]}]}
+    assert skeleton(chain) == skeleton(mirrored)
+    two_values = {"entities": ["Ana", "Ben"], "attributes": {"dish": {"values": ["soup", "salad"]}},
+                  "facts": [{"line": 2, "rule": ["is", "Ben", "dish", "salad"]}, {"line": 3, "rule": ["is_not", "Ana", "dish", "salad"]}]}
+    assert skeleton(two_values) != skeleton(MODEL)
+    nested = {"entities": ["A", "B", "C"], "attributes": {"s": {"values": ["1", "2", "3"], "ordered": True}},
+              "facts": [{"line": 2, "rule": ["if", ["is", "A", "s", "1"], ["not", ["in", {"s": "2"}, "s", ["2", "3"]]]]},
+                        {"line": 3, "rule": ["offset", "A", "B", "s", 1]}, {"line": 4, "rule": ["count", "s", "1", "=", 1]},
+                        {"line": 5, "rule": ["same", "C", {"s": "3"}]}, {"line": 6, "rule": ["not_adjacent", "A", "C", "s"]}]}
+    assert skeleton(nested).startswith("[")

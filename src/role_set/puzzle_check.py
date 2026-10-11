@@ -10,12 +10,14 @@ command reads both, runs `check_puzzle` on every modelled item (the puzzle is th
 DECIDING, the key-check, the critic), and is counted here as outside the solver's scope, never as passed.
 
 Exit 0 only when every B item has a sidecar line whose row_sha256 matches, every modelled item passes, no lesson has
-more than one lookup, and the sidecar names no item the data file doesn't hold as kind B (R&D's conditions).
+more than one lookup, the sidecar names no item the data file doesn't hold as kind B (R&D's conditions), and no two
+passing puzzles across the files checked together share a fact skeleton (`refuse_repeats`).
 """
 
 from __future__ import annotations
 
 import hashlib
+import itertools
 import json
 from collections import Counter
 from pathlib import Path
@@ -27,6 +29,70 @@ from role_set.puzzle import PuzzleError, check_puzzle
 VERDICT_STRUCTURE = "verdict"
 STRUCTURES = tuple(name for name, _ in PUZZLE_STRUCTURES) + (VERDICT_STRUCTURE,)
 LOOKUPS_PER_LESSON = 1
+# Fact orders tried when canonicalising a skeleton; a puzzle with more facts is compared in its written order.
+SKELETON_PERMUTE_MAX = 7
+
+
+def _canon(rule) -> list:
+    """`after a b` is `before b a`; every other form as written."""
+
+    if rule[0] == "after":
+        return ["before", rule[2], rule[1], *rule[3:]]
+    if rule[0] in ("not", "and", "or", "if"):
+        return [rule[0], *(_canon(r) for r in rule[1:])]
+    return list(rule)
+
+
+def _rename(model: dict, facts: list) -> str:
+    """The facts with entities, attributes and values renamed in order of first appearance. An attribute keeps its
+    shape (value count, ordered, distinct), so a two-value and a three-value elimination are different skeletons."""
+
+    attrs = model["attributes"]
+    ents, anames, vnames = {}, {}, {}
+
+    def attr(a):
+        if a not in anames:
+            spec = attrs[a]
+            anames[a] = f"A{len(anames) + 1}({len(spec['values'])},{bool(spec.get('ordered'))},{spec.get('distinct', True)})"
+        return anames[a]
+
+    def value(a, v):
+        attr(a)
+        return vnames.setdefault((a, str(v)), f"V{len(vnames) + 1}")
+
+    def ref(x):
+        if isinstance(x, dict):
+            (a, v), = x.items()
+            return {attr(a): value(a, v)}
+        return ents.setdefault(x, f"E{len(ents) + 1}")
+
+    def rule(r):
+        f = r[0]
+        if f in ("is", "is_not"):
+            return [f, ref(r[1]), attr(r[2]), value(r[2], r[3])]
+        if f in ("in", "not_in"):
+            return [f, ref(r[1]), attr(r[2]), sorted(value(r[2], v) for v in r[3])]
+        if f in ("same", "different"):
+            return [f, ref(r[1]), ref(r[2])]
+        if f in ("before", "adjacent", "not_adjacent"):
+            return [f, ref(r[1]), ref(r[2]), attr(r[3])]
+        if f == "offset":
+            return [f, ref(r[1]), ref(r[2]), attr(r[3]), r[4]]
+        if f == "count":
+            return [f, attr(r[1]), value(r[1], r[2]), r[3], r[4]]
+        return [f, *(rule(x) for x in r[1:])]
+
+    return json.dumps([rule(r) for r in facts], sort_keys=True)
+
+
+def skeleton(model: dict) -> str:
+    """A puzzle's fact skeleton: its facts renamed (see `_rename`), with flavour, the question and any claim dropped,
+    taken in the fact order whose serialisation sorts first, so line order and naming don't hide a copy (R&D found six
+    copies by hand in aspire-si#95)."""
+
+    facts = [_canon(f["rule"]) for f in model["facts"]]
+    orders = itertools.permutations(facts) if len(facts) <= SKELETON_PERMUTE_MAX else [facts]
+    return min(_rename(model, list(o)) for o in orders)
 
 
 def models_path(data: Path) -> Path:
@@ -81,19 +147,47 @@ def check_file(data: Path, models: Path | None = None) -> dict:
         except PuzzleError as e:
             items.append({"id": rid, "result": "refused", "structure": structure, "detail": str(e)})
             continue
-        items.append({"id": rid, "result": "pass", "structure": structure, "detail": f"key {got.answer!r}" + (", a lookup" if got.lookup else "")})
+        items.append({"id": rid, "result": "pass", "structure": structure, "detail": f"key {got.answer!r}" + (", a lookup" if got.lookup else ""),
+                      "skeleton": skeleton(entry["model"])})
         if got.lookup:
             lookups.setdefault(row.get("lesson") or rid[:3], []).append(rid)
     for lesson, ids in lookups.items():
         for rid in ids[LOOKUPS_PER_LESSON:]:
             item = next(i for i in items if i["id"] == rid)
             item.update(result="refused", detail=f"a second lookup in {lesson} (the first is {ids[0]}); make the answer need elimination")
-    stray = sorted(set(side) - set(rows))
-    counts = {k: sum(1 for i in items if i["result"] == k) for k in ("pass", "verdict", "refused", "missing")}
-    ok = counts["refused"] == 0 and counts["missing"] == 0 and not stray
-    by_structure = dict(sorted(Counter(f"{i.get('structure') or '-'}: {i['result']}" for i in items).items()))
-    return {"data": data.name, "models": models.name, "b_items": len(rows), **counts, "by_structure": by_structure, "stray": stray,
-            "ok": ok, "items": items}
+    report = {"data": data.name, "models": models.name, "b_items": len(rows), "stray": sorted(set(side) - set(rows)), "items": items}
+    return _tally(report)
+
+
+def _tally(report: dict) -> dict:
+    items = report["items"]
+    report.update({k: sum(1 for i in items if i["result"] == k) for k in ("pass", "verdict", "refused", "missing")})
+    report["ok"] = report["refused"] == 0 and report["missing"] == 0 and not report["stray"]
+    report["by_structure"] = dict(sorted(Counter(f"{i.get('structure') or '-'}: {i['result']}" for i in items).items()))
+    return report
+
+
+def refuse_repeats(reports: list[dict]) -> list[dict]:
+    """Across every file checked together, a passing puzzle whose fact skeleton an earlier one already has is
+    refused, naming the first. Earlier means earlier in the argument order, then in the file."""
+
+    first: dict[str, tuple[str, str]] = {}
+    for report in reports:
+        hit = False
+        for item in report["items"]:
+            sk = item.get("skeleton")
+            if item["result"] != "pass" or not sk:
+                continue
+            if sk in first:
+                rid, where = first[sk]
+                item.update(result="refused", detail=f"repeats the fact skeleton of {rid} ({where}) once entities and values "
+                                                     "are renamed; build it on other fact forms")
+                hit = True
+            else:
+                first[sk] = (item["id"], report["data"])
+        if hit:
+            _tally(report)
+    return reports
 
 
 def render(report: dict) -> str:
