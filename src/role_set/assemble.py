@@ -81,17 +81,17 @@ def _norm_point(text: str) -> str:
     return " ".join(str(text).replace("**", "").replace("__", "").split()).lower()
 
 
-def closed_form_variant(question: str, options, answer, key_points: list) -> dict:
+def closed_form_variant(question: str, options, key_points: list, seed: str) -> dict:
     """A written E item's closed-form variant (handoff Amendment 5, aspire-si-gates 1.2.0): the stem, 3 or 4 options
-    lettered A to D on their own lines, an ANSWER line asked for, key {"answer": letter}; exactly one option carries
-    a key point of the original (contains one or sits inside one, the gates' rule), and no two options are the same."""
+    lettered A to D on their own lines, an ANSWER line asked for, key {"answer": letter}. The writer lists the keyed
+    option first; assembly shuffles the options with an RNG seeded by the slot id and sets the letter, so the keyed
+    letter is uniform by construction whatever the writer's position bias (R&D on #26). Exactly one option carries a
+    key point of the original (contains one or sits inside one, the gates' rule), and no two options are the same."""
+
+    import random
 
     if not isinstance(options, list) or not 3 <= len(options) <= 4 or not all(isinstance(o, str) and o.strip() for o in options):
-        raise AssemblyError("variant_options must be a list of 3 or 4 non-empty option texts")
-    letters = LETTERS[:len(options)]
-    letter = str(answer or "").strip().strip("().").upper()
-    if letter not in letters:
-        raise AssemblyError(f"variant_answer must be one of {', '.join(letters)}, the keyed option's letter")
+        raise AssemblyError("variant_options must be a list of 3 or 4 non-empty option texts, the keyed one first")
     texts = [_norm_point(o) for o in options]
     if len(set(texts)) != len(texts):
         raise AssemblyError("two variant options are the same")
@@ -100,14 +100,18 @@ def closed_form_variant(question: str, options, answer, key_points: list) -> dic
     def carries(t: str) -> bool:
         return any(k and (k in t or t in k) for k in points)
 
-    carrying = [letters[i] for i, t in enumerate(texts) if carries(t)]
-    if letter not in carrying:
-        raise AssemblyError("the keyed option must carry one of the key points (contain one, word for word, or sit inside one)")
-    if len(carrying) > 1:
+    if not carries(texts[0]):
+        raise AssemblyError("the first option is the keyed one and must carry one of the key points (contain one, word for word, or sit inside one)")
+    if any(carries(t) for t in texts[1:]):
         # The gates count an option inside a key point as carrying it, so a short distractor can trip this (R&D on #91).
-        raise AssemblyError(f"options {[x for x in carrying if x != letter]} also carry a key point; exactly one option is keyed, "
-                            "so write each distractor as a full phrase that is not inside any key point")
-    lines = [question.strip(), ""] + [f"{letters[i]}. {o.strip()}" for i, o in enumerate(options)]
+        raise AssemblyError("a distractor also carries a key point; exactly one option is keyed, so write each distractor as a "
+                            "full phrase that is not inside any key point")
+    order = list(range(len(options)))
+    random.Random(seed).shuffle(order)
+    letters = LETTERS[:len(options)]
+    shown = [options[i].strip() for i in order]
+    letter = letters[order.index(0)]
+    lines = [question.strip(), ""] + [f"{letters[i]}. {o}" for i, o in enumerate(shown)]
     lines += ["", "Answer with the letter alone, on a line of its own: ANSWER: <letter>"]
     return {"user": "\n".join(lines), "key": {"answer": letter}}
 
@@ -375,7 +379,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                 raise AssemblyError("the variant must re-ask the point in new words")
             row = _base(slot, trait, [{"invented": "written quiz and variant, written for this item"}], True, "teaching", [])
             row["quiz"] = {"type": "written", "key_points": points}
-            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_options"), fields.get("variant_answer"), points)
+            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_options"), points, seed=slot.id)
             row["turns"] = [{"user": fields["question"].strip(), "thinking": fields.get("thinking", "").strip(),
                              "reply": _reply_prose(fields["reply"], "reply")}]
             return row

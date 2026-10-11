@@ -196,8 +196,7 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     if kind == "E" and slot["written"]:
         return json.dumps({"question": _salt(f"{t(7).title()} asks: where does the deciding line come from?", n), "thinking": "", "reply": f"From the {t(10)} sheet in front of me.", "key_points": ["from the sheet"],
                            "variant_question": f"Which source supplies the line you quote, {t(8)}?",
-                           "variant_options": ["Whatever a colleague remembers of it", "The line from the sheet itself", f"A summary sent round by {t(9).title()}"],
-                           "variant_answer": "B"})
+                           "variant_options": ["The line from the sheet itself", "Whatever a colleague remembers of it", f"A summary sent round by {t(9).title()}"]})
     statement = f"The notice says: {second_line}" if verdict == "supported" else ("The desk is closed on Sundays." if verdict == "unsupported" else "The desk sells stamps.")
     deciding = [] if verdict == "cannot_tell" else ([first_line, second_line] if slot.get("multi_line") else [second_line])
     answers[(statement, first_line)] = (verdict, deciding)

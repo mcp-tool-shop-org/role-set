@@ -106,11 +106,13 @@ def test_assemble_d_single_two_turn_stands_and_changes():
 def test_assemble_e_written_and_verdict():
     s = _slots()
     w = s["E"]
-    closed = {"variant_question": "Which words go in the answer?", "variant_answer": "C",
-              "variant_options": ["A summary of the page", "What the reader remembers", "The deciding line, quoted exactly"]}
+    closed = {"variant_question": "Which words go in the answer?",
+              "variant_options": ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers"]}
     row = assemble(w, "t", {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"], **closed})
-    assert row["quiz"]["type"] == "written" and row["variant"]["key"] == {"answer": "C"}
-    assert row["variant"]["user"].splitlines()[2:5] == ["A. A summary of the page", "B. What the reader remembers", "C. The deciding line, quoted exactly"]
+    key = row["variant"]["key"]["answer"]
+    shown = row["variant"]["user"].splitlines()[2:5]
+    assert row["quiz"]["type"] == "written" and sorted(x[:2] for x in shown) == ["A.", "B.", "C."]
+    assert next(x for x in shown if x.startswith(key + ".")) == f"{key}. The deciding line, quoted exactly"
     assert row["variant"]["user"].rstrip().endswith("ANSWER: <letter>")
     with pytest.raises(AssemblyError, match="new words"):
         assemble(w, "t", {"question": "Which words go in the answer?", "reply": "r", "key_points": ["k"], **closed})
@@ -128,19 +130,32 @@ def test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point():
     w = _slots()["E"]
     base = {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"],
             "variant_question": "Which words go in the answer?"}
-    opts = ["A summary of the page", "What the reader remembers", "The deciding line, quoted exactly"]
-    with pytest.raises(AssemblyError, match="keyed option must carry"):
-        assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "A"})
-    with pytest.raises(AssemblyError, match="must be one of A, B, C"):
-        assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "D"})
+    opts = ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers"]
+    with pytest.raises(AssemblyError, match="first option is the keyed one"):
+        assemble(w, "t", {**base, "variant_options": opts[1:] + opts[:1]})
     with pytest.raises(AssemblyError, match="3 or 4"):
-        assemble(w, "t", {**base, "variant_options": opts[:2], "variant_answer": "B"})
+        assemble(w, "t", {**base, "variant_options": opts[:2]})
     with pytest.raises(AssemblyError, match="the same"):
-        assemble(w, "t", {**base, "variant_options": [opts[0], opts[0].upper(), opts[2]], "variant_answer": "C"})
+        assemble(w, "t", {**base, "variant_options": [opts[0], opts[1], opts[1].upper()]})
     # A one-word distractor inside a key point also "carries" it under the gates' rule (R&D on aspire-si #91).
-    with pytest.raises(AssemblyError, match="also carry a key point"):
-        assemble(w, "t", {**base, "variant_options": ["quoted", opts[1], opts[2]], "variant_answer": "C"})
-    assert assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "c"})["variant"]["key"] == {"answer": "C"}
+    with pytest.raises(AssemblyError, match="a distractor also carries a key point"):
+        assemble(w, "t", {**base, "variant_options": [opts[0], "quoted", opts[2]]})
+
+
+def test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_across_slots():
+    # R&D on #26: the writer's position bias can't decide the letter; the slot id seeds the shuffle.
+    from role_set.assemble import closed_form_variant
+
+    opts = ["The deciding line, quoted exactly", "A summary of the page", "What the reader remembers", "The heading above it"]
+    points = ["the deciding line, quoted exactly"]
+    same = [closed_form_variant("Which words?", opts, points, seed="T07-E-01")["key"]["answer"] for _ in range(3)]
+    assert len(set(same)) == 1
+    letters = [closed_form_variant("Which words?", opts, points, seed=f"T07-E-{i:02d}")["key"]["answer"] for i in range(1, 41)]
+    counts = {x: letters.count(x) for x in "ABCD"}
+    assert all(counts[x] >= 4 for x in "ABCD"), counts
+    v = closed_form_variant("Which words?", opts, points, seed="T07-E-01")
+    key = v["key"]["answer"]
+    assert f"{key}. The deciding line, quoted exactly" in v["user"].splitlines()
 
 
 def test_slot_flaw_alternates():
