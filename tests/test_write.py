@@ -233,3 +233,33 @@ def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes
     monkeypatch.setattr(w, "build", lambda cfg, now=None: parts)
     result = run(WriteConfig(grant="G-2", heartbeat=hb, **base))
     assert seen["out_dir"].name == "rehearsal" and result["rehearsal"] is True and unloaded == ["qwen3:8b", "qwen3:8b"]
+
+
+def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+    import role_set.write as w
+    from role_set.mock import mock_gates
+    from role_set.write import output_dir, require_rehearsal_dir
+
+    rehearsal = {"rehearsal": True, "writer_model": "qwen3:8b"}
+    assert output_dir(tmp_path, rehearsal, mock=False) == tmp_path / "rehearsal"
+    assert output_dir(tmp_path, {"rehearsal": False}, mock=False) == tmp_path
+    assert output_dir(tmp_path, {}, mock=True) == tmp_path / "mock"
+    for elsewhere in (tmp_path, tmp_path / "batch4", tmp_path / "rehearsal" / "data"):
+        with pytest.raises(WriteRefused, match="rehearsal-only"):
+            require_rehearsal_dir(elsewhere, rehearsal)
+    require_rehearsal_dir(tmp_path / "anything", {"rehearsal": False})
+
+    # A rehearsal-only entry without a digest would bypass the local path, so it is refused outright.
+    writers = tmp_path / "writers.json"
+    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3:8b", "licence": "Apache-2.0", "rehearsal_only": True}], "critics": []}), encoding="utf-8")
+    monkeypatch.setattr(w, "load_gates", mock_gates)
+    with pytest.raises(WriteRefused, match="no digest pin"):
+        build(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:11434", model="qwen3:8b", no_critic=True))
+
+
+def test_the_committed_writer_list_marks_the_rehearsal_writer():
+    data = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
+    by_name = {x["served_as"]: x for x in data["writers"]}
+    small = by_name["qwen3:8b"]
+    assert small["rehearsal_only"] is True and small["digest"].startswith("500a1f06") and len(small["digest"]) == 64
+    assert not by_name["qwen3-235b-instruct-2507"].get("rehearsal_only")
