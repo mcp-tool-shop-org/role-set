@@ -376,7 +376,7 @@
               "line": 174
             }
           ],
-          "hash": "6acab921952b2f4f618f242331c50fda936bb1e812a768361b4090df176b92cf",
+          "hash": "53c815f7e38d4a375eed32cca57a8dc29519c49d55d1bcc140b2aa02d8dcecb8",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/readout.py",
@@ -707,28 +707,28 @@
                   }
                 },
                 {
-                  "line": 209,
+                  "line": 211,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 210,
+                  "line": 212,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 213,
+                  "line": 215,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 215,
+                  "line": 217,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
@@ -743,7 +743,7 @@
             {
               "calls": [
                 {
-                  "line": 225,
+                  "line": 227,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -758,7 +758,7 @@
             {
               "calls": [
                 {
-                  "line": 244,
+                  "line": 246,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -774,7 +774,7 @@
             {
               "calls": [
                 {
-                  "line": 244,
+                  "line": 246,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -839,12 +839,13 @@
           "exports": [
             "answer_leg",
             "cases_from_rows",
+            "leg_key",
             "load_rows",
             "plant_errors",
             "run_control",
             "trait_leg"
           ],
-          "hash": "41d245ceb4eea8db416690f018bc00026a745ea4523537f1f7366b558da66c9e",
+          "hash": "bb69d8b8cd326e4a612f141ed1b9cb8f988543fdafbc4f28075ceb2e5cde4be0",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -948,28 +949,29 @@
             {
               "calls": [
                 {
-                  "line": 255,
+                  "line": 299,
                   "name": "closed_answer",
                   "target": {
                     "file": "src/role_set/assemble.py"
-                  }
+                  },
+                  "via": "leg_key"
                 },
                 {
-                  "line": 261,
+                  "line": 264,
                   "name": "answer_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 263,
+                  "line": 266,
                   "name": "compare_answer",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 270,
+                  "line": 274,
                   "name": "findall",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -980,6 +982,21 @@
               "invokedAtTopLevel": false,
               "isDefaultExport": false,
               "name": "answer_leg"
+            },
+            {
+              "calls": [
+                {
+                  "line": 299,
+                  "name": "closed_answer",
+                  "target": {
+                    "file": "src/role_set/assemble.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "leg_key"
             }
           ]
         },
@@ -2999,6 +3016,7 @@
             "test_a_majority_of_three_decides_and_a_split_is_a_mismatch",
             "test_a_void_answer_is_asked_once_more",
             "test_closed_answers_compare_by_form",
+            "test_older_label_reason_keys_count_by_their_label_and_are_reported_apart",
             "test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement",
             "test_the_answer_prompt_asks_for_a_closed_line_in_the_keys_form",
             "test_the_critic_gets_the_puzzle_without_its_pattern_instruction",
@@ -3009,7 +3027,7 @@
             "test_three_unreadable_votes_are_not_unanimous_and_small_traits_are_thin",
             "test_trait_named_reads_the_trait_line_or_a_bare_id"
           ],
-          "hash": "dfec82d35e5bf90ec25069bbdb73b3c73463dee8018c17f1625d16d74171bede",
+          "hash": "1a70abec80e041c8cbb94915a710061f447726f586193a5e350deead938bfe69",
           "importsFiles": [
             "src/role_set/critic.py",
             "src/role_set/critic_control.py",
@@ -3549,7 +3567,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
+    "commit": "c74073304b1e5ec64113fe4fd36caed4940b7429",
     "tracked": 55
   },
   "landings": [

@@ -34,8 +34,8 @@
       }
     ],
     "since": {
-      "commit": "b8abc4de3c5ac23e3e80200ff26ecd9d5f4fe208",
-      "generatedAt": "2026-10-11T07:33:40.377Z"
+      "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
+      "generatedAt": "2026-10-11T07:37:55.488Z"
     },
     "unchanged": true
   },
@@ -92,7 +92,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
+  "commit": "c74073304b1e5ec64113fe4fd36caed4940b7429",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (40 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -165,7 +165,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T07:37:55.488Z",
+  "generatedAt": "2026-10-11T07:39:28.797Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
     "1 write and 15 reads go to a path their caller passes, not to this repository.",
