@@ -11,6 +11,10 @@
         {
           "hash": "6f49e5613d1939ca49fee22aa2292286753bef52d5f77a5451c4059f4a2693fa",
           "path": ".github/workflows/ci.yml"
+        },
+        {
+          "hash": "fe1db5f18ca42c6e2363f0860db9c117b03a6bff39b375189f7c9d2f1882b4a1",
+          "path": ".github/workflows/pages.yml"
         }
       ],
       "globs": [
@@ -94,7 +98,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "fb10f2c41c7b224f89a1bc12ebe55db7800204bbd0701942aa97a6bd6df57c10",
+          "hash": "24a22ac342b36b4ed954f3d71916706684df7dbc85e5650b18160623210728a2",
           "path": "roles/verifier/README.md"
         },
         {
@@ -129,7 +133,7 @@
           "path": ".gitattributes"
         },
         {
-          "hash": "8c1584894ec83d284397d7fc0a15015eefb6d4ef82611b0c0583303a4206b20c",
+          "hash": "1386d22d90cd548742e92f13cabb492858e19476b002b447c7dcffd971ea4a41",
           "path": ".gitignore"
         },
         {
@@ -137,19 +141,35 @@
           "path": ".python-version"
         },
         {
+          "hash": "5c0d78fcc05a5ada5a18661e9068162a27b9f383e740d7dcae5785570f3390be",
+          "path": "CHANGELOG.md"
+        },
+        {
           "hash": "367e5141e4f5884e5791c4021f33a9faa958840a5decf44e1b273a87aad1c459",
           "path": "LICENSE"
         },
         {
-          "hash": "c3ac843e828f3bd7a3f079b2df871dbc6d01154a76e752e38eaf7b6deaeb1c93",
+          "hash": "a69c027f5f3188496de6a0569315bb99eef5ac25fe7618b5c8039cf18aefdf53",
           "path": "README.md"
+        },
+        {
+          "hash": "6a11fb52fc1ecfaf909ca73fc4dcb0fb9ff931ffb29fac36c7028660dbafa035",
+          "path": "SCORECARD.md"
+        },
+        {
+          "hash": "3a7b0b697ab91ff95e7c1add6e18419b1ad8da33723a614209b59dc0dad72fbc",
+          "path": "SECURITY.md"
+        },
+        {
+          "hash": "fb0617068916cdbd98556944b9838d7a009b3274f734f6da103a02ed84cc2392",
+          "path": "SHIP_GATE.md"
         },
         {
           "hash": "8355bbf8be42ff1c5c8bf7dd2e4e1ca4b7db1440c92e15daaf5856558e7301c1",
           "path": "codecov.yml"
         },
         {
-          "hash": "56c06ba624e4e228c5e4a152deec5b680db20dbc41afde413837809b7005491d",
+          "hash": "c945a1699e273f55bf330e874367477de0bea28b14c9bd2998c4d2068f408353",
           "path": "pyproject.toml"
         },
         {
@@ -168,6 +188,138 @@
       "name": "root",
       "origin": "authored",
       "role": "config",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "6aff1db49c1e56993160319343e0adb08a1d49c16ad0f0cdadbf7058ab717dd9",
+          "path": "scripts/pilot-write.sh"
+        },
+        {
+          "hash": "835d083a5e93d3271f8e4642684f1bd8c0adef60ca465e2fce924883a94f82c4",
+          "path": "scripts/verify.ps1"
+        },
+        {
+          "hash": "28a7b461b509455229cb4d61ae2a1835b7c677e3d215caa1908fcb7c74100cde",
+          "path": "scripts/verify.sh"
+        }
+      ],
+      "globs": [
+        "scripts/**"
+      ],
+      "importConfidence": "full",
+      "name": "scripts",
+      "origin": "authored",
+      "role": "code",
+      "testedBy": 0,
+      "unresolvedSites": 0
+    },
+    {
+      "dynamicReads": 0,
+      "dynamicSpawns": 0,
+      "dynamicSpawnsInTests": 0,
+      "dynamicWrites": 0,
+      "entryPoints": [],
+      "externals": 0,
+      "files": [
+        {
+          "hash": "1c3aef8aeeae988bfe0731acd4a3185224bd6f426d4beb8a978b527fb1f2ab5f",
+          "path": "site/astro.config.mjs"
+        },
+        {
+          "hash": "77d62da5b9f2bb06de8ac8fc566f8ff007cfd3727c4ab1f96bda83e0400117de",
+          "path": "site/package-lock.json"
+        },
+        {
+          "hash": "9c39e620ebae2c5718ecd8c6188bd3451409a614ec8f5308dc15d5fd886e5b91",
+          "path": "site/package.json"
+        },
+        {
+          "hash": "db3c76ae1d22efa9f6c9a1cf3d8b1f45a5e94210d34e4b518006018e7d3d097d",
+          "path": "site/public/favicon.svg"
+        },
+        {
+          "hash": "63e534479d71a8543e23b8a4dc4836df988e7c41802b5b438f2e27a6ad432e32",
+          "path": "site/src/assets/logo.png"
+        },
+        {
+          "constantOnly": true,
+          "hash": "ee756dfba4122d2acc94a39b2555d9f200fff56a87a8c0b10f9cd01df26a8b62",
+          "path": "site/src/content.config.ts"
+        },
+        {
+          "hash": "0067551d8a136ce53678d0e0773bcb2b73c01c5485a3ea9f50c48265a06818e1",
+          "path": "site/src/content/docs/handbook/configuration.md"
+        },
+        {
+          "hash": "28fa9df0bfbd1d8a431e80f3c8d574f352c23c4192c5e2babec3226bb18111bf",
+          "path": "site/src/content/docs/handbook/getting-started.md"
+        },
+        {
+          "hash": "a2f377b4cd11405adc20eb59f58c223c64835da6663761269d1f30fab27858de",
+          "path": "site/src/content/docs/handbook/index.md"
+        },
+        {
+          "hash": "dc7f06599eb0d9df78e6ff09a1f02752bf38389016400f3a487b81aff83695f0",
+          "path": "site/src/content/docs/handbook/kinds.md"
+        },
+        {
+          "hash": "7642894e582a08a429e7de3aecdaa3b63d468930d5a6f90f4d2aaea2189ddef2",
+          "path": "site/src/content/docs/handbook/security.md"
+        },
+        {
+          "hash": "2c8bedb80110f56ae381b08355fe1ee3c410a0c953bf9654faeda78777230338",
+          "path": "site/src/content/docs/handbook/store.md"
+        },
+        {
+          "hash": "5b2b8f1f914f6aef6e6a73cca7c1fac8bc70af6ae1059f53069bee9722931fd7",
+          "path": "site/src/content/docs/handbook/usage.md"
+        },
+        {
+          "hash": "4fb84a646c4d833c33f4058e1ed1775849e855c65e5adb7e45d2a633674bd603",
+          "importOrder": [
+            "site/src/styles/global.css",
+            "site/src/site-config.ts"
+          ],
+          "importsFiles": [
+            "site/src/site-config.ts",
+            "site/src/styles/global.css"
+          ],
+          "path": "site/src/pages/index.astro"
+        },
+        {
+          "constantOnly": true,
+          "hash": "dbb542b4d918fb95858209d164c4d4be711760e1102538ffd2d3ef5a2c71b21f",
+          "path": "site/src/site-config.ts"
+        },
+        {
+          "hash": "29ee8df91833e694bdba973126b34a6177de4cf01dab6d9ef7d3126e8e2b67fb",
+          "path": "site/src/styles/global.css"
+        },
+        {
+          "hash": "b17173f07c0db8b532533b5de48035355a12d9582f0918d75b12214b07d53a17",
+          "path": "site/src/styles/starlight-custom.css"
+        },
+        {
+          "hash": "b5b0a5b04a14cddd7713c5e1c82e86c79c17c2f86b170e26e9b170b3d5e01cd9",
+          "path": "site/tsconfig.json"
+        }
+      ],
+      "globs": [
+        "site/**"
+      ],
+      "importConfidence": "full",
+      "name": "site",
+      "origin": "authored",
+      "role": "docs",
       "testedBy": 0,
       "unresolvedSites": 0
     },
@@ -4285,6 +4437,148 @@
     },
     {
       "checksCount": 0,
+      "commands": [
+        {
+          "dir": "site",
+          "job": "build",
+          "programs": [
+            "npm"
+          ],
+          "step": "Install site dependencies"
+        },
+        {
+          "dir": "site",
+          "job": "build",
+          "programs": [
+            "npm"
+          ],
+          "step": "Build site"
+        }
+      ],
+      "elsewhere": [],
+      "file": ".github/workflows/pages.yml",
+      "jobs": [
+        {
+          "basis": "declared",
+          "name": "build",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ],
+          "setup": [
+            {
+              "ranges": [
+                {
+                  "from": "22",
+                  "range": ">=22.0.0 <23.0.0-0"
+                }
+              ],
+              "step": "1",
+              "uses": "actions/setup-node",
+              "version": "22"
+            }
+          ]
+        },
+        {
+          "basis": "declared",
+          "environment": {
+            "name": "github-pages"
+          },
+          "name": "deploy",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ]
+        }
+      ],
+      "landings": [],
+      "mentions": [],
+      "name": "Deploy site to GitHub Pages",
+      "permissions": [
+        "contents:read",
+        "id-token:write",
+        "pages:write"
+      ],
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "site",
+          "depth": 0,
+          "files": 5
+        }
+      ],
+      "readers": [],
+      "runs": [
+        {
+          "job": "build",
+          "matched": true,
+          "path": "site/astro.config.mjs",
+          "runKind": "executes",
+          "via": "astro build"
+        },
+        {
+          "directory": true,
+          "job": "build",
+          "matched": true,
+          "path": "site/src/",
+          "runKind": "executes",
+          "via": "astro build"
+        }
+      ],
+      "runsCount": 2,
+      "secrets": [],
+      "sends": {
+        "deploysPages": true,
+        "dispatchesTo": [],
+        "opensIssues": false,
+        "opensIssuesOnFailure": false,
+        "opensPullRequests": false,
+        "publishes": false,
+        "publishesTo": [],
+        "releases": false
+      },
+      "stages": [],
+      "triggers": [
+        {
+          "branches": [
+            "main"
+          ],
+          "event": "push",
+          "paths": [
+            ".github/workflows/pages.yml",
+            "site/**"
+          ]
+        },
+        {
+          "event": "workflow_dispatch"
+        }
+      ],
+      "uses": [
+        "actions/checkout",
+        "actions/deploy-pages",
+        "actions/setup-node",
+        "actions/upload-pages-artifact"
+      ],
+      "usesWorkflowToken": false
+    },
+    {
+      "checksCount": 0,
       "commands": [],
       "elsewhere": [],
       "file": "pyproject.toml",
@@ -4336,10 +4630,34 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
-    "tracked": 70
+    "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
+    "tracked": 95
   },
   "landings": [
+    {
+      "readers": [
+        {
+          "by": "tests/test_assemble.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_harvest_exemplars.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_write.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "CHANGELOG.md",
+      "writers": []
+    },
     {
       "readers": [
         {
@@ -4349,6 +4667,42 @@
         }
       ],
       "target": "README.md",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "README.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/configuration.md",
+          "call": "--out",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/configuration.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/getting-started.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/kinds.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/usage.md",
+          "call": "--pack",
+          "confidence": "text"
+        }
+      ],
+      "target": "roles/verifier",
       "writers": []
     },
     {
@@ -4365,6 +4719,28 @@
     {
       "readers": [
         {
+          "by": "site/astro.config.mjs",
+          "call": "content-collection",
+          "confidence": "ast"
+        }
+      ],
+      "target": "site/src/content/docs",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "site/astro.config.mjs",
+          "call": "autogenerate",
+          "confidence": "ast"
+        }
+      ],
+      "target": "site/src/content/docs/handbook",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
           "by": "pyproject.toml",
           "call": "configuration",
           "confidence": "config"
@@ -4372,16 +4748,22 @@
       ],
       "target": "src/role_set",
       "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/verify.sh",
+          "call": "literal",
+          "confidence": "text"
+        }
+      ],
+      "target": "tests/fixtures/puzzle-check/sample.jsonl",
+      "writers": []
     }
   ],
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
   "testFiles": 25,
-  "unassigned": [
-    {
-      "hash": "6aff1db49c1e56993160319343e0adb08a1d49c16ad0f0cdadbf7058ab717dd9",
-      "path": "scripts/pilot-write.sh"
-    }
-  ]
+  "unassigned": []
 }

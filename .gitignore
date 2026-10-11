@@ -11,3 +11,7 @@ build/
 
 # experiment harness compile caches (created under the repo root)
 compile-cache/
+site/.astro/
+site/dist/
+site/node_modules/
+.polyglot-cache.json
