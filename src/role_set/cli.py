@@ -9,6 +9,7 @@ from pathlib import Path
 
 from role_set import __version__
 from role_set import autostart
+from role_set import defects
 from role_set import puzzle_check
 from role_set.readout import readout
 from role_set.cost import PROFILES, estimate
@@ -85,7 +86,9 @@ def _readout(args: argparse.Namespace) -> int:
     if not (run_dir / "batch-report.json").exists():
         print(f"REFUSED: no batch-report.json in {run_dir.name}", file=sys.stderr)
         return 2
-    data, md = readout(run_dir, [Path(p) for p in (args.compare or [])])
+    path = Path(args.catalog) if args.catalog else defects.find()
+    catalog = defects.load(path) if path else None
+    data, md = readout(run_dir, [Path(p) for p in (args.compare or [])], catalog)
     out = Path(args.out) if args.out else run_dir
     out.mkdir(parents=True, exist_ok=True)
     (out / "readout.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
@@ -334,6 +337,8 @@ def build_parser() -> argparse.ArgumentParser:
     ro.add_argument("--run", required=True, help="the run's output directory (holding batch-report.json)")
     ro.add_argument("--compare", nargs="*", default=None, help="earlier run directories to compare with")
     ro.add_argument("--out", default=None, help="write readout.json and readout.md here (default: the run directory)")
+    ro.add_argument("--catalog", default=None, help="the defect catalog whose open classes the readout lists "
+                                                    "(default: roles/verifier/defects.jsonl)")
     ro.set_defaults(func=_readout)
 
     pa = sub.add_parser("pilot-auto", help="one paste for a paid pilot: wait for the lane, write, relaunch after a lost-call stop")

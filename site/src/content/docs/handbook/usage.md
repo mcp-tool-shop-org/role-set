@@ -39,7 +39,7 @@ Exit 2 means the run was refused before it started, or it halted. Exit 0 means i
 
 ## readout
 
-`readout` needs `batch-report.json` in the directory you name. It writes `readout.json` and `readout.md` there, or to `--out` if you pass one. `--compare` takes earlier run directories.
+`readout` needs `batch-report.json` in the directory you name. It writes `readout.json` and `readout.md` there, or to `--out` if you pass one. `--compare` takes earlier run directories. It ends by listing the defect classes no check covers yet, from `roles/verifier/defects.jsonl` (or the file `--catalog` names), so the open gaps are in front of every run.
 
 ```text
 uv run role-set readout --run out/mock

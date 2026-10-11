@@ -148,7 +148,7 @@ uv sync --frozen
 uv run pytest
 ```
 
-このツリーには、241個のテストと97.64%のコードカバレッジが含まれています。最低基準は90%であり、`pyproject.toml`とCIで適用されます。それを下回ると、実行は失敗します。CIは、モデルなしで、フィクスチャに対して`role-set plan`と`puzzle-check`も実行します。`scripts/verify`は、同じローカルチェックを1つのコマンドで実行します。
+Line coverage has a floor of 90, in `pyproject.toml` and in CI, and the run fails under it. The coverage badge above shows the current figure. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
 
 ハンドブックは、[ランディングページ](https://mcp-tool-shop-org.github.io/role-set/)で公開されています。このREADMEは、それ自体で完結しています。
 

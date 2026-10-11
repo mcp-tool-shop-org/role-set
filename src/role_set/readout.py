@@ -14,6 +14,7 @@ import statistics
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from role_set.defects import open_classes
 from role_set.runner import refusal_rule
 
 
@@ -207,7 +208,21 @@ def markdown(main: dict, others: list[dict]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def readout(run_dir: Path, compare: list[Path] | None = None) -> tuple[dict, str]:
+def open_defects_markdown(rows: list[dict]) -> str:
+    """The catalog's `none` rows: defect classes that no check covers yet, listed on every readout."""
+
+    if not rows:
+        return "\nOpen defect classes (no check yet): none.\n"
+    return "\nOpen defect classes (no check yet, from roles/verifier/defects.jsonl):\n" + "".join(
+        f"- {r['name']} ({r['id']}): {r['description']} Candidate: {r['anchor']}\n" for r in rows)
+
+
+def readout(run_dir: Path, compare: list[Path] | None = None, catalog: list[dict] | None = None) -> tuple[dict, str]:
     main = summarize(run_dir)
     others = [summarize(p) for p in (compare or [])]
-    return {"run": main, "compare": others}, markdown(main, others)
+    data, md = {"run": main, "compare": others}, markdown(main, others)
+    if catalog is not None:
+        gaps = open_classes(catalog)
+        data["open_defects"] = [r["name"] for r in gaps]
+        md += open_defects_markdown(gaps)
+    return data, md
