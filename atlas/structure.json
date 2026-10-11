@@ -55,7 +55,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "c07226576845d46bd65999a544b9337e304544ddcba97f84db8237ae2c2eb1c2",
+          "hash": "f7516a245522daec9c7b60e0b73bd42bdba4f2cc92697fcb9097d2163ee36109",
           "path": "docs/role-set-design.md"
         },
         {
@@ -379,7 +379,7 @@
               "line": 443
             }
           ],
-          "hash": "55b3a1244db420343627dd8c4210ffa6161140154efd3a0f5fc4ff771761c42b",
+          "hash": "36110fea9fa43c40c35480a808d8cb96a1cb7c78763387a9808831a21a44eb88",
           "importsFiles": [
             "src/role_set/plan.py"
           ],
@@ -1771,15 +1771,15 @@
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 312
+              "line": 335
             },
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 315
+              "line": 338
             }
           ],
-          "hash": "77f7e0cceb3985fa10b435f8564ae3061c2ea5b377ad5d7085612fea1e3147ce",
+          "hash": "0c7effea7f7cd9ac3319cfef5f4b250490d3d297c3ee25fa013089404f4007c1",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1791,7 +1791,7 @@
             {
               "calls": [
                 {
-                  "line": 80,
+                  "line": 102,
                   "name": "rglob",
                   "target": null
                 }
@@ -1804,14 +1804,14 @@
             {
               "calls": [
                 {
-                  "line": 179,
+                  "line": 202,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
                   }
                 },
                 {
-                  "line": 182,
+                  "line": 205,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1819,21 +1819,21 @@
                   }
                 },
                 {
-                  "line": 196,
+                  "line": 219,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 200,
+                  "line": 223,
                   "name": "get",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 200,
+                  "line": 223,
                   "name": "VERDICTS",
                   "passed": true,
                   "target": {
@@ -1849,7 +1849,7 @@
             {
               "calls": [
                 {
-                  "line": 179,
+                  "line": 202,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
@@ -1857,7 +1857,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 182,
+                  "line": 205,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -1866,7 +1866,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 196,
+                  "line": 219,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1874,7 +1874,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 200,
+                  "line": 223,
                   "name": "get",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1882,7 +1882,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 200,
+                  "line": 223,
                   "name": "VERDICTS",
                   "passed": true,
                   "target": {
@@ -1891,12 +1891,12 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 252,
+                  "line": 275,
                   "name": "rstrip",
                   "target": null
                 },
                 {
-                  "line": 283,
+                  "line": 306,
                   "name": "splitlines",
                   "target": null,
                   "via": "lesson_sentences"
@@ -1910,7 +1910,7 @@
             {
               "calls": [
                 {
-                  "line": 283,
+                  "line": 306,
                   "name": "splitlines",
                   "target": null
                 }
@@ -1924,6 +1924,7 @@
         },
         {
           "exports": [
+            "brief_leak",
             "check_puzzle",
             "check_text",
             "fact_lines",
@@ -1937,47 +1938,42 @@
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 72
-            },
-            {
-              "in": "parse_model",
-              "kind": "raise",
-              "line": 76
-            },
-            {
-              "in": "parse_model",
-              "kind": "raise",
               "line": 79
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 85
+              "line": 83
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 88
+              "line": 86
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 93
+              "line": 92
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 97
+              "line": 95
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 101
+              "line": 100
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 103
+              "line": 104
+            },
+            {
+              "in": "parse_model",
+              "kind": "raise",
+              "line": 108
             },
             {
               "in": "parse_model",
@@ -1985,49 +1981,44 @@
               "line": 110
             },
             {
+              "in": "parse_model",
+              "kind": "raise",
+              "line": 117
+            },
+            {
               "in": "_entity",
-              "kind": "raise",
-              "line": 121
-            },
-            {
-              "in": "_attr",
-              "kind": "raise",
-              "line": 126
-            },
-            {
-              "in": "_attr",
               "kind": "raise",
               "line": 128
             },
             {
+              "in": "_attr",
+              "kind": "raise",
+              "line": 133
+            },
+            {
+              "in": "_attr",
+              "kind": "raise",
+              "line": 135
+            },
+            {
               "in": "_value",
               "kind": "raise",
-              "line": 136
+              "line": 143
             },
             {
               "in": "_check_ref",
               "kind": "raise",
-              "line": 142
+              "line": 149
             },
             {
               "in": "_check_ref",
               "kind": "raise",
-              "line": 145
+              "line": 152
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 153
-            },
-            {
-              "in": "_check_rule",
-              "kind": "raise",
-              "line": 157
-            },
-            {
-              "in": "_check_rule",
-              "kind": "raise",
-              "line": 162
+              "line": 160
             },
             {
               "in": "_check_rule",
@@ -2037,185 +2028,160 @@
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 174
+              "line": 169
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 185
+              "line": 171
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 189
+              "line": 181
             },
             {
-              "in": "_check_asks",
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 192
+            },
+            {
+              "in": "_check_rule",
               "kind": "raise",
               "line": 196
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 204
+              "line": 203
+            },
+            {
+              "in": "_check_asks",
+              "kind": "raise",
+              "line": 211
             },
             {
               "in": "fact_lines",
               "kind": "raise",
-              "line": 246
+              "line": 281
             },
             {
-              "in": "fact_lines",
-              "kind": "raise",
-              "line": 254
+              "in": "check_text",
+              "kind": "except",
+              "line": 329
             },
             {
-              "in": "fact_lines",
-              "kind": "raise",
-              "line": 257
+              "in": "check_text",
+              "kind": "except",
+              "line": 333
             },
             {
               "in": "check_text",
               "kind": "raise",
-              "line": 266
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 270
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 272
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 275
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 279
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 285
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 291
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 295
-            },
-            {
-              "in": "check_text",
-              "kind": "raise",
-              "line": 302
+              "line": 345
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 318
+              "line": 373
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 323
+              "line": 378
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 340
+              "line": 395
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 343
+              "line": 397
+            },
+            {
+              "in": "_check_order_stated",
+              "kind": "raise",
+              "line": 400
             },
             {
               "in": "__init__",
               "kind": "raise",
-              "line": 422
+              "line": 479
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 462
+              "line": 527
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 466
+              "line": 533
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 471
+              "line": 538
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 481
+              "line": 548
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 486
+              "line": 553
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 488
+              "line": 555
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 491
+              "line": 558
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 497
+              "line": 564
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 522
+              "line": 589
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 529
+              "line": 596
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 531
+              "line": 598
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 535
+              "line": 602
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 537
+              "line": 604
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 543
+              "line": 610
             }
           ],
-          "hash": "031a949cab89cb14efce0e1c283e9207302a0bbc35f8a08515039b37ba5d2a09",
+          "hash": "d916029fe168de843949b63b044fbeabd8fffd4cd73bc84272b03afee42c9d7b",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py"
@@ -2389,37 +2355,32 @@
             {
               "in": "_record_call",
               "kind": "except",
-              "line": 473
+              "line": 482
             },
             {
               "in": "_record_call",
               "kind": "raise",
-              "line": 484
+              "line": 493
             },
             {
               "in": "warmup",
               "kind": "except",
-              "line": 513
+              "line": 522
             },
             {
               "in": "_material_for",
               "kind": "raise",
-              "line": 547
+              "line": 556
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 645
+              "line": 654
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 657
-            },
-            {
-              "in": "run_slot",
-              "kind": "except",
-              "line": 670
+              "line": 666
             },
             {
               "in": "run_slot",
@@ -2429,7 +2390,7 @@
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 689
+              "line": 688
             },
             {
               "in": "run_slot",
@@ -2439,30 +2400,35 @@
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 714
+              "line": 715
+            },
+            {
+              "in": "run_slot",
+              "kind": "except",
+              "line": 727
             },
             {
               "in": "_halt_cell",
               "kind": "raise",
-              "line": 806
+              "line": 822
             },
             {
               "in": "one",
               "kind": "except",
-              "line": 849
+              "line": 865
             },
             {
               "in": "one",
               "kind": "raise",
-              "line": 857
+              "line": 873
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 885
+              "line": 901
             }
           ],
-          "hash": "ea922d586a95abd39c76511dc06282c223786e9e195f8de299330f69d213a228",
+          "hash": "48d806fa6f7ef5de99fe590b4328a29944e5bef7d9775bb6f0718d525548ea4f",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -3736,7 +3702,7 @@
             "test_the_readout_states_the_inputs_the_run_was_pinned_to",
             "test_the_retry_after_a_spent_trait_span_names_the_trait_words"
           ],
-          "hash": "f0226b5e1bc961e03e4f81bb00383fede2752e6caebf5ca069e0c3b37c9edc12",
+          "hash": "2cf5c2f1580b302296bcc43d44d12e999fe70d091f8f702a78ac20f082fb1133",
           "importOrder": [
             "src/role_set/plan.py",
             "src/role_set/runner.py",
@@ -3766,6 +3732,7 @@
           "exports": [
             "test_a_flaw_reaches_the_verdict_its_name_says",
             "test_a_keyed_option_in_another_register_is_refused",
+            "test_a_narrated_quote_counts_as_a_quote",
             "test_a_partial_quote_is_mislabelled_but_restating_the_statement_is_not",
             "test_a_rubber_stamp_trace_that_quotes_or_reasons_from_outside_is_mislabelled",
             "test_a_slot_cut_off_by_the_halt_is_reported_as_not_finished",
@@ -3773,7 +3740,7 @@
             "test_each_accepted_row_is_written_beside_its_critic_checks",
             "test_injection_trap_is_tagged_only_when_the_line_is_in_the_material"
           ],
-          "hash": "02b97660217c654a0639cef5906b5fb25fcf0acb5e36db5c61c0a74a400f7f01",
+          "hash": "6115a9237c02f089fb6c3133fa897f3967a4c8189b916b8ae710aa49e4ef62b6",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -3875,11 +3842,14 @@
         },
         {
           "exports": [
+            "test_a_b_trace_that_trips_the_stuck_rule_is_refused",
             "test_a_claim_is_keyed_by_the_computed_verdict",
             "test_a_closed_grid_passes_and_its_key_is_computed",
             "test_a_fact_that_changes_nothing_is_refused_naming_its_line",
+            "test_a_fact_that_narrows_a_decided_claim_without_moving_it_is_idle",
             "test_a_lookup_is_flagged",
             "test_a_malformed_model_is_refused",
+            "test_a_puzzle_that_repeats_the_briefs_instruction_is_refused",
             "test_a_puzzle_too_large_to_check_is_refused",
             "test_a_stopping_problem_is_keyed_by_the_computed_line",
             "test_a_wrong_key_and_a_reply_without_the_answer_line_are_refused",
@@ -3888,24 +3858,34 @@
             "test_elimination_with_a_count",
             "test_every_form_evaluates",
             "test_every_line_is_numbered_cited_once_and_names_what_its_rule_uses",
+            "test_every_text_problem_comes_in_one_numbered_refusal",
             "test_fact_lines_reads_the_numbered_lines",
             "test_flavour_that_names_part_of_a_domain_reads_as_a_fact",
+            "test_halts_key_assembly_and_puzzle_refusals_by_their_rule",
+            "test_in_with_one_value_and_same_with_a_value_count_as_direct_facts",
             "test_left_right_first_last_need_the_order_stated",
             "test_offset_needs_a_whole_number_and_a_repeating_attribute_names_no_one",
             "test_order_words_map_to_their_form_in_the_line_order",
             "test_polarity_must_match_the_line",
+            "test_right_to_left_is_refused_because_it_reverses_left_and_right",
+            "test_the_briefs_worked_example_is_a_model_the_code_accepts",
+            "test_the_lookup_cap_is_read_again_under_the_accept_lock",
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "d49d272038f670c65073e32734d17706a173c2fd0b565196da44d0b703d1c6ca",
+          "hash": "2826fed7a11a287e23cf8ef760a1d427753362a318f5ef8f41edd26348fe7d94",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
-            "tests/test_runner.py"
+            "tests/test_runner.py",
+            "src/role_set/prompts.py",
+            "src/role_set/runner.py"
           ],
           "importsFiles": [
             "src/role_set/plan.py",
+            "src/role_set/prompts.py",
             "src/role_set/puzzle.py",
+            "src/role_set/runner.py",
             "tests/test_runner.py"
           ],
           "path": "tests/test_puzzle.py",
@@ -3934,7 +3914,7 @@
             "test_two_unrelated_gate_rules_are_not_the_same_key",
             "test_warmup_failures_in_every_lesson_never_stop_the_run_as_systemic"
           ],
-          "hash": "cec0b22abfacbb5242e3c0550ff9375fd219cac0f2c3ba219cad4ba647c80353",
+          "hash": "5b700de2629678f74fa07987da209d8d43c07b49d9f60738288bd8c4c9c0a321",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/gates.py",
@@ -4252,7 +4232,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "b879887a157872f530378ee535056df13f688b5b",
+    "commit": "0013acd950a5c0ce422b05f7ea716e6cca20fbc3",
     "tracked": 65
   },
   "landings": [
