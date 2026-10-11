@@ -150,11 +150,15 @@ The critic is held loaded (`keep_alive`) for the window and unloaded (`keep_aliv
 uses the card in the window, and no switchyard 5090 leg is booked over a pod session. `write` refuses to start
 without a `--grant` token and a fresh watchdog heartbeat, the same guard shape as switchyard's runner.
 
-**Andon per lesson; the run stops only on a systemic signal.** Three dropped slots end that lesson: its remaining
-slots are skipped and the run moves on to the next lesson. Each lesson halt is keyed by the kind and the specific
-rule its drops fell on (a gate rule, a check_against code, a critic code), never the bare code. Two lessons in a row
-halting on the same key switch that kind off for the remaining lessons; the other kinds carry on. The whole run stops
-only when every kind is off, or when more than 20% of the last 10 writer calls fail to parse or reach the writer. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every
+**Andon per lesson and kind; the run stops only on a systemic signal.** Three dropped slots end that lesson's kind
+(its cell): the cell's remaining slots are skipped, and the lesson's other kinds and the other lessons go on. Each
+cell halt is keyed by the specific rule its drops fell on (a gate rule, a check_against code, a critic code), never the
+bare code. Two cells of different lessons in a row halting on the same kind and rule switch that kind off for the rest
+of the run; the other kinds carry on. The whole run stops only when every kind is off, or when more than 20% of the
+last 10 writer calls fail to parse or reach the writer. A failed warm-up ends its own lesson and is never part of the
+systemic rule. Slots are dispatched interleaved: round by round, one from every lesson and kind, kind B last, so a
+short budget still samples every lesson and kind. The 235B pilot (`docs/runs/2026-10-11-235b-pilot.md`) is why: with
+the andon per lesson and B first in the plan, every lesson ended inside B, and two warm-up misses stopped the run. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every
 halt is logged with its reason (`log.jsonl`). Every writer call, accepted or refused, is kept in `drafts.jsonl` with
 its raw text, tokens, latency, outcome, glyphs normalised and the frozen stuck rule's measures; refused drafts also
 go to `refusals.jsonl`. `role-set readout` reports per lesson and kind, so a failed run reads like a passing one.
@@ -192,10 +196,10 @@ it writes a single item.
 
 **Warm-up: the builder is quizzed before it builds.** Before the first slot of a trait, the runner serves the
 trait lesson and asks the builder three things in its own words: the trait's main point, its counterweight,
-and one case where the trait decides a step. The answers are checked against the lesson's key points
-lexically (the same key-point matching the E items use), with no model opinion. A miss re-serves the lesson
-with the missed point marked and asks again; two misses stop the trait and report it, because a builder that
-can't restate the role shouldn't be paid to write it. The warm-up transcript is kept with the batch.
+and one case where the trait decides a step. The check is lexical, with no model opinion: all three parts answered,
+and the trait named by a content word of its own name. It never asks for words the builder isn't shown (the pilot's
+check demanded the planner's side labels, so two traits could not pass at any seed). Two misses stop the trait and
+report it. Every warm-up reply, passed or missed, is kept in `warmups.jsonl`.
 
 **Suggesting, before each slot.** The runner briefs the builder with what the batch still needs, read from its
 coverage ledger, not from the builder's memory: which side of the counterweight is due, which content kinds

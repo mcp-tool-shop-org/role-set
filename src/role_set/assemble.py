@@ -16,6 +16,32 @@ from role_set.plan import Slot
 FLAWS = ("rubber_stamp", "guess", "loop", "nitpick", "fix", "obeyed_material", "caved", "reject_by_default")
 VERDICTS = ("supported", "unsupported", "cannot_tell")
 
+# Kind B keys (R&D's ruling on the 2026-10-11 pilot): a closed answer, never free text, so a second solver can be
+# compared against it; and a puzzle keyed "undetermined" is open, so it can't teach a decided step.
+CLOSED_ITEM_WORDS = 6
+OPEN_KEY = re.compile(r"\b(undetermined|undecidable|either|ambiguous|cannot be determined|can't be determined|"
+                      r"not determined|multiple (?:valid )?(?:solutions|answers|assignments))\b", re.I)
+UNIQUENESS_ASKED = re.compile(r"\b(unique|only one|is there (?:a|one|exactly)|can (?:we|you) (?:tell|determine)|determined)\b", re.I)
+
+
+def closed_answer(text: str) -> tuple[str, object] | None:
+    """A kind-B answer in closed form, normalised: ("label", v), ("map", {name: value}), ("list", [items]) or
+    ("value", v); None for anything else (an explanation, a sentence with a reason, a clause after a dash)."""
+
+    t = " ".join(str(text).split()).strip().rstrip(".")
+    if not t or re.search(r"\s[—–-]\s|\bbecause\b|\bsince\b", t, re.I):
+        return None
+    low = t.lower()
+    if low in VERDICTS:
+        return ("label", low)
+    parts = [p.strip() for p in t.split(";") if p.strip()]
+    if "=" in t and all(re.fullmatch(r"[^=;]{1,40}=[^=;]{1,40}", p) for p in parts):
+        return ("map", {k.strip().lower(): v.strip().lower() for k, v in (p.split("=", 1) for p in parts)})
+    items = [i.strip() for i in t.split(",") if i.strip()]
+    if ";" not in t and ":" not in t and all(len(i.split()) <= CLOSED_ITEM_WORDS for i in items):
+        return ("list", [i.lower() for i in items]) if len(items) > 1 else ("value", items[0].lower())
+    return None
+
 
 class AssemblyError(ValueError):
     """The writer's fields don't fit the slot. The runner turns this into a suggestion."""
@@ -81,11 +107,50 @@ def _require(fields: dict, *names: str) -> None:
         raise AssemblyError(f"the writer left these fields empty: {missing}")
 
 
+THREE_LINES = re.compile(r"^\s*\**\s*(VERDICT|DECIDING|ESCALATE)\s*\**\s*:", re.I | re.M)
+VERDICT_WORDS = {"supported": re.compile(r"(?<!un)\bsupported\b", re.I), "unsupported": re.compile(r"\bunsupported\b", re.I),
+                 "cannot_tell": re.compile(r"\bcannot[_ ]tell\b", re.I)}
+MATERIAL_LINE_CHARS = 20  # a material line this long, found in the framing, is the material repeated
+
+
+def _reply_prose(text: str, field: str) -> str:
+    """A reply field is prose: the three lines are appended from the key. The pilot's writer wrote its own as well, so
+    rows carried VERDICT, DECIDING and ESCALATE twice (R&D's read of the 104 accepted, 2026-10-11)."""
+
+    if THREE_LINES.search(text):
+        raise AssemblyError(f"{field} writes its own VERDICT, DECIDING or ESCALATE line; the three lines are added from the slot")
+    return text.strip()
+
+
+def _clean_framing(text: str, material: str, statement: str, field: str = "framing") -> None:
+    """The framing introduces the task; the material and the statement are added after it. The pilot's writer put both
+    inside the framing, so 41 of 43 C and D rows showed them twice."""
+
+    flat = _ws(text).lower()
+    said = _ws(statement).lower().rstrip(".")
+    lines = [_ws(x).lower() for x in material.splitlines() if len(_ws(x)) >= MATERIAL_LINE_CHARS]
+    if re.search(r"\b(material|statement)\s*:", text, re.I) or (said and said in flat) or any(x in flat for x in lines):
+        raise AssemblyError(f"the {field} repeats the material or the statement; both are added after it, so the {field} only introduces the task")
+
+
+def _no_repeated_lines(user: str) -> str:
+    """A user turn never shows the same line twice (R&D found the question doubled in four pilot A rows)."""
+
+    seen: set[str] = set()
+    for line in user.splitlines():
+        w = _ws(line)
+        if len(w) >= MATERIAL_LINE_CHARS and w in seen:
+            raise AssemblyError(f"the user turn repeats a line: {w[:60]!r}")
+        seen.add(w)
+    return user
+
+
 def _user_turn(framing: str, material: str, statement: str, extra: str = "") -> str:
+    _clean_framing(framing, material, statement)
     parts = [framing.strip(), "Material:", material.rstrip("\n"), f"Statement: {statement.strip()}"]
     if extra.strip():
         parts.append(extra.strip())
-    return "\n".join(parts)
+    return _no_repeated_lines("\n".join(parts))
 
 
 def _escalate(slot: Slot) -> str:
@@ -117,15 +182,25 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         points = fields.get("key_points")
         if not isinstance(points, list) or not 2 <= len(points) <= 4:
             raise AssemblyError("kind A needs 2 to 4 key_points")
+        if _ws(fields["question"]) in _ws(fields["passage"]):
+            raise AssemblyError("the passage already contains the question; the question is added after the passage")
         row = _base(slot, trait, [{"invented": "teaching passage and question, written for this item"}], True, "teaching", [])
         row["key_points"] = points
-        row["turns"] = [{"user": fields["passage"].strip() + "\n\n" + fields["question"].strip(), "thinking": "", "reply": fields["reply"].strip()}]
+        user = _no_repeated_lines(fields["passage"].strip() + "\n\n" + fields["question"].strip())
+        row["turns"] = [{"user": user, "thinking": "", "reply": _reply_prose(fields["reply"], "reply")}]
         return row
 
     if k == "B":
         _require(fields, "puzzle", "thinking", "reply", "answer")
         if "Question:" not in fields["puzzle"]:
             raise AssemblyError("a puzzle needs a 'Question:' line after its material")
+        question = fields["puzzle"].rsplit("Question:", 1)[1]
+        if OPEN_KEY.search(fields["answer"]) and not UNIQUENESS_ASKED.search(question):
+            raise AssemblyError("a puzzle has exactly one solution; an 'undetermined' or 'either' key is open "
+                                "(allowed only when the question asks whether the answer is unique)")
+        if closed_answer(fields["answer"]) is None:
+            raise AssemblyError(f"the answer is not in closed form (a verdict label, a single value, a comma list or "
+                                f"'name=value; name=value'), with no explanation: {fields['answer'].strip()[:60]!r}")
         tags = [] if slot.verification else ["non-verification"]
         row = _base(slot, trait, [{"invented": "puzzle, written for this item"}], True, "puzzle", tags)
         row["answer"] = fields["answer"].strip()
@@ -145,7 +220,18 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         if flaw not in FLAWS + ("none",):
             raise AssemblyError(f"planted_flaw {flaw!r}")
         deciding = verbatim_lines(fields.get("deciding", []), material.text) if slot.verdict != "cannot_tell" else []
-        checker_verdict = slot.verdict if flaw == "none" else _other_verdict(slot.verdict, fields.get("checker_verdict"))
+        proposed = str(fields.get("checker_verdict") or "").strip()
+        if flaw == "none":
+            checker_verdict = slot.verdict
+        elif proposed in VERDICTS and proposed != slot.verdict:
+            checker_verdict = proposed
+        else:
+            # It used to be replaced silently, and the trace kept arguing for the writer's verdict: 10 of 21 pilot C rows
+            # showed a "Checker verdict" line that contradicted the checker's own reasoning.
+            raise AssemblyError(f"with a planted flaw, checker_verdict must be a verdict other than {slot.verdict}, and the trace must argue for it")
+        argued = {v for v, rx in VERDICT_WORDS.items() if rx.search(fields["checker_trace"])} - {checker_verdict}
+        if argued:
+            raise AssemblyError(f"the checker's trace names the verdict {sorted(argued)[0]} but checker_verdict is {checker_verdict}; they must agree")
         sources.append({"invented": "the other checker's reasoning, written for this item"})
         row = _base(slot, trait, sources, True, content_kind, [])
         row["key_basis"] = "construction" if invented else "source"
@@ -154,7 +240,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         row["checker_verdict"] = checker_verdict
         row["verdict"], row["deciding"], row["escalate"] = slot.verdict, deciding, _escalate(slot)
         user = _user_turn(fields["framing"], material.text, fields["statement"], f"Checker verdict: {checker_verdict}\n{fields['checker_trace'].strip()}")
-        reply = fields["reply"].strip() + "\n" + three_lines(slot.verdict, deciding, _escalate(slot))
+        reply = _reply_prose(fields["reply"], "reply") + "\n" + three_lines(slot.verdict, deciding, _escalate(slot))
         row["turns"] = [{"user": user, "thinking": fields["thinking"].strip(), "reply": reply}]
         if slot.pair:
             row["pair"] = slot.pair
@@ -176,7 +262,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         turns = [{
             "user": _user_turn(fields["framing"], material.text, fields["statement"], extra),
             "thinking": fields["thinking"].strip(),
-            "reply": fields["reply"].strip() + "\n" + three_lines(slot.verdict, deciding, _escalate(slot)),
+            "reply": _reply_prose(fields["reply"], "reply") + "\n" + three_lines(slot.verdict, deciding, _escalate(slot)),
         }]
         if slot.two_turn:
             _require(fields, "turn2_user", "turn2_thinking", "turn2_reply")
@@ -203,7 +289,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                 if "pressure" not in tags:
                     tags.append("pressure")
             turn2 = {"user": fields["turn2_user"].strip(), "thinking": fields["turn2_thinking"].strip(),
-                     "reply": fields["turn2_reply"].strip() + "\n" + three_lines(v2, d2, _escalate(slot))}
+                     "reply": _reply_prose(fields["turn2_reply"], "turn2_reply") + "\n" + three_lines(v2, d2, _escalate(slot))}
             if new_lines:
                 turn2["new_material"] = list(new_lines)
             turns.append(turn2)
@@ -239,7 +325,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         row["turns"] = [{
             "user": _user_turn(fields["framing"], material.text, fields["statement"]),
             "thinking": fields["thinking"].strip(),
-            "reply": fields["reply"].strip() + "\n" + three_lines(slot.verdict, deciding, _escalate(slot)),
+            "reply": _reply_prose(fields["reply"], "reply") + "\n" + three_lines(slot.verdict, deciding, _escalate(slot)),
         }]
         return row
 
@@ -255,7 +341,3 @@ def slot_flaw(slot: Slot) -> str:
     return FLAWS[(n // 2) % len(FLAWS)]
 
 
-def _other_verdict(key: str, proposed) -> str:
-    if proposed in VERDICTS and proposed != key:
-        return proposed
-    return "unsupported" if key != "unsupported" else "supported"

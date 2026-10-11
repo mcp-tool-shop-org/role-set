@@ -10,7 +10,10 @@ import json
 import re
 from pathlib import Path
 
+from role_set.assemble import slot_flaw
+from role_set.critic import FLAW_DEFINITIONS
 from role_set.plan import Slot
+from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 
 FIELDS = {
     "A": ["passage", "question", "reply", "key_points"],
@@ -47,11 +50,33 @@ def kind_key(slot: Slot) -> str:
     return slot.kind
 
 
+def required_fields(slot: Slot) -> list[str]:
+    """The fields assembly refuses to find empty for this slot (assemble.py's _require and list checks)."""
+
+    k = kind_key(slot)
+    req = {
+        "A": ["passage", "question", "reply", "key_points"],
+        "B": ["puzzle", "thinking", "reply", "answer"],
+        "C": ["framing", "statement", "checker_trace", "thinking", "reply"],
+        "D": ["framing", "statement", "thinking", "reply"],
+        "E_written": ["question", "reply", "key_points", "variant_user", "variant_key_points"],
+        "E_verdict": ["framing", "statement", "thinking", "reply", "variant_user"],
+    }[k]
+    if k in ("C", "D", "E_verdict") and slot.verdict != "cannot_tell":
+        req = req + ["deciding"]
+    if k == "D" and slot.two_turn:
+        req = req + ["turn2_user", "turn2_thinking", "turn2_reply"]
+        if slot.two_turn == "changes":
+            req = req + ["turn2_new_material", "turn2_verdict", "turn2_deciding"]
+    return req
+
+
 def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
     """The gates' mechanical rules for this kind, stated before the first draft rather than after a refusal.
-    The 2026-10-11 rehearsal lost every kind-A slot to two rules the writer was never told."""
+    The 2026-10-11 rehearsal lost every kind-A slot to two rules the writer was never told, and the 235B pilot the same
+    day lost most of B and E to assembly rules the brief never stated (the Question: line, empty fields, DECIDING)."""
 
-    rules: list[str] = []
+    rules: list[str] = ["These fields are required and must not be empty: " + ", ".join(required_fields(slot)) + "."]
     if slot.kind == "A":
         names = ", ".join(f"'{w}'" for w in (trait_words or []))
         rules.append("Kind A: the passage has at least two full sentences before the question, and it names the trait "
@@ -59,22 +84,43 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      + ", written with a straight apostrophe (don't, not don’t). Put the trait words inside a sentence of your own;"
                      " don't open the passage with 'As a verifier, you' followed by the trait words, which other items of this trait"
                      " already use. The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.")
+        rules.append("Kind A is situational, never a request to restate the lesson: the passage sets a concrete case with "
+                     "something to decide (a reviewer pushes, a person is about to act on a check, a claim comes back reworded), "
+                     "and the question asks what you do and why. The reply decides it. It doesn't open with 'As a verifier'.")
     if slot.kind == "B":
         rules.append("Kind B: the thinking or the reply draws the pattern, as tree glyphs (├ └ │), a grid table of | rows, "
                      "or numbered elimination steps (1. 2. 3.).")
+        rules.append("Kind B: the puzzle gives its facts and ends with a line that begins 'Question:'. The puzzle has exactly one "
+                     "solution. 'answer' is that solution in closed form and nothing else, with no explanation: a verdict label "
+                     "(supported, unsupported or cannot_tell), a single value, an ordered list separated by commas, or "
+                     "assignments written 'name=value; name=value'.")
     if slot.kind == "E" and slot.e_type == "written":
         rules.append("Written E: the variant re-asks the question in other words, and its key points share at least one "
-                     "point with the original's.")
+                     "point with the original's: repeat at least one of the original key points word for word.")
     if slot.kind == "E" and slot.e_type == "verdict":
         rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
                      "it never summarises the material or hints at the verdict.")
+        rules.append("Verdict E: neither the prompt nor the variant says what the material does or doesn't contain, and neither "
+                     "refers to another item or an earlier case; each stands alone.")
+    if slot.kind in ("C", "D") or (slot.kind == "E" and slot.e_type == "verdict"):
+        rules.append("'framing' introduces the task in a sentence or two and never contains the material or the statement, "
+                     "which are added after it.")
+        rules.append("'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim "
+                     "material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, "
+                     "recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or "
+                     "ESCALATE lines in it, because the three lines are added from the slot.")
     return rules
 
 
 def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | None = None) -> str:
     """What this slot fixes, and what the batch still needs, in plain words."""
 
-    lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}."]
+    lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}.",
+             f"The item teaches its side, '{slot.side}': the reply shows it in this item's own words, and a reply that argues the trait's other side fails."]
+    step = trait_step(slot.lesson)
+    if step:
+        lines.append(f"The step this trait decides, which this item is built around: {step}.")
+        lines.append(DEFAULTS_NOTE)
     if slot.content_kind:
         lines.append(f"The material is a {slot.content_kind.replace('_', ' ')}; it is given below and must be used verbatim.")
     if slot.verdict:
@@ -86,6 +132,14 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
             lines.append("The material must be silent on the statement: it neither shows it nor rules it out.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
+    if slot.kind == "C":
+        # The pilot's writer was never told which flaw the slot plants, so its trace and the assembled verdict disagreed.
+        flaw = slot_flaw(slot)
+        if flaw == "none":
+            lines.append(f"The other checker was right: checker_verdict is {slot.verdict}, and checker_trace is sound reasoning for it.")
+        else:
+            lines.append(f"The other checker is wrong through one flaw, {flaw}: it {FLAW_DEFINITIONS[flaw]}. checker_verdict is a "
+                         f"verdict other than {slot.verdict}; checker_trace argues for that verdict, names no other, and shows the flaw.")
     if slot.pair:
         lines.append(f"This item is one half of contrast pair {slot.pair}: the same statement is checked against other material in its twin.")
     if slot.two_turn == "stands":
@@ -120,7 +174,9 @@ def writer_messages(
     system = (
         "You write one training item for a role-shaping curriculum. The role is a verifier. You are given the "
         "trait lesson, the required parts for this kind of item, the amendments, the fixed slot, and the material. "
-        "Return a single JSON object with exactly these fields and no others: " + ", ".join(fields) + ". "
+        "Return a single flat JSON object with exactly these fields and no others: " + ", ".join(fields) + ". "
+        "Never return a finished row: no 'kind', 'turns', 'answer' or 'quiz' wrapper unless it is one of these fields. "
+        "The exemplars are finished rows, shown for form only; you write the fields they were built from. "
         "Lists are JSON arrays; 'deciding' and 'turn2_deciding' are arrays of verbatim material lines; "
         "'turn2_new_material' is an array of the new lines the second user turn brings. " + HOUSE_RULES
     )

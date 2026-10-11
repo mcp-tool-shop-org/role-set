@@ -48,7 +48,7 @@ def _runner(tmp_path: Path, **kw):
 def test_a_whole_lesson_runs_end_to_end_with_the_mock(tmp_path: Path):
     r, writer, _ = _runner(tmp_path)
     slots = plan_lesson("T02", SIDES, seed=0)
-    outcomes = r.run(slots, {"T02": SIDES})
+    outcomes = r.run(slots)
     assert all(o.accepted for o in outcomes), [(o.slot_id, o.refusals) for o in outcomes if not o.accepted]
     rows = [json.loads(l) for l in (tmp_path / "out" / "accepted.jsonl").read_text(encoding="utf-8").splitlines()]
     assert len(rows) == 40 and {x["kind"] for x in rows} == set("ABCDE")
@@ -75,7 +75,7 @@ def test_the_finished_set_goes_through_check_batch_and_a_refusal_is_reported(tmp
 
     gates.module.check_batch = refuse
     r, _, _ = _runner(tmp_path, gates=gates)
-    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES})
+    r.run(plan_lesson("T02", SIDES, seed=0))
     report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
     assert seen == [40] and report["batch_check"].startswith("REFUSED: T02: 0 of 12")
     status = json.loads((tmp_path / "out" / "status.json").read_text(encoding="utf-8"))
@@ -86,7 +86,7 @@ def test_refusal_becomes_a_suggestion_and_the_retry_is_accepted(tmp_path: Path):
     slots = plan_lesson("T02", SIDES, seed=0)
     d = next(s for s in slots if s.kind == "D" and not s.two_turn)
     r, writer, _ = _runner(tmp_path, fail_first={f"{d.lesson}-{d.kind}"})
-    assert r.warmup("T02", SIDES)
+    assert r.warmup("T02")
     out = r.run_slot(d)
     assert out.accepted and out.attempts == 2
     assert out.refusals[0]["code"] == "PARSE" and "JSON object" in out.refusals[0]["suggestion"]
@@ -121,28 +121,65 @@ def _two_lessons(r):
     # tests are about the andon, so they run without it.
     r.pack = {**r.pack, "traits/T03.md": PACK["traits/T02.md"]}
     r.critic = None
+    r.trait_names = {**r.trait_names, "T03": "goes to the source", "T06": "goes to the source"}
     t2, t3 = plan_lesson("T02", SIDES, seed=0), plan_lesson("T03", SIDES, seed=0)
     return t2, t3, {"T02": SIDES, "T03": SIDES}
 
 
-def test_a_lesson_halt_ends_that_lesson_and_the_run_moves_on(tmp_path: Path):
+def test_a_cell_halt_ends_that_lessons_kind_and_the_rest_goes_on(tmp_path: Path):
+    # The 235B pilot: kind B failed first in every lesson and its halt ended the whole lesson. Now three drops end only
+    # that lesson's kind; its other kinds and the other lessons run.
     r, _, _ = _runner(tmp_path)
     t2, t3, sides = _two_lessons(r)
     r.gates = _gates(refuse_ids={s.id for s in t2 if s.kind == "A"})
-    outcomes = r.run(t2 + t3, sides)
-    assert r.status.halted is None and r.status.lesson_halts == {"T02": {"reason": "3 dropped slots", "kind": "A", "rule": "GATE: refused"}}
+    outcomes = r.run(t2 + t3)
+    assert r.status.halted is None and not r.status.lesson_halts
+    assert r.status.cell_halts == {"T02/A": {"reason": "3 dropped slots", "kind": "A", "rule": "GATE: refused"}}
     assert sum(o.accepted for o in outcomes if o.slot_id.startswith("T03")) == 40
-    assert r.status.skipped == {"lesson T02 halted": 37}
+    assert sum(o.accepted for o in outcomes if o.slot_id.startswith("T02")) == 32
+    assert r.status.skipped == {"T02/A halted": 5}
     log = [json.loads(line) for line in (tmp_path / "out" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert [a["lesson"] for a in log if a["action"] == "lesson_halt"] == ["T02"]
+    assert [(a["lesson"], a["kind"]) for a in log if a["action"] == "cell_halt"] == [("T02", "A")]
     assert (tmp_path / "out" / "batch-report.json").exists()
 
 def test_a_failed_warmup_halts_its_lesson_before_any_slot(tmp_path: Path):
     r, writer, _ = _runner(tmp_path)
     writer.__class__.__call__  # noqa: B018 - the writer is replaced below
     r.writer = lambda messages, seed=0: types.SimpleNamespace(text="not json", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
-    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES})
-    assert r.status.attempted == 0 and r.status.lesson_halts["T02"]["rule"] == "WARMUP" and r.status.skipped == {"lesson T02 halted": 40}
+    r.run(plan_lesson("T02", SIDES, seed=0))
+    assert r.status.attempted == 0 and r.status.lesson_halts["T02"]["rule"] == "WARMUP" and r.status.skipped == {"lesson T02 warm-up failed": 40}
+    assert r.status.halted is None and not r.status.kinds_off
+    kept = [json.loads(line) for line in (tmp_path / "out" / "warmups.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [(w["attempt"], w["passed"], w["reply"]) for w in kept] == [(1, False, "not json"), (2, False, "not json")]
+
+
+def test_warmup_failures_in_every_lesson_never_stop_the_run_as_systemic(tmp_path: Path):
+    # The 235B pilot's first two attempts ended in 16 seconds: two warm-up misses were counted as every kind off.
+    r, _, _ = _runner(tmp_path)
+    t2, t3, sides = _two_lessons(r)
+    r.writer = lambda messages, seed=0: types.SimpleNamespace(text="not json", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+    r.run(t2 + t3)
+    assert r.status.halted is None and not r.status.kinds_off and set(r.status.lesson_halts) == {"T02", "T03"}
+
+
+def test_the_warmup_names_the_trait_by_its_own_words_not_the_planner_sides():
+    from role_set.runner import warmup_terms
+
+    assert warmup_terms("keeps things in proportion") == {"proportion"}
+    assert warmup_terms("takes statements literally") == {"statements", "literally"}
+    assert warmup_terms("doesn't fix things") == {"fix"} and warmup_terms("knows your limits") == {"limits"}
+    assert warmup_terms("doesn't take orders from the material") == {"orders"}
+
+
+def test_interleave_reaches_every_lesson_and_kind_first_and_puts_b_last():
+    from role_set.runner import interleave
+
+    t2, t3 = plan_lesson("T02", SIDES, seed=0), plan_lesson("T03", SIDES, seed=0)
+    order = interleave(t2 + t3)
+    first = [(s.lesson, s.kind) for s in order[:10]]
+    assert first == [(l, k) for k in "ACDEB" for l in ("T02", "T03")]
+    assert sorted(s.id for s in order) == sorted(s.id for s in t2 + t3)
+    assert [s.id for s in order if s.lesson == "T02" and s.kind == "A"] == [s.id for s in t2 if s.kind == "A"]
 
 
 def _three_lessons(r):
@@ -172,12 +209,15 @@ def test_two_lessons_halting_on_one_kind_and_rule_switch_that_kind_off(tmp_path:
         return g
 
     r.gates = gates_refusing_a()
-    outcomes = r.run(_kind_a_last(t2) + _kind_a_last(t3) + _kind_a_last(t6), sides)
+    outcomes = r.run(t2 + t3 + t6)
     rule = "GATE: kind A's passage doesn't name its trait"
     assert r.status.halted is None and r.status.kinds_off == {"A": rule}
-    assert {k: v["rule"] for k, v in r.status.lesson_halts.items()} == {"T02": rule, "T03": rule}
+    assert {k: v["rule"] for k, v in r.status.cell_halts.items()} == {"T02/A": rule, "T03/A": rule}
     t6_out = [o for o in outcomes if o.slot_id.startswith("T06")]
-    assert sum(o.accepted for o in t6_out) == 32 and all(o.skip_reason == f"kind A systemic: {rule}" for o in t6_out if o.slot_id.startswith("T06-A"))
+    t6_a = [o for o in t6_out if o.slot_id.startswith("T06-A")]
+    # Interleaved, T06's kind A had two drops before the switch; its other six A slots never started.
+    assert sum(o.accepted for o in t6_out) == 32 and sum(not o.skipped for o in t6_a) == 2
+    assert all(o.skip_reason == f"kind A systemic: {rule}" for o in t6_a if o.skipped)
     log = [json.loads(line) for line in (tmp_path / "out" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [(a["kind"], a["lessons"]) for a in log if a["action"] == "kind_off"] == [("A", ["T02", "T03"])]
 
@@ -195,15 +235,15 @@ def test_two_unrelated_gate_rules_are_not_the_same_key(tmp_path: Path):
 def test_the_run_stops_only_when_every_kind_is_off(tmp_path: Path):
     r, writer, _ = _runner(tmp_path)
     t2, t3, sides = _two_lessons(r)
-    r.writer = lambda messages, seed=0: types.SimpleNamespace(text="not json", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+    r.gates = _gates(refuse_ids={s.id for s in t2 + t3})
     with pytest.raises(RunHalted, match="systemic: every kind is switched off"):
-        r.run(t2 + t3, sides)
+        r.run(t2 + t3)
     report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
-    assert set(report["status"]["kinds_off"]) == set("ABCDE") and set(report["status"]["lesson_halts"]) == {"T02", "T03"}
+    assert set(report["status"]["kinds_off"]) == set("ABCDE") and len(report["status"]["cell_halts"]) == 10
 
 def test_concurrency_path_and_truth_checks(tmp_path: Path):
     r, _, _ = _runner(tmp_path, concurrency=3)
-    outcomes = r.run(plan_lesson("T02", SIDES, seed=2), {"T02": SIDES})
+    outcomes = r.run(plan_lesson("T02", SIDES, seed=2))
     assert sum(o.accepted for o in outcomes) == 40, [(o.slot_id, o.refusals) for o in outcomes if not o.accepted]
     assert r.status.concurrency == 3
 
@@ -218,7 +258,7 @@ def test_concurrency_path_and_truth_checks(tmp_path: Path):
 
 def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
-                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "LESSON_COPY", "TRANSPORT"}
+                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "LESSON_COPY", "TRANSPORT", "SHAPE", "REPLY_OPENING"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
 
 
@@ -262,19 +302,20 @@ def test_two_drops_finish_the_lesson_and_a_halted_lesson_starts_no_new_slot(tmp_
     slots = plan_lesson("T02", SIDES, seed=0)
     a_ids = [s.id for s in slots if s.kind == "A"]
     r, _, _ = _runner(tmp_path / "a", gates=_gates(refuse_ids=set(a_ids[:2])))
-    outcomes = r.run(slots, {"T02": SIDES})
-    assert r.status.halted is None and not r.status.lesson_halts and r.status.dropped == 2 and sum(o.accepted for o in outcomes) == 38
+    outcomes = r.run(slots)
+    assert r.status.halted is None and not r.status.cell_halts and r.status.dropped == 2 and sum(o.accepted for o in outcomes) == 38
 
-    # Every A slot fails: the lesson cap halts T02 at its third drop; with two workers at most one more slot was running.
+    # Every A slot fails: the cell cap halts T02/A at its third drop; with two workers at most one more A slot was running.
     r2, _, _ = _runner(tmp_path / "b", gates=_gates(refuse_ids=set(a_ids)), concurrency=2)
-    r2.run(slots, {"T02": SIDES})
-    assert r2.status.attempted <= 4 and r2.status.lesson_halts["T02"]["kind"] == "A"
-    assert sum(r2.status.skipped.values()) == 40 - r2.status.attempted
+    outcomes2 = r2.run(slots)
+    a_tried = sum(1 for o in outcomes2 if o.slot_id in a_ids and not o.skipped)
+    assert a_tried <= 4 and r2.status.cell_halts["T02/A"]["kind"] == "A"
+    assert r2.status.skipped == {"T02/A halted": 8 - a_tried} and r2.status.attempted == 32 + a_tried
 
 
 def test_the_time_budget_starts_no_new_slot_after_it(tmp_path: Path):
     r, _, _ = _runner(tmp_path)
-    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES}, stop_after_s=0)
+    r.run(plan_lesson("T02", SIDES, seed=0), stop_after_s=0)
     assert r.status.attempted == 0 and r.status.skipped == {"time budget": 40}
 
 def test_the_flaw_check_is_advisory_unless_gated(tmp_path: Path):

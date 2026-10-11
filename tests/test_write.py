@@ -142,7 +142,7 @@ def test_write_halts_are_reported_and_cleanup_runs(pack_dir: Path, plan_file: Pa
             self.status = Status(started_at=0.0)
             self.batch_check = None  # a halted run never reaches the batch check
 
-        def run(self, slots, sides, **kw):
+        def run(self, slots, **kw):
             raise RunHalted("andon: test")
 
     monkeypatch.setattr(w, "Runner", Halting)
@@ -226,7 +226,7 @@ def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes
             self.status = Status(started_at=0.0)
             self.batch_check = None
 
-        def run(self, slots, sides, **kw):
+        def run(self, slots, **kw):
             return []
 
     monkeypatch.setattr(w, "Runner", Stub)

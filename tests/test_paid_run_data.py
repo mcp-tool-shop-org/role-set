@@ -96,14 +96,14 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
     slots = plan_lesson("T02", SIDES, seed=0)
     a_ids = [s.id for s in slots if s.kind == "A"]
     r, _, _ = _runner(tmp_path / "fail", gates=_gates(refuse_ids=set(a_ids[:3])), stuck=lambda *a: {"stuck": True, "bursts": 1, "hedges": 3})
-    r.run(slots, {"T02": SIDES})
+    r.run(slots)
     data, md = readout(tmp_path / "fail" / "out")
     run = data["run"]
-    assert run["lesson_halts"]["T02"]["kind"] == "A" and run["per_kind"]["A"]["dropped"] == 3
+    assert run["cell_halts"]["T02/A"]["kind"] == "A" and run["per_kind"]["A"]["dropped"] == 3 and run["warmups"] == {"passed": 1}
     assert run["refusals"] == {"A / GATE: refused": 9} and run["retry_recovery"] == {"refused_slots": 3, "recovered": 0, "rate": 0.0}
     assert run["calls"] == 9 + run["accepted"] and run["stuck"]["stuck"] == run["calls"] and run["seconds_per_call"]["p50"] is not None
     assert "| T02 |" in md and "Retry recovery: 0 of 3" in md
-    assert run["per_lesson"]["T02"]["skipped_by_reason"] == {"lesson T02 halted": 37} and "lesson T02 halted: 37" in md
+    assert run["per_lesson"]["T02"]["skipped_by_reason"] == {"T02/A halted": 5} and "T02/A halted: 5" in md and "T02/A (GATE: refused)" in md
 
     # An old-format run (outcomes lost on a halt, no drafts.jsonl) is rebuilt from its action log, and compared.
     old = tmp_path / "old"
@@ -161,7 +161,7 @@ def test_the_kind_a_brief_warns_off_the_stock_opening():
     from role_set.prompts import hard_rules
 
     a = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
-    assert "don't open the passage with 'As a verifier, you' followed by the trait words" in hard_rules(a, ["to the source"])[0]
+    assert any("don't open the passage with 'As a verifier, you' followed by the trait words" in r for r in hard_rules(a, ["to the source"]))
 
 
 def test_the_readout_states_the_inputs_the_run_was_pinned_to(tmp_path: Path):
@@ -170,7 +170,7 @@ def test_the_readout_states_the_inputs_the_run_was_pinned_to(tmp_path: Path):
     r, _, _ = _runner(tmp_path)
     r.pins = {"writer_model": "w", "writer_revision": "96548f65", "pack_commit": "0801513", "pack_sha256": "7d8e", "exemplar_commit": "a7ec783", "stuck_rule_sha256": "716d"}
     slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
-    r.run([slot], {"T02": SIDES})
+    r.run([slot])
     data, md = readout(tmp_path / "out")
     inputs = data["run"]["inputs"]
     assert inputs["exemplar_commit"] == "a7ec783" and inputs["writer_revision"] == "96548f65" and "other traits only" in inputs["exemplars"]
