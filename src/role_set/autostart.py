@@ -28,6 +28,7 @@ SHUTDOWN_MARGIN_MIN = 8  # pilot-write.sh's budget is the minutes to the deadlin
 WRITE_MIN = 5  # pilot-write.sh refuses a budget under 5 minutes
 RELAUNCH_MIN_WRITING = 10  # the Publisher's rule: relaunch only while more than 10 minutes of writing remain
 MAX_ATTEMPTS = 5
+RELAUNCH_LANE_WAIT_S = 60.0
 
 
 def deadline_epoch(hhmm: str, now: float) -> float:
@@ -54,10 +55,10 @@ def lane_serves(port: int, *, opener=_open) -> bool:
         return False
 
 
-def wait_for_lane(port: int, deadline: float, *, opener=_open, sleep=time.sleep, now=time.time) -> bool:
-    """Poll the lane until it answers, while a write could still start; False when the window closes first."""
+def wait_for_lane(port: int, deadline: float, *, serve_by: float | None = None, opener=_open, sleep=time.sleep, now=time.time) -> bool:
+    """Poll the lane until it answers, while a write could still start and before serve_by; False when either closes."""
 
-    while writing_minutes_left(deadline, now()) >= WRITE_MIN:
+    while writing_minutes_left(deadline, now()) >= WRITE_MIN and (serve_by is None or now() < serve_by):
         if lane_serves(port, opener=opener):
             return True
         sleep(POLL_S)
@@ -108,9 +109,14 @@ def _pilot_write(port: int, grant: str, hhmm: str, work: Path) -> int:
     return subprocess.call(["sh", "scripts/pilot-write.sh", str(port), grant, hhmm, str(work)])
 
 
-def run(port: int, grant: str, hhmm: str, work: Path, *, write=_pilot_write, opener=_open, sleep=time.sleep, now=time.time) -> dict:
+def run(port: int, grant: str, hhmm: str, work: Path, *, serve_by: str | None = None, write=_pilot_write, opener=_open,
+        sleep=time.sleep, now=time.time) -> dict:
+    """serve_by (HH:MM UTC) is when the launcher gives up on a lane that never served, matching the pod's own
+    no-serve shutdown, so a launcher never outlives its pod. It exits with the card untouched."""
+
     deadline = deadline_epoch(hhmm, now())
-    state: dict = {"port": port, "grant": grant, "deadline_utc": hhmm, "attempts": [], "done": False}
+    first_by = deadline_epoch(serve_by, now()) if serve_by else None
+    state: dict = {"port": port, "grant": grant, "deadline_utc": hhmm, "serve_by_utc": serve_by, "attempts": [], "done": False}
     record = work / "launcher.json"
 
     def save() -> None:
@@ -119,10 +125,12 @@ def run(port: int, grant: str, hhmm: str, work: Path, *, write=_pilot_write, ope
     save()
     plan = json.loads((work / "plan.json").read_text(encoding="utf-8"))
     dirs: list[Path] = []
-    ended = "lane never served"
+    ended = "lane_never_served"
     for n in range(1, MAX_ATTEMPTS + 1):
-        if not wait_for_lane(port, deadline, opener=opener, sleep=sleep, now=now):
-            ended = "lane never served" if n == 1 else "lane gone before a relaunch"
+        # A relaunch follows a lane that just served; one that stops answering for a minute is gone.
+        by = first_by if n == 1 else now() + RELAUNCH_LANE_WAIT_S
+        if not wait_for_lane(port, deadline, serve_by=by, opener=opener, sleep=sleep, now=now):
+            ended = "lane_never_served" if n == 1 else "lane_gone_before_relaunch"
             break
         d = work / f"attempt-{n}"
         d.mkdir(exist_ok=True)
@@ -154,7 +162,7 @@ def run(port: int, grant: str, hhmm: str, work: Path, *, write=_pilot_write, ope
     else:
         ended = f"systemic stop; {MAX_ATTEMPTS} attempts used"
     last = state["attempts"][-1] if state["attempts"] else {}
-    state.update(done=True, ended=ended, accepted=sum(a.get("accepted") or 0 for a in state["attempts"]),
+    state.update(done=True, ended_by=ended, accepted=sum(a.get("accepted") or 0 for a in state["attempts"]),
                  card_free=bool(last.get("critic_unloaded", True)), finished_at=round(now()))
     save()
     return state

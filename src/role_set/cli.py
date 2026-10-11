@@ -340,12 +340,13 @@ def build_parser() -> argparse.ArgumentParser:
     pa.add_argument("grant", help="the critic's 5090 grant")
     pa.add_argument("deadline", help="the pod's hard deadline, HH:MM UTC")
     pa.add_argument("work", help="work dir holding plan.json, pack/ and pool.jsonl; attempts go in attempt-N/")
+    pa.add_argument("--serve-by", default=None, help="HH:MM UTC: give up if the lane hasn't served by then (the pod's no-serve shutdown)")
     pa.set_defaults(func=_pilot_auto)
     return p
 
 
 def _pilot_auto(args) -> int:
-    state = autostart.run(args.port, args.grant, args.deadline, Path(args.work))
+    state = autostart.run(args.port, args.grant, args.deadline, Path(args.work), serve_by=args.serve_by)
     print(json.dumps({k: v for k, v in state.items() if k != "attempts"}))
     for a in state["attempts"]:
         print(f"{a['dir']}: {a['ended_by']}; accepted {a['accepted']} of {a['attempted']}; {a['halted'] or ''}")
