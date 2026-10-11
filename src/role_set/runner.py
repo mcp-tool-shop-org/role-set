@@ -290,6 +290,13 @@ def refusal_rule(refusal: dict) -> str:
         d = re.sub(r"(?<=[\s(])'[^']*'(?=[\s),:;.]|$)|\"[^\"]*\"", "''", d)  # quoted values, not apostrophes
         d = re.sub(r"\(T\d\d\)|\bT\d\d(-[A-E]-\d\d)?\b", "", d)
         return "GATE: " + " ".join(d.split())[:80]
+    if code in ("ASSEMBLY", "PUZZLE"):
+        # Rehearsal 3 keyed every assembly halt as bare ASSEMBLY, so two cells dropping for unrelated reasons could
+        # switch a kind off. The key is the first problem's wording, with quoted values and numbers taken out.
+        d = re.sub(r"^1\)\s*", "", detail).split("; ")[0]
+        d = re.sub(r"(?<=[\s(])'[^']*'(?=[\s),:;.]|$)|\"[^\"]*\"", "''", d)
+        d = re.sub(r"\d+", "N", d)
+        return f"{code}: " + " ".join(d.split())[:80]
     return code
 
 

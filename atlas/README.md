@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-11 from commit b879887 by Atlas 1.24.0.
+Mapped at 2026-10-11 from commit 0013acd by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,9 @@ role-set plans every slot of a role-shaping batch, has a model on a rented pod w
 
 7 parts, mostly Python (46 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.
 
-## What changed since 2026-10-11 (291b397)
+## What changed since 2026-10-11 (b879887)
 
-Nothing structural changed since 2026-10-11; 2 files added and 11 changed content.
+Nothing structural changed since 2026-10-11; 9 files changed content.
 
 ## What comes in
 
@@ -37,10 +37,11 @@ CI writes nothing this map can see.
 
 ## What tends to change together
 
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 6 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 7 commits, and the tests part imports the src part.
 - **src/role_set/cli.py** and **src/role_set/write.py** changed together in 6 of 11 commits, inside the src part.
-- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 7 of 14 commits, inside the src part.
+- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 8 of 15 commits, inside the src part.
 - **src/role_set/mock.py** and **tests/test_runner.py** changed together in 6 of 12 commits, and the tests part imports the src part.
+- **src/role_set/prompts.py** and **tests/test_paid_run_data.py** changed together in 6 of 12 commits, and the tests part imports the src part.
 
 3 files changed together with their own tests, as expected.
 

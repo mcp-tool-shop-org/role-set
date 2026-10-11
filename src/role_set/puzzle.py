@@ -246,68 +246,116 @@ def _ordered_rules(rule) -> list[list]:
 
 
 # ---- the text ----------------------------------------------------------------------------------------------------
-def fact_lines(puzzle: str) -> tuple[dict[int, str], str]:
-    """The numbered lines before the Question line, and the Question line. Every line before it is numbered."""
+MAX_PROBLEMS = 8  # numbered in one refusal; the rest follow on the retry
 
-    if "Question:" not in puzzle:
-        raise PuzzleError("a puzzle ends with a line that begins 'Question:'")
-    body, question = puzzle.rsplit("Question:", 1)
+
+def _fact_lines(puzzle: str, problems: list[str]) -> tuple[dict[int, str], str]:
+    if "Question:" in puzzle:
+        body, question = puzzle.rsplit("Question:", 1)
+    else:
+        problems.append("a puzzle ends with a line that begins 'Question:'")
+        body, question = puzzle, ""
     lines: dict[int, str] = {}
+    unnumbered = []
     for raw in body.splitlines():
         if not raw.strip():
             continue
         m = NUMBERED.match(raw)
         if not m:
-            raise PuzzleError(f"every line before the Question line is numbered (1., 2., ...), setting lines included: {raw.strip()[:50]!r}")
+            unnumbered.append(raw.strip()[:50])
+            continue
         lines[int(m.group(1))] = m.group(2).strip()
-    if sorted(lines) != list(range(1, len(lines) + 1)):
-        raise PuzzleError("the puzzle's lines are numbered 1, 2, 3 ... in order, once each")
+    if unnumbered:
+        problems.append(f"every line before the Question line is numbered (1., 2., ...), setting lines included: {unnumbered[0]!r}")
+    if lines and sorted(lines) != list(range(1, len(lines) + 1)):
+        problems.append("the puzzle's lines are numbered 1, 2, 3 ... in order, once each")
     return lines, question.strip()
 
 
+def fact_lines(puzzle: str) -> tuple[dict[int, str], str]:
+    """The numbered lines before the Question line, and the Question line. Every line before it is numbered."""
+
+    problems: list[str] = []
+    out = _fact_lines(puzzle, problems)
+    if problems:
+        raise PuzzleError("; ".join(problems))
+    return out
+
+
 def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
-    lines, question = fact_lines(puzzle)
-    cited = {}
+    """Every way the model and the text disagree, in one refusal: the 8B rehearsal spent all three attempts fixing one
+    reported problem per retry."""
+
+    problems: list[str] = []
+    lines, question = _fact_lines(puzzle, problems)
+    cited: dict[int, list] = {}
     for n, rule in m.facts:
         if n not in lines:
-            raise PuzzleError(f"a fact cites line {n}, and the puzzle has no line {n}")
-        cited.setdefault(n, []).append(rule)
+            problems.append(f"a fact cites line {n}, and the puzzle has no line {n}")
+        else:
+            cited.setdefault(n, []).append(rule)
     for n in m.flavour:
         if n not in lines:
-            raise PuzzleError(f"flavour cites line {n}, and the puzzle has no line {n}")
-        if n in cited:
-            raise PuzzleError(f"line {n} is both a fact and flavour")
+            problems.append(f"flavour cites line {n}, and the puzzle has no line {n}")
+        elif n in cited:
+            problems.append(f"line {n} is both a fact and flavour")
     for n in lines:
         if n not in cited and n not in m.flavour:
-            raise PuzzleError(f"line {n} has no rule in the model; give it one, or list it in flavour if it states no fact")
-    text = puzzle
+            problems.append(f"line {n} has no rule in the model; give it one, or list it in flavour if it states no fact")
     for name in m.entities + [v for a in m.attrs.values() for v in a["values"]]:
-        if not _named(name, text):
-            raise PuzzleError(f"{name!r} is in the model but the puzzle never names it")
+        if not _named(name, puzzle):
+            problems.append(f"{name!r} is in the model but the puzzle never names it")
     for n in m.flavour:
+        if n not in lines:
+            continue
         # A setting line that lists an attribute's whole domain declares it; one that names some values reads as a fact.
         named = [v for a in m.attrs.values() if not all(_named(x, lines[n]) for x in a["values"])
                  for v in a["values"] if _named(v, lines[n])]
         if named and not _states_order(m, lines[n]):
-            raise PuzzleError(f"flavour line {n} names {named[0]!r}, so it reads as a fact; give it a rule or drop the value")
+            problems.append(f"flavour line {n} names {named[0]!r}, so it reads as a fact; give it a rule or drop the value")
     for n, rules in cited.items():
         line = lines[n]
         for rule in rules:
             missing = [x for x in rule_names(rule) if not _named(x, line)]
             if missing:
-                raise PuzzleError(f"line {n}'s rule uses {missing[0]!r}, which line {n} doesn't name; a rule encodes only its own line")
+                problems.append(f"line {n}'s rule uses {missing[0]!r}, which line {n} doesn't name; a rule encodes only its own line")
         neg_line = NEGATION.search(line) is not None
         neg_rule = any(f in NEGATIVE for r in rules for f in _forms(r))
         if neg_line != neg_rule:
-            raise PuzzleError(f"line {n} is {'negative' if neg_line else 'positive'} but its rule is "
-                              f"{'negative' if neg_rule else 'positive'}; encode the line as it reads")
-        _check_direction(n, line, rules)
-    _check_order_stated(m, lines)
+            problems.append(f"line {n} is {'negative' if neg_line else 'positive'} but its rule is "
+                            f"{'negative' if neg_rule else 'positive'}; encode the line as it reads")
+        try:
+            _check_direction(n, line, rules)
+        except PuzzleError as e:
+            problems.append(str(e))
+    try:
+        _check_order_stated(m, lines)
+    except PuzzleError as e:
+        problems.append(str(e))
+    leaked = brief_leak(puzzle)
+    if leaked:
+        problems.append(f"the puzzle repeats the brief's instruction ({leaked!r}); a puzzle states facts and a question only")
     if m.claim is not None:
         missing = [x for x in rule_names(m.claim) if not _named(x, question)]
         if missing:
-            raise PuzzleError(f"the claim uses {missing[0]!r}, which the Question line doesn't name")
+            problems.append(f"the claim uses {missing[0]!r}, which the Question line doesn't name")
+    if problems:
+        more = len(problems) - MAX_PROBLEMS
+        listed = "; ".join(f"{i}) {x}" for i, x in enumerate(problems[:MAX_PROBLEMS], 1)) if len(problems) > 1 else problems[0]
+        raise PuzzleError(listed + (f"; and {more} more" if more > 0 else ""))
     return lines, question
+
+
+# The brief's own words about laying out the working, copied into a puzzle (rehearsal 3: "Show your thinking as a
+# constraint grid, and stop when it's settled").
+BRIEF_SPANS = re.compile(r"show your thinking|constraint grid|stop when it'?s settled|tree glyphs|numbered elimination steps", re.IGNORECASE)
+
+
+def brief_leak(puzzle: str) -> str | None:
+    from role_set.critic import PATTERN_INSTRUCTION
+
+    m = BRIEF_SPANS.search(puzzle) or PATTERN_INSTRUCTION.search(puzzle)
+    return " ".join(m.group(0).split())[:60] if m else None
 
 
 def _first(line: str, names: list[str]) -> int:

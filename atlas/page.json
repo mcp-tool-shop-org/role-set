@@ -20,8 +20,8 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 2,
-      "changed": 11,
+      "added": 0,
+      "changed": 9,
       "moved": 0,
       "parts": 3,
       "removed": 0
@@ -29,13 +29,13 @@
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 2 files added and 11 changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 9 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "291b39797175c56dedbf30cb7827d7e9aac6de21",
-      "generatedAt": "2026-10-11T09:46:35.419Z"
+      "commit": "b879887a157872f530378ee535056df13f688b5b",
+      "generatedAt": "2026-10-11T10:03:27.576Z"
     },
     "unchanged": true
   },
@@ -43,7 +43,7 @@
     {
       "a": "src/role_set/readout.py",
       "b": "tests/test_paid_run_data.py",
-      "either": 6,
+      "either": 7,
       "partLabels": [
         "src",
         "tests"
@@ -73,7 +73,7 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
-      "either": 14,
+      "either": 15,
       "partLabels": [
         "src",
         "src"
@@ -83,11 +83,26 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 7
+      "shared": 8
     },
     {
       "a": "src/role_set/mock.py",
       "b": "tests/test_runner.py",
+      "either": 12,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 6
+    },
+    {
+      "a": "src/role_set/prompts.py",
+      "b": "tests/test_paid_run_data.py",
       "either": 12,
       "partLabels": [
         "src",
@@ -107,7 +122,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 3,
-  "commit": "b879887a157872f530378ee535056df13f688b5b",
+  "commit": "0013acd950a5c0ce422b05f7ea716e6cca20fbc3",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (46 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -180,7 +195,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T10:03:27.576Z",
+  "generatedAt": "2026-10-11T10:19:55.944Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "4 writes and 19 reads go to a path their caller passes, not to this repository.",
