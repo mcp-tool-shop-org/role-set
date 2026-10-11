@@ -1,24 +1,27 @@
 # role-set: a generator for role-shaping training data
 
 *Design draft 17, from the Dataset Specialist, 2026-10-10, with the Publisher's and ASPIRE's reviews folded in.
-Nothing here runs until the maintainer lifts the offrig hold and says which home it gets.*
+Brought up to date with the program on 2026-10-11, after three pilots: the critic's trait, answer and flaw checks
+are advisory until their controls pass (§6), and a rented pod is offrig's, reached only through a loopback tunnel
+(§9).*
 
 ## 1. What it is for
 
 The Stage 1 dataset is 810 hand-written items, built one batch at a time by an outside model through the
 maintainer, reviewed by R&D and the Dataset Specialist. Three batches in, the pattern is clear: a writer that
 follows the spec by hand produces careful work slowly, and a writer that reaches for a template produces work
-that passes the gates and teaches nothing. role-set is the tool that lets a large model on a rented pod write
-batches that are **unique, in the schema, and faithful to the role-shaping method**, with every gate the
+that passes the gates and teaches nothing. role-set is the tool that lets a large model, served on a pod that
+offrig rents and reached through offrig's loopback tunnel, write batches that are **unique, in the schema, and faithful to the role-shaping method**, with every gate the
 humans use run before a human sees the item.
 
 It is a generator, not a judge. It never decides what a good verifier is; that lives in the role pack, which
 humans write. It never scores items by model opinion; every refusal is structural (a check in code, or a
-known-answer mismatch). It never launches, prices or shuts down a pod; the human does that through offrig.
+known-answer mismatch). It never rents, launches, prices or shuts down a pod; the human does that through offrig,
+and role-set only sees the loopback tunnel.
 
 ## 2. Where it lives
 
-A new repo, `mcp-tool-shop-org/role-set`, internal, created by the Publisher on the maintainer's word. Python
+A repo of its own, `mcp-tool-shop-org/role-set`, public, created by the Publisher on the maintainer's word. Python
 3.12. It imports aspire-si's gates through a pinned dependency, never a copy, so there is one source of truth.
 ASPIRE makes the gates a small stdlib-only package inside aspire-si (no torch), installed by commit
 (`pip install git+…aspire-si@<sha>#subdirectory=…`); the trainer imports the same package; ASPIRE owns it. The
@@ -41,9 +44,9 @@ The maintainer's method, and where each part of it is enforced:
 | Fresh wording; never copy the lessons | No 8-word span shared with any role-pack file (role, traits, kinds, amendments), checked with the same span machinery; the span and phrase checks also run against the exemplars, so a skeleton can't cross traits through them. |
 | Lesson, absorb, apply, quiz | The kind mix per trait (A/B/C/D/E, 8 each) and the E variants for the repeat loop. The runner applies the same loop to the builder: lesson served, quizzed in its own words, and only then allowed to write (§6b). |
 | Well-timed critique and assistance | The runner's briefs before each slot and its plain-words suggestions after each refused draft, with the governing pack line quoted (§6b). |
-| Stay inside the role | The critic names the trait an item teaches from the closed list of 18, key and slot hidden; a mismatch with the slot is a refusal (§6b). |
+| Stay inside the role | The critic names the trait an item teaches from the closed list of 18, key and slot hidden. Until `critic-control --trait-leg` passes R&D's bars, a mismatch with the slot is logged with the drift destination and does not refuse; the human read is the check meanwhile (§6, §6b). |
 | Every answer known by construction or from the source | The hidden-key critic (§6): the key must be re-derivable from the material alone. |
-| Instant agreement; a contested item is cut | The critic's mismatch is a refusal, not a debate. A slot that fails twice is dropped and reported, never argued for. |
+| Instant agreement; a contested item is cut | A verdict or evidence mismatch with the critic is a refusal, not a debate; the trait, answer and flaw checks are recorded and advisory until their controls pass (§6). A slot that fails twice is dropped and reported, never argued for. |
 | Not a test to aim at | role-set never reads the sealed set, the DEV sets or the interview; prompts are built only from the role pack, the slot and approved exemplars; the exclusion list is enforced by the leakage check on every item; the sealed leakage leg stays ASPIRE's, run after generation. |
 | Fresh wording | The avoid-list (framing lines plus a fixed number of the most frequent phrases) goes to the writer as "do not use"; the full span, framing and phrase checks run in the batch checks, where they're free. Exemplars rotate per slot from a pool, recorded per item, and exemplar-derived spans are counted in the batch checks too. |
 
@@ -188,9 +191,13 @@ ends, halt included, with a reminder to shut the pod down; offrig's deadline wat
   the line's order; left, right, first or last come with the order stated; flavour names no partial domain), every
   fact is needed (re-solved without it, the answer changes), and exhaustive search gets the key: exactly one answer,
   or the computed set (underdetermined), the computed stopping line (stopping problem, when to stop), or the computed
-  verdict on the claim (verification structures). An answer that follows from `is` facts alone is a lookup, one per
-  lesson. A refusal names a counterexample, and the normal retry carries it; the writer is never asked whether its
-  puzzle is unique. Pilot 2's key-check found three of five B puzzles with more than one solution.
+  verdict on the claim (verification structures). An answer that the direct facts settle (`is`, a one-value `in`,
+  `same` with a value, `is_not` on a two-value attribute, or an `if` whose premise is itself stated), or that any one
+  fact settles alone, is a lookup, one per lesson. A count that only decorates (all entities, or none) and model
+  syntax written into a fact line are refused. A refusal names a counterexample, and the normal retry carries it;
+  the writer is never asked whether its puzzle is unique. Pilot 2's key-check found three of five B puzzles with more
+  than one solution. Over reviewed data, `puzzle-check` also refuses a fact skeleton that repeats across the files
+  checked together.
 - For every kind, the trait: the critic reads the whole item and names the trait whose step decides it (each trait
   listed with the step it decides, and the sibling traits it confused told apart), with the error the item
   contrasts against on its own line; pressure is structure except for T05 and T13. A majority of three calls at
@@ -203,10 +210,11 @@ ends, halt included, with a reminder to shut the pod down; offrig's deadline wat
 - For A and written E: no verdict check is possible without opinion, so these get the validator, the trait
   check and the human read. The plan keeps them at 16 of 40 per trait, where they are now.
 
-A mismatch is a refusal, never a vote. The critic can be the same pod model or a different one; the item
-records which.
+A gating mismatch (verdict or evidence, and a leg once its control passes) is a refusal, never a debate; the
+trait check's majority of three is how it reads the critic, not a vote on the item. The critic is a different
+family from the writer, as above, and the item records which model it was.
 
-**Refusal loop.** Validator refusal or critic mismatch → one replacement request carrying the refusal reason,
+**Refusal loop.** Validator refusal or a gating critic mismatch → one replacement request carrying the refusal reason,
 then a second. After two, the slot is dropped and listed in the batch report. The writer never sees the
 sealed set, the DEV sets or the interview. The runner (§6b) is what turns a refusal into a suggestion.
 
@@ -243,11 +251,12 @@ states a count the material doesn't give; the count is 3, computed from the mate
 in the repo, pinned by a test, so suggestions are consistent across batches and reviewable.
 
 **The confines of the role-set.** The builder may draw on the role pack and nothing else, and every item has
-to belong to the trait it was ordered for. Enforced:
-- **Which trait the item teaches, named by the critic from a closed list.** With the key and the slot hidden,
-  the critic is asked which of the 18 traits the item teaches, and must answer from the list. A mismatch with
-  the slot's trait is a refusal, like the critic's other mismatches, and the named trait is logged as the
-  drift destination. This is the check that catches a quoting lesson pinned onto "takes no orders". A
+to belong to the trait it was ordered for. Enforced, except where marked advisory:
+- **Which trait the item teaches, named by the critic from a closed list (advisory for now).** With the key and
+  the slot hidden, the critic is asked which of the 18 traits the item teaches, and must answer from the list. A
+  mismatch with the slot's trait is logged, with the named trait as the drift destination. It does not refuse
+  until `critic-control --trait-leg` passes R&D's bars (it measured 40.3% overall against 85%), and the human
+  read covers the trait meanwhile. This is the check meant to catch a quoting lesson pinned onto "takes no orders". A
   term-overlap check against the lesson texts was probed first and rejected: on 280 approved items the own
   lesson was nearest for only 15%, because C items teach through another trait's failure and B/D thinking
   talks about the material, not the trait's vocabulary. That overlap ranking survives only as a figure in the
@@ -261,7 +270,8 @@ to belong to the trait it was ordered for. Enforced:
 - **Voice and form.** The kind's required parts, the three-line block, the length limits and the identity
   rules, all from the gates package.
 
-A confines refusal counts like any other refusal toward the drop andon, and the drift destination is logged.
+A confines refusal counts like any other refusal toward the drop andon. An advisory trait mismatch counts toward
+nothing, and its drift destination is logged.
 
 **Live changes during a run.** The runner reports live and fixes what it may fix while the batch runs, so a
 context problem or a transport error doesn't cost a pod hour. The boundary is fixed, from the Publisher:
