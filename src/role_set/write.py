@@ -171,6 +171,8 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
             critics = allowed_critics(cfg.writers_file)
             if c_model not in critics:
                 raise GuardError(f"REFUSED: {c_model} is not on the licence-checked critic list")
+            if critics[c_model].get("role") == "critic-comparison":
+                raise GuardError(f"REFUSED: {c_model} is listed for critic-control comparison only, not as a run's critic")
             digest = require_ollama_digest(c_endpoint, c_model, critics[c_model]["digest"], opener=digest_opener)
         except GuardError as e:
             raise WriteRefused(str(e)) from e

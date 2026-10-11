@@ -177,14 +177,18 @@ ends, halt included, with a reminder to shut the pod down; offrig's deadline wat
 - For B puzzles: the critic gets the puzzle's facts and question without the writer-facing pattern instruction,
   and ends with an ANSWER line in the key's closed form (a verdict label, a value, an ordered list or
   `name=value` assignments). The two closed answers are compared, never free text; a missing or open ANSWER line
-  is void and asked once more. Mismatch = refuse. (The 235B pilot's comparator matched free text against free
-  text, and R&D found 14 of 20 refusals were the check's fault.)
-- For every kind, the trait: the critic names the trait whose step decides the item (each trait listed with the
-  step it decides) and, apart, the error the item contrasts against; pressure is structure except for T05 and
-  T13. A majority of three calls at temperature 0.7 decides; a split or another trait refuses. It stays gating
-  (R&D, 2026-10-11: advisory would have passed 17 of 20 adjudicated refusals, 4 with wrong keys), and
-  `critic-control --trait-leg` measures it on reviewed items against R&D's bar: 85% overall, every trait 70%,
-  the three calls unanimous on 90%. A critic that misses the bar gets a new prompt; the bar doesn't move.
+  is void and asked once more. Candidates are compared without case or a leading article, never by word span,
+  and named as the puzzle names them. (The 235B pilot's comparator matched free text against free text, and R&D
+  found 14 of 20 refusals were the check's fault.)
+- For every kind, the trait: the critic reads the whole item and names the trait whose step decides it (each trait
+  listed with the step it decides, and the sibling traits it confused told apart), with the error the item
+  contrasts against on its own line; pressure is structure except for T05 and T13. A majority of three calls at
+  temperature 0.7 decides. `critic-control --trait-leg` and `--answer-leg` measure the two checks on reviewed
+  items against R&D's bars (trait: 85% overall, every trait 70%, unanimous on 90%; answer: 90%), scored on items
+  never used to tune the prompt. **Until a leg passes, its check is advisory** (`trait_gate`, `answer_gate` off):
+  a mismatch is logged with the critic's votes and words, and never refuses. R&D reversed its first ruling once
+  critic-control showed 40% trait agreement on known-good items. A critic that misses a bar gets a new prompt; the
+  bar doesn't move.
 - For A and written E: no verdict check is possible without opinion, so these get the validator, the trait
   check and the human read. The plan keeps them at 16 of 40 per trait, where they are now.
 

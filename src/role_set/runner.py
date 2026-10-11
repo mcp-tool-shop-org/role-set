@@ -345,6 +345,8 @@ class Runner:
         pins: dict | None = None,
         clock=time.time,
         flaw_gate: bool = False,  # the critic's flaw check refuses only once a control run shows it agrees
+        trait_gate: bool = False,  # likewise the trait check, until critic-control's trait leg meets R&D's bar
+        answer_gate: bool = False,  # and the kind-B answer check, until the answer leg does
         stuck=None,  # callable(thinking, material, tier, tokens) -> the frozen stuck rule's measures, or None
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
@@ -362,6 +364,7 @@ class Runner:
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
         self.flaw_gate = flaw_gate
+        self.trait_gate, self.answer_gate = trait_gate, answer_gate
         self._spans_by_lesson: dict[str, set[str]] = {}
         self.stuck = stuck
         self.lesson_codes: dict[str, Counter] = {}
@@ -481,6 +484,17 @@ class Runner:
         tmpl = SUGGESTIONS.get(code, "{detail}")
         return {"code": code, "detail": detail, "suggestion": tmpl.format(detail=detail)}
 
+    def _gated_or_advisory(self, verdicts: list, slot: Slot, v, raw: str, gate: bool, action: str) -> None:
+        """A check that refuses only once critic-control shows the critic meets its bar. Until then a mismatch is
+        recorded with the critic's words and counted, never a refusal (R&D, 2026-10-11: on reviewed items the critic
+        named the trait right 40% of the time and solved 63% of the puzzles, so gating would refuse correct items)."""
+
+        if v.ok or gate:
+            verdicts.append((v, raw))
+            return
+        self.status.critic_asked += 1
+        self._log(action, slot=slot.id, code=v.code, detail=v.detail, critic_raw=raw[:2000])
+
     def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
         if self.critic is None:
             return None
@@ -528,14 +542,15 @@ class Runner:
                 if v.code != "VOID":
                     break
                 self._log("critic_void", slot=slot.id, detail=v.detail)
-            verdicts.append((v, c.text))
+            self._gated_or_advisory(verdicts, slot, v, c.text, self.answer_gate, "answer_advisory")
         # The trait is a majority of three calls (R&D, 2026-10-11): one call was unstable on 5 of 20 items.
         votes = []
         for seed in range(TRAIT_VOTES):
             c = self.critic(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS), temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
             votes.append(c.text)
-        verdicts.append((compare_trait_votes(votes, slot.lesson), json.dumps(votes, ensure_ascii=False)))
+        self._gated_or_advisory(verdicts, slot, compare_trait_votes(votes, slot.lesson), json.dumps(votes, ensure_ascii=False),
+                                self.trait_gate, "trait_advisory")
         for v, raw in verdicts:
             self.status.critic_asked += 1
             if v.ok:

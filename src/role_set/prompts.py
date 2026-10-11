@@ -93,7 +93,8 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
         rules.append("Kind B: the puzzle gives its facts and ends with a line that begins 'Question:'. The puzzle has exactly one "
                      "solution. 'answer' is that solution in closed form and nothing else, with no explanation: a verdict label "
                      "(supported, unsupported or cannot_tell), a single value, an ordered list separated by commas, or "
-                     "assignments written 'name=value; name=value'.")
+                     "assignments written 'name=value; name=value'. Every person, item or option in the answer is named "
+                     "exactly as the puzzle names it.")
     if slot.kind == "E" and slot.e_type == "written":
         rules.append("Written E: the variant re-asks the question in other words, and its key points share at least one "
                      "point with the original's: repeat at least one of the original key points word for word.")

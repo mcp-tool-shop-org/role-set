@@ -29,6 +29,17 @@
       "licence": "Apache-2.0",
       "endpoint": "http://127.0.0.1:11434",
       "checked_by": "the Publisher, 2026-10-10 (digest 6316f062…)"
+    },
+    {
+      "served_as": "granite4.1:30b",
+      "family": "granite",
+      "role": "critic-comparison",
+      "digest": "3f3e5df8a021439fd6f867a0e526bdc303cac79c811201cb6bac193298cb9fcd",
+      "quant": "Q4_K_M",
+      "licence": "Apache-2.0",
+      "attribution": "IBM Granite 4.1 (30B), Apache-2.0",
+      "endpoint": "http://127.0.0.1:11434",
+      "checked_by": "the Publisher, 2026-10-11, from `ollama show --license` and /api/tags digest"
     }
   ]
 }

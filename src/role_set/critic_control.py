@@ -174,6 +174,15 @@ def load_rows(paths: list[Path]) -> list[dict]:
 # agreement at least 85%, every trait at least 70%, and the three calls unanimous on at least 90% of items. If the
 # critic misses it, its prompt changes before the trait check gates again; the gate is never relaxed to fit the critic.
 TRAIT_BAR = {"overall": 0.85, "per_trait": 0.70, "stability": 0.90}
+# Declared by R&D before dev iteration 2 was scored (2026-10-11): sibling pairs one step apart in meaning. Agreement
+# within a family is reported beside exact agreement and never gates by itself. T02/T14 and T05/T02 are deliberately
+# not families: the pilot's failure was T02 items decided by a silence call, and the check must keep catching that.
+TRAIT_FAMILIES = (frozenset({"T05", "T13"}), frozenset({"T03", "T16"}), frozenset({"T01", "T11"}), frozenset({"T04", "T14"}),
+                  frozenset({"T10", "T16"}))
+
+
+def same_family(named: str | None, known: str) -> bool:
+    return named == known or any({named, known} <= f for f in TRAIT_FAMILIES)
 
 
 def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict[str, str] | None = None, *,
@@ -203,11 +212,14 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
         answers = [ask(r) for r in items]
     per: dict[str, dict] = {}
     confusion: dict[str, dict] = {}
-    agree = unanimous = with_majority = 0
+    agree = unanimous = with_majority = family = 0
     for r, (known, votes) in zip(items, answers):
         won = majority(votes)
-        cell = per.setdefault(known, {"items": 0, "agree": 0})
+        cell = per.setdefault(known, {"items": 0, "agree": 0, "family_agree": 0})
         cell["items"] += 1
+        if same_family(won, known):
+            family += 1
+            cell["family_agree"] += 1
         named = won or "split"
         confusion.setdefault(known, {})[named] = confusion.setdefault(known, {}).get(named, 0) + 1
         # Unanimous only on a trait id: three unreadable replies agree on nothing (R&D on #23).
@@ -227,6 +239,8 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
     worst = min((c["rate"] for c in per.values()), default=None)
     passes = bool(n) and overall >= TRAIT_BAR["overall"] and worst >= TRAIT_BAR["per_trait"] and stability >= TRAIT_BAR["stability"]
     return {"items": n, "agree": agree, "overall": overall, "per_trait": dict(sorted(per.items())), "worst_trait": worst,
+            "family_agreement": round(family / n, 3) if n else None,  # reported only; never part of `passes`
+            "families": [sorted(f) for f in TRAIT_FAMILIES],
             "stability_unanimous": stability, "with_majority": round(with_majority / n, 3) if n else None,
             "seconds_per_call": _timing(seconds),
             "confusion": {k: dict(sorted(v.items())) for k, v in sorted(confusion.items())}, "bar": TRAIT_BAR, "passes": passes}
@@ -251,13 +265,18 @@ def answer_leg(critic, rows: list[dict]) -> dict:
 
     from role_set.critic import ANSWER_LINE, answer_messages, compare_answer
 
+    from role_set.assemble import names_not_in_puzzle
+
     puzzles = [r for r in rows if r.get("kind") == "B" and r.get("turns")]
     keyed = [(r, *leg_key(str(r.get("answer", "")))) for r in puzzles]
+    # A reviewed key in descriptive form ("the red lamp" where the puzzle names colours) can't be compared closed; it is
+    # listed and left out until R&D restates it in the puzzle's own names (R&D, 2026-10-11).
+    descriptive = [r.get("id") for r, key, subset in keyed if subset == "as_written" and names_not_in_puzzle(key, r["turns"][0]["user"])]
     seconds: list[float] = []
     voids, disagreements = 0, []
     tally = {"as_written": [0, 0], "label_head": [0, 0]}  # subset -> [items, agree]
     for r, key, subset in keyed:
-        if key is None:
+        if key is None or r.get("id") in descriptive:
             continue
         v, c = None, None
         for ask in range(2):
@@ -281,7 +300,8 @@ def answer_leg(critic, rows: list[dict]) -> dict:
     subsets = {k: part(*v) for k, v in tally.items()}
     combined = part(sum(v[0] for v in tally.values()), sum(v[1] for v in tally.values()))
     written = subsets["as_written"]
-    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None], "subsets": subsets,
+    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None],
+            "descriptive_keys_left_out": descriptive, "subsets": subsets,
             "combined": combined, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
             "passes": bool(combined["items"]) and combined["rate"] >= ANSWER_BAR,
             "as_written_below_bar": bool(written["items"]) and written["rate"] < ANSWER_BAR, "disagreements": disagreements}

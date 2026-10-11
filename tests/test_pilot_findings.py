@@ -84,8 +84,11 @@ def test_a_kind_a_passage_that_already_holds_its_question_is_refused():
 
 def test_kind_b_keys_are_closed_and_puzzles_have_one_solution():
     b = _slot("B")
-    base = {"puzzle": "Three tasks.\nQuestion: which order?", "thinking": "1. x\n2. y", "reply": "Clean, mop, restock."}
+    base = {"puzzle": "Three tasks: clean oven, mop floors, restock shelves.\nQuestion: which order?", "thinking": "1. x\n2. y", "reply": "Clean, mop, restock."}
     assert assemble(b, "t", {**base, "answer": "clean oven, mop floors, restock shelves"})["answer"] == "clean oven, mop floors, restock shelves"
+    assert assemble(b, "t", {**base, "answer": "The clean oven, mop floors, restock shelves"})["answer"].startswith("The clean oven")
+    with pytest.raises(AssemblyError, match="names 'scrub sink', which the puzzle doesn't"):
+        assemble(b, "t", {**base, "answer": "scrub sink, mop floors, restock shelves"})
     with pytest.raises(AssemblyError, match="not in closed form"):
         assemble(b, "t", {**base, "answer": "The task order is: clean oven, then mop floors — because the oven must cool"})
     with pytest.raises(AssemblyError, match="exactly one solution"):
@@ -162,12 +165,32 @@ def test_the_critics_own_words_are_kept_with_its_refusal(tmp_path: Path):
             return types.SimpleNamespace(text="T14\nIt fills no gap.", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
         return critic(messages, **kw)
 
-    r.critic = other_trait
+    # Gated (once the trait leg meets R&D's bar): a refusal, with the critic's words kept.
+    r.critic, r.trait_gate = other_trait, True
     out = r.run_slot(_slot("A", seed=0))
     assert not out.accepted
     kept = [json.loads(line) for line in (tmp_path / "out" / "refusals.jsonl").read_text(encoding="utf-8").splitlines()]
     assert kept[0]["code"] == "TRAIT_MISMATCH" and json.loads(kept[0]["critic_raw"]) == ["T14\nIt fills no gap."] * 3
     assert "votes T14, T14, T14" in kept[0]["detail"]
+
+
+def test_the_trait_and_answer_checks_are_advisory_until_their_legs_pass(tmp_path: Path):
+    # R&D, 2026-10-11: on reviewed items the critic named the trait right 40% of the time and solved 63% of puzzles.
+    r, _, critic = _runner(tmp_path)
+
+    def wrong(messages, **kw):
+        if "which single trait" in messages[0]["content"]:
+            return types.SimpleNamespace(text="TRAIT: T14", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+        if "Solve the puzzle" in messages[0]["content"]:
+            return types.SimpleNamespace(text="ANSWER: nobody", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+        return critic(messages, **kw)
+
+    r.critic = wrong
+    assert r.run_slot(_slot("A", seed=0)).accepted and r.run_slot(_slot("B", seed=0)).accepted
+    log = [json.loads(line) for line in (tmp_path / "out" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    actions = [(a["action"], a["code"]) for a in log if a["action"].endswith("_advisory")]
+    assert ("trait_advisory", "TRAIT_MISMATCH") in actions and ("answer_advisory", "ANSWER_MISMATCH") in actions
+    assert any("votes T14, T14, T14" in a["detail"] for a in log if a["action"] == "trait_advisory")
 
 
 def test_a_reply_opening_shared_with_two_accepted_items_of_the_lesson_is_refused():

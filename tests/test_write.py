@@ -68,7 +68,8 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
 
     writers = tmp_path / "writers.json"
     writers.write_text(json.dumps({"writers": [{"served_as": "qwen3-235b-instruct-2507", "repo": "Q/R", "revision": "9654", "licence": "Apache-2.0"}],
-                                   "critics": [{"served_as": "gemma4:31b", "digest": "6316" + "0" * 60}]}), encoding="utf-8")
+                                   "critics": [{"served_as": "gemma4:31b", "digest": "6316" + "0" * 60},
+                                               {"served_as": "granite4.1:30b", "digest": "3f3e" + "0" * 60, "role": "critic-comparison"}]}), encoding="utf-8")
     base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, critic_endpoint="http://127.0.0.1:11434", critic_model="gemma4:31b")
 
     class _Resp:
@@ -110,6 +111,8 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
         build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "gemma4:31b-cloud"}), now=lambda: hb.stat().st_mtime + 1)
     with pytest.raises(WriteRefused, match="critic list"):
         build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "mistral-small:24b"}), now=lambda: hb.stat().st_mtime + 1)
+    with pytest.raises(WriteRefused, match="comparison only"):
+        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "granite4.1:30b"}), now=lambda: hb.stat().st_mtime + 1)
     with pytest.raises(WriteRefused, match="differs from the pinned"):
         build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1,
               digest_opener=lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "ffff"}]}))

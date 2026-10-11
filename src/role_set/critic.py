@@ -15,7 +15,7 @@ import json
 import re
 from dataclasses import dataclass
 
-from role_set.assemble import FLAWS, VERDICTS, closed_answer
+from role_set.assemble import FLAWS, VERDICTS, bare, closed_answer
 from role_set.gates import Gates
 
 CRITIC_SYSTEM = (
@@ -81,19 +81,53 @@ TRAIT_TEMPERATURE = 0.7
 TRAIT_LINE = re.compile(r"^\s*\**\s*TRAIT\s*\**\s*:\s*\**\s*(T\d\d)\b", re.I | re.M)
 
 
+# The sibling traits the first trait leg confused most on reviewed items (T13 read as T05 on 22 of 40, T03 as T16 on
+# 14, T05 as T02 on 13, T04 as T14 on 12, T02 as T14 on 10, T01 as T11 on 8, T16 as T10 on 7), each told apart in the
+# lessons' own terms, each naming the cue in the item that tells the pair apart. Corrected by R&D (role-set #24,
+# dev iteration 2), with two pairs added from the dev misses (T15 against the rest, T09/T13).
+PAIR_DISTINCTIONS = (
+    "T05 or T13: T05 is not being swayed by who asks, or by how sure, important or urgent they are, because authority "
+    "and certainty are no evidence. T13 is refusing to agree because agreeing is easier, wanted, or because everything so "
+    "far was fine. The cue: if the push rests on a person's rank or certainty, it is T05; if it asks for agreement for "
+    "its own sake (approve it because others did, or because a yes is wanted), it is T13.",
+    "T04 or T14: T04 decides the verdict line: the material doesn't settle the claim, and the item turns on saying "
+    "cannot_tell instead of the likely answer. T14 decides the evidence: the item turns on refusing to supply a missing "
+    "piece or quote words that aren't there.",
+    "T03 or T16: T03's item turns on where the deciding words are: the exact line, the whole line, every line needed. "
+    "T16's item has a statement worded differently from a line, and turns on whether that difference changes the fact.",
+    "T02 or T14: T02's item has a competing source to set aside (a summary, a colleague's report, memory, general "
+    "knowledge). T14's item has no competing source, only a hole in the material.",
+    "T05 or T02: both can involve another person. If that person states a fact that competes with the material, it is "
+    "T02; if they push the verdict with their rank or certainty, it is T05.",
+    "T01 or T11: T01 refuses a claim that only sounds right or familiar, and asks to be shown. T11 is about an "
+    "acceptance: it searches for what would falsify it before accepting, and needs a supporting line, not merely no "
+    "falsifier.",
+    "T16 or T10: T16 accepts a difference that leaves the fact the same (abbreviation, numeral, word order). T10 catches "
+    "a size or scope word (at least, exactly, every, more than) that changes it.",
+    "T15 or another trait: T15 is stopping once the answer is settled, instead of re-checking. Name it only when the "
+    "item's step is the stop itself, not when the item merely ends after its real step.",
+    "T09 or T13: T09's item brings the same fact back reworded and turns on giving the same verdict. T13's item turns on "
+    "refusing to agree because agreement is wanted.",
+)
+
+
 def trait_messages(teaching_text: str, traits: dict[str, str], steps: dict[str, str] | None = None) -> list[dict]:
     menu = "\n".join(f"- {k}: {v}" + (f". Decides: {steps[k]}" if steps and steps.get(k) else "") for k, v in sorted(traits.items()))
+    pairs = "\n".join(f"- {p}" for p in PAIR_DISTINCTIONS)
     return [
         {"role": "system", "content": TRAIT_SYSTEM},
-        {"role": "user", "content": f"## Traits\n{menu}\n\n## The item\n{teaching_text.strip()}"},
+        {"role": "user", "content": f"## Traits\n{menu}\n\n## Telling close traits apart\n{pairs}\n\n## The item\n{teaching_text.strip()}"},
     ]
 
 
 def teaching_text(row: dict) -> str:
-    """What the trait check reads: each turn's thinking and reply, and an item's key points, quiz and variant."""
+    """What the trait check reads: the whole item, each turn's user text, thinking and reply, and its key points, quiz
+    and variant. The first trait leg read only the thinking and replies and never saw the situation (the pressure, the
+    request to agree, the material), which R&D ruled the critic needs."""
 
     parts = []
     for t in row["turns"]:
+        parts.append("User: " + t.get("user", ""))
         parts.append(t.get("thinking", ""))
         parts.append(t.get("reply", ""))
     for k in ("key_points", "quiz", "variant"):
@@ -202,7 +236,8 @@ def answer_messages(puzzle: str, key_answer: str) -> list[dict]:
     shape = ANSWER_FORMS[form[0]] if form else ANSWER_FORMS["value"]
     return [
         {"role": "system", "content": "Solve the puzzle using only its facts. Work it out briefly, then end with one line: "
-                                      f"ANSWER: <the answer>, written as {shape}, with no explanation on that line."},
+                                      f"ANSWER: <the answer>, written as {shape}, with no explanation on that line. Name "
+                                      "each person, item or option exactly as the puzzle names it."},
         {"role": "user", "content": puzzle_for_critic(puzzle)},
     ]
 
@@ -232,7 +267,7 @@ def same_answer(a: tuple, b: tuple) -> bool:
     if ka != kb:
         return False
     if ka == "map":
-        return {k.strip(): v.strip() for k, v in va.items()} == {k.strip(): v.strip() for k, v in vb.items()}
+        return {bare(k): bare(v) for k, v in va.items()} == {bare(k): bare(v) for k, v in vb.items()}
     if ka == "list":
-        return [x.strip() for x in va] == [x.strip() for x in vb]
-    return str(va).strip() == str(vb).strip()
+        return [bare(x) for x in va] == [bare(x) for x in vb]
+    return bare(str(va)) == bare(str(vb))
