@@ -1,9 +1,8 @@
 # The verifier role pack
 
 This directory holds the text the humans wrote, served to the writer in slices. role-set adds nothing to it.
-It is filled by `role-set pack sync` from aspire-si at a pinned commit (the lessons, the 18 traits, the kind
-table, the amendments and the rules), and the pack's hash is recorded in every item. Until that command
-exists, the layout is:
+It is filled by `role-set pack sync` from a local aspire-si clone at a pinned commit (the lessons, the 18 traits, the kind
+table, the amendments and the rules), and the pack's hash is recorded in every accepted receipt. The layout is:
 
 ```
 role.md            lessons 1–3 (the role, how it thinks, what is expected)
@@ -18,4 +17,4 @@ injections.yaml    T17 injection kinds and placements
 exemplars/         approved items, by trait and kind, from merged batches
 ```
 
-The pack is identity-scanned, gated on the scanner's exit code, before `write` sends anything.
+`write` does not scan the pack for operator identity. Scan a pack before you publish one.
