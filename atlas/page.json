@@ -20,26 +20,41 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 3,
+      "added": 1,
+      "changed": 13,
       "moved": 0,
-      "parts": 2,
+      "parts": 4,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 3 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-11; 1 file added and 13 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "1daa3cafe68de9d9ed0b89c8f81f6253b0607811",
-      "generatedAt": "2026-10-11T07:37:55.488Z"
+      "commit": "c74073304b1e5ec64113fe4fd36caed4940b7429",
+      "generatedAt": "2026-10-11T07:39:28.797Z"
     },
     "unchanged": true
   },
   "changesTogether": [
+    {
+      "a": "src/role_set/critic.py",
+      "b": "tests/test_prompts_critic.py",
+      "either": 7,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 4
+    },
     {
       "a": "src/role_set/mock.py",
       "b": "tests/test_runner.py",
@@ -58,7 +73,7 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
-      "either": 8,
+      "either": 9,
       "partLabels": [
         "src",
         "src"
@@ -68,7 +83,7 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 4
+      "shared": 5
     },
     {
       "a": "tests/test_prompts_critic.py",
@@ -92,7 +107,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
   "changesTogetherWithTests": 2,
-  "commit": "c74073304b1e5ec64113fe4fd36caed4940b7429",
+  "commit": "53f88cc4f6b24e5c0686b930c4233d07e168682f",
   "defaultBranch": "main",
   "derived": "7 parts, mostly Python (40 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
@@ -165,7 +180,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T07:39:28.797Z",
+  "generatedAt": "2026-10-11T08:02:33.900Z",
   "limits": [
     "1 write and 3 reads use paths built at run time and are not named here.",
     "1 write and 15 reads go to a path their caller passes, not to this repository.",
