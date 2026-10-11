@@ -93,3 +93,19 @@ def render(report: dict) -> str:
         if i["result"] != "pass":
             out.append(f"  {i['id']}: {i['result'].upper()}: {i['detail']}")
     return "\n".join(out)
+
+
+def stamp(data: Path, models: Path | None = None) -> int:
+    """Write each sidecar line's row_sha256 from the data file as it stands. Run once, when a row and its model are
+    final; a reviewer re-runs puzzle-check without it, so any later edit to the row shows up as a stale hash."""
+
+    models = models or models_path(data)
+    shas = {json.loads(x)["id"]: row_sha256(x) for x in data.read_text(encoding="utf-8").splitlines() if x.strip()}
+    side = _lines(models)
+    n = 0
+    for m in side:
+        if m["id"] in shas:
+            m["row_sha256"] = shas[m["id"]]
+            n += 1
+    models.write_bytes("".join(json.dumps(m, ensure_ascii=False) + "\n" for m in side).encode("utf-8"))
+    return n

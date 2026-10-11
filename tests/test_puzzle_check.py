@@ -84,3 +84,12 @@ def test_a_row_changed_after_its_model_was_written_is_refused(tmp_path: Path):
     r = check_file(data)
     assert not r["ok"] and r["items"][0]["result"] == "refused" and "row_sha256" in r["items"][0]["detail"]
     assert r["by_structure"] == {"constraint_grid: refused": 1}
+
+
+def test_stamp_writes_the_hashes_then_a_later_edit_shows_up(tmp_path: Path, capsys):
+    data = _write(tmp_path, [_row("T02-B-01")], [{"id": "T02-B-01", "structure": "constraint_grid", "model": MODEL, "row_sha256": "old"}])
+    assert main(["puzzle-check", str(data)]) == 1
+    assert main(["puzzle-check", str(data), "--stamp"]) == 0
+    assert "stamped 1 sidecar line(s)" in capsys.readouterr().out
+    data.write_text(data.read_text(encoding="utf-8").replace("Ben has salad", "Ben has the salad"), encoding="utf-8")
+    assert main(["puzzle-check", str(data)]) == 1
