@@ -209,10 +209,13 @@ it writes a single item.
 
 **Warm-up: the builder is quizzed before it builds.** Before the first slot of a trait, the runner serves the
 trait lesson and asks the builder three things in its own words: the trait's main point, its counterweight,
-and one case where the trait decides a step. The check is lexical, with no model opinion: all three parts answered,
-and the trait named by a content word of its own name. It never asks for words the builder isn't shown (the pilot's
-check demanded the planner's side labels, so two traits could not pass at any seed). Two misses stop the trait and
-report it. Every warm-up reply, passed or missed, is kept in `warmups.jsonl`.
+and one case where the trait decides a step. The check is lexical, with no model opinion. All three parts must be
+answered, and the trait must be named, either by a content word of its own name or by two content words of the
+lesson's teaching paragraph (the prose the builder is shown). A vague or off-trait restatement hits neither. It never
+asks for words the builder isn't shown: the pilot's check demanded the planner's side labels, so two traits could not
+pass at any seed. A miss is re-asked with the missed point marked (the trait's name); the rehearsal's 8B gave the
+identical reply to an unchanged prompt. Two misses stop the trait and report it. Every warm-up reply, passed or
+missed, is kept in `warmups.jsonl`.
 
 **Suggesting, before each slot.** The runner briefs the builder with what the batch still needs, read from its
 coverage ledger, not from the builder's memory: which side of the counterweight is due, which content kinds
