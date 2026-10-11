@@ -126,7 +126,7 @@ The local GPU is used for the critic, and for a rehearsal writer, and only insid
 Three paid pilots are recorded in [docs/runs/](docs/runs/). These are the only cost figures this README states. No generator output from them is in a training set.
 
 - **Pilot 1, 2026-10-11, $3.52.** None of the 104 accepted rows is data. R&D held the 43 C and D rows as mis-assembled before any content review. The note is [docs/runs/2026-10-11-235b-pilot.md](docs/runs/2026-10-11-235b-pilot.md).
-- **Pilot 2, 2026-10-11, $3.61.** R&D's key-check of the 49 candidates: 15 pass, 15 need a mechanical fix, 19 fail. That is the accept rate for the run. The note is [docs/runs/2026-10-11-pilot-2.md](docs/runs/2026-10-11-pilot-2.md).
+- **Pilot 2, 2026-10-11, $3.61.** R&D's key-check of the 49 candidates: 15 passed as written, 15 more needed a mechanical fix, and 19 failed. The note is [docs/runs/2026-10-11-pilot-2.md](docs/runs/2026-10-11-pilot-2.md).
 - **Pilot 3, 2026-10-11, $2.80.** It wrote nothing. The writer's engine hung after startup. The note is [docs/runs/2026-10-11-pilot-3.md](docs/runs/2026-10-11-pilot-3.md).
 
 ## Threat model
