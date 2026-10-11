@@ -141,3 +141,17 @@ def test_the_brief_states_each_kinds_gate_rules_before_the_first_draft():
     assert hard_rules(next(s for s in slots if s.kind == "C")) == []
     # The role-neutral rule is scoped: kind A must name its trait, so the house rules no longer forbid it there.
     assert "In kinds C and D and in verdict-type E" in HOUSE_RULES and "Kinds A, B and written E name the trait" in HOUSE_RULES
+
+
+def test_the_writer_is_shown_the_lesson_sentences_it_may_not_reuse():
+    from role_set.prompts import lesson_sentences
+
+    lesson = ("### 18. As a verifier, you don't fix things\n\nAs a verifier, you judge the statement as written. You don't\n"
+              "correct it, rewrite it or suggest the right version, even when the fix is obvious. Short one.\n\n**Worked thinking.** x\n")
+    got = lesson_sentences(lesson)
+    # Sentences of eight words or more from the teaching paragraph; the worked thinking and short lines are left out.
+    assert got == ["As a verifier, you judge the statement as written.",
+                   "You don't correct it, rewrite it or suggest the right version, even when the fix is obvious."]
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=3) if s.kind == "A")
+    msgs = writer_messages(slot, {"traits/T02.md": lesson.replace("18", "2")}, material_text=None, exemplars=[], avoid=[])
+    assert "never reuse them, not even eight words in a row" in msgs[1]["content"] and got[0] in msgs[1]["content"]
