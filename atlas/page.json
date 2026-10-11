@@ -4,7 +4,8 @@
     "assets/",
     "docs/",
     "roles/",
-    "root"
+    "root",
+    "site/"
   ],
   "breaks": [
     {
@@ -20,30 +21,88 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 1,
-      "changed": 2,
-      "moved": 0,
-      "parts": 3,
-      "removed": 1
+      "added": 25,
+      "changed": 4,
+      "moved": 1,
+      "parts": 5,
+      "removed": 0
     },
     "items": [
       {
+        "kind": "door",
+        "sentence": "Deploy site to GitHub Pages (.github/workflows/pages.yml) is a new door. It starts on a push to main touching 2 paths; or by hand. It runs site/astro.config.mjs and site/src/.",
+        "subjects": [
+          ".github/workflows/pages.yml",
+          "site/astro.config.mjs",
+          "site/src/"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "CHANGELOG.md is now read by tests/test_assemble.py, tests/test_harvest_exemplars.py and tests/test_write.py.",
+        "subjects": [
+          "CHANGELOG.md",
+          "tests/test_assemble.py",
+          "tests/test_harvest_exemplars.py",
+          "tests/test_write.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "roles/verifier/ is now read by README.md, site/src/content/docs/handbook/configuration.md, site/src/content/docs/handbook/getting-started.md, site/src/content/docs/handbook/kinds.md and site/src/content/docs/handbook/usage.md.",
+        "subjects": [
+          "roles/verifier/",
+          "README.md",
+          "site/src/content/docs/handbook/configuration.md",
+          "site/src/content/docs/handbook/getting-started.md",
+          "site/src/content/docs/handbook/kinds.md",
+          "site/src/content/docs/handbook/usage.md"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "site/src/content/docs/ is now read by site/astro.config.mjs.",
+        "subjects": [
+          "site/src/content/docs/",
+          "site/astro.config.mjs"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 2 more new writers and readers of places.",
+        "subjects": []
+      },
+      {
+        "kind": "part",
+        "sentence": "scripts is a new part, drawn from `scripts/**`.",
+        "subjects": [
+          "scripts"
+        ]
+      },
+      {
+        "kind": "part",
+        "sentence": "site is a new part, drawn from `site/**`.",
+        "subjects": [
+          "site"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-11; 1 file added, 1 removed and 2 changed content.",
+        "sentence": "25 files added, 1 moved and 4 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "ae30a3dca7414684c4b6fb77a1470a3e9c746ba7",
-      "generatedAt": "2026-10-11T16:32:05.754Z"
+      "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
+      "generatedAt": "2026-10-11T17:37:41.101Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
       "a": "src/role_set/readout.py",
       "b": "tests/test_paid_run_data.py",
-      "either": 7,
+      "either": 8,
       "partLabels": [
         "src",
         "tests"
@@ -58,7 +117,7 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
-      "either": 16,
+      "either": 17,
       "partLabels": [
         "src",
         "src"
@@ -68,12 +127,12 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 9
+      "shared": 10
     },
     {
       "a": "src/role_set/assemble.py",
       "b": "src/role_set/prompts.py",
-      "either": 12,
+      "either": 13,
       "partLabels": [
         "src",
         "src"
@@ -83,12 +142,12 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 6
+      "shared": 7
     },
     {
-      "a": "src/role_set/mock.py",
-      "b": "tests/test_runner.py",
-      "either": 12,
+      "a": "src/role_set/prompts.py",
+      "b": "tests/test_paid_run_data.py",
+      "either": 14,
       "partLabels": [
         "src",
         "tests"
@@ -98,18 +157,18 @@
         "tests"
       ],
       "relation": "b-imports-a",
-      "shared": 6
+      "shared": 7
     }
   ],
   "changesTogetherNote": [
     "3 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 3 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 4 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 3,
-  "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
+  "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
   "defaultBranch": "main",
-  "derived": "7 parts, mostly Python (48 files) and shell (1). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "9 parts, mostly Python (48 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -151,6 +210,37 @@
       "checks": [],
       "checksCount": 0,
       "checksMore": 0,
+      "file": ".github/workflows/pages.yml",
+      "id": ".github/workflows/pages.yml",
+      "landings": [],
+      "name": "Deploy site to GitHub Pages",
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "site",
+          "depth": 0,
+          "files": 5
+        }
+      ],
+      "runs": [
+        "site/astro.config.mjs",
+        "site/src/"
+      ],
+      "runsCount": 2,
+      "runsMore": 0,
+      "sends": [
+        "deploys the site"
+      ],
+      "stages": [],
+      "triggers": [
+        "on a push to main touching 2 paths",
+        "or by hand"
+      ]
+    },
+    {
+      "checks": [],
+      "checksCount": 0,
+      "checksMore": 0,
       "file": "pyproject.toml",
       "id": "pyproject.toml#role-set",
       "kind": "command",
@@ -180,13 +270,12 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T17:37:41.101Z",
+  "generatedAt": "2026-10-11T18:08:38.922Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 22 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "8 reads go to the directory the command is run in, not to this repository.",
-    "1 file belongs to no part: scripts/pilot-write.sh.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -196,10 +285,12 @@
     "docs": "docs",
     "roles": "roles",
     "root": "the repository root",
+    "scripts": "scripts",
+    "site": "site",
     "src": "src",
     "tests": "tests"
   },
-  "parts": 7,
+  "parts": 9,
   "readers": [],
   "repo": "mcp-tool-shop-org/role-set",
   "sequences": [],
@@ -211,7 +302,7 @@
     "src/role_set/plan.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
-  "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
+  "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
   "testFiles": 25,
   "testedBy": {
@@ -219,9 +310,15 @@
   },
   "unnamedWrites": 1,
   "unread": [],
+  "unreadCode": [
+    "scripts"
+  ],
+  "unreadCodeUses": "scripts holds only PowerShell and shell files, which this map does not read, so what uses it cannot be seen.",
   "unreadFiles": 0,
   "unreadNote": [],
   "untested": [],
-  "untestedNote": [],
+  "untestedNote": [
+    "scripts holds only PowerShell and shell files, which this map does not read, so whether a test touches it cannot be seen."
+  ],
   "written": 0
 }

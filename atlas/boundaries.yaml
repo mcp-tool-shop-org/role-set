@@ -1,4 +1,4 @@
-summary: "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates."
+summary: "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod."
 boundaries:
   - name: assets
     globs:
@@ -16,6 +16,14 @@ boundaries:
     globs:
       - roles/**
     role: data
+  - name: site
+    globs:
+      - site/**
+    role: docs
+  - name: scripts
+    globs:
+      - scripts/**
+    role: code
   - name: src
     globs:
       - src/**
