@@ -452,6 +452,7 @@ OUTSIDE_REASON = re.compile(
     r"makes sense|always|of course|obviously|tend to|assume|assuming|about the same|approximately|basically|near enough)\b",
     re.IGNORECASE)
 QUOTE_SPAN_WORDS = 5
+NARRATED_QUOTE = re.compile(r"\b(quoted|quotes|quoting|read off|reads off|cited|cites|citing|pointed to)\b", re.IGNORECASE)
 WORD = re.compile(r"[a-z0-9]+(?:['’][a-z]+)?")
 # The verdict a checker's trace must reach for the flaw to be what it says (R&D): a rubber stamp approves; rejecting
 # by default calls silence a denial. Flaws without an entry may reach any verdict other than the key.
@@ -472,6 +473,10 @@ def rubber_stamp_mislabel(trace: str, material: str, statement: str = "") -> str
         hit = sorted(_spans(line, QUOTE_SPAN_WORDS) & said)
         if hit:
             return f"quotes the material ('{hit[0]}')"
+    told = NARRATED_QUOTE.search(trace)
+    if told:
+        # R&D on batch 5: six traces planted as rubber_stamp narrate that the checker quoted a line and misread it.
+        return f"says the checker {told.group(0)} a line ('{told.group(0)}'), so it checked; a misread quote is a guess"
     m = OUTSIDE_REASON.search(trace)
     if m:
         return f"reasons from outside the material ('{m.group(0)}'), which is a guess"

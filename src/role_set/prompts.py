@@ -53,6 +53,28 @@ B_MODEL_RULE = (
     "first or last, one line states the order ('seats 1 to 4, left to right'). The code solves the model and refuses "
     "the draft unless its answer is your key. The reply's last line is the answer alone: 'Answer: ...'."
 )
+# One worked example of clues encoded as rules (R&D and the Publisher, after rehearsal 3: the 8B wrote the solution
+# into the model as facts, having never seen a clue encoded). Its domain is in no batch, the pool or the sealed set
+# (leakage-checked 2026-10-12), and a test solves it, so the brief never shows a model the code would refuse.
+B_EXAMPLE_PUZZLE = ("1. Three canoes, Ash, Briar and Cole, launch in turn 1, turn 2 and turn 3.\n"
+                    "2. Ash does not launch in turn 1.\n"
+                    "3. Briar launches after Ash.\n"
+                    "Question: Which canoe launches in which turn?")
+B_EXAMPLE_MODEL = {"entities": ["Ash", "Briar", "Cole"],
+                   "attributes": {"turn": {"values": ["turn 1", "turn 2", "turn 3"], "ordered": True}},
+                   "facts": [{"line": 2, "rule": ["is_not", "Ash", "turn", "turn 1"]},
+                             {"line": 3, "rule": ["after", "Briar", "Ash", "turn"]}],
+                   "flavour": [1], "asks": {"attribute": "turn"}}
+B_EXAMPLE_KEY = "Ash=turn 2; Briar=turn 3; Cole=turn 1"
+B_MODEL_EXAMPLE = (
+    "Kind B, how a model encodes clues (an example only; never reuse its names or domain): the puzzle\n"
+    + B_EXAMPLE_PUZZLE + "\nhas the model " + json.dumps(B_EXAMPLE_MODEL) + " and the key '" + B_EXAMPLE_KEY + "'. Line 1 "
+    "declares the canoes and turns, so it is flavour. Line 2 is a negative line, so its rule is is_not. Line 3 says "
+    "after, so its rule is after, with Briar first as the line names it. No rule states where a canoe is: the answer "
+    "comes only by elimination (Ash is not in turn 1, and Briar is after Ash, so Ash is in turn 2 and Briar in turn 3). "
+    "A model whose facts state the answer is refused. The puzzle states facts and a question only, never how to lay "
+    "out the working."
+)
 # R&D on PR H: what each structure's key is, computed by the code.
 B_STRUCTURE_NOTES = {
     "underdetermined_with_explicit_set": (
@@ -141,6 +163,7 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "backtracks or reconsiders. If your facts leave two solutions, add a fact; don't reason about it.")
         # PR H (R&D's design): the puzzle is also written as data, and the code solves it. Only the solver decides.
         rules.append(B_MODEL_RULE)
+        rules.append(B_MODEL_EXAMPLE)
         if slot.structure in B_STRUCTURE_NOTES:
             rules.append(B_STRUCTURE_NOTES[slot.structure])
     if slot.kind == "E" and slot.e_type == "written":

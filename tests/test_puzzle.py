@@ -380,3 +380,43 @@ def test_a_b_trace_that_trips_the_stuck_rule_is_refused(tmp_path):
     slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "B")
     out = r.run_slot(slot)
     assert not out.accepted and {x["code"] for x in out.refusals} == {"STUCK"} and "bursts 2, hedges 4" in out.refusals[0]["detail"]
+
+
+def test_every_text_problem_comes_in_one_numbered_refusal():
+    m = copy.deepcopy(GRID_MODEL)
+    m["facts"][0]["rule"] = ["is", "Ana", "dish", "salad"]
+    m["flavour"] = [1, 9]
+    with pytest.raises(PuzzleError) as e:
+        check_puzzle(_f(puzzle="Three friends order food.\n" + GRID.replace("Question:", "Q:"), model=m), "constraint_grid")
+    msg = str(e.value)
+    assert msg.startswith("1) a puzzle ends with a line that begins 'Question:'") and "2) every line before the Question line is numbered" in msg
+    assert "flavour cites line 9" in msg and "line 2's rule uses 'Ana'" in msg
+
+
+def test_a_puzzle_that_repeats_the_briefs_instruction_is_refused():
+    leaked = GRID.replace("Question: Who ordered what?", "Question: Who ordered what? Show your thinking as a constraint grid.")
+    _refused("repeats the brief's instruction", puzzle=leaked)
+
+
+def test_the_briefs_worked_example_is_a_model_the_code_accepts():
+    from role_set.prompts import B_EXAMPLE_KEY, B_EXAMPLE_MODEL, B_EXAMPLE_PUZZLE, B_MODEL_EXAMPLE, hard_rules
+    from role_set.plan import plan_lesson
+    from test_runner import SIDES
+
+    got = check_puzzle({"puzzle": B_EXAMPLE_PUZZLE, "model": copy.deepcopy(B_EXAMPLE_MODEL), "answer": B_EXAMPLE_KEY,
+                        "reply": "x\nAnswer: " + B_EXAMPLE_KEY}, "constraint_grid")
+    assert got.answer == B_EXAMPLE_KEY and not got.lookup
+    b = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "B")
+    assert B_MODEL_EXAMPLE in hard_rules(b) and "elimination" in B_MODEL_EXAMPLE
+
+
+def test_halts_key_assembly_and_puzzle_refusals_by_their_rule():
+    from role_set.runner import refusal_rule
+
+    a = refusal_rule({"code": "ASSEMBLY", "detail": "the answer names 'Zed', which the puzzle doesn't; use the puzzle's own names"})
+    b = refusal_rule({"code": "ASSEMBLY", "detail": "the answer names 'Ann', which the puzzle doesn't; use the puzzle's own names"})
+    c = refusal_rule({"code": "ASSEMBLY", "detail": "reply writes its own VERDICT, DECIDING or ESCALATE line"})
+    assert a == b != c and a.startswith("ASSEMBLY: ")
+    p1 = refusal_rule({"code": "PUZZLE", "detail": "1) flavour cites line 3, and the puzzle has no line 3; 2) x"})
+    p2 = refusal_rule({"code": "PUZZLE", "detail": "flavour cites line 4, and the puzzle has no line 4"})
+    assert p1 == p2 == "PUZZLE: flavour cites line N, and the puzzle has no line N"

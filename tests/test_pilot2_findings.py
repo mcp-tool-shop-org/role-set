@@ -153,3 +153,9 @@ def test_a_slot_cut_off_by_the_halt_is_reported_as_not_finished(tmp_path: Path):
     report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
     cut = next(o for o in report["outcomes"] if o["slot"] == slots[0].id)
     assert cut["skipped"] and cut["skip_reason"] == "run halted during the slot" and not cut["accepted"]
+
+
+def test_a_narrated_quote_counts_as_a_quote():
+    for told in ("They answered supported and quoted the opening line.", "The checker read off the hours and agreed.",
+                 "It cited the notice and said yes."):
+        assert "a misread quote is a guess" in rubber_stamp_mislabel(told, NOTICE.text), told
