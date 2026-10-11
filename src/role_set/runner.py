@@ -79,7 +79,8 @@ class Status:
     concurrency: int = 1
     actions: list = field(default_factory=list)
     halted: str | None = None  # a systemic stop: the whole run
-    lesson_halts: dict = field(default_factory=dict)  # lesson -> {"reason", "code"}: that lesson stopped, the run went on
+    lesson_halts: dict = field(default_factory=dict)  # lesson -> {"reason", "kind", "rule"}: that lesson stopped, the run went on
+    kinds_off: dict = field(default_factory=dict)  # kind -> rule: switched off after two lessons in a row halted on it
     skipped: dict = field(default_factory=dict)  # reason -> slots never started
 
     def as_dict(self, now: float) -> dict:
@@ -97,6 +98,7 @@ class Status:
             "concurrency": self.concurrency,
             "halted": self.halted,
             "lesson_halts": self.lesson_halts,
+            "kinds_off": self.kinds_off,
             "skipped": self.skipped,
             "actions": self.actions[-200:],
         }
@@ -110,7 +112,8 @@ class Outcome:
     refusals: list = field(default_factory=list)  # [{"code","detail","suggestion"}]
     row: dict | None = None
     receipt: dict | None = None
-    skipped: bool = False  # never started: the run had already halted
+    skipped: bool = False  # never started: the run, the lesson or the kind had stopped, or the time budget ran out
+    skip_reason: str | None = None
 
 
 def _quoted_spans(text: str) -> list[str]:
@@ -150,6 +153,21 @@ def lesson_copy(row: dict, spans: set[str]) -> str | None:
                 w = _words(line)
                 found |= {" ".join(w[i:i + LESSON_SPAN_WORDS]) for i in range(len(w) - LESSON_SPAN_WORDS + 1)} & spans
     return sorted(found)[0] if found else None
+
+
+def refusal_rule(refusal: dict) -> str:
+    """The specific rule behind a refusal, for halt keys: a check_against refusal's gate code, a gate refusal's
+    message with its line, ids, lesson and quoted text stripped, or the bare code for everything else."""
+
+    code, detail = refusal.get("code", ""), refusal.get("detail") or ""
+    if code == "AGAINST":
+        return detail.split(":")[0]
+    if code == "GATE":
+        d = re.sub(r"^line \d+ \([^)]*\):\s*", "", detail)
+        d = re.sub(r"(?<=[\s(])'[^']*'(?=[\s),:;.]|$)|\"[^\"]*\"", "''", d)  # quoted values, not apostrophes
+        d = re.sub(r"\(T\d\d\)|\bT\d\d(-[A-E]-\d\d)?\b", "", d)
+        return "GATE: " + " ".join(d.split())[:80]
+    return code
 
 
 def spent_wording(refusal: dict) -> list[str]:
@@ -268,7 +286,9 @@ class Runner:
         self.stuck = stuck
         self.lesson_codes: dict[str, Counter] = {}
         self.recent_calls: deque = deque(maxlen=SYSTEMIC_WINDOW)
-        self.halt_order: list[tuple[str, str]] = []
+        self.halt_order: list[tuple[str, tuple[str, str]]] = []
+        self.lesson_drop_keys: dict[str, Counter] = {}
+        self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
 
@@ -536,30 +556,43 @@ class Runner:
         self._log("accepted", slot=slot.id, attempt=attempt)
 
     # ---- the batch --------------------------------------------------------------------------------------------
-    def _andon(self, slot: Slot) -> None:
+    def _andon(self, slot: Slot, out: Outcome | None = None) -> None:
         """A drop counts toward its lesson. Three drops end that lesson (its remaining slots are skipped) and the run
-        moves on; two lessons in a row halting on the same refusal code is systemic and stops the run."""
+        moves on. The lesson's halt key is the (kind, specific rule) most of its drops fell on."""
 
         self.status.dropped += 1
         self.lesson_drops[slot.lesson] = self.lesson_drops.get(slot.lesson, 0) + 1
+        keys = self.lesson_drop_keys.setdefault(slot.lesson, Counter())
+        for r in (out.refusals if out else []):
+            keys[(slot.kind, refusal_rule(r))] += 1
         if slot.lesson not in self.status.lesson_halts and self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS:
-            codes = self.lesson_codes.get(slot.lesson, Counter())
-            code = codes.most_common(1)[0][0] if codes else "NONE"
-            self._halt_lesson(slot.lesson, f"{ANDON_LESSON_DROPS} dropped slots", code)
+            key = keys.most_common(1)[0][0] if keys else (slot.kind, "NONE")
+            self._halt_lesson(slot.lesson, f"{ANDON_LESSON_DROPS} dropped slots", key)
 
-    def _halt_lesson(self, lesson: str, reason: str, code: str) -> None:
-        self.status.lesson_halts[lesson] = {"reason": reason, "code": code}
-        self.halt_order.append((lesson, code))
-        self._log("lesson_halt", lesson=lesson, reason=reason, code=code)
-        if len(self.halt_order) >= 2 and self.halt_order[-1][1] == self.halt_order[-2][1] and self.status.halted is None:
-            a, b = self.halt_order[-2][0], self.halt_order[-1][0]
-            self.status.halted = f"systemic: lessons {a} and {b} both halted on {code}"
-            self._log("halt", reason=self.status.halted)
-            raise RunHalted(self.status.halted)
+    def _halt_lesson(self, lesson: str, reason: str, key: tuple[str, str]) -> None:
+        """Two lessons in a row halting on the same (kind, rule) switch that kind off for the remaining lessons; the
+        other kinds carry on. The run stops only when every kind in the plan is off (or on the PARSE/TRANSPORT rate)."""
+
+        kind, rule = key
+        self.status.lesson_halts[lesson] = {"reason": reason, "kind": kind, "rule": rule}
+        self.halt_order.append((lesson, key))
+        self._log("lesson_halt", lesson=lesson, reason=reason, kind=kind, rule=rule)
+        if len(self.halt_order) >= 2 and self.halt_order[-1][1] == self.halt_order[-2][1]:
+            switched = sorted(self.plan_kinds) if kind == "*" else [kind]
+            for k in switched:
+                if k not in self.status.kinds_off:
+                    self.status.kinds_off[k] = rule
+                    self._log("kind_off", kind=k, rule=rule, lessons=[self.halt_order[-2][0], lesson])
+            if self.plan_kinds and self.plan_kinds <= set(self.status.kinds_off) and self.status.halted is None:
+                self.status.halted = "systemic: every kind is switched off (" + "; ".join(f"{k}: {r}" for k, r in sorted(self.status.kinds_off.items())) + ")"
+                self._log("halt", reason=self.status.halted)
+                raise RunHalted(self.status.halted)
 
     def _skip(self, slot: Slot) -> str | None:
         if self.status.halted is not None:
             return "run halted"
+        if slot.kind in self.status.kinds_off:
+            return f"kind {slot.kind} systemic: {self.status.kinds_off[slot.kind]}"
         if slot.lesson in self.status.lesson_halts:
             return f"lesson {slot.lesson} halted"
         if self.deadline is not None and self.clock() >= self.deadline:
@@ -570,6 +603,7 @@ class Runner:
         outcomes: list[Outcome] = []
         if stop_after_s is not None:
             self.deadline = self.clock() + stop_after_s  # no new slot starts after this; running ones finish
+        self.plan_kinds = {s.kind for s in slots}
         lessons = []
         for s in slots:
             if s.lesson not in lessons:
@@ -577,7 +611,7 @@ class Runner:
         try:
             for lesson in lessons:
                 if not self.warmup(lesson, sides.get(lesson, ("", ""))):
-                    self._halt_lesson(lesson, "warm-up failed: the builder could not restate the trait", "WARMUP")
+                    self._halt_lesson(lesson, "warm-up failed: the builder could not restate the trait", ("*", "WARMUP"))
         except RunHalted:
             self._finish(outcomes, lessons)
             raise
@@ -587,14 +621,14 @@ class Runner:
                 why = self._skip(slot)
                 if why:
                     self.status.skipped[why] = self.status.skipped.get(why, 0) + 1
-                    return Outcome(slot_id=slot.id, accepted=False, attempts=0, skipped=True)
+                    return Outcome(slot_id=slot.id, accepted=False, attempts=0, skipped=True, skip_reason=why)
                 self.status.attempted += 1
             out = self.run_slot(slot)
             with self.lock:
                 self.finished.append(out)
                 if not out.accepted:
                     self._log("dropped", slot=slot.id, codes=[r["code"] for r in out.refusals])
-                    self._andon(slot)
+                    self._andon(slot, out)
             return out
 
         try:
@@ -624,6 +658,6 @@ class Runner:
         report = {
             "batch_check": self.batch_check,
             "status": self.status.as_dict(self.clock()),
-            "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals, "skipped": o.skipped} for o in outcomes],
+            "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals, "skipped": o.skipped, "skip_reason": o.skip_reason} for o in outcomes],
         }
         (self.out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")

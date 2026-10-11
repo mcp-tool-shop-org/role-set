@@ -99,10 +99,11 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
     r.run(slots, {"T02": SIDES})
     data, md = readout(tmp_path / "fail" / "out")
     run = data["run"]
-    assert run["lesson_halts"]["T02"]["code"] == "GATE" and run["per_kind"]["A"]["dropped"] == 3
+    assert run["lesson_halts"]["T02"]["kind"] == "A" and run["per_kind"]["A"]["dropped"] == 3
     assert run["refusals"] == {"GATE": 9} and run["retry_recovery"] == {"refused_slots": 3, "recovered": 0, "rate": 0.0}
     assert run["calls"] == 9 + run["accepted"] and run["stuck"]["stuck"] == run["calls"] and run["seconds_per_call"]["p50"] is not None
     assert "| T02 |" in md and "Retry recovery: 0 of 3" in md
+    assert run["per_lesson"]["T02"]["skipped_by_reason"] == {"lesson T02 halted": 37} and "lesson T02 halted: 37" in md
 
     # An old-format run (outcomes lost on a halt, no drafts.jsonl) is rebuilt from its action log, and compared.
     old = tmp_path / "old"
@@ -111,7 +112,7 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
         "refused_by_code": {"GATE": 2}, "actions": [{"action": "accepted", "slot": "T18-A-02"}, {"action": "refused", "slot": "T18-A-01", "code": "GATE"},
         {"action": "refused", "slot": "T18-A-01", "code": "GATE"}, {"action": "dropped", "slot": "T18-A-01"}]}, "outcomes": []}), encoding="utf-8")
     both, md2 = readout(tmp_path / "fail" / "out", [old])
-    assert both["compare"][0]["per_lesson"]["T18"] == {"accepted": 1, "dropped": 1, "skipped": 0, "accept_rate": 0.5}
+    assert both["compare"][0]["per_lesson"]["T18"] == {"accepted": 1, "dropped": 1, "skipped": 0, "accept_rate": 0.5, "skipped_by_reason": {}}
     assert both["compare"][0]["refusals"] == {"GATE": 2} and both["compare"][0]["tokens_per_call"] == {"prompt": 10, "completion": 2}
     assert "| old |" in md2
 

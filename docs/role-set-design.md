@@ -151,9 +151,10 @@ uses the card in the window, and no switchyard 5090 leg is booked over a pod ses
 without a `--grant` token and a fresh watchdog heartbeat, the same guard shape as switchyard's runner.
 
 **Andon per lesson; the run stops only on a systemic signal.** Three dropped slots end that lesson: its remaining
-slots are skipped and the run moves on to the next lesson. The whole run stops only on a systemic signal: two
-lessons in a row halting on the same refusal code, or more than 20% of the last 10 writer calls failing to parse or
-reach the writer. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every
+slots are skipped and the run moves on to the next lesson. Each lesson halt is keyed by the kind and the specific
+rule its drops fell on (a gate rule, a check_against code, a critic code), never the bare code. Two lessons in a row
+halting on the same key switch that kind off for the remaining lessons; the other kinds carry on. The whole run stops
+only when every kind is off, or when more than 20% of the last 10 writer calls fail to parse or reach the writer. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every
 halt is logged with its reason (`log.jsonl`). Every writer call, accepted or refused, is kept in `drafts.jsonl` with
 its raw text, tokens, latency, outcome, glyphs normalised and the frozen stuck rule's measures; refused drafts also
 go to `refusals.jsonl`. `role-set readout` reports per lesson and kind, so a failed run reads like a passing one.
