@@ -105,13 +105,15 @@ def register_tell(options: list[str]) -> str | None:
     return None
 
 
-def closed_form_variant(question: str, correct, distractors, key_points: list, seed: str) -> dict:
-    """A written E item's closed-form variant (handoff Amendment 5, aspire-si-gates 1.2.0): the stem, 3 or 4 options
-    lettered A to D on their own lines, an ANSWER line asked for, key {"answer": letter}. The writer gives the correct
-    option and 2 or 3 distractors as separate fields, so its position can't be wrong. Assembly shuffles them with an
-    RNG seeded by the slot id and sets the letter, so the keyed letter is uniform by construction (R&D on #26). The
-    correct option carries a key point of the original (contains one or sits inside one, the gates' rule); no
-    distractor carries one; no two options are the same. A writer's own "A." labels are stripped."""
+def closed_form_variant(question: str, correct, distractors, seed: str) -> dict:
+    """A written E item's closed-form variant (handoff Amendment 5): the stem, 3 or 4 options lettered A to D on their
+    own lines, an ANSWER line asked for, key {"answer": letter}. The writer gives the correct option and 2 or 3
+    distractors as separate fields, so its position can't be wrong. Assembly shuffles them with an RNG seeded by the
+    slot id and sets the letter, so the keyed letter is uniform by construction (R&D on #26). No two options are the
+    same, and they share one form. Whether the correct option carries a key point, and how near a distractor may come,
+    is the gates' closed-form rule with the run's settings (keyed carry verbatim, paraphrase or either;
+    aspire-si-gates 1.4.0), checked by `check_item` right after assembly; role-set keeps no copy of it. A writer's own
+    "A." labels are stripped."""
 
     import random
 
@@ -123,22 +125,10 @@ def closed_form_variant(question: str, correct, distractors, key_points: list, s
     texts = [_norm_point(o) for o in options]
     if len(set(texts)) != len(texts):
         raise AssemblyError("two variant options are the same")
-    points = [_norm_point(k) for k in key_points]
-
-    def carries(t: str) -> bool:
-        return any(k and (k in t or t in k) for k in points)
-
-    if not carries(texts[0]):
-        raise AssemblyError("variant_correct must carry one of the key points (contain one, word for word, or sit inside one)")
-    if any(carries(t) for t in texts[1:]):
-        # The gates count an option inside a key point as carrying it, so a short distractor can trip this (R&D on #91),
-        # and so does a distractor made by swapping one part of a right answer whose other parts are key points.
-        raise AssemblyError("a distractor carries a key point (contains one, or sits inside one). No distractor may hold any key "
-                            "point: don't build one by swapping one part of the right answer, and write each as a full phrase")
     tell = register_tell(options)
     if tell:
         raise AssemblyError(f"the options differ in form ({tell}); write every option the same way: a full sentence with a "
-                            "capital and a full stop, in the same person, the right one keeping its key point's words")
+                            "capital and a full stop, in the same person")
     order = list(range(len(options)))
     random.Random(seed).shuffle(order)
     letters = LETTERS[:len(options)]
@@ -423,7 +413,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                 raise AssemblyError("the variant must re-ask the point in new words")
             row = _base(slot, trait, [{"invented": "written quiz and variant, written for this item"}], True, "teaching", [])
             row["quiz"] = {"type": "written", "key_points": points}
-            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_correct"), fields.get("variant_distractors"), points, seed=slot.id)
+            row["variant"] = closed_form_variant(fields["variant_question"], fields.get("variant_correct"), fields.get("variant_distractors"), seed=slot.id)
             row["turns"] = [{"user": fields["question"].strip(), "thinking": fields.get("thinking", "").strip(),
                              "reply": _reply_prose(fields["reply"], "reply")}]
             return row

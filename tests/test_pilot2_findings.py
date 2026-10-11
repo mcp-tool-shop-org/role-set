@@ -24,8 +24,8 @@ def test_a_keyed_option_in_another_register_is_refused():
     point = "one line settles it, so the check stops"
     sentences = ["The checker reads the whole page twice first.", "The checker asks the user to confirm it."]
     with pytest.raises(AssemblyError, match=r"differ in form \(opening capital\)"):
-        closed_form_variant("When does the check stop?", point, sentences, [point], seed="T07-E-01")
-    ok = closed_form_variant("When does the check stop?", "When one line settles it, so the check stops.", sentences, [point], seed="T07-E-01")
+        closed_form_variant("When does the check stop?", point, sentences, seed="T07-E-01")
+    ok = closed_form_variant("When does the check stop?", "When one line settles it, so the check stops.", sentences, seed="T07-E-01")
     assert ok["key"]["answer"] in "ABC"
     assert register_tell(["It ends here.", "It ends there"]) == "sentence ending"
     assert register_tell(["I stop at the line.", "The checker stops at the line."]) == "person"

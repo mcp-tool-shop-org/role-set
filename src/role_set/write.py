@@ -65,6 +65,7 @@ class WriteConfig:
     stuck_repo: Path | None = None  # aspire-si checkout for the frozen stuck rule; defaults to the exemplar repo
     stuck_commit: str | None = None  # defaults to the exemplar commit
     stop_after_minutes: float | None = None  # no new slot starts after this; running slots finish
+    closed_form: dict | None = None  # the gates' closed-form settings for this run; None takes the gates' defaults
 
 
 def load_plan(path: Path) -> tuple[list[Slot], dict[str, tuple[str, str]], str]:
@@ -119,14 +120,14 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
         writer = MockWriter()
         critic = None if cfg.no_critic else MockCritic(answers=writer.answers)
         try:
-            gates: Gates = load_gates()
+            gates: Gates = load_gates(closed_form=cfg.closed_form)
         except GatesUnavailable:
             gates = mock_gates()
         pins.update({"writer_model": "mock", "critic_model": None if cfg.no_critic else "mock", "mock": True})
         return slots, sides, pack, trait_names, gates, writer, critic, pins, None
 
     try:
-        gates = load_gates()
+        gates = load_gates(closed_form=cfg.closed_form)
         endpoint = require_local_endpoint(cfg.endpoint or "")
         writers = allowed_writers(cfg.writers_file)
         model = require_model_allowed(cfg.model or "", sorted(writers))

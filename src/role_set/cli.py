@@ -97,6 +97,21 @@ def _readout(args: argparse.Namespace) -> int:
     return 0
 
 
+def _closed_form_arg(text: str | None) -> dict | None:
+    """--closed-form: a JSON object of the gates' closed-form settings (carry, share, distractor_max,
+    distractor_margin, span, exempt_keyed_key_points). The gates check the values; this only parses the object."""
+
+    if not text:
+        return None
+    try:
+        value = json.loads(text)
+    except json.JSONDecodeError as e:
+        raise argparse.ArgumentTypeError(f"--closed-form is not JSON: {e}") from None
+    if not isinstance(value, dict):
+        raise argparse.ArgumentTypeError("--closed-form must be a JSON object, e.g. '{\"carry\": \"either\"}'")
+    return value
+
+
 def _write(args: argparse.Namespace) -> int:
     cfg = WriteConfig(
         plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
@@ -108,7 +123,7 @@ def _write(args: argparse.Namespace) -> int:
         exemplar_commit=args.exemplar_commit, exemplar_files=tuple(args.exemplar_files or ()),
         exemplar_exclude=Path(args.exemplar_exclude) if args.exemplar_exclude else None,
         stuck_repo=Path(args.stuck_repo) if args.stuck_repo else None, stuck_commit=args.stuck_commit,
-        stop_after_minutes=args.stop_after_minutes,
+        stop_after_minutes=args.stop_after_minutes, closed_form=args.closed_form,
     )
     try:
         result = run_write(cfg)
@@ -331,6 +346,9 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--stuck-repo", default=None, help="aspire-si checkout for the frozen stuck rule (default: --exemplar-repo)")
     w.add_argument("--stuck-commit", default=None, help="commit for the frozen stuck rule (default: --exemplar-commit)")
     w.add_argument("--stop-after-minutes", type=float, default=None, help="no new slot starts after this many minutes")
+    w.add_argument("--closed-form", type=_closed_form_arg, default=None,
+                   help="the gates' closed-form settings as JSON, e.g. '{\"carry\": \"either\"}'; unset takes the pinned gates' "
+                        "defaults. Every receipt records the settings used")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")
