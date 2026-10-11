@@ -82,7 +82,7 @@ class MockCritic:
                 return _done(self.trait)
             import re
 
-            m = re.search(r"(T\d\d)-[A-E]", text)
+            m = re.search(r"\b(T\d\d)-[A-E]\b", text)
             return _done(m.group(1) if m else "T02")
         if "Name the single flaw" in system:
             flaw = self.answers.get(("flaw", _after(text, "The other checker wrote: ")))
