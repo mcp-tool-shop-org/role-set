@@ -245,33 +245,60 @@ def _timing(seconds: list[float]) -> dict:
 
 def answer_leg(critic, rows: list[dict]) -> dict:
     """The kind-B answer check on reviewed puzzles: the critic solves each one with the closed-answer prompt, and its
-    ANSWER is compared with the reviewed key. Keys that aren't closed are counted and left out; every disagreement is
-    listed for R&D."""
+    ANSWER is compared with the reviewed key. Two subsets, per R&D's ruling: keys closed as written, and older keys whose
+    head before a dash or colon is exactly a verdict label (the label is the answer). Every other key is listed and left
+    out; every disagreement is listed. The bar applies to the combined figure."""
 
-    from role_set.assemble import closed_answer
     from role_set.critic import ANSWER_LINE, answer_messages, compare_answer
 
     puzzles = [r for r in rows if r.get("kind") == "B" and r.get("turns")]
-    closed = [r for r in puzzles if closed_answer(str(r.get("answer", ""))) is not None]
+    keyed = [(r, *leg_key(str(r.get("answer", "")))) for r in puzzles]
     seconds: list[float] = []
-    agree, voids, disagreements = 0, 0, []
-    for r in closed:
+    voids, disagreements = 0, []
+    tally = {"as_written": [0, 0], "label_head": [0, 0]}  # subset -> [items, agree]
+    for r, key, subset in keyed:
+        if key is None:
+            continue
         v, c = None, None
         for ask in range(2):
-            c = critic(answer_messages(r["turns"][0]["user"], r["answer"]))
+            c = critic(answer_messages(r["turns"][0]["user"], key))
             seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
-            v = compare_answer(c.text, r["answer"])
+            v = compare_answer(c.text, key)
             if v.code != "VOID":
                 break
             voids += 1
+        tally[subset][0] += 1
         if v.ok:
-            agree += 1
+            tally[subset][1] += 1
         else:
             said = ANSWER_LINE.findall(c.text)
-            disagreements.append({"item": r.get("id"), "key": r["answer"], "code": v.code, "critic_answer": said[-1] if said else None,
-                                  "critic_raw": c.text[:2000]})
-    n = len(closed)
-    rate = round(agree / n, 3) if n else None
-    return {"puzzles": len(puzzles), "keys_not_closed": [r.get("id") for r in puzzles if r not in closed], "items": n, "agree": agree,
-            "rate": rate, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
-            "passes": bool(n) and rate >= ANSWER_BAR, "disagreements": disagreements}
+            disagreements.append({"item": r.get("id"), "subset": subset, "key": r["answer"], "compared_as": key, "code": v.code,
+                                  "critic_answer": said[-1] if said else None, "critic_raw": c.text[:2000]})
+
+    def part(items: int, agree: int) -> dict:
+        return {"items": items, "agree": agree, "rate": round(agree / items, 3) if items else None}
+
+    subsets = {k: part(*v) for k, v in tally.items()}
+    combined = part(sum(v[0] for v in tally.values()), sum(v[1] for v in tally.values()))
+    written = subsets["as_written"]
+    return {"puzzles": len(puzzles), "keys_left_out": [r.get("id") for r, key, _ in keyed if key is None], "subsets": subsets,
+            "combined": combined, "voids": voids, "seconds_per_call": _timing(seconds), "bar": ANSWER_BAR,
+            "passes": bool(combined["items"]) and combined["rate"] >= ANSWER_BAR,
+            "as_written_below_bar": bool(written["items"]) and written["rate"] < ANSWER_BAR, "disagreements": disagreements}
+
+
+LABEL_HEAD = re.compile(r"\s[—–-]\s|:")
+
+
+def leg_key(answer: str) -> tuple[str | None, str | None]:
+    """The key the answer leg compares against, and its subset: the answer itself when it is closed as written; the bare
+    label when an older 'label — reason' key's head is exactly a verdict label; otherwise (None, None)."""
+
+    from role_set.assemble import VERDICTS, closed_answer
+
+    if closed_answer(answer) is not None:
+        return answer, "as_written"
+    head = LABEL_HEAD.split(answer, maxsplit=1)[0].strip().strip(".*").lower()
+    if head in VERDICTS:
+        return head, "label_head"
+    return None, None

@@ -155,8 +155,32 @@ def test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement():
         return _said(next(v for k, v in answers.items() if messages[1]["content"].startswith(k)))
 
     leg = answer_leg(critic, rows)
-    assert leg["puzzles"] == 5 and leg["keys_not_closed"] == ["T02-B-05"] and leg["items"] == 4 and leg["agree"] == 2
-    assert leg["rate"] == 0.5 and leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2
+    assert leg["puzzles"] == 5 and leg["keys_left_out"] == ["T02-B-05"] and leg["combined"] == {"items": 4, "agree": 2, "rate": 0.5}
+    assert leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2 and leg["as_written_below_bar"] is True
     assert [(d["item"], d["code"], d["critic_answer"]) for d in leg["disagreements"]] == [
         ("T02-B-02", "ANSWER_MISMATCH", "test, setup, deploy"), ("T02-B-04", "VOID", None)]
+
+
+def test_older_label_reason_keys_count_by_their_label_and_are_reported_apart():
+    from role_set.critic_control import answer_leg, leg_key
+
+    assert leg_key("unsupported — a blue tile is square, hence unmarked") == ("unsupported", "label_head")
+    assert leg_key("cannot_tell: the notice never gives a distance") == ("cannot_tell", "label_head")
+    assert leg_key("Undetermined: Rhea or Ulf was fastest") == (None, None) and leg_key("No - it fails") == (None, None)
+    assert leg_key("Zoe") == ("Zoe", "as_written")
+
+    def b(i, key):
+        return {"id": f"T02-B-{i:02d}", "kind": "B", "answer": key, "turns": [{"user": f"Facts {i}.\nQuestion: which?", "thinking": "", "reply": ""}]}
+
+    rows = [b(1, "Zoe"), b(2, "supported — both parts are backed"), b(3, "unsupported — the tile is square"), b(4, "Undetermined: either")]
+    said = {"Facts 1.": "ANSWER: Mia", "Facts 2.": "ANSWER: supported", "Facts 3.": "ANSWER: unsupported"}
+
+    def critic(messages, **kw):
+        assert "Undetermined" not in messages[1]["content"]
+        return _said(next(v for k, v in said.items() if messages[1]["content"].startswith(k)))
+
+    leg = answer_leg(critic, rows)
+    assert leg["subsets"] == {"as_written": {"items": 1, "agree": 0, "rate": 0.0}, "label_head": {"items": 2, "agree": 2, "rate": 1.0}}
+    assert leg["combined"]["rate"] == 0.667 and leg["keys_left_out"] == ["T02-B-04"] and leg["as_written_below_bar"] is True
+    assert leg["disagreements"][0]["subset"] == "as_written" and leg["disagreements"][0]["compared_as"] == "Zoe"
     assert json.dumps(leg)  # the report is plain JSON

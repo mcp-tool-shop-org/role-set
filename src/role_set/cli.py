@@ -205,6 +205,8 @@ def _critic_control(args: argparse.Namespace) -> int:
                 print(f"{t}: {cell['agree']}/{cell['items']} = {cell['rate']}" + (" (thin)" if cell["thin"] else ""))
         if "answer_leg" in out:
             print(json.dumps({k: v for k, v in out["answer_leg"].items() if k != "disagreements"}))
+            if out["answer_leg"]["as_written_below_bar"]:
+                print("NOTE: the keys closed as written fall below the bar on their own, though the combined figure is what gates")
         return 0 if all(leg["passes"] for leg in legs) else 2
     cases = cases_from_rows(rows)
     planted = plant_errors(cases, args.planted, seed=args.seed)
