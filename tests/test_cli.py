@@ -131,3 +131,12 @@ def test_the_pilot_trait_t18_plans(tmp_path: Path, capsys):
     plan = json.loads(out.read_text(encoding="utf-8"))
     sides = {s["side"] for s in plan["slots"]}
     assert len(plan["slots"]) == 40 and sides == {"doesn't rewrite the statement", "still quotes the deciding line"}
+
+
+def test_every_trait_with_sides_plans_on_its_own(tmp_path: Path):
+    from role_set.cli import VERIFIER_SIDES
+
+    for lesson in sorted(VERIFIER_SIDES):
+        out = tmp_path / f"{lesson}.json"
+        assert main(["plan", "--lessons", lesson, "--seed", "7", "--out", str(out)]) == 0, lesson
+        assert len(json.loads(out.read_text(encoding="utf-8"))["slots"]) == 40

@@ -16,6 +16,7 @@ import json
 import re
 import threading
 import time
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -25,11 +26,17 @@ from role_set.critic import compare_answer, compare_flaw, compare_trait, compare
 from role_set.gates import Gates
 from role_set.plan import Slot
 from role_set.prompts import kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
+from role_set.transport import TransportError
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
-ANDON_LESSON_DROPS = 3
+ANDON_LESSON_DROPS = 3  # ends that lesson; the run moves on to the next one
+# The whole run stops only on a systemic signal: two lessons in a row halting on the same refusal code, or more
+# than 20% of the last 10 writer calls failing to parse or reach the writer (the maintainer's rule for paid runs).
+SYSTEMIC_WINDOW = 10
+SYSTEMIC_RATE = 0.20
+SYSTEMIC_CODES = ("PARSE", "TRANSPORT")
 # check_against codes whose message names spent wording; a retry carries that wording as a do-not-use list.
 SPENT_CODES = ("SPAN_REUSED", "B_PHRASE_REUSED", "OPENING_REUSED", "FRAMING_REUSED")
 WARMUP_MISSES = 2
@@ -49,6 +56,7 @@ SUGGESTIONS = {
     "VOID": "The second reader's answer was unusable ({detail}); it was asked again.",
     "AGAINST": "{detail}",
     "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
+    "TRANSPORT": "The writer could not be reached ({detail}); the slot ends.",
     "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
 }
 
@@ -70,7 +78,9 @@ class Status:
     tokens_completion: int = 0
     concurrency: int = 1
     actions: list = field(default_factory=list)
-    halted: str | None = None
+    halted: str | None = None  # a systemic stop: the whole run
+    lesson_halts: dict = field(default_factory=dict)  # lesson -> {"reason", "code"}: that lesson stopped, the run went on
+    skipped: dict = field(default_factory=dict)  # reason -> slots never started
 
     def as_dict(self, now: float) -> dict:
         share = self.dropped / self.attempted if self.attempted else 0.0
@@ -86,6 +96,8 @@ class Status:
             "elapsed_s": round(now - self.started_at, 1),
             "concurrency": self.concurrency,
             "halted": self.halted,
+            "lesson_halts": self.lesson_halts,
+            "skipped": self.skipped,
             "actions": self.actions[-200:],
         }
 
@@ -158,17 +170,48 @@ def _numbers(text: str) -> set[str]:
     return set(re.findall(r"\d[\d,.:]*\d|\d", text))
 
 
+# Typographic quotes in the writer's own prose become plain ones before assembly and gating, so a correct trait
+# name ("don’t fix") is never refused over a glyph. Verbatim material lines (deciding, new material) are left alone.
+GLYPHS = str.maketrans({"’": "'", "‘": "'", "“": '"', "”": '"'})
+VERBATIM_FIELDS = ("deciding", "turn2_deciding", "turn2_new_material")
+
+
+def _plain(text: str) -> str:
+    return text.translate(GLYPHS)
+
+
+def normalize_glyphs(fields: dict) -> tuple[dict, int]:
+    """(fields with typographic quotes made plain outside the verbatim fields, how many characters changed)."""
+
+    count = 0
+
+    def fix(v):
+        nonlocal count
+        if isinstance(v, str):
+            out = _plain(v)
+            count += sum(1 for a, b in zip(v, out) if a != b)
+            return out
+        if isinstance(v, list):
+            return [fix(x) for x in v]
+        if isinstance(v, dict):
+            return {k: fix(x) for k, x in v.items()}
+        return v
+
+    return {k: (v if k in VERBATIM_FIELDS else fix(v)) for k, v in fields.items()}, count
+
+
 def truth_checks(row: dict, facts: dict | None) -> tuple[str, str] | None:
     """Every bracketed or quoted span in the thinking is verbatim in the material; every number is given."""
 
     material = row.get("material") or ""
     if not material:
         return None
-    flat = " ".join(material.split())
-    statement = "\n".join(t["user"] for t in row["turns"])
+    flat = _plain(" ".join(material.split()))
+    statement = _plain("\n".join(t["user"] for t in row["turns"]))
     allowed = _numbers(material) | _numbers(statement) | _numbers(json.dumps(facts or {}))
     for t in row["turns"]:
         for span in _quoted_spans(t["thinking"]):
+            span = _plain(span)
             if " ".join(span.split()) not in flat and " ".join(span.split()) not in " ".join(statement.split()):
                 return ("TRUTH_QUOTE", span[:60])
         for n in _numbers(t["thinking"]):
@@ -204,6 +247,7 @@ class Runner:
         pins: dict | None = None,
         clock=time.time,
         flaw_gate: bool = False,  # the critic's flaw check refuses only once a control run shows it agrees
+        stuck=None,  # callable(thinking, material, tier, tokens) -> the frozen stuck rule's measures, or None
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -216,11 +260,17 @@ class Runner:
         self.accepted: list[dict] = []
         self.lesson_drops: dict[str, int] = {}
         self.batch_check: str | None = None  # "clean" or "REFUSED: ..." once a run finishes unhalted
-        self.lock = threading.Lock()
+        self.lock = threading.RLock()  # re-entrant: logging runs both inside and outside the accept lock
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
         self.flaw_gate = flaw_gate
         self._spans_by_lesson: dict[str, set[str]] = {}
+        self.stuck = stuck
+        self.lesson_codes: dict[str, Counter] = {}
+        self.recent_calls: deque = deque(maxlen=SYSTEMIC_WINDOW)
+        self.halt_order: list[tuple[str, str]] = []
+        self.deadline: float | None = None
+        self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
 
     def _lesson_spans(self, lesson: str) -> set[str]:
         if lesson not in self._spans_by_lesson:
@@ -229,8 +279,47 @@ class Runner:
 
     # ---- status and log -------------------------------------------------------------------------------------
     def _log(self, action: str, **kw) -> None:
-        self.status.actions.append({"t": round(self.clock() - self.status.started_at, 1), "action": action, **kw})
+        entry = {"t": round(self.clock() - self.status.started_at, 1), "action": action, **kw}
+        self.status.actions.append(entry)
+        # The full log, every action and halt with its reason; status.json keeps only the latest 200.
+        with (self.out_dir / "log.jsonl").open("a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
         self._write_status()
+
+    def _append(self, name: str, record: dict) -> None:
+        with self.lock, (self.out_dir / name).open("a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def _note_refusal(self, slot: Slot, attempt: int, refusal: dict, *, draft: str) -> None:
+        self.status.refused[refusal["code"]] = self.status.refused.get(refusal["code"], 0) + 1
+        self.lesson_codes.setdefault(slot.lesson, Counter())[refusal["code"]] += 1
+        self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"], detail=refusal["detail"][:200])
+        # Every refused draft is kept, so a failure can be read afterwards (the third rehearsal's GATE refusals
+        # could not be diagnosed because only accepted items were written).
+        self._append("refusals.jsonl", {"slot": slot.id, "attempt": attempt, "code": refusal["code"], "detail": refusal["detail"], "draft": draft})
+
+    def _record_call(self, slot: Slot, attempt: int, c, outcome: str, glyphs: int, material) -> None:
+        """One line per writer call, on both paths: the raw draft, tokens, latency, the outcome, glyphs normalised, and
+        the frozen stuck rule's measures on the draft's thinking. Then the systemic check over the last 10 calls."""
+        text = c.text if c is not None else ""
+        record = {"slot": slot.id, "lesson": slot.lesson, "kind": slot.kind, "attempt": attempt, "outcome": outcome,
+                  "prompt_tokens": getattr(c, "prompt_tokens", None), "completion_tokens": getattr(c, "completion_tokens", None),
+                  "seconds": round(getattr(c, "seconds", 0.0) or 0.0, 2), "glyphs_normalized": glyphs, "draft": text}
+        if self.stuck is not None and text:
+            try:
+                thinking = str(parse_json_object(text).get("thinking") or "")
+            except ValueError:
+                thinking = text
+            record["stuck"] = self.stuck(thinking, material.text if material else "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
+        self._append("drafts.jsonl", record)
+        with self.lock:
+            self.recent_calls.append(outcome)
+            bad = sum(1 for x in self.recent_calls if x in SYSTEMIC_CODES)
+            if len(self.recent_calls) == SYSTEMIC_WINDOW and bad > SYSTEMIC_RATE * SYSTEMIC_WINDOW and self.status.halted is None:
+                self.status.halted = f"systemic: {bad} of the last {SYSTEMIC_WINDOW} writer calls failed to parse or reach the writer"
+                self._log("halt", reason=self.status.halted)
+        if self.status.halted is not None and self.status.halted.startswith("systemic: ") and "writer calls" in self.status.halted:
+            raise RunHalted(self.status.halted)
 
     def _write_status(self) -> None:
         (self.out_dir / "status.json").write_text(json.dumps(self.status.as_dict(self.clock()), indent=1), encoding="utf-8")
@@ -351,12 +440,21 @@ class Runner:
         spent: list[str] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             outcome.attempts = attempt
-            c = self.writer(messages, seed=attempt)
+            try:
+                c = self.writer(messages, seed=attempt)
+            except TransportError as e:
+                # A writer that can't be reached ends this slot, never the run by itself; the systemic rule counts it.
+                refusal = self._refusal("TRANSPORT", str(e)[:200])
+                outcome.refusals.append(refusal)
+                self._note_refusal(slot, attempt, refusal, draft="")
+                self._record_call(slot, attempt, None, "TRANSPORT", 0, material)
+                return outcome
             self._count_tokens(c)
             refusal = None
             row = None
+            glyphs = 0
             try:
-                fields = parse_json_object(c.text)
+                fields, glyphs = normalize_glyphs(parse_json_object(c.text))
             except ValueError as e:
                 refusal = self._refusal("PARSE", str(e))
             if refusal is None:
@@ -395,12 +493,13 @@ class Runner:
                         code, msg = reasons[0]
                         refusal = self._refusal("AGAINST", f"{code}: {msg}")
                     else:
-                        self._accept(slot, row, c, attempt)
+                        self._accept(slot, row, c, attempt, glyphs=glyphs)
                         outcome.accepted, outcome.row = True, row
+                        self._record_call(slot, attempt, c, "accepted", glyphs, material)
                         return outcome
             outcome.refusals.append(refusal)
-            self.status.refused[refusal["code"]] = self.status.refused.get(refusal["code"], 0) + 1
-            self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"], detail=refusal["detail"][:200])
+            self._note_refusal(slot, attempt, refusal, draft=c.text)
+            self._record_call(slot, attempt, c, refusal["code"], glyphs, material)
             spent += spent_wording(refusal)
             if spent:
                 with self.lock:
@@ -415,7 +514,7 @@ class Runner:
             ]
         return outcome
 
-    def _accept(self, slot: Slot, row: dict, completion, attempt: int) -> None:
+    def _accept(self, slot: Slot, row: dict, completion, attempt: int, glyphs: int = 0) -> None:
         self.accepted.append(row)
         self.status.accepted += 1
         framing = row["turns"][0]["user"].split("\n", 1)[0]
@@ -427,6 +526,7 @@ class Runner:
             "attempt": attempt,
             "gates": {"version": self.gates.version, "sha256": self.gates.sha256},
             "row_sha256": hashlib.sha256(json.dumps(row, sort_keys=True).encode("utf-8")).hexdigest(),
+            "glyphs_normalized": glyphs,
             **self.pins,
         }
         with (self.out_dir / "accepted.jsonl").open("a", encoding="utf-8") as f:
@@ -437,37 +537,62 @@ class Runner:
 
     # ---- the batch --------------------------------------------------------------------------------------------
     def _andon(self, slot: Slot) -> None:
+        """A drop counts toward its lesson. Three drops end that lesson (its remaining slots are skipped) and the run
+        moves on; two lessons in a row halting on the same refusal code is systemic and stops the run."""
+
         self.status.dropped += 1
         self.lesson_drops[slot.lesson] = self.lesson_drops.get(slot.lesson, 0) + 1
-        share = self.status.dropped / max(1, self.status.attempted)
-        over_share = self.status.attempted >= ANDON_MIN_ATTEMPTS and share > ANDON_DROP_SHARE
-        if self.status.halted is None and (over_share or self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS):
-            self.status.halted = f"andon: drop share {share:.2f} (cap {ANDON_DROP_SHARE} after {ANDON_MIN_ATTEMPTS} slots); lesson {slot.lesson} drops {self.lesson_drops[slot.lesson]}"
+        if slot.lesson not in self.status.lesson_halts and self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS:
+            codes = self.lesson_codes.get(slot.lesson, Counter())
+            code = codes.most_common(1)[0][0] if codes else "NONE"
+            self._halt_lesson(slot.lesson, f"{ANDON_LESSON_DROPS} dropped slots", code)
+
+    def _halt_lesson(self, lesson: str, reason: str, code: str) -> None:
+        self.status.lesson_halts[lesson] = {"reason": reason, "code": code}
+        self.halt_order.append((lesson, code))
+        self._log("lesson_halt", lesson=lesson, reason=reason, code=code)
+        if len(self.halt_order) >= 2 and self.halt_order[-1][1] == self.halt_order[-2][1] and self.status.halted is None:
+            a, b = self.halt_order[-2][0], self.halt_order[-1][0]
+            self.status.halted = f"systemic: lessons {a} and {b} both halted on {code}"
             self._log("halt", reason=self.status.halted)
-        if self.status.halted is not None:
             raise RunHalted(self.status.halted)
 
-    def run(self, slots: list[Slot], sides: dict[str, tuple[str, str]]) -> list[Outcome]:
+    def _skip(self, slot: Slot) -> str | None:
+        if self.status.halted is not None:
+            return "run halted"
+        if slot.lesson in self.status.lesson_halts:
+            return f"lesson {slot.lesson} halted"
+        if self.deadline is not None and self.clock() >= self.deadline:
+            return "time budget"
+        return None
+
+    def run(self, slots: list[Slot], sides: dict[str, tuple[str, str]], *, stop_after_s: float | None = None) -> list[Outcome]:
         outcomes: list[Outcome] = []
+        if stop_after_s is not None:
+            self.deadline = self.clock() + stop_after_s  # no new slot starts after this; running ones finish
         lessons = []
         for s in slots:
             if s.lesson not in lessons:
                 lessons.append(s.lesson)
-        for lesson in lessons:
-            if not self.warmup(lesson, sides.get(lesson, ("", ""))):
-                self.status.halted = f"warm-up failed for {lesson}; the builder could not restate the trait"
-                self._log("halt", reason=self.status.halted)
-                raise RunHalted(self.status.halted)
+        try:
+            for lesson in lessons:
+                if not self.warmup(lesson, sides.get(lesson, ("", ""))):
+                    self._halt_lesson(lesson, "warm-up failed: the builder could not restate the trait", "WARMUP")
+        except RunHalted:
+            self._finish(outcomes, lessons)
+            raise
 
         def one(slot: Slot) -> Outcome:
-            # After a halt no new slot starts; slots already running finish (Window B started one after a halt).
             with self.lock:
-                if self.status.halted is not None:
+                why = self._skip(slot)
+                if why:
+                    self.status.skipped[why] = self.status.skipped.get(why, 0) + 1
                     return Outcome(slot_id=slot.id, accepted=False, attempts=0, skipped=True)
                 self.status.attempted += 1
             out = self.run_slot(slot)
-            if not out.accepted:
-                with self.lock:
+            with self.lock:
+                self.finished.append(out)
+                if not out.accepted:
                     self._log("dropped", slot=slot.id, codes=[r["code"] for r in out.refusals])
                     self._andon(slot)
             return out
@@ -480,20 +605,25 @@ class Runner:
                 with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
                     outcomes = list(pool.map(one, slots))
         finally:
-            # The share-based gates (floors, pairs, multi-line share, phrases, formulas) need the finished set, so
-            # they run once here, on a run that was not halted. A refusal is reported for the human, not retried.
-            if self.status.halted is None and self.accepted:
-                try:
-                    self.gates.check_batch(list(self.accepted))
-                    self.batch_check = "clean"
-                except self.gates.error_type() as e:
-                    self.batch_check = f"REFUSED: {e}"
-                self._log("batch_check", result=self.batch_check)
-            self._log("end", reminder="shut the pod down with offrig; the window closes 30 minutes after this run")
-            report = {
-                "batch_check": self.batch_check,
-                "status": self.status.as_dict(self.clock()),
-                "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals} for o in outcomes],
-            }
-            (self.out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+            self._finish(outcomes or self.finished, lessons)
         return outcomes
+
+    def _finish(self, outcomes: list[Outcome], lessons: list[str]) -> None:
+        # The share-based gates (floors, pairs, multi-line share, phrases, formulas) need finished lessons, so they run
+        # once here, over the lessons that were neither halted nor cut short. A refusal is reported, not retried.
+        whole = [ls for ls in lessons if ls not in self.status.lesson_halts]
+        rows = [r for r in self.accepted if r.get("lesson") in whole]
+        if self.status.halted is None and not self.status.skipped and rows:
+            try:
+                self.gates.check_batch(rows)
+                self.batch_check = "clean"
+            except self.gates.error_type() as e:
+                self.batch_check = f"REFUSED: {e}"
+            self._log("batch_check", result=self.batch_check, lessons=whole)
+        self._log("end", reminder="shut the pod down with offrig; the window closes 30 minutes after this run")
+        report = {
+            "batch_check": self.batch_check,
+            "status": self.status.as_dict(self.clock()),
+            "outcomes": [{"slot": o.slot_id, "accepted": o.accepted, "attempts": o.attempts, "refusals": o.refusals, "skipped": o.skipped} for o in outcomes],
+        }
+        (self.out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")

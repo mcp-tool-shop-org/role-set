@@ -20,40 +20,42 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 6,
-      "changed": 4,
+      "added": 21,
+      "changed": 12,
       "moved": 0,
       "parts": 5,
       "removed": 0
     },
     "items": [
       {
-        "kind": "part",
-        "sentence": "assets is a new part, drawn from `assets/**`.",
+        "kind": "landing",
+        "sentence": "roles/verifier/sources.json is now read by docs/role-set-design.md.",
         "subjects": [
-          "assets"
+          "roles/verifier/sources.json",
+          "docs/role-set-design.md"
         ]
       },
       {
         "kind": "counts",
-        "sentence": "6 files added and 4 changed content, across 5 parts.",
+        "sentence": "21 files added and 12 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "170b718ec427871c5e22bfae8e6e3d224a0a5c66",
-      "generatedAt": "2026-10-10T20:34:12.593Z"
+      "commit": "c366a4e600d5ab82f3e8c62eb4973ddcc7b7a321",
+      "generatedAt": "2026-10-10T20:52:45.078Z"
     },
     "unchanged": false
   },
   "changesTogether": [],
   "changesTogetherNote": [
+    "1 file changed together with its own test, as expected.",
     "Window: 180 days; a pair counts from 3 shared commits, since the window holds fewer than 30 qualifying commits."
   ],
-  "changesTogetherWithTests": 0,
-  "commit": "c366a4e600d5ab82f3e8c62eb4973ddcc7b7a321",
+  "changesTogetherWithTests": 1,
+  "commit": "4477f59dce9f102dc534c4b974368d1e626d214c",
   "defaultBranch": "main",
-  "derived": "7 parts, mostly Python (14 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
+  "derived": "7 parts, mostly Python (33 files). Work enters through 2 doors; the busiest is CI, which reaches 2 parts. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -68,12 +70,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 6
+          "files": 14
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 8
+          "files": 19
         }
       ],
       "runs": [
@@ -105,7 +107,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 8
+          "files": 19
         }
       ],
       "runs": [
@@ -124,12 +126,13 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-10T20:52:45.078Z",
+  "generatedAt": "2026-10-11T06:00:40.178Z",
   "limits": [
-    "1 read uses a path built at run time and is not named here.",
-    "3 writes and 2 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
-    "1 write and 2 reads go to a path their caller passes, not to this repository.",
-    "3 reads go to the directory the command is run in, not to this repository.",
+    "3 imports could not be resolved: `src/role_set/cli.py` imports `role_set.readout`, which is no module on its import path and no declared dependency; `src/role_set/write.py` imports `role_set.stuckrule`, which is no module on its import path and no declared dependency, twice.",
+    "1 write and 3 reads use paths built at run time and are not named here.",
+    "1 write and 13 reads go to a path their caller passes, not to this repository.",
+    "6 writes and 3 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
+    "6 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -149,17 +152,18 @@
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
     "src/role_set/cli.py",
-    "src/role_set/ingest.py",
-    "src/role_set/store.py"
+    "src/role_set/harvest.py",
+    "src/role_set/assemble.py",
+    "src/role_set/plan.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a model on a rented pod write only the writer's parts, and passes each item through aspire-si's gates.",
   "summaryFrom": "person",
-  "testFiles": 6,
+  "testFiles": 14,
   "testedBy": {
-    "src": 6
+    "src": 14
   },
-  "unnamedWrites": 0,
+  "unnamedWrites": 1,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],

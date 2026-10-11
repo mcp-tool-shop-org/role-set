@@ -26,6 +26,8 @@ from role_set.pack import PackError, verify
 from role_set.plan import Slot
 from role_set.prompts import load_pack
 from role_set.runner import RunHalted, Runner
+from role_set.stuckrule import StuckRuleError
+from role_set.stuckrule import load as load_stuck
 from role_set.transport import chat, ollama_chat, unload
 
 # The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
@@ -56,6 +58,9 @@ class WriteConfig:
     exemplar_repo: Path | None = None
     exemplar_commit: str | None = None
     exemplar_files: tuple[str, ...] = ()
+    stuck_repo: Path | None = None  # aspire-si checkout for the frozen stuck rule; defaults to the exemplar repo
+    stuck_commit: str | None = None  # defaults to the exemplar commit
+    stop_after_minutes: float | None = None  # no new slot starts after this; running slots finish
 
 
 def load_plan(path: Path) -> tuple[list[Slot], dict[str, tuple[str, str]], str]:
@@ -210,11 +215,20 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
             pins["exemplar_commit"] = cfg.exemplar_commit
         except ExemplarError as e:
             raise WriteRefused(str(e)) from e
+    stuck = None
+    repo, commit = cfg.stuck_repo or cfg.exemplar_repo, cfg.stuck_commit or cfg.exemplar_commit
+    if repo and commit:
+        try:
+            stuck = load_stuck(repo, commit)
+            pins["stuck_rule_sha256"] = stuck.rule_sha256
+        except StuckRuleError as e:
+            raise WriteRefused(str(e)) from e
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
-                    excerpts=excerpts, exemplars=exemplars)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck)
     halted = None
+    budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
-        outcomes = runner.run(slots, sides)
+        outcomes = runner.run(slots, sides, stop_after_s=budget)
     except RunHalted as e:
         halted = str(e)
         outcomes = []
@@ -227,6 +241,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         "dropped": runner.status.dropped,
         "attempted": runner.status.attempted,
         "halted": halted,
+        "lesson_halts": runner.status.lesson_halts,
+        "skipped": runner.status.skipped,
         "batch_check": runner.batch_check,
         "rehearsal": bool(pins.get("rehearsal")),
         "mock": cfg.mock,

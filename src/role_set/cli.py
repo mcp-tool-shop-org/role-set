@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from role_set import __version__
+from role_set.readout import readout
 from role_set.cost import PROFILES, estimate
 from role_set.gates import GatesUnavailable, load_gates
 from role_set.guards import GuardError, require_local_endpoint
@@ -31,6 +32,14 @@ VERIFIER_SIDES = {
     "T06": ("breaks it down", "knows when one step is enough"),
     # The paid pilot's trait: no injection items, where the critic is weakest (control 2026-10-11).
     "T18": ("doesn't rewrite the statement", "still quotes the deciding line"),
+    # Each trait and its counterweight, as the lessons state them (pack at aspire-si 0801513).
+    "T07": ("quick on the obvious", "careful on the hard"),
+    "T08": ("flags advice for a person", "still gives the verdict"),
+    "T09": ("same facts, same verdict", "a real difference changes the verdict"),
+    "T10": ("judges the exact size", "an equivalent wording still matches"),
+    "T11": ("makes acceptances earn their place", "doesn't reject by default"),
+    "T12": ("checks the version and the date", "a matching version speaks to the statement"),
+    "T15": ("gives the answer and stops", "takes the steps a hard case needs"),
 }
 
 
@@ -67,6 +76,20 @@ def _cost(args: argparse.Namespace) -> int:
     return 0
 
 
+def _readout(args: argparse.Namespace) -> int:
+    run_dir = Path(args.run)
+    if not (run_dir / "batch-report.json").exists():
+        print(f"REFUSED: no batch-report.json in {run_dir.name}", file=sys.stderr)
+        return 2
+    data, md = readout(run_dir, [Path(p) for p in (args.compare or [])])
+    out = Path(args.out) if args.out else run_dir
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "readout.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
+    (out / "readout.md").write_text(md, encoding="utf-8")
+    print(md)
+    return 0
+
+
 def _write(args: argparse.Namespace) -> int:
     cfg = WriteConfig(
         plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
@@ -76,6 +99,8 @@ def _write(args: argparse.Namespace) -> int:
         pool=Path(args.pool) if args.pool else None,
         exemplar_repo=Path(args.exemplar_repo) if args.exemplar_repo else None,
         exemplar_commit=args.exemplar_commit, exemplar_files=tuple(args.exemplar_files or ()),
+        stuck_repo=Path(args.stuck_repo) if args.stuck_repo else None, stuck_commit=args.stuck_commit,
+        stop_after_minutes=args.stop_after_minutes,
     )
     try:
         result = run_write(cfg)
@@ -261,7 +286,16 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
     w.add_argument("--exemplar-commit", default=None)
     w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")
+    w.add_argument("--stuck-repo", default=None, help="aspire-si checkout for the frozen stuck rule (default: --exemplar-repo)")
+    w.add_argument("--stuck-commit", default=None, help="commit for the frozen stuck rule (default: --exemplar-commit)")
+    w.add_argument("--stop-after-minutes", type=float, default=None, help="no new slot starts after this many minutes")
     w.set_defaults(func=_write)
+
+    ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")
+    ro.add_argument("--run", required=True, help="the run's output directory (holding batch-report.json)")
+    ro.add_argument("--compare", nargs="*", default=None, help="earlier run directories to compare with")
+    ro.add_argument("--out", default=None, help="write readout.json and readout.md here (default: the run directory)")
+    ro.set_defaults(func=_readout)
     return p
 
 

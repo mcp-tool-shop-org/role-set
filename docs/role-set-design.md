@@ -150,11 +150,15 @@ The critic is held loaded (`keep_alive`) for the window and unloaded (`keep_aliv
 uses the card in the window, and no switchyard 5090 leg is booked over a pod session. `write` refuses to start
 without a `--grant` token and a fresh watchdog heartbeat, the same guard shape as switchyard's runner.
 
-**Andon on the drop rate.** If more than 20% of the slots attempted so far are dropped (counted once at least 10
-slots have run), or any one lesson has three dropped slots, `write` halts and reports. After a halt no new slot
-starts; slots already running finish: a high drop rate means the prompt or the pack is wrong, and
-retries would burn pod time. Every `write` ends, halt included, with a reminder to shut the pod down. offrig's
-deadline watchdog is the backstop, not the plan.
+**Andon per lesson; the run stops only on a systemic signal.** Three dropped slots end that lesson: its remaining
+slots are skipped and the run moves on to the next lesson. The whole run stops only on a systemic signal: two
+lessons in a row halting on the same refusal code, or more than 20% of the last 10 writer calls failing to parse or
+reach the writer. A time budget (`--stop-after-minutes`) starts no new slot after it; running slots finish. Every
+halt is logged with its reason (`log.jsonl`). Every writer call, accepted or refused, is kept in `drafts.jsonl` with
+its raw text, tokens, latency, outcome, glyphs normalised and the frozen stuck rule's measures; refused drafts also
+go to `refusals.jsonl`. `role-set readout` reports per lesson and kind, so a failed run reads like a passing one.
+The maintainer's rule for paid runs (2026-10-11): the hour returns diagnosable data either way. Every `write`
+ends, halt included, with a reminder to shut the pod down; offrig's deadline watchdog is the backstop, not the plan.
 
 - For verdict-bearing items (C, D, verdict-type E): the critic gets the material and the statement only, and
   must return VERDICT and DECIDING. For two-turn D items, each turn is checked with the material available

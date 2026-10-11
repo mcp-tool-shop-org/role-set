@@ -116,24 +116,43 @@ def test_gate_refusals_critic_mismatch_and_role_words(tmp_path: Path):
     assert out4.refusals[0]["code"] == "AGAINST" and "FRAMING_REUSED" in out4.refusals[0]["detail"]
 
 
-def test_andon_halts_on_the_drop_share(tmp_path: Path):
-    slots = plan_lesson("T02", SIDES, seed=0)
-    r, _, _ = _runner(tmp_path, gates=_gates(refuse_ids={s.id for s in slots if s.kind == "A"}))
-    with pytest.raises(RunHalted, match="andon"):
-        r.run(slots, {"T02": SIDES})
-    status = json.loads((tmp_path / "out" / "status.json").read_text(encoding="utf-8"))
-    assert status["halted"].startswith("andon") and status["dropped"] >= 1
+def _two_lessons(r):
+    # T03 borrows T02's lesson text so its warm-up passes with the mock writer; the mock critic only knows T02, and these
+    # tests are about the andon, so they run without it.
+    r.pack = {**r.pack, "traits/T03.md": PACK["traits/T02.md"]}
+    r.critic = None
+    t2, t3 = plan_lesson("T02", SIDES, seed=0), plan_lesson("T03", SIDES, seed=0)
+    return t2, t3, {"T02": SIDES, "T03": SIDES}
+
+
+def test_a_lesson_halt_ends_that_lesson_and_the_run_moves_on(tmp_path: Path):
+    r, _, _ = _runner(tmp_path)
+    t2, t3, sides = _two_lessons(r)
+    r.gates = _gates(refuse_ids={s.id for s in t2 if s.kind == "A"})
+    outcomes = r.run(t2 + t3, sides)
+    assert r.status.halted is None and r.status.lesson_halts == {"T02": {"reason": "3 dropped slots", "code": "GATE"}}
+    assert sum(o.accepted for o in outcomes if o.slot_id.startswith("T03")) == 40
+    assert r.status.skipped == {"lesson T02 halted": 37}
+    log = [json.loads(line) for line in (tmp_path / "out" / "log.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [a["lesson"] for a in log if a["action"] == "lesson_halt"] == ["T02"]
     assert (tmp_path / "out" / "batch-report.json").exists()
 
-
-def test_warmup_failure_halts_before_any_slot(tmp_path: Path):
+def test_a_failed_warmup_halts_its_lesson_before_any_slot(tmp_path: Path):
     r, writer, _ = _runner(tmp_path)
     writer.__class__.__call__  # noqa: B018 - the writer is replaced below
     r.writer = lambda messages, seed=0: types.SimpleNamespace(text="not json", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
-    with pytest.raises(RunHalted, match="warm-up"):
-        r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES})
-    assert r.status.attempted == 0
+    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES})
+    assert r.status.attempted == 0 and r.status.lesson_halts["T02"]["code"] == "WARMUP" and r.status.skipped == {"lesson T02 halted": 40}
 
+
+def test_two_lessons_halting_on_one_code_is_systemic(tmp_path: Path):
+    r, _, _ = _runner(tmp_path)
+    t2, t3, sides = _two_lessons(r)
+    r.gates = _gates(refuse_ids={s.id for s in t2 + t3 if s.kind == "A"})
+    with pytest.raises(RunHalted, match="systemic: lessons T02 and T03 both halted on GATE"):
+        r.run(t2 + t3, sides)
+    report = json.loads((tmp_path / "out" / "batch-report.json").read_text(encoding="utf-8"))
+    assert report["status"]["halted"].startswith("systemic") and set(report["status"]["lesson_halts"]) == {"T02", "T03"}
 
 def test_concurrency_path_and_truth_checks(tmp_path: Path):
     r, _, _ = _runner(tmp_path, concurrency=3)
@@ -152,7 +171,7 @@ def test_concurrency_path_and_truth_checks(tmp_path: Path):
 
 def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
-                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "LESSON_COPY"}
+                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "LESSON_COPY", "TRANSPORT"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
 
 
@@ -192,22 +211,24 @@ def test_a_retry_carries_the_spent_wording_and_the_run_avoids_it(tmp_path: Path)
     assert "a reader holds the page not a memory" in r.avoid
 
 
-def test_the_drop_share_waits_for_a_sample_and_a_halt_starts_no_new_slot(tmp_path: Path):
+def test_two_drops_finish_the_lesson_and_a_halted_lesson_starts_no_new_slot(tmp_path: Path):
     slots = plan_lesson("T02", SIDES, seed=0)
     a_ids = [s.id for s in slots if s.kind == "A"]
-    # Two early drops: once 25% of 4 slots and a halt; now the share waits for 10 slots and the run finishes.
     r, _, _ = _runner(tmp_path / "a", gates=_gates(refuse_ids=set(a_ids[:2])))
     outcomes = r.run(slots, {"T02": SIDES})
-    assert r.status.halted is None and r.status.dropped == 2 and sum(o.accepted for o in outcomes) == 38
+    assert r.status.halted is None and not r.status.lesson_halts and r.status.dropped == 2 and sum(o.accepted for o in outcomes) == 38
 
-    # Every A slot fails: the lesson cap halts at the third drop, and with two workers no slot starts after it.
+    # Every A slot fails: the lesson cap halts T02 at its third drop; with two workers at most one more slot was running.
     r2, _, _ = _runner(tmp_path / "b", gates=_gates(refuse_ids=set(a_ids)), concurrency=2)
-    with pytest.raises(RunHalted, match="lesson T02 drops 3"):
-        r2.run(slots, {"T02": SIDES})
-    assert r2.status.attempted <= 4 and r2.status.dropped <= 4
-    status = json.loads((tmp_path / "b" / "out" / "status.json").read_text(encoding="utf-8"))
-    assert sum(1 for a in status["actions"] if a["action"] == "halt") == 1
+    r2.run(slots, {"T02": SIDES})
+    assert r2.status.attempted <= 4 and r2.status.lesson_halts["T02"]["code"] == "GATE"
+    assert sum(r2.status.skipped.values()) == 40 - r2.status.attempted
 
+
+def test_the_time_budget_starts_no_new_slot_after_it(tmp_path: Path):
+    r, _, _ = _runner(tmp_path)
+    r.run(plan_lesson("T02", SIDES, seed=0), {"T02": SIDES}, stop_after_s=0)
+    assert r.status.attempted == 0 and r.status.skipped == {"time budget": 40}
 
 def test_the_flaw_check_is_advisory_unless_gated(tmp_path: Path):
     slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "C" and s.verdict != "cannot_tell")
