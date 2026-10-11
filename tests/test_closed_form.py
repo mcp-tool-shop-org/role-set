@@ -16,12 +16,12 @@ SETTINGS = {"carry": "paraphrase", "share": 0.5, "distractor_max": 0.8, "distrac
 
 def test_the_brief_states_the_runs_carry_setting():
     para = closed_form_carry_rule(SETTINGS)
-    assert "in its own words" in para and "at least 50%" in para and "no run of 8 words" in para
+    assert "in its own words" in para and "at least 50%" in para and "a run of 8 words from this item's question, thinking or reply" in para
     assert "word for word" not in para
     verb = closed_form_carry_rule({**SETTINGS, "carry": "verbatim"})
     assert "word for word" in verb and "own words" not in verb
     either = closed_form_carry_rule({**SETTINGS, "carry": "either", "share": 0.6, "span": 10})
-    assert "word for word or" in either and "at least 60%" in either and "no run of 10 words" in either
+    assert "word for word or" in either and "at least 60%" in either and "a run of 10 words" in either
     assert "as the run's gates require" in closed_form_carry_rule(None)
 
 

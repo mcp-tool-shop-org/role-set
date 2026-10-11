@@ -138,9 +138,10 @@ def closed_form_carry_rule(closed_form: dict | None) -> str:
     if not closed_form:
         return "'variant_correct' is the right option's text and carries one of your key_points as the run's gates require."
     share = f"at least {round(closed_form['share'] * 100)}% of that key point's content words"
-    span = f"no run of {closed_form['span']} words from your reply or thinking"
-    paraphrase = (f"says one of your key_points in its own words, keeping {share}, and repeats {span}. Each distractor stays "
-                  f"clearly further from every key point than the right option is, and none is a near-copy of one.")
+    span = (f"Neither the variant's question nor any option repeats a run of {closed_form['span']} words from this item's "
+            "question, thinking or reply.")
+    paraphrase = (f"says one of your key_points in its own words, keeping {share}. {span} Each distractor stays clearly further "
+                  f"from every key point than the right option is, and none is a near-copy of one.")
     carry = closed_form["carry"]
     if carry == "verbatim":
         return ("'variant_correct' is the right option's text and carries one of your key_points word for word, inside a full "
