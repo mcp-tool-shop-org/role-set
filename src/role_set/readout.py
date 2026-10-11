@@ -105,6 +105,8 @@ def summarize(run_dir: Path) -> dict:
         "run": "/".join(run_dir.parts[-3:]) if run_dir.name in ("rehearsal", "mock") else run_dir.name,
         "halted": status.get("halted"),
         "lesson_halts": status.get("lesson_halts", {}),
+        "cell_halts": status.get("cell_halts", {}),
+        "warmups": dict(Counter("passed" if w.get("passed") else "missed" for w in _lines(run_dir / "warmups.jsonl"))),
         "kinds_off": status.get("kinds_off", {}),
         "skipped": status.get("skipped", {}),
         "batch_check": report.get("batch_check"),
@@ -136,6 +138,10 @@ def markdown(main: dict, others: list[dict]) -> str:
     def why(v: dict) -> str:
         return "; ".join(f"{r}: {n}" for r, n in v.get("skipped_by_reason", {}).items()) or "-"
 
+    if main.get("cell_halts"):
+        lines += ["", "Lesson-kind cells halted: " + "; ".join(f"{c} ({h['rule']})" for c, h in sorted(main["cell_halts"].items())) + "."]
+    if main.get("warmups"):
+        lines += ["", f"Warm-ups: {main['warmups'].get('passed', 0)} passed, {main['warmups'].get('missed', 0)} missed."]
     if main.get("kinds_off"):
         lines += ["", "Kinds switched off: " + "; ".join(f"{k} ({r})" for k, r in main["kinds_off"].items()) + "."]
     lines += ["", "| Lesson | Accepted | Dropped | Skipped | Accept rate | Skipped by reason |", "|---|---|---|---|---|---|"]

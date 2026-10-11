@@ -25,14 +25,15 @@ from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
 from role_set.critic import compare_answer, compare_flaw, compare_trait, compare_verdict, flaw_messages, trait_messages, verdict_messages
 from role_set.gates import Gates
 from role_set.plan import Slot
-from role_set.prompts import kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
+from role_set.prompts import FIELDS, kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
 from role_set.transport import TransportError
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
-ANDON_LESSON_DROPS = 3  # ends that lesson; the run moves on to the next one
-# The whole run stops only on a systemic signal: two lessons in a row halting on the same refusal code, or more
+ANDON_CELL_DROPS = 3  # ends that (lesson, kind) cell; the lesson's other kinds and the run go on
+# The whole run stops only on a systemic signal: every kind switched off (two cells of different lessons in a row
+# halting on the same kind and rule switch that kind off), or more
 # than 20% of the last 10 writer calls failing to parse or reach the writer (the maintainer's rule for paid runs).
 SYSTEMIC_WINDOW = 10
 SYSTEMIC_RATE = 0.20
@@ -40,6 +41,72 @@ SYSTEMIC_CODES = ("PARSE", "TRANSPORT")
 # check_against codes whose message names spent wording; a retry carries that wording as a do-not-use list.
 SPENT_CODES = ("SPAN_REUSED", "B_PHRASE_REUSED", "OPENING_REUSED", "FRAMING_REUSED")
 WARMUP_MISSES = 2
+WARMUP_PARTS = ("main_point", "counterweight", "deciding_case")
+# Words of a trait name that don't identify the trait ("knows your limits" is identified by "limits").
+WARMUP_FILLER = {"you", "your", "are", "the", "and", "don't", "doesn't", "doesn", "does", "goes", "keeps", "takes", "knows",
+                 "makes", "what", "things", "just", "about", "from", "into", "round", "take", "material"}
+
+
+REPLY_OPENING_WORDS = 6
+REPLY_OPENING_MAX = 2  # accepted items of a lesson that may share a reply's opening words, as the gates allow for C/D/E prompts
+
+
+def reply_opening_reused(row: dict, accepted: list[dict]) -> str | None:
+    """The first six words of a kind-A reply, when two accepted kind-A items of the lesson already open that way. The
+    gates check the openings of C, D and E prompts; R&D found 21 of the pilot's 46 kind-A replies opening "As a verifier, I"."""
+
+    def opening(r: dict) -> str:
+        words = re.findall(r"[a-z0-9']+", (r.get("turns") or [{}])[0].get("reply", "").lower())
+        return " ".join(words[:REPLY_OPENING_WORDS]) if len(words) >= REPLY_OPENING_WORDS else ""
+
+    if row.get("kind") != "A":
+        return None
+    op = opening(row)
+    if op and sum(1 for a in accepted if a.get("lesson") == row.get("lesson") and a.get("kind") == "A" and opening(a) == op) >= REPLY_OPENING_MAX:
+        return op
+    return None
+
+
+def row_shaped(fields: dict, slot: Slot) -> bool:
+    """The writer copied an exemplar's finished-row shape instead of returning the fields: 45 of the 235B pilot's kind-B
+    drafts came back as {kind, answer, turns}."""
+
+    wanted = FIELDS[kind_key(slot)]
+    return any(k in fields for k in ("turns", "kind")) and "turns" not in wanted and not all(k in fields for k in wanted)
+
+
+def warmup_terms(trait_name: str) -> set[str]:
+    """The content words of a trait's name: the warm-up's restatement names the trait by at least one of them."""
+
+    words = re.findall(r"[a-z']+", trait_name.lower())
+    return {w for w in words if len(w) >= 3 and w not in WARMUP_FILLER}
+
+
+# The dispatch order of kinds within each round of interleave(): B last, since it is the kind most likely to fail on
+# output shape and, first in the plan, it once ended every lesson before any other kind ran.
+KIND_ORDER = ("A", "C", "D", "E", "B")
+
+
+def cell_key(lesson: str, kind: str) -> str:
+    return f"{lesson}/{kind}"
+
+
+def interleave(slots: list[Slot]) -> list[Slot]:
+    """The plan's slots in dispatch order: round by round, one slot from every (lesson, kind) cell, kinds in KIND_ORDER
+    and lessons in plan order. Each cell keeps its own order. A short budget then samples every lesson and kind."""
+
+    lessons: list[str] = []
+    position: dict[tuple[str, str], int] = {}
+    keyed = []
+    for s in slots:
+        if s.lesson not in lessons:
+            lessons.append(s.lesson)
+        cell = (s.lesson, s.kind)
+        position[cell] = position.get(cell, -1) + 1
+        rank = KIND_ORDER.index(s.kind) if s.kind in KIND_ORDER else len(KIND_ORDER)
+        keyed.append(((position[cell], rank, lessons.index(s.lesson)), s))
+    return [s for _, s in sorted(keyed, key=lambda x: x[0])]
+
 
 # Refusal code -> what the builder is told, with the governing rule. Pinned by a test.
 SUGGESTIONS = {
@@ -57,6 +124,8 @@ SUGGESTIONS = {
     "AGAINST": "{detail}",
     "PARSE": "The reply was not one JSON object with the required fields: {detail}.",
     "TRANSPORT": "The writer could not be reached ({detail}); the slot ends.",
+    "SHAPE": "The reply is a finished row (kind, turns, answer), the exemplars' shape. Return one flat object with exactly these fields instead: {detail}.",
+    "REPLY_OPENING": "The reply opens like two accepted items of this trait ('{detail}'). Open it another way, in this item's own words.",
     "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
 }
 
@@ -79,8 +148,9 @@ class Status:
     concurrency: int = 1
     actions: list = field(default_factory=list)
     halted: str | None = None  # a systemic stop: the whole run
-    lesson_halts: dict = field(default_factory=dict)  # lesson -> {"reason", "kind", "rule"}: that lesson stopped, the run went on
-    kinds_off: dict = field(default_factory=dict)  # kind -> rule: switched off after two lessons in a row halted on it
+    lesson_halts: dict = field(default_factory=dict)  # lesson -> {"reason", "kind": "*", "rule": "WARMUP"}: its warm-up failed
+    cell_halts: dict = field(default_factory=dict)  # "T09/B" -> {"reason", "kind", "rule"}: that lesson's kind stopped, the rest went on
+    kinds_off: dict = field(default_factory=dict)  # kind -> rule: switched off after two lessons' cells in a row halted on it
     skipped: dict = field(default_factory=dict)  # reason -> slots never started
 
     def as_dict(self, now: float) -> dict:
@@ -98,6 +168,7 @@ class Status:
             "concurrency": self.concurrency,
             "halted": self.halted,
             "lesson_halts": self.lesson_halts,
+            "cell_halts": self.cell_halts,
             "kinds_off": self.kinds_off,
             "skipped": self.skipped,
             "actions": self.actions[-200:],
@@ -291,7 +362,7 @@ class Runner:
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
         self.accepted: list[dict] = []
-        self.lesson_drops: dict[str, int] = {}
+        self.cell_drops: dict[tuple[str, str], int] = {}
         self.batch_check: str | None = None  # "clean" or "REFUSED: ..." once a run finishes unhalted
         self.lock = threading.RLock()  # re-entrant: logging runs both inside and outside the accept lock
         self.out_dir.mkdir(parents=True, exist_ok=True)
@@ -302,7 +373,7 @@ class Runner:
         self.lesson_codes: dict[str, Counter] = {}
         self.recent_calls: deque = deque(maxlen=SYSTEMIC_WINDOW)
         self.halt_order: list[tuple[str, tuple[str, str]]] = []
-        self.lesson_drop_keys: dict[str, Counter] = {}
+        self.cell_drop_keys: dict[tuple[str, str], Counter] = {}
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
@@ -331,7 +402,10 @@ class Runner:
         self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"], detail=refusal["detail"][:200])
         # Every refused draft is kept, so a failure can be read afterwards (the third rehearsal's GATE refusals
         # could not be diagnosed because only accepted items were written).
-        self._append("refusals.jsonl", {"slot": slot.id, "attempt": attempt, "code": refusal["code"], "detail": refusal["detail"], "draft": draft})
+        record = {"slot": slot.id, "attempt": attempt, "code": refusal["code"], "detail": refusal["detail"], "draft": draft}
+        if refusal.get("critic_raw") is not None:
+            record["critic_raw"] = refusal["critic_raw"]
+        self._append("refusals.jsonl", record)
 
     def _record_call(self, slot: Slot, attempt: int, c, outcome: str, glyphs: int, material) -> None:
         """One line per writer call, on both paths: the raw draft, tokens, latency, the outcome, glyphs normalised, and
@@ -364,27 +438,34 @@ class Runner:
         self.status.tokens_completion += completion.completion_tokens or 0
 
     # ---- warm-up ----------------------------------------------------------------------------------------------
-    def warmup(self, lesson: str, sides: tuple[str, str]) -> bool:
-        """The builder restates the trait before it writes. Two misses stop the trait."""
+    def warmup(self, lesson: str) -> bool:
+        """The builder restates the trait before it writes: all three parts answered, and the trait named by a content
+        word of its own name. Two misses stop the trait. Every reply is kept in warmups.jsonl, passed or missed.
+
+        The 235B pilot's check also demanded the planner's side labels ("quick on the obvious"), which the writer is
+        never shown, and filler words: T07 and T10 could not pass at any seed, and 21 of 64 chunks lost their warm-up."""
 
         lesson_text = self.pack.get(f"traits/{lesson}.md", "")
-        must = {w for w in re.findall(r"[a-z]{4,}", (self.trait_names.get(lesson, "") + " " + " ".join(sides)).lower())}
-        misses = 0
+        must = warmup_terms(self.trait_names.get(lesson, ""))
         for attempt in range(1, WARMUP_MISSES + 1):
             c = self.writer(warmup_messages(self.pack, lesson), seed=attempt)
             self._count_tokens(c)
+            answer: dict = {}
             try:
                 answer = parse_json_object(c.text)
-                text = " ".join(str(answer.get(k, "")) for k in ("main_point", "counterweight", "deciding_case")).lower()
             except ValueError:
-                text = ""
-            hit = {w for w in must if w in text}
-            if len(hit) >= max(1, len(must) // 3) and all(answer.get(k) for k in ("main_point", "counterweight", "deciding_case")):
+                pass
+            text = " ".join(str(answer.get(k, "")) for k in WARMUP_PARTS).lower()
+            hit = {w for w in must if re.search(rf"\b{re.escape(w)}", text)}
+            empty = [k for k in WARMUP_PARTS if not str(answer.get(k, "")).strip()]
+            passed = bool(hit or not must) and not empty
+            self._append("warmups.jsonl", {"lesson": lesson, "attempt": attempt, "passed": passed, "terms": sorted(hit),
+                                           "empty_parts": empty, "reply": c.text})
+            if passed:
                 self._log("warmup_pass", lesson=lesson, attempt=attempt, terms=sorted(hit))
                 (self.out_dir / f"warmup-{lesson}.json").write_text(json.dumps({"attempt": attempt, "answer": answer, "lesson_chars": len(lesson_text)}, indent=1), encoding="utf-8")
                 return True
-            misses += 1
-            self._log("warmup_miss", lesson=lesson, attempt=attempt, missing=sorted(must - hit)[:6])
+            self._log("warmup_miss", lesson=lesson, attempt=attempt, missing=sorted(must)[:6], empty_parts=empty)
         return False
 
     # ---- one slot ---------------------------------------------------------------------------------------------
@@ -432,7 +513,7 @@ class Runner:
                     if v.code != "VOID":
                         break
                     self._log("critic_void", slot=slot.id, detail=v.detail)
-                verdicts.append(v)
+                verdicts.append((v, c.text))
                 if not v.ok:
                     break
             if slot.kind == "C":
@@ -440,24 +521,25 @@ class Runner:
                 self._count_tokens(c)
                 f = compare_flaw(c.text, row["planted_flaw"])
                 if f.ok or self.flaw_gate:
-                    verdicts.append(f)
+                    verdicts.append((f, c.text))
                 else:
                     # Advisory until a control run shows the critic agrees on flaws (Window A: 9 of 24): logged, counted, never a refusal.
                     self.status.critic_asked += 1
-                    self._log("flaw_advisory", slot=slot.id, detail=f.detail)
+                    self._log("flaw_advisory", slot=slot.id, detail=f.detail, critic_raw=c.text[:2000])
         elif slot.kind == "B":
             c = self.critic([{"role": "system", "content": "Solve the puzzle. Answer with the answer only."}, {"role": "user", "content": row["turns"][0]["user"]}])
             self._count_tokens(c)
-            verdicts.append(compare_answer(c.text, row["answer"]))
+            verdicts.append((compare_answer(c.text, row["answer"]), c.text))
         c = self.critic(trait_messages(_teaching_text(row), self.trait_names))
         self._count_tokens(c)
-        verdicts.append(compare_trait(c.text, slot.lesson))
-        for v in verdicts:
+        verdicts.append((compare_trait(c.text, slot.lesson), c.text))
+        for v, raw in verdicts:
             self.status.critic_asked += 1
             if v.ok:
                 self.status.critic_agree += 1
             else:
-                return self._refusal(v.code, v.detail)
+                # The critic's own words are kept with the refusal, so a mismatch can be adjudicated afterwards.
+                return {**self._refusal(v.code, v.detail), "critic_raw": raw}
         return None
 
     def run_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> Outcome:
@@ -492,6 +574,8 @@ class Runner:
                 fields, glyphs = normalize_glyphs(parse_json_object(c.text))
             except ValueError as e:
                 refusal = self._refusal("PARSE", str(e))
+            if refusal is None and row_shaped(fields, slot):
+                refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
             if refusal is None:
                 if slot.kind == "C" and "planted_flaw" not in fields:
                     fields["planted_flaw"] = slot_flaw(slot)
@@ -524,9 +608,12 @@ class Runner:
                         reasons = self.gates.check_against(row, self.accepted)
                     except self.gates.error_type() as e:
                         reasons = [("AGAINST", str(e))]
+                    stamp = reply_opening_reused(row, self.accepted)
                     if reasons:
                         code, msg = reasons[0]
                         refusal = self._refusal("AGAINST", f"{code}: {msg}")
+                    elif stamp:
+                        refusal = self._refusal("REPLY_OPENING", stamp)
                     else:
                         self._accept(slot, row, c, attempt, glyphs=glyphs)
                         outcome.accepted, outcome.row = True, row
@@ -573,36 +660,42 @@ class Runner:
 
     # ---- the batch --------------------------------------------------------------------------------------------
     def _andon(self, slot: Slot, out: Outcome | None = None) -> None:
-        """A drop counts toward its lesson. Three drops end that lesson (its remaining slots are skipped) and the run
-        moves on. The lesson's halt key is the (kind, specific rule) most of its drops fell on."""
+        """A drop counts toward its (lesson, kind) cell. Three drops end that cell: its remaining slots are skipped and
+        the lesson's other kinds go on. The cell's halt key is the specific rule most of its drops fell on.
+
+        The 235B pilot's per-lesson andon put each lesson's first kind (B) in charge of the whole lesson: B failed on
+        its output shape, every lesson ended inside B, and C, D, E and A were never reached."""
 
         self.status.dropped += 1
-        self.lesson_drops[slot.lesson] = self.lesson_drops.get(slot.lesson, 0) + 1
-        keys = self.lesson_drop_keys.setdefault(slot.lesson, Counter())
+        cell = (slot.lesson, slot.kind)
+        self.cell_drops[cell] = self.cell_drops.get(cell, 0) + 1
+        keys = self.cell_drop_keys.setdefault(cell, Counter())
         for r in (out.refusals if out else []):
-            keys[(slot.kind, refusal_rule(r))] += 1
-        if slot.lesson not in self.status.lesson_halts and self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS:
-            key = keys.most_common(1)[0][0] if keys else (slot.kind, "NONE")
-            self._halt_lesson(slot.lesson, f"{ANDON_LESSON_DROPS} dropped slots", key)
+            keys[refusal_rule(r)] += 1
+        if cell_key(*cell) not in self.status.cell_halts and self.cell_drops[cell] >= ANDON_CELL_DROPS:
+            rule = keys.most_common(1)[0][0] if keys else "NONE"
+            self._halt_cell(slot.lesson, slot.kind, f"{ANDON_CELL_DROPS} dropped slots", rule)
 
-    def _halt_lesson(self, lesson: str, reason: str, key: tuple[str, str]) -> None:
-        """Two lessons in a row halting on the same (kind, rule) switch that kind off for the remaining lessons; the
-        other kinds carry on. The run stops only when every kind in the plan is off (or on the PARSE/TRANSPORT rate)."""
+    def _halt_cell(self, lesson: str, kind: str, reason: str, rule: str) -> None:
+        """Two cells of different lessons halting in a row on the same (kind, rule) switch that kind off for the rest of
+        the run; the other kinds carry on. The run stops only when every kind in the plan is off (or on the
+        PARSE/TRANSPORT rate). A failed warm-up is never part of this: it ends its own lesson and nothing else."""
 
-        kind, rule = key
-        self.status.lesson_halts[lesson] = {"reason": reason, "kind": kind, "rule": rule}
-        self.halt_order.append((lesson, key))
-        self._log("lesson_halt", lesson=lesson, reason=reason, kind=kind, rule=rule)
-        if len(self.halt_order) >= 2 and self.halt_order[-1][1] == self.halt_order[-2][1]:
-            switched = sorted(self.plan_kinds) if kind == "*" else [kind]
-            for k in switched:
-                if k not in self.status.kinds_off:
-                    self.status.kinds_off[k] = rule
-                    self._log("kind_off", kind=k, rule=rule, lessons=[self.halt_order[-2][0], lesson])
+        self.status.cell_halts[cell_key(lesson, kind)] = {"reason": reason, "kind": kind, "rule": rule}
+        self._log("cell_halt", lesson=lesson, kind=kind, reason=reason, rule=rule)
+        prev = self.halt_order[-1] if self.halt_order else None
+        self.halt_order.append((lesson, (kind, rule)))
+        if prev and prev[1] == (kind, rule) and prev[0] != lesson and kind not in self.status.kinds_off:
+            self.status.kinds_off[kind] = rule
+            self._log("kind_off", kind=kind, rule=rule, lessons=[prev[0], lesson])
             if self.plan_kinds and self.plan_kinds <= set(self.status.kinds_off) and self.status.halted is None:
                 self.status.halted = "systemic: every kind is switched off (" + "; ".join(f"{k}: {r}" for k, r in sorted(self.status.kinds_off.items())) + ")"
                 self._log("halt", reason=self.status.halted)
                 raise RunHalted(self.status.halted)
+
+    def _halt_lesson_warmup(self, lesson: str) -> None:
+        self.status.lesson_halts[lesson] = {"reason": "warm-up failed: the builder could not restate the trait", "kind": "*", "rule": "WARMUP"}
+        self._log("lesson_halt", lesson=lesson, reason=self.status.lesson_halts[lesson]["reason"], kind="*", rule="WARMUP")
 
     def _skip(self, slot: Slot) -> str | None:
         if self.status.halted is not None:
@@ -610,12 +703,14 @@ class Runner:
         if slot.kind in self.status.kinds_off:
             return f"kind {slot.kind} systemic: {self.status.kinds_off[slot.kind]}"
         if slot.lesson in self.status.lesson_halts:
-            return f"lesson {slot.lesson} halted"
+            return f"lesson {slot.lesson} warm-up failed"
+        if cell_key(slot.lesson, slot.kind) in self.status.cell_halts:
+            return f"{cell_key(slot.lesson, slot.kind)} halted"
         if self.deadline is not None and self.clock() >= self.deadline:
             return "time budget"
         return None
 
-    def run(self, slots: list[Slot], sides: dict[str, tuple[str, str]], *, stop_after_s: float | None = None) -> list[Outcome]:
+    def run(self, slots: list[Slot], *, stop_after_s: float | None = None) -> list[Outcome]:
         outcomes: list[Outcome] = []
         if stop_after_s is not None:
             self.deadline = self.clock() + stop_after_s  # no new slot starts after this; running ones finish
@@ -624,13 +719,11 @@ class Runner:
         for s in slots:
             if s.lesson not in lessons:
                 lessons.append(s.lesson)
-        try:
-            for lesson in lessons:
-                if not self.warmup(lesson, sides.get(lesson, ("", ""))):
-                    self._halt_lesson(lesson, "warm-up failed: the builder could not restate the trait", ("*", "WARMUP"))
-        except RunHalted:
-            self._finish(outcomes, lessons)
-            raise
+        for lesson in lessons:
+            if not self.warmup(lesson):
+                self._halt_lesson_warmup(lesson)
+        # Every lesson and kind is reached early, so a short budget still samples every failure mode.
+        slots = interleave(slots)
 
         def one(slot: Slot) -> Outcome:
             with self.lock:

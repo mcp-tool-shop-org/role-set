@@ -228,7 +228,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
-        outcomes = runner.run(slots, sides, stop_after_s=budget)
+        outcomes = runner.run(slots, stop_after_s=budget)
     except RunHalted as e:
         halted = str(e)
         outcomes = []
