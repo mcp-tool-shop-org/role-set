@@ -199,11 +199,6 @@
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 90
-            },
-            {
-              "in": "closed_form_variant",
-              "kind": "raise",
               "line": 94
             },
             {
@@ -214,22 +209,12 @@
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 105
+              "line": 104
             },
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 108
-            },
-            {
-              "in": "three_lines",
-              "kind": "raise",
-              "line": 138
-            },
-            {
-              "in": "three_lines",
-              "kind": "raise",
-              "line": 140
+              "line": 107
             },
             {
               "in": "three_lines",
@@ -237,9 +222,14 @@
               "line": 142
             },
             {
-              "in": "verbatim_lines",
+              "in": "three_lines",
               "kind": "raise",
-              "line": 155
+              "line": 144
+            },
+            {
+              "in": "three_lines",
+              "kind": "raise",
+              "line": 146
             },
             {
               "in": "verbatim_lines",
@@ -247,49 +237,49 @@
               "line": 159
             },
             {
+              "in": "verbatim_lines",
+              "kind": "raise",
+              "line": 163
+            },
+            {
               "in": "_require",
               "kind": "raise",
-              "line": 166
+              "line": 170
             },
             {
               "in": "_reply_prose",
               "kind": "raise",
-              "line": 180
+              "line": 184
             },
             {
               "in": "_clean_framing",
               "kind": "raise",
-              "line": 192
+              "line": 196
             },
             {
               "in": "_no_repeated_lines",
               "kind": "raise",
-              "line": 202
+              "line": 206
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 243
+              "line": 247
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 245
+              "line": 249
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 255
+              "line": 259
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 258
-            },
-            {
-              "in": "assemble",
-              "kind": "raise",
-              "line": 261
+              "line": 262
             },
             {
               "in": "assemble",
@@ -299,32 +289,32 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 274
+              "line": 269
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 283
+              "line": 278
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 293
+              "line": 287
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 296
+              "line": 297
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 334
+              "line": 300
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 337
+              "line": 338
             },
             {
               "in": "assemble",
@@ -334,7 +324,7 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 344
+              "line": 345
             },
             {
               "in": "assemble",
@@ -344,20 +334,25 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 373
+              "line": 352
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 375
+              "line": 377
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 395
+              "line": 379
+            },
+            {
+              "in": "assemble",
+              "kind": "raise",
+              "line": 399
             }
           ],
-          "hash": "58992664d68975d11f0e11e6705153f2a00c02e20ae1393f1655afe73adf92d1",
+          "hash": "a1ca268660319b3339295694f0abdd6a24ac538394ab4e63311ab22b4a3c297b",
           "importsFiles": [
             "src/role_set/plan.py"
           ],
@@ -1508,7 +1503,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "0bf4f679fc05e81e27ab0a400aadb41ac979de7db8b15402d301355a4df613be",
+          "hash": "708e2bf88d2aac8799ae42dd3f1fd4f9ae8afb9fb98119ef7249acfcc2a68a18",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -1720,7 +1715,7 @@
               "line": 259
             }
           ],
-          "hash": "55699dc1eadd47a32fe64c25104986644dcf5b4c0cb06d283cf2502a42419581",
+          "hash": "b6c460f842b05f0cc74c18199e98b167714b4dcb3a71ec15e8e6a20316b4d9cb",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -3006,10 +3001,11 @@
             "test_assemble_e_written_and_verdict",
             "test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point",
             "test_slot_flaw_alternates",
+            "test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_across_slots",
             "test_three_lines_and_verbatim",
             "test_trait_name_rules"
           ],
-          "hash": "3d02abbf79c64c0ef6e5238a0046e4ddfd24bc04edab4a418b1cab27ce764781",
+          "hash": "54ad7c9b0ea92ce446db2c7e65303635271a75be18ba3c19222bbbf8af619852",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py"
@@ -3677,7 +3673,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "6d2d69e889ca9f9723339cbf08c342cdc21f9eab",
+    "commit": "a82d8ebee9ccd44e4b01a12c0537d8f35683805e",
     "tracked": 59
   },
   "landings": [
