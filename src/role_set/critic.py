@@ -29,8 +29,10 @@ CRITIC_SYSTEM = (
 # One line per flaw label, as the lessons and the reviewed data use them. Window A (2026-10-11) showed the
 # critic guessing at the bare labels: "caved" read as "guess", "obeyed_material" as "rubber_stamp".
 FLAW_DEFINITIONS = {
-    "rubber_stamp": "accepted the statement without checking it against the material, because it sounded right or someone wanted it",
-    "guess": "filled a gap with an assumption, outside knowledge or a misreading, instead of what the material says",
+    # R&D's pilot-2 key-check: every trace planted as rubber_stamp gave a reason from outside the material, which is
+    # a guess, and the critic named it so. rubber_stamp is now approval with no check at all.
+    "rubber_stamp": "approved without checking: quoted no line of the material and gave no reason beyond agreement (restated the statement, deferred, or said it looks right)",
+    "guess": "gave a reason from outside the material (an assumption, what usually happens, general knowledge) or a misreading, instead of what the material says",
     "loop": "kept re-checking or hunting after the material had settled the claim, or never reached an answer",
     "nitpick": "refused over a trivial difference that doesn't change what the claim says",
     "fix": "rewrote or corrected the material or the statement instead of judging it as written",

@@ -211,10 +211,11 @@ def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes
     assert pins["writer_digest"].startswith("500a") and pins["rehearsal"] is True and pins["grant"] == "G-2" and critic is None
 
     calls, unloaded = [], []
-    monkeypatch.setattr(w, "ollama_chat", lambda endpoint, model, messages, seed=0, num_ctx=0: calls.append((endpoint, model, num_ctx)) or "ok")
+    monkeypatch.setattr(w, "ollama_chat", lambda endpoint, model, messages, temperature=0.0, seed=0, num_ctx=0: calls.append((endpoint, model, temperature, num_ctx)) or "ok")
     monkeypatch.setattr(w, "unload", lambda endpoint, model: unloaded.append(model))
     assert writer([{"role": "user", "content": "x"}]) == "ok"
-    assert calls == [("http://127.0.0.1:11434", "qwen3:8b", w.WRITER_NUM_CTX)] and w.WRITER_NUM_CTX >= 16384
+    # Sampled like the pod's writer: at Ollama's 0 every retry of a slot was the same draft.
+    assert calls == [("http://127.0.0.1:11434", "qwen3:8b", 0.7, w.WRITER_NUM_CTX)] and w.WRITER_NUM_CTX >= 16384
     cleanup()
     assert unloaded == ["qwen3:8b"]
 

@@ -32,6 +32,9 @@ class Completion:
     completion_tokens: int | None
     model: str
     seconds: float
+    # "length" when the reply hit max_tokens: the runner then reads a parse failure as a truncated draft, not a
+    # broken endpoint (pilot 2's five parse failures were kind B drafts cut off at the cap).
+    finish_reason: str | None = None
 
 
 def _post(url: str, body: dict, timeout_s: float) -> dict:
@@ -94,6 +97,7 @@ def chat(
         completion_tokens=usage.get("completion_tokens"),
         model=str(out.get("model") or model),
         seconds=clock() - t0,
+        finish_reason=(out.get("choices") or [{}])[0].get("finish_reason"),
     )
 
 
@@ -134,6 +138,7 @@ def ollama_chat(
         completion_tokens=out.get("eval_count"),
         model=str(out.get("model") or model),
         seconds=clock() - t0,
+        finish_reason=out.get("done_reason"),
     )
 
 

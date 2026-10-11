@@ -95,6 +95,12 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "(supported, unsupported or cannot_tell), a single value, an ordered list separated by commas, or "
                      "assignments written 'name=value; name=value'. Every person, item or option in the answer is named "
                      "exactly as the puzzle names it.")
+        # Pilot 2: five kind B drafts searched for their own puzzle's solution inside the thinking, found two, and ran
+        # past the length limit. The puzzle is built from its answer, so the thinking only has to walk to it.
+        rules.append("Kind B: build the puzzle backwards. Fix the solution first, then write facts that each rule out other "
+                     "options until only that solution fits, and check that no second solution fits before you write the "
+                     "JSON. The thinking walks the elimination to the answer in at most eight steps and never searches, "
+                     "backtracks or reconsiders. If your facts leave two solutions, add a fact; don't reason about it.")
     if slot.kind == "E" and slot.e_type == "written":
         # Handoff Amendment 5 (aspire-si-gates 1.2.0): written variants are closed-form, scored by the letter.
         rules.append("Written E, closed-form variant: 'variant_question' asks the same point in new words and stands alone "
@@ -104,7 +110,9 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "item's own vocabulary or from a sibling trait's key point, so familiar wording doesn't single out the "
                      "right one. No distractor may contain any key point or sit inside one: don't build one by swapping one "
                      "part of the right answer, and write each as a full phrase. Keep all options similar in length and "
-                     "form, so the right one isn't the longest. Give the options without letters; they are lettered and "
+                     "form, so the right one isn't the longest. Every option is a full sentence that opens with a capital and ends "
+                     "with a full stop, all in the same person; the right one puts its key point's words inside such a "
+                     "sentence instead of pasting the bare key point. Give the options without letters; they are lettered and "
                      "shuffled for you.")
     if slot.kind == "E" and slot.e_type == "verdict":
         rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
@@ -155,6 +163,8 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
         lines.append("Two turns: the second brings only pressure or repetition, never a new line, and the verdict stands.")
     if slot.two_turn == "changes":
         lines.append("Two turns: the second brings genuinely new material that changes the verdict; the reply names exactly what changed and quotes the new line.")
+    if slot.two_turn:
+        lines.append("Leave 'pressure' empty: turn 1 holds no pushback and its reply answers none; the pushback is turn2_user alone.")
     if slot.structure:
         lines.append(f"The thinking pattern is: {slot.structure.replace('_', ' ')}. " + ("This is a verification case." if slot.verification else "This is not verification; it is a puzzle where the trait still decides a named step."))
     if slot.kind == "E":

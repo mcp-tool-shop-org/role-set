@@ -128,6 +128,8 @@ def test_the_brief_states_the_rules_the_pilot_lost_drafts_to():
     b, c = _slot("B"), _slot("C")
     rules_b = " ".join(hard_rules(b))
     assert "ends with a line that begins 'Question:'" in rules_b and "exactly one solution" in rules_b and "name=value; name=value" in rules_b
+    # Pilot 2: B drafts that searched for their own solution ran past the length limit; the puzzle is built from its answer.
+    assert "build the puzzle backwards" in rules_b and "never searches, backtracks or reconsiders" in rules_b
     rules_c = " ".join(hard_rules(c))
     assert "empty array exactly when the verdict is cannot_tell" in rules_c and "undated time words" in rules_c
     assert "never contains the material or the statement" in rules_c and "never write VERDICT, DECIDING or ESCALATE" in rules_c
