@@ -94,12 +94,12 @@
         ],
         "importsOnly": []
       },
-      "cohesion": 0.22123,
+      "cohesion": 0.247432,
       "cohesionDropped": false,
       "confidence": "low",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 23,
+      "qualifyingSourceCommits": 25,
       "rebaseline": null
     },
     {
@@ -117,7 +117,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 24,
+      "qualifyingSourceCommits": 26,
       "rebaseline": null
     }
   ],
@@ -130,8 +130,8 @@
         "path": ".gitattributes"
       },
       {
-        "commits": 1,
-        "lines": 74,
+        "commits": 2,
+        "lines": 77,
         "path": ".github/workflows/ci.yml"
       },
       {
@@ -160,8 +160,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 11,
-        "lines": 262,
+        "commits": 12,
+        "lines": 273,
         "path": "atlas/README.md"
       },
       {
@@ -170,18 +170,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 11,
-        "lines": 818,
+        "commits": 12,
+        "lines": 853,
         "path": "atlas/page.json"
       },
       {
-        "commits": 11,
-        "lines": 1590,
+        "commits": 12,
+        "lines": 1742,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 11,
-        "lines": 6249,
+        "commits": 12,
+        "lines": 6489,
         "path": "atlas/structure.json"
       },
       {
@@ -208,6 +208,11 @@
         "commits": 1,
         "lines": 80,
         "path": "docs/runs/2026-10-11-pilot-2.md"
+      },
+      {
+        "commits": 1,
+        "lines": 46,
+        "path": "docs/runs/2026-10-12-pilot-3.md"
       },
       {
         "commits": 4,
@@ -241,7 +246,7 @@
       },
       {
         "commits": 7,
-        "lines": 573,
+        "lines": 586,
         "path": "src/role_set/assemble.py"
       },
       {
@@ -250,8 +255,8 @@
         "path": "src/role_set/autostart.py"
       },
       {
-        "commits": 12,
-        "lines": 398,
+        "commits": 13,
+        "lines": 413,
         "path": "src/role_set/cli.py"
       },
       {
@@ -320,6 +325,11 @@
         "path": "src/role_set/puzzle.py"
       },
       {
+        "commits": 1,
+        "lines": 95,
+        "path": "src/role_set/puzzle_check.py"
+      },
+      {
         "commits": 6,
         "lines": 215,
         "path": "src/role_set/readout.py"
@@ -353,6 +363,16 @@
         "commits": 9,
         "lines": 305,
         "path": "src/role_set/write.py"
+      },
+      {
+        "commits": 1,
+        "lines": 2,
+        "path": "tests/fixtures/puzzle-check/sample.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 2,
+        "path": "tests/fixtures/puzzle-check/sample.models.jsonl"
       },
       {
         "commits": 4,
@@ -421,7 +441,7 @@
       },
       {
         "commits": 2,
-        "lines": 161,
+        "lines": 169,
         "path": "tests/test_pilot2_findings.py"
       },
       {
@@ -443,6 +463,11 @@
         "commits": 2,
         "lines": 422,
         "path": "tests/test_puzzle.py"
+      },
+      {
+        "commits": 1,
+        "lines": 86,
+        "path": "tests/test_puzzle_check.py"
       },
       {
         "commits": 10,
@@ -478,117 +503,89 @@
   },
   "confidence": {
     "level": "low",
-    "reason": "fewer than 30 qualifying commits in the window, and fewer than 25 source files reach 10 revisions"
+    "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-11T10:19:55.944Z",
+  "generatedAt": "2026-10-11T15:20:38.816Z",
   "generatedFrom": {
-    "commit": "0013acd950a5c0ce422b05f7ea716e6cca20fbc3"
+    "commit": "8ec75706451f2974b978e46cdf5261d1dd6cd696"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 8,
-      "shared": 8,
+      "either": 10,
+      "shared": 10,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 8,
-      "shared": 8,
+      "either": 10,
+      "shared": 10,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 8,
-      "shared": 8,
-      "strength": 1
-    },
-    {
-      "a": "atlas/README.md",
-      "b": "tests/test_paid_run_data.py",
       "either": 10,
-      "shared": 5,
-      "strength": 0.5
+      "shared": 10,
+      "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 8,
-      "shared": 8,
+      "either": 10,
+      "shared": 10,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 8,
-      "shared": 8,
-      "strength": 1
-    },
-    {
-      "a": "atlas/page.json",
-      "b": "tests/test_paid_run_data.py",
       "either": 10,
-      "shared": 5,
-      "strength": 0.5
+      "shared": 10,
+      "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 8,
-      "shared": 8,
+      "either": 10,
+      "shared": 10,
       "strength": 1
-    },
-    {
-      "a": "atlas/statistics.json",
-      "b": "tests/test_paid_run_data.py",
-      "either": 10,
-      "shared": 5,
-      "strength": 0.5
-    },
-    {
-      "a": "atlas/structure.json",
-      "b": "tests/test_paid_run_data.py",
-      "either": 10,
-      "shared": 5,
-      "strength": 0.5
     },
     {
       "a": "docs/role-set-design.md",
       "b": "src/role_set/runner.py",
-      "either": 13,
-      "shared": 7,
-      "strength": 0.538462
+      "either": 14,
+      "shared": 8,
+      "strength": 0.571429
     },
     {
       "a": "docs/role-set-design.md",
       "b": "src/role_set/write.py",
-      "either": 10,
-      "shared": 5,
-      "strength": 0.5
+      "either": 11,
+      "shared": 6,
+      "strength": 0.545455
     },
     {
       "a": "docs/role-set-design.md",
       "b": "tests/test_runner.py",
-      "either": 11,
+      "either": 12,
       "shared": 6,
-      "strength": 0.545455
+      "strength": 0.5
     },
     {
-      "a": "src/role_set/cli.py",
-      "b": "src/role_set/write.py",
-      "either": 11,
+      "a": "src/role_set/assemble.py",
+      "b": "src/role_set/prompts.py",
+      "either": 12,
       "shared": 6,
-      "strength": 0.545455
+      "strength": 0.5
     },
     {
       "a": "src/role_set/cli.py",
       "b": "tests/test_cli.py",
-      "either": 10,
+      "either": 11,
       "shared": 7,
-      "strength": 0.7
+      "strength": 0.636364
     },
     {
       "a": "src/role_set/mock.py",
@@ -600,16 +597,9 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
-      "either": 15,
-      "shared": 8,
-      "strength": 0.533333
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "tests/test_paid_run_data.py",
-      "either": 12,
-      "shared": 6,
-      "strength": 0.5
+      "either": 16,
+      "shared": 9,
+      "strength": 0.5625
     },
     {
       "a": "src/role_set/readout.py",
@@ -621,20 +611,20 @@
     {
       "a": "src/role_set/runner.py",
       "b": "tests/test_runner.py",
-      "either": 13,
+      "either": 14,
       "shared": 8,
-      "strength": 0.615385
+      "strength": 0.571429
     },
     {
       "a": "src/role_set/write.py",
       "b": "tests/test_write.py",
-      "either": 8,
-      "shared": 5,
-      "strength": 0.625
+      "either": 9,
+      "shared": 6,
+      "strength": 0.666667
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 17.5,
+    "appliedChangesetLimit": 18.75,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -642,17 +632,17 @@
     "fallenShared": 3,
     "floor": "fallen",
     "floorHeld": false,
-    "floorTrigger": "both",
-    "headDate": "2026-10-11T06:19:52-04:00",
-    "inScopeFiles": 70,
+    "floorTrigger": "revision-depth",
+    "headDate": "2026-10-11T11:20:34-04:00",
+    "inScopeFiles": 75,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 28,
+    "qualifyingCommits": 31,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T10:19:52.000Z",
+    "since": "2026-04-14T15:20:34.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
