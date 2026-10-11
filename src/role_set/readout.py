@@ -51,6 +51,18 @@ def _inputs(receipts: list[dict]) -> dict:
     return out
 
 
+def keyed_letters(rows: list[dict]) -> dict:
+    """Per lesson, how often each letter is keyed in accepted closed-form written variants: the varied-letter rule is
+    otherwise unchecked (R&D on aspire-si #91)."""
+
+    out: dict[str, Counter] = {}
+    for r in rows:
+        key = (r.get("variant") or {}).get("key")
+        if (r.get("quiz") or {}).get("type") == "written" and isinstance(key, dict) and "answer" in key:
+            out.setdefault(r.get("lesson", "?"), Counter())[key["answer"]] += 1
+    return {lesson: dict(c) for lesson, c in sorted(out.items())}
+
+
 def summarize(run_dir: Path) -> dict:
     report = json.loads((run_dir / "batch-report.json").read_text(encoding="utf-8"))
     status, outcomes = report.get("status", {}), report.get("outcomes", [])
@@ -107,6 +119,7 @@ def summarize(run_dir: Path) -> dict:
         "lesson_halts": status.get("lesson_halts", {}),
         "cell_halts": status.get("cell_halts", {}),
         "warmups": dict(Counter("passed" if w.get("passed") else "missed" for w in _lines(run_dir / "warmups.jsonl"))),
+        "keyed_letters": keyed_letters(_lines(run_dir / "accepted.jsonl")),
         "kinds_off": status.get("kinds_off", {}),
         "skipped": status.get("skipped", {}),
         "batch_check": report.get("batch_check"),
@@ -142,6 +155,9 @@ def markdown(main: dict, others: list[dict]) -> str:
         lines += ["", "Lesson-kind cells halted: " + "; ".join(f"{c} ({h['rule']})" for c, h in sorted(main["cell_halts"].items())) + "."]
     if main.get("warmups"):
         lines += ["", f"Warm-ups: {main['warmups'].get('passed', 0)} passed, {main['warmups'].get('missed', 0)} missed."]
+    if main.get("keyed_letters"):
+        lines += ["", "Closed-form keyed letters (accepted written E): " + "; ".join(
+            f"{lesson} " + " ".join(f"{k}{n}" for k, n in sorted(c.items())) for lesson, c in sorted(main["keyed_letters"].items())) + "."]
     if main.get("kinds_off"):
         lines += ["", "Kinds switched off: " + "; ".join(f"{k} ({r})" for k, r in main["kinds_off"].items()) + "."]
     lines += ["", "| Lesson | Accepted | Dropped | Skipped | Accept rate | Skipped by reason |", "|---|---|---|---|---|---|"]

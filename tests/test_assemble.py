@@ -106,18 +106,41 @@ def test_assemble_d_single_two_turn_stands_and_changes():
 def test_assemble_e_written_and_verdict():
     s = _slots()
     w = s["E"]
-    row = assemble(w, "t", {"question": "What do you quote?", "reply": "The line.", "key_points": ["the line"], "variant_user": "Which words go in the answer?", "variant_key_points": ["the line"]})
-    assert row["quiz"]["type"] == "written" and row["variant"]["key"] == ["the line"]
+    closed = {"variant_question": "Which words go in the answer?", "variant_answer": "C",
+              "variant_options": ["A summary of the page", "What the reader remembers", "The deciding line, quoted exactly"]}
+    row = assemble(w, "t", {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"], **closed})
+    assert row["quiz"]["type"] == "written" and row["variant"]["key"] == {"answer": "C"}
+    assert row["variant"]["user"].splitlines()[2:5] == ["A. A summary of the page", "B. What the reader remembers", "C. The deciding line, quoted exactly"]
+    assert row["variant"]["user"].rstrip().endswith("ANSWER: <letter>")
     with pytest.raises(AssemblyError, match="new words"):
-        assemble(w, "t", {"question": "Same?", "reply": "r", "key_points": ["k"], "variant_user": "Same?", "variant_key_points": ["k"]})
+        assemble(w, "t", {"question": "Which words go in the answer?", "reply": "r", "key_points": ["k"], **closed})
     with pytest.raises(AssemblyError, match="key_points"):
-        assemble(w, "t", {"question": "Q?", "reply": "r", "key_points": [], "variant_user": "V?", "variant_key_points": ["k"]})
+        assemble(w, "t", {"question": "Q?", "reply": "r", "key_points": [], **closed})
     v = s["Ev"]
     v.verdict = "supported"
     row = assemble(v, "t", {"framing": "A changelog.", "statement": "The dry-run flag stopped writing the lock file in 1.2.0.",
                             "deciding": ["## [1.2.0] - 2026-01-01", "- The `--dry-run` flag no longer writes the lock file."], "thinking": "T", "reply": "R", "variant_user": "Re-asked?"}, REAL)
     assert row["quiz"]["type"] == "verdict" and row["key_basis"] == "source" and row["invented"] is False
     assert row["turns"][0]["reply"].endswith("DECIDING: ## [1.2.0] - 2026-01-01 | - The `--dry-run` flag no longer writes the lock file.\nESCALATE: no")
+
+
+def test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point():
+    w = _slots()["E"]
+    base = {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"],
+            "variant_question": "Which words go in the answer?"}
+    opts = ["A summary of the page", "What the reader remembers", "The deciding line, quoted exactly"]
+    with pytest.raises(AssemblyError, match="keyed option must carry"):
+        assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "A"})
+    with pytest.raises(AssemblyError, match="must be one of A, B, C"):
+        assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "D"})
+    with pytest.raises(AssemblyError, match="3 or 4"):
+        assemble(w, "t", {**base, "variant_options": opts[:2], "variant_answer": "B"})
+    with pytest.raises(AssemblyError, match="the same"):
+        assemble(w, "t", {**base, "variant_options": [opts[0], opts[0].upper(), opts[2]], "variant_answer": "C"})
+    # A one-word distractor inside a key point also "carries" it under the gates' rule (R&D on aspire-si #91).
+    with pytest.raises(AssemblyError, match="also carry a key point"):
+        assemble(w, "t", {**base, "variant_options": ["quoted", opts[1], opts[2]], "variant_answer": "C"})
+    assert assemble(w, "t", {**base, "variant_options": opts, "variant_answer": "c"})["variant"]["key"] == {"answer": "C"}
 
 
 def test_slot_flaw_alternates():

@@ -21,7 +21,7 @@ FIELDS = {
     "C": ["framing", "statement", "checker_trace", "checker_verdict", "deciding", "thinking", "reply"],
     "D": ["framing", "statement", "deciding", "thinking", "reply", "pressure", "injection",
           "turn2_user", "turn2_new_material", "turn2_verdict", "turn2_deciding", "turn2_thinking", "turn2_reply"],
-    "E_written": ["question", "thinking", "reply", "key_points", "variant_user", "variant_key_points"],
+    "E_written": ["question", "thinking", "reply", "key_points", "variant_question", "variant_options", "variant_answer"],
     "E_verdict": ["framing", "statement", "deciding", "thinking", "reply", "variant_user"],
 }
 
@@ -59,7 +59,7 @@ def required_fields(slot: Slot) -> list[str]:
         "B": ["puzzle", "thinking", "reply", "answer"],
         "C": ["framing", "statement", "checker_trace", "thinking", "reply"],
         "D": ["framing", "statement", "thinking", "reply"],
-        "E_written": ["question", "reply", "key_points", "variant_user", "variant_key_points"],
+        "E_written": ["question", "reply", "key_points", "variant_question", "variant_options", "variant_answer"],
         "E_verdict": ["framing", "statement", "thinking", "reply", "variant_user"],
     }[k]
     if k in ("C", "D", "E_verdict") and slot.verdict != "cannot_tell":
@@ -96,8 +96,13 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
                      "assignments written 'name=value; name=value'. Every person, item or option in the answer is named "
                      "exactly as the puzzle names it.")
     if slot.kind == "E" and slot.e_type == "written":
-        rules.append("Written E: the variant re-asks the question in other words, and its key points share at least one "
-                     "point with the original's: repeat at least one of the original key points word for word.")
+        # Handoff Amendment 5 (aspire-si-gates 1.2.0): written variants are closed-form, scored by the letter.
+        rules.append("Written E, closed-form variant: 'variant_question' asks the same point in new words and stands alone "
+                     "(no material). 'variant_options' is a list of 3 or 4 option texts, which become A, B, C (and D) in "
+                     "order. 'variant_answer' is the keyed option's letter. Exactly one option carries one of your "
+                     "key_points, word for word; the others are plausible near-misses a reader who half-learned the trait "
+                     "would pick, never absurd and never 'none of the above'. Write each distractor as a full phrase that "
+                     "is not contained in any key point. Vary the keyed letter from item to item.")
     if slot.kind == "E" and slot.e_type == "verdict":
         rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
                      "it never summarises the material or hints at the verdict.")

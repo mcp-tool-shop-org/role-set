@@ -175,3 +175,13 @@ def test_the_readout_states_the_inputs_the_run_was_pinned_to(tmp_path: Path):
     inputs = data["run"]["inputs"]
     assert inputs["exemplar_commit"] == "a7ec783" and inputs["writer_revision"] == "96548f65" and "other traits only" in inputs["exemplars"]
     assert "Inputs: writer_model w;" in md and "exemplar_commit a7ec783" in md
+
+
+def test_the_readout_counts_keyed_letters_of_closed_form_variants(tmp_path: Path):
+    from role_set.readout import keyed_letters
+
+    def row(lesson, letter):
+        return {"lesson": lesson, "quiz": {"type": "written"}, "variant": {"user": "u", "key": {"answer": letter}}}
+
+    rows = [row("T07", "B"), row("T07", "B"), row("T07", "D"), row("T08", "A"), {"lesson": "T07", "quiz": {"type": "verdict"}, "variant": {"key": {"verdict": "supported"}}}]
+    assert keyed_letters(rows) == {"T07": {"B": 2, "D": 1}, "T08": {"A": 1}}
