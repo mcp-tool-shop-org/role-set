@@ -28,7 +28,10 @@ from role_set.prompts import kind_key, material_messages, parse_json_object, war
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 ANDON_DROP_SHARE = 0.20
+ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
 ANDON_LESSON_DROPS = 3
+# check_against codes whose message names spent wording; a retry carries that wording as a do-not-use list.
+SPENT_CODES = ("SPAN_REUSED", "B_PHRASE_REUSED", "OPENING_REUSED", "FRAMING_REUSED")
 WARMUP_MISSES = 2
 
 # Refusal code -> what the builder is told, with the governing rule. Pinned by a test.
@@ -94,11 +97,24 @@ class Outcome:
     refusals: list = field(default_factory=list)  # [{"code","detail","suggestion"}]
     row: dict | None = None
     receipt: dict | None = None
+    skipped: bool = False  # never started: the run had already halted
 
 
 def _quoted_spans(text: str) -> list[str]:
     spans = re.findall(r"\[([^\[\]]{12,})\]", text) + re.findall(r"[\"“]([^\"”]{12,})[\"”]", text)
     return [s.strip() for s in spans]
+
+
+def spent_wording(refusal: dict) -> list[str]:
+    """The wording a check_against refusal names as spent ("the wording 'x' is already in 2 items"), or []."""
+
+    detail = refusal.get("detail") or ""
+    if refusal.get("code") != "AGAINST" or not detail.startswith(SPENT_CODES):
+        return []
+    # The gates' messages put the wording between quotes before "is already" / "already opens"; the wording itself
+    # may hold an apostrophe, so anchor on the message, not on the quote marks.
+    m = re.search(r"'(.+)' (?:is already|already opens)", detail)
+    return [m.group(1)] if m and m.group(1).strip() else []
 
 
 def _numbers(text: str) -> set[str]:
@@ -150,6 +166,7 @@ class Runner:
         concurrency: int = 1,
         pins: dict | None = None,
         clock=time.time,
+        flaw_gate: bool = False,  # the critic's flaw check refuses only once a control run shows it agrees
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -165,6 +182,7 @@ class Runner:
         self.lock = threading.Lock()
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
+        self.flaw_gate = flaw_gate
 
     # ---- status and log -------------------------------------------------------------------------------------
     def _log(self, action: str, **kw) -> None:
@@ -253,7 +271,13 @@ class Runner:
             if slot.kind == "C":
                 c = self.critic(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]))
                 self._count_tokens(c)
-                verdicts.append(compare_flaw(c.text, row["planted_flaw"]))
+                f = compare_flaw(c.text, row["planted_flaw"])
+                if f.ok or self.flaw_gate:
+                    verdicts.append(f)
+                else:
+                    # Advisory until a control run shows the critic agrees on flaws (Window A: 9 of 24): logged, counted, never a refusal.
+                    self.status.critic_asked += 1
+                    self._log("flaw_advisory", slot=slot.id, detail=f.detail)
         elif slot.kind == "B":
             c = self.critic([{"role": "system", "content": "Solve the puzzle. Answer with the answer only."}, {"role": "user", "content": row["turns"][0]["user"]}])
             self._count_tokens(c)
@@ -280,6 +304,7 @@ class Runner:
         exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v if e.get("kind") == slot.kind][:3]
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
         messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes)
+        spent: list[str] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             outcome.attempts = attempt
             c = self.writer(messages, seed=attempt)
@@ -328,9 +353,17 @@ class Runner:
             outcome.refusals.append(refusal)
             self.status.refused[refusal["code"]] = self.status.refused.get(refusal["code"], 0) + 1
             self._log("refused", slot=slot.id, attempt=attempt, code=refusal["code"], detail=refusal["detail"][:200])
+            spent += spent_wording(refusal)
+            if spent:
+                with self.lock:
+                    self.avoid.extend(x for x in spent if x not in self.avoid)
+            ask = "Refused: " + refusal["suggestion"]
+            if spent:
+                # The 8B rehearsal repeated the same span on every retry when told only the reason (Window B).
+                ask += " Do not use any of these wordings, in any order or form: " + "; ".join(f"'{x}'" for x in dict.fromkeys(spent)) + "."
             messages = messages + [
                 {"role": "assistant", "content": c.text},
-                {"role": "user", "content": "Refused: " + refusal["suggestion"] + " Return a corrected JSON object with all fields."},
+                {"role": "user", "content": ask + " Return a corrected JSON object with all fields."},
             ]
         return outcome
 
@@ -359,9 +392,11 @@ class Runner:
         self.status.dropped += 1
         self.lesson_drops[slot.lesson] = self.lesson_drops.get(slot.lesson, 0) + 1
         share = self.status.dropped / max(1, self.status.attempted)
-        if share > ANDON_DROP_SHARE or self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS:
-            self.status.halted = f"andon: drop share {share:.2f} (cap {ANDON_DROP_SHARE}); lesson {slot.lesson} drops {self.lesson_drops[slot.lesson]}"
+        over_share = self.status.attempted >= ANDON_MIN_ATTEMPTS and share > ANDON_DROP_SHARE
+        if self.status.halted is None and (over_share or self.lesson_drops[slot.lesson] >= ANDON_LESSON_DROPS):
+            self.status.halted = f"andon: drop share {share:.2f} (cap {ANDON_DROP_SHARE} after {ANDON_MIN_ATTEMPTS} slots); lesson {slot.lesson} drops {self.lesson_drops[slot.lesson]}"
             self._log("halt", reason=self.status.halted)
+        if self.status.halted is not None:
             raise RunHalted(self.status.halted)
 
     def run(self, slots: list[Slot], sides: dict[str, tuple[str, str]]) -> list[Outcome]:
@@ -377,7 +412,11 @@ class Runner:
                 raise RunHalted(self.status.halted)
 
         def one(slot: Slot) -> Outcome:
-            self.status.attempted += 1
+            # After a halt no new slot starts; slots already running finish (Window B started one after a halt).
+            with self.lock:
+                if self.status.halted is not None:
+                    return Outcome(slot_id=slot.id, accepted=False, attempts=0, skipped=True)
+                self.status.attempted += 1
             out = self.run_slot(slot)
             if not out.accepted:
                 with self.lock:

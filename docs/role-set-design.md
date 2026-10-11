@@ -150,8 +150,9 @@ The critic is held loaded (`keep_alive`) for the window and unloaded (`keep_aliv
 uses the card in the window, and no switchyard 5090 leg is booked over a pod session. `write` refuses to start
 without a `--grant` token and a fresh watchdog heartbeat, the same guard shape as switchyard's runner.
 
-**Andon on the drop rate.** If more than 20% of the slots attempted so far are dropped, or any one lesson has
-three dropped slots, `write` halts and reports: a high drop rate means the prompt or the pack is wrong, and
+**Andon on the drop rate.** If more than 20% of the slots attempted so far are dropped (counted once at least 10
+slots have run), or any one lesson has three dropped slots, `write` halts and reports. After a halt no new slot
+starts; slots already running finish: a high drop rate means the prompt or the pack is wrong, and
 retries would burn pod time. Every `write` ends, halt included, with a reminder to shut the pod down. offrig's
 deadline watchdog is the backstop, not the plan.
 
@@ -162,7 +163,8 @@ deadline watchdog is the backstop, not the plan.
   and neither set covers the other under the frozen scorer's coverage rule (`deciding_ok`) → refuse, because
   two readers found different evidence and that isn't instant agreement.
 - For C with a planted flaw: the critic gets the other checker's trace and must name the flaw from the flaw
-  list. Mismatch = refuse.
+  list, each label with its one-line meaning. Mismatch = refuse once a control run shows the critic agrees on
+  flaws (`flaw_gate`); until then it is logged as `flaw_advisory`. The 2026-10-11 control had 9 of 24.
 - For B puzzles: the critic solves the puzzle cold and returns a structured answer (an assignment or a set),
   compared after normalising, never as free text. Mismatch = refuse.
 - For A and written E: no critic verdict is possible without opinion, so these get only the validator and the

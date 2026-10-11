@@ -153,3 +153,79 @@ def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
                                 "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
+
+
+def test_spent_wording_is_read_from_the_gates_messages():
+    from role_set.runner import spent_wording
+
+    span = {"code": "AGAINST", "detail": "SPAN_REUSED: the wording 'the page's own words are what i quote' is already in 2 items of this trait; reword it"}
+    assert spent_wording(span) == ["the page's own words are what i quote"]
+    opening = {"code": "AGAINST", "detail": "OPENING_REUSED: the opening 'check the note against the page' already opens 2 items of this trait; vary it"}
+    assert spent_wording(opening) == ["check the note against the page"]
+    assert spent_wording({"code": "AGAINST", "detail": "MATERIAL_REUSED: this material is already used; take another excerpt"}) == []
+    assert spent_wording({"code": "GATE", "detail": "SPAN_REUSED: the wording 'x y' is already"}) == []
+
+
+def test_a_retry_carries_the_spent_wording_and_the_run_avoids_it(tmp_path: Path):
+    calls = []
+
+    def against(row, accepted):
+        calls.append(row["id"])
+        if len(calls) == 1:
+            return [("SPAN_REUSED", "the wording 'a reader holds the page not a memory' is already in 2 items of this trait; reword it")]
+        return []
+
+    r, writer, _ = _runner(tmp_path, gates=_gates(against=against))
+    asks = []
+    real = r.writer
+
+    def recording(messages, seed=0):
+        asks.append(messages[-1]["content"])
+        return real(messages, seed)
+
+    r.writer = recording
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "A")
+    out = r.run_slot(slot)
+    assert out.accepted and out.attempts == 2
+    assert "Do not use any of these wordings" in asks[1] and "'a reader holds the page not a memory'" in asks[1]
+    assert "a reader holds the page not a memory" in r.avoid
+
+
+def test_the_drop_share_waits_for_a_sample_and_a_halt_starts_no_new_slot(tmp_path: Path):
+    slots = plan_lesson("T02", SIDES, seed=0)
+    a_ids = [s.id for s in slots if s.kind == "A"]
+    # Two early drops: once 25% of 4 slots and a halt; now the share waits for 10 slots and the run finishes.
+    r, _, _ = _runner(tmp_path / "a", gates=_gates(refuse_ids=set(a_ids[:2])))
+    outcomes = r.run(slots, {"T02": SIDES})
+    assert r.status.halted is None and r.status.dropped == 2 and sum(o.accepted for o in outcomes) == 38
+
+    # Every A slot fails: the lesson cap halts at the third drop, and with two workers no slot starts after it.
+    r2, _, _ = _runner(tmp_path / "b", gates=_gates(refuse_ids=set(a_ids)), concurrency=2)
+    with pytest.raises(RunHalted, match="lesson T02 drops 3"):
+        r2.run(slots, {"T02": SIDES})
+    assert r2.status.attempted <= 4 and r2.status.dropped <= 4
+    status = json.loads((tmp_path / "b" / "out" / "status.json").read_text(encoding="utf-8"))
+    assert sum(1 for a in status["actions"] if a["action"] == "halt") == 1
+
+
+def test_the_flaw_check_is_advisory_unless_gated(tmp_path: Path):
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "C" and s.verdict != "cannot_tell")
+
+    def wrong_flaw(critic):
+        def call(messages):
+            if "Name the single flaw" in messages[0]["content"]:
+                return types.SimpleNamespace(text="loop", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+            return critic(messages)
+        return call
+
+    r, _, critic = _runner(tmp_path / "a")
+    r.critic = wrong_flaw(critic)
+    out = r.run_slot(slot)
+    assert out.accepted
+    status = json.loads((tmp_path / "a" / "out" / "status.json").read_text(encoding="utf-8"))
+    assert any(a["action"] == "flaw_advisory" for a in status["actions"])
+
+    r2, _, critic2 = _runner(tmp_path / "b", flaw_gate=True)
+    r2.critic = wrong_flaw(critic2)
+    out2 = r2.run_slot(slot)
+    assert not out2.accepted and out2.refusals[0]["code"] == "FLAW_MISMATCH"
