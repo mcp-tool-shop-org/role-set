@@ -21,7 +21,7 @@ The grant and the heartbeat are required when the run loads the critic, which is
 
 The heartbeat file is judged by its modified time. It has to be under 60 seconds old. The file is not opened. When the run loaded the critic, the process unloads it on the way out, including when the run stops with an error.
 
-`--concurrency` defaults to 1. `--stop-after-minutes` starts no new slot after the budget. Slots already running finish. `--pool` points at a harvested excerpt file. Exemplar and stuck-rule flags are optional and are recorded on the receipts when you pass them. The flag list is `role-set write --help`.
+`--concurrency` defaults to 1. `--stop-after-minutes` starts no new slot after the budget. Slots already running finish. `--pool` points at a harvested excerpt file. Exemplar and stuck-rule flags are optional and are recorded on the receipts when you pass them. `--closed-form` takes the gates' closed-form settings for written kind-E variants as JSON, for example `'{"carry": "either"}'`: keyed carry (`verbatim`, `paraphrase` or `either`), the content-word share, the distractor margin and near-copy guard, and the span. Left unset, the pinned gates' defaults apply. The gates check the values, the writer's brief states the setting, and every receipt records the settings used. The flag list is `role-set write --help`.
 
 ### Where the files go
 

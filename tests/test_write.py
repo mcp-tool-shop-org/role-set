@@ -46,7 +46,9 @@ def test_mock_write_runs_a_whole_lesson_through_the_cli(pack_dir: Path, plan_fil
     receipt = json.loads((tmp_path / "o" / "mock" / "receipts.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert receipt["mock"] is True and receipt["pack_commit"] == "abc1234" and receipt["plan_sha256"]
     # The pinned aspire-si-gates passed every item and the finished lesson: the real gates, not the stand-in.
-    assert receipt["gates"]["version"] == "1.2.0" and result["batch_check"] == "clean"
+    assert receipt["gates"]["version"] == "1.4.0" and result["batch_check"] == "clean"
+    # The closed-form settings the run used, resolved by the pinned gates: their defaults, as no --closed-form was given.
+    assert receipt["gates"]["closed_form"]["carry"] == "paraphrase"
 
 
 def test_mock_write_without_the_critic(pack_dir: Path, plan_file: Path, tmp_path: Path):
@@ -87,7 +89,7 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
 
     opener = lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "6316" + "0" * 60}]})  # noqa: E731
 
-    def fake_gates():
+    def fake_gates(closed_form=None):
         from role_set.mock import mock_gates
 
         return mock_gates()
@@ -122,7 +124,7 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
     no_critic = build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", no_critic=True, **base))
     assert no_critic[6] is None and no_critic[8] is None
 
-    def missing():
+    def missing(closed_form=None):
         from role_set.gates import GatesUnavailable
 
         raise GatesUnavailable("REFUSED: pin it")

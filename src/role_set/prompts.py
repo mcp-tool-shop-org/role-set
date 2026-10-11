@@ -131,7 +131,27 @@ def required_fields(slot: Slot) -> list[str]:
     return req
 
 
-def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
+def closed_form_carry_rule(closed_form: dict | None) -> str:
+    """The right option's rule, worded from the run's closed-form settings (the gates' keyed carry, share and span).
+    With no settings (a stand-in gates module, mock runs only) it names the rule without numbers."""
+
+    if not closed_form:
+        return "'variant_correct' is the right option's text and carries one of your key_points as the run's gates require."
+    share = f"at least {round(closed_form['share'] * 100)}% of that key point's content words"
+    span = f"no run of {closed_form['span']} words from your reply or thinking"
+    paraphrase = (f"says one of your key_points in its own words, keeping {share}, and repeats {span}. Each distractor stays "
+                  f"clearly further from every key point than the right option is, and none is a near-copy of one.")
+    carry = closed_form["carry"]
+    if carry == "verbatim":
+        return ("'variant_correct' is the right option's text and carries one of your key_points word for word, inside a full "
+                "sentence. No distractor may contain any key point or sit inside one.")
+    if carry == "either":
+        return ("'variant_correct' is the right option's text and either carries one of your key_points word for word or "
+                + paraphrase + " No distractor may contain a key point.")
+    return "'variant_correct' is the right option's text: it " + paraphrase
+
+
+def hard_rules(slot: Slot, trait_words: list[str] | None = None, closed_form: dict | None = None) -> list[str]:
     """The gates' mechanical rules for this kind, stated before the first draft rather than after a refusal.
     The 2026-10-11 rehearsal lost every kind-A slot to two rules the writer was never told, and the 235B pilot the same
     day lost most of B and E to assembly rules the brief never stated (the Question: line, empty fields, DECIDING)."""
@@ -167,18 +187,16 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
         if slot.structure in B_STRUCTURE_NOTES:
             rules.append(B_STRUCTURE_NOTES[slot.structure])
     if slot.kind == "E" and slot.e_type == "written":
-        # Handoff Amendment 5 (aspire-si-gates 1.2.0): written variants are closed-form, scored by the letter.
+        # Handoff Amendment 5: written variants are closed-form, scored by the letter. How the right option carries a
+        # key point is the gates' setting for this run (aspire-si-gates 1.4.0), so the brief states that setting.
         rules.append("Written E, closed-form variant: 'variant_question' asks the same point in new words and stands alone "
-                     "(no material). 'variant_correct' is the right option's text and carries one of your key_points, word "
-                     "for word. 'variant_distractors' is a list of 2 or 3 wrong options: plausible near-misses a reader who "
-                     "half-learned the trait would pick, never absurd and never 'none of the above'. Build them from this "
-                     "item's own vocabulary or from a sibling trait's key point, so familiar wording doesn't single out the "
-                     "right one. No distractor may contain any key point or sit inside one: don't build one by swapping one "
-                     "part of the right answer, and write each as a full phrase. Keep all options similar in length and "
-                     "form, so the right one isn't the longest. Every option is a full sentence that opens with a capital and ends "
-                     "with a full stop, all in the same person; the right one puts its key point's words inside such a "
-                     "sentence instead of pasting the bare key point. Give the options without letters; they are lettered and "
-                     "shuffled for you.")
+                     "(no material). " + closed_form_carry_rule(closed_form) + " 'variant_distractors' is a list of 2 or 3 "
+                     "wrong options: plausible near-misses a reader who half-learned the trait would pick, never absurd and "
+                     "never 'none of the above'. Build them from this item's own vocabulary or from a sibling trait's key "
+                     "point, so familiar wording doesn't single out the right one, and don't build one by swapping one part "
+                     "of the right answer. Keep all options similar in length and form, so the right one isn't the longest. "
+                     "Every option is a full sentence that opens with a capital and ends with a full stop, all in the same "
+                     "person. Give the options without letters; they are lettered and shuffled for you.")
     if slot.kind == "E" and slot.e_type == "verdict":
         rules.append("Verdict E: the variant is shown with the same material and re-asks the same statement in other words; "
                      "it never summarises the material or hints at the verdict.")
@@ -194,7 +212,8 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None) -> list[str]:
     return rules
 
 
-def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | None = None) -> str:
+def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | None = None,
+               closed_form: dict | None = None) -> str:
     """What this slot fixes, and what the batch still needs, in plain words."""
 
     lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}.",
@@ -235,7 +254,7 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
         lines.append(f"The thinking pattern is: {slot.structure.replace('_', ' ')}. " + ("This is a verification case." if slot.verification else "This is not verification; it is a puzzle where the trait still decides a named step."))
     if slot.kind == "E":
         lines.append("Write a quiz item and a variant that re-asks the same point in new words." if slot.e_type == "written" else "Write a short verdict mini-case and a variant that re-asks it in new words.")
-    lines += hard_rules(slot, trait_words)
+    lines += hard_rules(slot, trait_words, closed_form)
     if coverage_notes:
         lines.append("Still needed in this trait: " + "; ".join(coverage_notes) + ".")
     return "\n".join(lines)
@@ -251,6 +270,7 @@ def writer_messages(
     facts: dict | None = None,
     coverage_notes: list[str] | None = None,
     trait_words: list[str] | None = None,
+    closed_form: dict | None = None,
 ) -> list[dict]:
     trait = pack.get(f"traits/{slot.lesson}.md", "")
     kinds = pack.get("kinds.md", "")
@@ -269,7 +289,7 @@ def writer_messages(
         "## The trait lesson\n" + trait.strip(),
         "## Required parts for this kind\n" + kinds.strip(),
         "## Amendments\n" + amendments.strip(),
-        "## This slot\n" + slot_brief(slot, coverage_notes or [], trait_words),
+        "## This slot\n" + slot_brief(slot, coverage_notes or [], trait_words, closed_form),
     ]
     if material_text is not None:
         user_parts.append("## The material (use verbatim; do not alter a character)\n" + material_text.rstrip("\n"))

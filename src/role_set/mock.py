@@ -245,9 +245,10 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     return json.dumps(base)
 
 
-def mock_gates():
+def mock_gates(closed_form=None):
     """A permissive stand-in for aspire-si-gates, for `write --mock` in CI when the package isn't installed.
-    It refuses nothing; mock output is never data."""
+    It refuses nothing, so it takes no closed-form settings (`closed_form` is accepted and ignored, and the stand-in's
+    settings are None); mock output is never data."""
 
     import types
 

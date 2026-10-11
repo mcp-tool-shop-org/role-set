@@ -131,35 +131,31 @@ def test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point():
     base = {"question": "What do you quote?", "reply": "The line.", "key_points": ["the deciding line, quoted exactly"],
             "variant_question": "Which words go in the answer?"}
     right, wrong = "The deciding line, quoted exactly", ["A summary of the page", "What the reader remembers"]
-    with pytest.raises(AssemblyError, match="variant_correct must carry"):
-        assemble(w, "t", {**base, "variant_correct": wrong[0], "variant_distractors": [right, wrong[1]]})
     with pytest.raises(AssemblyError, match="2 or 3"):
         assemble(w, "t", {**base, "variant_correct": right, "variant_distractors": wrong[:1]})
     with pytest.raises(AssemblyError, match="variant_correct must be"):
         assemble(w, "t", {**base, "variant_correct": "", "variant_distractors": wrong})
     with pytest.raises(AssemblyError, match="the same"):
         assemble(w, "t", {**base, "variant_correct": right, "variant_distractors": [wrong[0], wrong[0].upper()]})
-    # A one-word distractor inside a key point also "carries" it under the gates' rule (R&D on aspire-si #91).
-    with pytest.raises(AssemblyError, match="a distractor carries a key point"):
-        assemble(w, "t", {**base, "variant_correct": right, "variant_distractors": ["quoted", wrong[1]]})
 
 
-def test_a_distractor_made_by_swapping_one_part_of_the_answer_is_refused():
-    # The pilot-2 check's 8B: key points were the answer's parts, and each distractor swapped one part, keeping another.
+def test_assembly_leaves_the_carry_rule_to_the_gates():
+    # Whether the keyed option carries a key point (verbatim, paraphrase or either) is the gates' closed-form rule with
+    # the run's settings (aspire-si-gates 1.4.0); assembly keeps no copy, so a paraphrased keyed option assembles.
     w = _slots()["E"]
-    fields = {"question": "Which three lines?", "reply": "Cannot tell, NONE, no.", "variant_question": "Which answer lines fit?",
-              "key_points": ["verdict is cannot_tell", "deciding stays none"],
-              "variant_correct": "VERDICT is cannot_tell. DECIDING stays NONE. ESCALATE: no.",
-              "variant_distractors": ["VERDICT is supported. DECIDING: the line that backs it.", "VERDICT is cannot_tell. DECIDING: the line that backs it."]}
-    with pytest.raises(AssemblyError, match="don't build one by swapping one part"):
-        assemble(w, "t", fields)
+    fields = {"question": "What do you quote?", "reply": "The deciding line, word for word.",
+              "key_points": ["the deciding line, quoted exactly"], "variant_question": "Which words go in the answer?",
+              "variant_correct": "The line that decides it, copied exactly.",
+              "variant_distractors": ["A summary of the page.", "What the reader remembers."]}
+    row = assemble(w, "t", fields)
+    assert "The line that decides it, copied exactly." in row["variant"]["user"]
 
 
 def test_a_writers_own_letter_labels_are_stripped_before_lettering():
     from role_set.assemble import closed_form_variant
 
     v = closed_form_variant("Which words?", "C. The deciding line, quoted exactly", ["A) A summary of the page", "(b) What the reader remembers"],
-                            ["the deciding line, quoted exactly"], seed="T07-E-01")
+                            seed="T07-E-01")
     shown = v["user"].splitlines()[2:5]
     assert [line[:3] for line in shown] == ["A. ", "B. ", "C. "]
     assert {line[3:] for line in shown} == {"The deciding line, quoted exactly", "A summary of the page", "What the reader remembers"}
@@ -170,13 +166,12 @@ def test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_acro
     from role_set.assemble import closed_form_variant
 
     right, wrong = "The deciding line, quoted exactly", ["A summary of the page", "What the reader remembers", "The heading above it"]
-    points = ["the deciding line, quoted exactly"]
-    same = [closed_form_variant("Which words?", right, wrong, points, seed="T07-E-01")["key"]["answer"] for _ in range(3)]
+    same = [closed_form_variant("Which words?", right, wrong, seed="T07-E-01")["key"]["answer"] for _ in range(3)]
     assert len(set(same)) == 1
-    letters = [closed_form_variant("Which words?", right, wrong, points, seed=f"T07-E-{i:02d}")["key"]["answer"] for i in range(1, 41)]
+    letters = [closed_form_variant("Which words?", right, wrong, seed=f"T07-E-{i:02d}")["key"]["answer"] for i in range(1, 41)]
     counts = {x: letters.count(x) for x in "ABCD"}
     assert all(counts[x] >= 4 for x in "ABCD"), counts
-    v = closed_form_variant("Which words?", right, wrong, points, seed="T07-E-01")
+    v = closed_form_variant("Which words?", right, wrong, seed="T07-E-01")
     key = v["key"]["answer"]
     assert f"{key}. The deciding line, quoted exactly" in v["user"].splitlines()
 

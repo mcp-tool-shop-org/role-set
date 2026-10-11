@@ -9,10 +9,12 @@ All notable changes to role-set are documented here. The format is based on
 ### Added
 
 - `roles/verifier/defects.jsonl`: one row per class of defect the reviews found, with how role-set handles it (gate, puzzle-check, brief, advisory critic, or none). `readout` ends with the open classes (`--catalog` names another file).
+- `write --closed-form`: the gates' closed-form settings for written kind-E variants (keyed carry verbatim, paraphrase or either; share; distractor margin; span), resolved through the pinned gates, whose defaults apply when it is unset. Every receipt records the settings.
 
 ### Changed
 
 - The README, handbook and landing page state the coverage floor instead of a test count that changes with every PR.
+- aspire-si-gates is pinned at 1.4.0 (aspire-si 388a6bc). The closed-form carry rule is the gates' own: role-set no longer checks word-for-word carry itself, and the writer's brief states the run's setting.
 
 - `docs/role-set-design.md` matches the program. The critic's trait, answer and flaw checks are advisory until their controls pass, a pod is offrig's, and the lookup and skeleton rules are the current ones. The README and handbook no longer carry a caveat about the draft.
 

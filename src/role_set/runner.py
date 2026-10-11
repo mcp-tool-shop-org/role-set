@@ -657,7 +657,7 @@ class Runner:
         exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v if e.get("kind") == slot.kind][:3]
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
         messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes,
-                                   trait_words=self.gates.trait_words(slot.lesson))
+                                   trait_words=self.gates.trait_words(slot.lesson), closed_form=self.gates.closed_form)
         spent: list[str] = []
         for attempt in range(1, MAX_ATTEMPTS + 1):
             outcome.attempts = attempt
@@ -770,7 +770,7 @@ class Runner:
             "slot": slot.as_dict(),
             "writer_model": completion.model,
             "attempt": attempt,
-            "gates": {"version": self.gates.version, "sha256": self.gates.sha256},
+            "gates": {"version": self.gates.version, "sha256": self.gates.sha256, "closed_form": self.gates.closed_form},
             "row_sha256": hashlib.sha256(json.dumps(row, sort_keys=True).encode("utf-8")).hexdigest(),
             "glyphs_normalized": glyphs,
             **self.pins,
