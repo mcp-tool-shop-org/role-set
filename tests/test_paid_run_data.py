@@ -134,13 +134,14 @@ def test_the_readout_reads_a_failing_run_as_well_as_a_passing_one(tmp_path: Path
 
     slots = plan_lesson("T02", SIDES, seed=0)
     a_ids = [s.id for s in slots if s.kind == "A"]
-    r, _, _ = _runner(tmp_path / "fail", gates=_gates(refuse_ids=set(a_ids[:3])), stuck=lambda *a: {"stuck": True, "bursts": 1, "hedges": 3})
+    # Stuck on every draft but the B traces, which a stuck rule would now refuse (PR H).
+    r, _, _ = _runner(tmp_path / "fail", gates=_gates(refuse_ids=set(a_ids[:3])), stuck=lambda *a: {"stuck": "ruled out" not in a[0], "bursts": 1, "hedges": 3})
     r.run(slots)
     data, md = readout(tmp_path / "fail" / "out")
     run = data["run"]
     assert run["cell_halts"]["T02/A"]["kind"] == "A" and run["per_kind"]["A"]["dropped"] == 3 and run["warmups"] == {"passed": 1}
     assert run["refusals"] == {"A / GATE: refused": 9} and run["retry_recovery"] == {"refused_slots": 3, "recovered": 0, "rate": 0.0}
-    assert run["calls"] == 9 + run["accepted"] and run["stuck"]["stuck"] == run["calls"] and run["seconds_per_call"]["p50"] is not None
+    assert run["calls"] == 9 + run["accepted"] and run["stuck"]["stuck"] == run["calls"] - run["per_kind"]["B"]["accepted"] and run["seconds_per_call"]["p50"] is not None
     assert "| T02 |" in md and "Retry recovery: 0 of 3" in md
     assert run["per_lesson"]["T02"]["skipped_by_reason"] == {"T02/A halted": 5} and "T02/A halted: 5" in md and "T02/A (GATE: refused)" in md
 

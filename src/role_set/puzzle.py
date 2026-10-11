@@ -8,6 +8,10 @@ what its line names, polarity and direction agree), every fact is needed, and th
 answer to what is asked (a computed set for an underdetermined puzzle, a computed stopping fact, a computed verdict
 for a claim). Only the solver decides; the writer is never asked whether its puzzle is unique. Design and five
 additions: R&D, 2026-10-11 (PR H).
+
+Known limits: the direction check reads argument order from where names first appear, so a fronted clause ("Before
+Ana, Ben arrived") is refused although it is right; and the thinking isn't checked against the model (R&D reads the
+B traces in the key-check until a step-by-step check lands).
 """
 
 from __future__ import annotations
@@ -33,7 +37,10 @@ BEFORE_WORDS = re.compile(r"\b(before|earlier|left of|ahead of)\b", re.IGNORECAS
 AFTER_WORDS = re.compile(r"\b(after|later|right of|behind)\b", re.IGNORECASE)
 SIDE_WORDS = re.compile(r"\b(left|right)\b", re.IGNORECASE)
 END_WORDS = re.compile(r"\b(first|last)\b", re.IGNORECASE)
-SIDE_STATED = re.compile(r"\b(left to right|right to left)\b", re.IGNORECASE)
+# Values are listed left to right, so "left of" is a lower index (before). "Right to left" would encode every
+# left/right line backwards, so it isn't accepted (R&D on #29).
+SIDE_STATED = re.compile(r"\bleft to right\b", re.IGNORECASE)
+SIDE_REVERSED = re.compile(r"\bright to left\b", re.IGNORECASE)
 NUMBERED = re.compile(r"^\s*(\d+)[.)]\s+(\S.*)$")
 VERDICT_STRUCTURES = ("tree_with_pruning", "falsifier_first", "when_to_stop")
 STOPPING_STRUCTURES = ("stopping_problem", "when_to_stop")
@@ -336,6 +343,8 @@ def _states_order(m: Model, line: str) -> bool:
 
 def _check_order_stated(m: Model, lines: dict[int, str]) -> None:
     allt = " ".join(lines.values())
+    if SIDE_REVERSED.search(allt):
+        raise PuzzleError("list the positions left to right ('seats 1 to 4, left to right'); right to left reverses every left/right fact")
     if SIDE_WORDS.search(allt) and not SIDE_STATED.search(allt):
         raise PuzzleError("the puzzle says left or right, so it states the direction once ('seats 1 to 4, left to right')")
     ordinal = any(v.lower() in ("first", "last") for a in m.attrs.values() for v in a["values"])
@@ -446,6 +455,14 @@ class Table:
         return "supported" if claims == {True} else "unsupported" if claims == {False} else "cannot_tell"
 
 
+def _direct(rule) -> bool:
+    """A fact that states a value outright: is, in with one value, same between an entity and a value reference."""
+
+    if rule[0] == "is" or (rule[0] == "in" and len(rule[3]) == 1):
+        return True
+    return rule[0] == "same" and sum(isinstance(r, dict) for r in rule[1:]) == 1
+
+
 def _mask(indices) -> int:
     out = 0
     for i in indices:
@@ -462,7 +479,9 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
             raise PuzzleError("no assignment fits every fact; the facts contradict each other")
         for i, (n, _) in enumerate(m.facts):
             without = full & ~(1 << i)
-            if t.verdict(without) == v and len(t.matching(without)) == len(t.matching(full)):
+            # A decided verdict: a fact that only narrows the solutions without moving it is decoration. cannot_tell
+            # survives losing almost anything, so there a fact must also leave the solutions as they were (R&D on #29).
+            if t.verdict(without) == v and (v != "cannot_tell" or len(t.matching(without)) == len(t.matching(full))):
                 raise PuzzleError(f"line {n} changes nothing; drop it, or list it in flavour if it states no fact")
         return Checked(answer=v, lookup=False, solutions=len(t.matching(full)))
 
@@ -495,7 +514,7 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
     for i in considered:
         if t.projections(need & ~(1 << i)) == base:
             raise PuzzleError(f"line {m.facts[i][0]} changes nothing about the answer; drop it, or list it in flavour if it states no fact")
-    is_only = _mask(i for i, (_, r) in enumerate(m.facts) if r[0] == "is")
+    is_only = _mask(i for i, (_, r) in enumerate(m.facts) if _direct(r))
     lookup = is_only != 0 and len(t.projections(is_only)) == 1 and structure != "underdetermined_with_explicit_set"
     if structure == "underdetermined_with_explicit_set":
         answer = ", ".join(sorted({render(m, p) for p in projs}))

@@ -34,6 +34,7 @@ from role_set.transport import TransportError
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 # A B puzzle whose asked answer follows from its 'is' facts alone is a lookup, not a puzzle: one per lesson (R&D, PR H).
 LOOKUP_CAP = 1
+LOOKUP_FULL = "the asked answer follows from direct facts alone, a lookup, and this lesson already has its one; make the answer need elimination"
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
 ANDON_CELL_DROPS = 3  # ends that (lesson, kind) cell; the lesson's other kinds and the run go on
@@ -174,6 +175,7 @@ SUGGESTIONS = {
     "TRUNCATED": "The reply ran past the length limit before its JSON closed ({detail}). Decide the item before writing it: the thinking states the path to the answer in a few steps and never searches or reconsiders.",
     "TRANSPORT": "The writer could not be reached ({detail}); the slot ends.",
     "PUZZLE": "The puzzle's model doesn't hold: {detail}.",
+    "STUCK": "The thinking circles back on itself ({detail}). Walk the elimination once, forward, one line at a time, and stop at the answer.",
     "SHAPE": "The reply is a finished row (kind, turns, answer), the exemplars' shape. Return one flat object with exactly these fields instead: {detail}.",
     "REPLY_OPENING": "The reply opens like two accepted items of this trait ('{detail}'). Open it another way, in this item's own words.",
     "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
@@ -679,8 +681,12 @@ class Runner:
                 except PuzzleError as e:
                     refusal = self._refusal("PUZZLE", str(e))
                 if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
-                    refusal = self._refusal("PUZZLE", "the asked answer follows from the 'is' facts alone, a lookup, and this "
-                                                      "lesson already has its one; make the answer need elimination")
+                    refusal = self._refusal("PUZZLE", LOOKUP_FULL)
+                # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
+                if refusal is None and self.stuck is not None:
+                    measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
+                    if measures.get("stuck"):
+                        refusal = self._refusal("STUCK", ", ".join(f"{k} {measures[k]}" for k in ("bursts", "hedges") if k in measures) or "stuck rule")
             if refusal is None:
                 if slot.kind == "C" and "planted_flaw" not in fields:
                     fields["planted_flaw"] = slot_flaw(slot)
@@ -719,6 +725,9 @@ class Runner:
                         refusal = self._refusal("AGAINST", f"{code}: {msg}")
                     elif stamp:
                         refusal = self._refusal("REPLY_OPENING", stamp)
+                    elif lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+                        # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
+                        refusal = self._refusal("PUZZLE", LOOKUP_FULL)
                     else:
                         self._accept(slot, row, c, attempt, glyphs=glyphs)
                         if lookup:

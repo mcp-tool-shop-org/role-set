@@ -316,3 +316,67 @@ def test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson(tmp_path):
     r.writer = lambda messages, seed=0: types.SimpleNamespace(text=json.dumps(bad), prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1)
     out = r.run_slot(b_slots[1])
     assert out.refusals[0]["code"] == "PUZZLE" and "the facts give" in out.refusals[0]["detail"]
+
+
+def test_right_to_left_is_refused_because_it_reverses_left_and_right():
+    _refused("right to left reverses every left/right fact", puzzle=ROW.replace("left to right", "right to left"), model=ROW_MODEL,
+             answer="Ana=1; Ben=2; Cy=3")
+
+
+def test_in_with_one_value_and_same_with_a_value_count_as_direct_facts():
+    for rule, line in ((["in", "Cy", "dish", ["soup"]], "3. Cy ordered one of: soup."),
+                       (["same", "Cy", {"dish": "soup"}], "3. Cy is the one who ordered soup.")):
+        m = copy.deepcopy(GRID_MODEL)
+        m["facts"][1] = {"line": 3, "rule": rule}
+        assert check_puzzle(_f(puzzle=GRID.replace("3. Cy didn't order pasta.", line), model=m), "constraint_grid").lookup, rule
+
+
+def test_a_fact_that_narrows_a_decided_claim_without_moving_it_is_idle():
+    # Gold holds the pen whatever Red holds: with the claim decided, "not in Red" only narrows the solutions.
+    q = """1. Three cups stand in a row: Red, Blue, Gold.
+2. Gold holds the pen.
+3. Blue is empty.
+4. Red is empty.
+Question: Is it true that Gold holds the pen?"""
+    m = {"entities": ["Red", "Blue", "Gold"], "attributes": {"holds": {"values": ["pen", "empty"], "distinct": False}},
+         "facts": [{"line": 2, "rule": ["is", "Gold", "holds", "pen"]}, {"line": 3, "rule": ["is", "Blue", "holds", "empty"]},
+                   {"line": 4, "rule": ["is", "Red", "holds", "empty"]}],
+         "flavour": [1], "claim": ["is", "Gold", "holds", "pen"]}
+    with pytest.raises(PuzzleError, match="line 3 changes nothing"):
+        check_puzzle(_f(puzzle=q, model=m, answer="supported", reply="x\nAnswer: supported"), "tree_with_pruning")
+
+
+def test_the_lookup_cap_is_read_again_under_the_accept_lock(tmp_path):
+    import json
+    import types
+
+    from role_set.plan import plan_lesson
+    from test_runner import SIDES, _runner
+
+    r, _, _ = _runner(tmp_path)
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "B" and s.structure == "constraint_grid")
+    m = copy.deepcopy(GRID_MODEL)
+    m["facts"][1] = {"line": 3, "rule": ["is", "Cy", "dish", "soup"]}
+    draft = {"puzzle": GRID.replace("3. Cy didn't order pasta.", "3. Cy ordered soup."), "model": m,
+             "thinking": "1. Ben has salad.\n2. Cy has soup.\n3. Ana has pasta.",
+             "reply": "1. Ben has salad.\n2. Cy has soup.\n3. Ana has pasta.\nAnswer: " + GRID_KEY, "answer": GRID_KEY}
+    r.writer = lambda messages, seed=0: types.SimpleNamespace(text=json.dumps(draft), prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1)
+    real = r.gates.module.check_against
+
+    def meanwhile(row, accepted):
+        r.lookups["T02"] = 1  # another B slot of the lesson was accepted after this one's first read
+        return real(row, accepted)
+
+    r.gates.module.check_against = meanwhile
+    out = r.run_slot(slot)
+    assert not out.accepted and out.refusals[0]["code"] == "PUZZLE" and "a lookup" in out.refusals[0]["detail"]
+
+
+def test_a_b_trace_that_trips_the_stuck_rule_is_refused(tmp_path):
+    from role_set.plan import plan_lesson
+    from test_runner import SIDES, _runner
+
+    r, _, _ = _runner(tmp_path, stuck=lambda thinking, material, tier, tokens: {"stuck": True, "bursts": 2, "hedges": 4})
+    slot = next(s for s in plan_lesson("T02", SIDES, seed=0) if s.kind == "B")
+    out = r.run_slot(slot)
+    assert not out.accepted and {x["code"] for x in out.refusals} == {"STUCK"} and "bursts 2, hedges 4" in out.refusals[0]["detail"]
