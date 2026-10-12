@@ -479,19 +479,43 @@ def render(m: Model, proj) -> str:
     return "; ".join(f"{e}={v}" for e, v in zip(m.entities, proj))
 
 
-def render_set(m: Model, projs) -> str:
-    """An underdetermined puzzle's possible answers. One entity or value each: a comma list ("elm, oak"). When a
-    possible answer is a group of entities ("which cups could be hot?" on a repeating attribute), each group is joined
-    with "and" and the groups with semicolons ("red and blue; red and green"), so the key keeps which names go together
-    (aspire-si#106 round 3: "red, blue, red, green" passed, and so would have "red, blue, green")."""
+def _grouped(m: Model) -> bool:
+    """Whether the possible answers are groups of entities: entity_with on an attribute whose value may repeat. The
+    form follows from the question, not from the answers, so a set of one-name groups ("elm; oak; yew") never reads as
+    the single group of three ("elm, oak, yew"; R&D on role-set#45, T10-B-05)."""
 
-    if "entity_with" in (m.asks or {}) and any(len(p) != 1 for p in projs):
+    ew = (m.asks or {}).get("entity_with")
+    if not ew:
+        return False
+    (a, _), = ew.items()
+    return not m.attrs[a]["distinct"]
+
+
+def render_set(m: Model, projs) -> str:
+    """An underdetermined puzzle's possible answers. One entity or value each: a comma list ("elm, oak"). When the
+    possible answers are groups (see `_grouped`), each group is joined with "and" and the groups with semicolons
+    ("red and blue; red and green"), so the key keeps which names go together (aspire-si#106 round 3: "red, blue, red,
+    green" passed, and so would have "red, blue, green")."""
+
+    if _grouped(m):
         return "; ".join(sorted(" and ".join(p) if p else "none" for p in projs))
     return ", ".join(sorted({render(m, p) for p in projs}))
 
 
-def _groups(text: str) -> set:
-    return {frozenset(x.strip().lower() for x in re.split(r"\band\b|,", g) if x.strip()) for g in text.split(";") if g.strip()}
+def _groups(m: Model, text: str) -> set | None:
+    """A grouped key read back as a set of groups, by the entity names each group holds, so a name with "and" in it
+    stays whole. None when a group holds anything but entity names, separators and "none"."""
+
+    out = set()
+    for g in (x for x in text.split(";") if x.strip()):
+        names = frozenset(e for e in m.entities if _named(e, g))
+        rest = g
+        for e in sorted(names, key=len, reverse=True):
+            rest = re.sub(r"(?<!\w)" + re.escape(e) + r"(?!\w)", " ", rest, flags=re.IGNORECASE)
+        if re.sub(r"\band\b|,|\bnone\b|\s", "", rest, flags=re.IGNORECASE):
+            return None
+        out.add(names)
+    return out
 
 
 class Table:
@@ -674,8 +698,8 @@ def check_puzzle(fields: dict, structure: str | None) -> Checked:
         if re.fullmatch(r"undetermined\.?", key, re.IGNORECASE):
             if not UNIQUENESS_ASKED.search(question):
                 raise PuzzleError("'undetermined' answers a question that asks whether the answer is unique; this one doesn't")
-        elif ";" in got.answer:
-            if _groups(key) != _groups(got.answer):
+        elif _grouped(m):
+            if ";" not in key or _groups(m, key) != _groups(m, got.answer):
                 raise PuzzleError(f"the facts leave exactly {got.answer!r} possible, and the key says {key!r}; write each "
                                   "possible group with 'and', and separate the groups with semicolons")
         elif {x.strip().lower() for x in key.split(",") if x.strip()} != {x.strip().lower() for x in got.answer.split(",")}:

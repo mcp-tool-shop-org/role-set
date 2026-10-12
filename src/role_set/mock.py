@@ -203,7 +203,8 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
                  + [{"line": k + 3, "rule": ["is_not", x, "holds", "pen"]} for k, x in enumerate(ruled)],
                  "flavour": [1], "asks": {"entity_with": {"holds": "pen"}}}
         if open_set:
-            question, answer = f"which cups could hold the {t(1)} pen, {t(2)}?", f"{names[-2]}, {names[-1]}"
+            # "holds" may repeat, so the possible answers are groups, here of one cup each (role-set#45).
+            question, answer = f"which cups could hold the {t(1)} pen, {t(2)}?", f"{names[-2]}; {names[-1]}"
         elif struct in ("stopping problem", "when to stop"):
             question, answer = f"after which line is it settled which cup holds the {t(1)} pen, {t(2)}?", str(len(lines))
         elif struct in ("tree with pruning", "falsifier first"):
