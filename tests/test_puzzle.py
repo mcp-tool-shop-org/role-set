@@ -249,6 +249,15 @@ def test_an_underdetermined_set_is_computed_and_must_have_two_members():
     with pytest.raises(PuzzleError, match="the Question asks what could be"):
         check_puzzle(_f(puzzle=oq.replace("What could Cy have ordered?", "What did Cy order?"), model=om, answer="soup, pasta",
                         reply="x\nAnswer: soup, pasta"), "underdetermined_with_explicit_set")
+    # R&D on #46: a name or value never counts as the possibility word ("the can", "14 May"), and "may" counts in lower case.
+    from role_set.puzzle import asks_possibility, parse_model
+    cans = parse_model({"entities": ["the can", "the jar"], "attributes": {"day": {"values": ["14 May", "15 May"]}},
+                        "facts": [{"line": 2, "rule": ["is", "the can", "day", "14 May"]}], "flavour": [1],
+                        "asks": {"attribute": "day", "of": "the jar"}})
+    assert not asks_possibility(cans, "Which day is the can on?")
+    assert not asks_possibility(cans, "What was in force on 14 May?")
+    assert not asks_possibility(cans, "May the jar be first?")
+    assert asks_possibility(cans, "Which days may the can be on?") and asks_possibility(cans, "Which days can the jar take?")
     for word in ("can", "might", "possible"):
         q2 = oq.replace("What could Cy have ordered?", {"can": "Which dishes can Cy have?", "might": "What might Cy have ordered?",
                                                          "possible": "Which dishes are possible for Cy?"}[word])
