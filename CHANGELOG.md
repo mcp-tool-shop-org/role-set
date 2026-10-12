@@ -13,6 +13,7 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- An underdetermined puzzle whose possible answers are groups of names keeps the groups in its key: each group is joined with "and" and the groups are separated by semicolons ("red and blue; red and green"). It used to flatten them into one comma list, which a key that lost the grouping also passed (aspire-si#106 round 3).
 - The B solver refuses a puzzle whose Question line doesn't name the entity the model asks about (`asks.of`). In aspire-si#106 the models asked the fee of an edition while the text asked the fee on a date, so no edition line was needed.
 - `puzzle-check` lists, without refusing, each puzzle that asks which entity holds a value while its Question line names neither the value nor a stem of it. It's a pointer for the key-check.
 - The README, handbook and landing page state the coverage floor instead of a test count that changes with every PR.

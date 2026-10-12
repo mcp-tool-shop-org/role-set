@@ -479,6 +479,21 @@ def render(m: Model, proj) -> str:
     return "; ".join(f"{e}={v}" for e, v in zip(m.entities, proj))
 
 
+def render_set(m: Model, projs) -> str:
+    """An underdetermined puzzle's possible answers. One entity or value each: a comma list ("elm, oak"). When a
+    possible answer is a group of entities ("which cups could be hot?" on a repeating attribute), each group is joined
+    with "and" and the groups with semicolons ("red and blue; red and green"), so the key keeps which names go together
+    (aspire-si#106 round 3: "red, blue, red, green" passed, and so would have "red, blue, green")."""
+
+    if "entity_with" in (m.asks or {}) and any(len(p) != 1 for p in projs):
+        return "; ".join(sorted(" and ".join(p) if p else "none" for p in projs))
+    return ", ".join(sorted({render(m, p) for p in projs}))
+
+
+def _groups(text: str) -> set:
+    return {frozenset(x.strip().lower() for x in re.split(r"\band\b|,", g) if x.strip()) for g in text.split(";") if g.strip()}
+
+
 class Table:
     """Every assignment, once: a bitmask of the facts it satisfies, its projection and the claim's truth."""
 
@@ -630,7 +645,7 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
         # A lookup: the direct facts alone settle the answer, or any single fact does by itself (R&D on #95).
         lookup = (direct != 0 and len(t.projections(direct)) == 1) or any(len(t.projections(1 << i)) == 1 for i in considered)
     if structure == "underdetermined_with_explicit_set":
-        answer = ", ".join(sorted({render(m, p) for p in projs}))
+        answer = render_set(m, projs)
     elif stop_at is not None:
         answer = str(stop_at)
     else:
@@ -659,6 +674,10 @@ def check_puzzle(fields: dict, structure: str | None) -> Checked:
         if re.fullmatch(r"undetermined\.?", key, re.IGNORECASE):
             if not UNIQUENESS_ASKED.search(question):
                 raise PuzzleError("'undetermined' answers a question that asks whether the answer is unique; this one doesn't")
+        elif ";" in got.answer:
+            if _groups(key) != _groups(got.answer):
+                raise PuzzleError(f"the facts leave exactly {got.answer!r} possible, and the key says {key!r}; write each "
+                                  "possible group with 'and', and separate the groups with semicolons")
         elif {x.strip().lower() for x in key.split(",") if x.strip()} != {x.strip().lower() for x in got.answer.split(",")}:
             raise PuzzleError(f"the facts leave exactly {got.answer!r} possible, and the key says {key!r}")
     elif got.stop_at is not None:

@@ -190,6 +190,23 @@ def test_a_stopping_problem_is_keyed_by_the_computed_line():
         check_puzzle(_f(puzzle=q.replace("4. The pen is not in Blue.\n", ""), model=m, answer="3"), "stopping_problem")
 
 
+def test_an_underdetermined_set_of_groups_keeps_which_names_go_together():
+    # aspire-si#106 round 3: "Which sets of cups could be hot?" flattened to "red, blue, red, green", and a token set
+    # compare would have passed "red, blue, green" too.
+    cups = ("1. The red cup, the blue cup and the green cup are each hot or cold.\n2. Exactly two of the three cups are hot.\n"
+            "3. The red cup is hot.\nQuestion: Which sets of cups could be hot?")
+    m = {"entities": ["red", "blue", "green"], "attributes": {"heat": {"values": ["hot", "cold"], "distinct": False}},
+         "facts": [{"line": 2, "rule": ["count", "heat", "hot", "=", 2]}, {"line": 3, "rule": ["is", "red", "heat", "hot"]}],
+         "flavour": [1], "asks": {"entity_with": {"heat": "hot"}}}
+    key = "red and blue; red and green"
+    got = check_puzzle(_f(puzzle=cups, model=m, answer="green and red; blue and red", reply="x\nAnswer: green and red; blue and red"),
+                       "underdetermined_with_explicit_set")
+    assert got.answer == key
+    for wrong in ("red, blue, red, green", "red, blue, green", "red and blue"):
+        with pytest.raises(PuzzleError, match="write each possible group with 'and'"):
+            check_puzzle(_f(puzzle=cups, model=m, answer=wrong, reply=f"x\nAnswer: {wrong}"), "underdetermined_with_explicit_set")
+
+
 def test_an_underdetermined_set_is_computed_and_must_have_two_members():
     q = CUPS.format(q="Which cups could hold the pen?").replace("4. The pen is not in Blue.\n", "")
     m = copy.deepcopy(CUPS_MODEL)
