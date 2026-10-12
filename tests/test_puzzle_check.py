@@ -45,6 +45,28 @@ def test_a_modelled_puzzle_passes_and_a_verdict_item_is_out_of_scope(tmp_path: P
     assert models_path(data).name == "batch9-t02.models.jsonl"
 
 
+def test_a_question_that_paraphrases_the_asked_value_is_a_pointer_not_a_refusal(tmp_path: Path):
+    from role_set.puzzle_check import question_pointer, render
+
+    # R&D on role-set#43: "Which bus leaves earlier?" names a stem of `early`; "Who has the cheapest dish?" names
+    # neither `soup` nor a stem of it, and the key-check reads it.
+    m = json.loads(json.dumps(MODEL))
+    m["asks"] = {"entity_with": {"dish": "soup"}}
+    assert question_pointer(m, GRID.replace("Who ordered what?", "Who ordered soup?")) is None
+    assert question_pointer(m, GRID.replace("Who ordered what?", "Who ordered the soups?")) is None
+    assert question_pointer(MODEL, GRID) is None
+    cheap = GRID.replace("Who ordered what?", "Who has the cheapest dish?")
+    assert "names neither 'soup' nor a stem of it" in question_pointer(m, cheap)
+    # R&D on #44: a stem under 3 characters counts only as a whole word ("on" doesn't match "one").
+    acted = {"entities": ["P", "Q"], "attributes": {"use": {"values": ["acted on", "filed"]}}, "asks": {"entity_with": {"use": "acted on"}}}
+    assert question_pointer(acted, "1. x\nQuestion: Which one gets the flag?") is not None
+    assert question_pointer(acted, "1. x\nQuestion: Which note is the one someone acts on?") is None
+    r = check_file(_write(tmp_path, [_row("T02-B-01", puzzle=cheap, answer="Cy")],
+                          [{"id": "T02-B-01", "structure": "constraint_grid", "model": m}]))
+    assert r["ok"] and r["pass"] == 1 and r["pointers"] == 1
+    assert "T02-B-01: for the key-check: the Question line names neither 'soup'" in render(r)
+
+
 def test_refusals_missing_lines_stray_ids_and_a_second_lookup(tmp_path: Path):
     lookup_puzzle = GRID.replace("3. Cy didn't order pasta.", "3. Cy ordered soup.")
     lookup_model = json.loads(json.dumps(MODEL))

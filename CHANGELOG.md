@@ -14,6 +14,7 @@ All notable changes to role-set are documented here. The format is based on
 ### Changed
 
 - The B solver refuses a puzzle whose Question line doesn't name the entity the model asks about (`asks.of`). In aspire-si#106 the models asked the fee of an edition while the text asked the fee on a date, so no edition line was needed.
+- `puzzle-check` lists, without refusing, each puzzle that asks which entity holds a value while its Question line names neither the value nor a stem of it. It's a pointer for the key-check.
 - The README, handbook and landing page state the coverage floor instead of a test count that changes with every PR.
 - `puzzle-check` reads a two-value attribute's clues by what they say when it compares skeletons: "is not lit" and "not (is lit)" are "is dark", and "at least 2 of 3 lit" is "at most 1 of 3 dark". Three copies that had passed now refuse: T10-B-02 and T11-B-05 against T10-B-01 in aspire-si#106, and T06-B-02 against T02-B-02 in batch 4.
 - aspire-si-gates is pinned at 1.4.0 (aspire-si 388a6bc). The closed-form carry rule is the gates' own: role-set no longer checks word-for-word carry itself, and the writer's brief states the run's setting.
