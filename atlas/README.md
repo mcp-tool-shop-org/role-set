@@ -1,23 +1,20 @@
 # role-set: how it works
 
-Mapped at 2026-10-11 from commit db4d276 by Atlas 1.24.0.
+Mapped at 2026-10-12 from commit 5d8aba6 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (48 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (53 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-11 (30fd422)
+## What changed since 2026-10-11 (db4d276)
 
-- Deploy site to GitHub Pages (.github/workflows/pages.yml) is a new door. It starts on a push to main touching 2 paths; or by hand. It runs site/astro.config.mjs and site/src/.
-- CHANGELOG.md is now read by tests/test_assemble.py, tests/test_harvest_exemplars.py and tests/test_write.py.
-- roles/verifier/ is now read by README.md, site/src/content/docs/handbook/configuration.md, site/src/content/docs/handbook/getting-started.md, site/src/content/docs/handbook/kinds.md and site/src/content/docs/handbook/usage.md.
-- site/src/content/docs/ is now read by site/astro.config.mjs.
-- And 2 more new writers and readers of places.
-- scripts is a new part, drawn from `scripts/**`.
-- site is a new part, drawn from `site/**`.
-- 25 files added, 1 moved and 4 changed content, across 5 parts.
+- roles/verifier/ is now also read by README.es.md, README.fr.md, README.hi.md, README.it.md, README.ja.md, README.pt-BR.md and README.zh.md.
+- roles/verifier/defects.jsonl is now read by src/role_set/defects.py.
+- tests/fixtures/span_t12_must_pass.json is now read by tests/test_span.py.
+- And 1 more new writer or reader of a place.
+- 16 files added and 28 changed content, across 6 parts.
 
 ## What comes in
 
@@ -28,7 +25,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (25 files).
+2. That reaches src (27 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -49,16 +46,15 @@ scripts holds only PowerShell and shell files, which this map does not read, so 
 
 ## What tends to change together
 
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 8 commits, and the tests part imports the src part.
-- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 10 of 17 commits, inside the src part.
-- **src/role_set/assemble.py** and **src/role_set/prompts.py** changed together in 7 of 13 commits, inside the src part.
-- **src/role_set/prompts.py** and **tests/test_paid_run_data.py** changed together in 7 of 14 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 9 commits, and the tests part imports the src part.
+- **src/role_set/assemble.py** and **src/role_set/prompts.py** changed together in 9 of 17 commits, inside the src part.
+- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 11 of 21 commits, inside the src part.
 
-3 files changed together with their own tests, as expected.
+6 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 4 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -91,9 +87,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 write and 4 reads use paths built at run time and are not named here.
-- 5 writes and 22 reads go to a path their caller passes, not to this repository.
+- 5 writes and 24 reads go to a path their caller passes, not to this repository.
 - 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
-- 8 reads go to the directory the command is run in, not to this repository.
+- 9 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.
