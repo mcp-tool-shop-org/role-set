@@ -57,6 +57,10 @@ def test_a_question_that_paraphrases_the_asked_value_is_a_pointer_not_a_refusal(
     assert question_pointer(MODEL, GRID) is None
     cheap = GRID.replace("Who ordered what?", "Who has the cheapest dish?")
     assert "names neither 'soup' nor a stem of it" in question_pointer(m, cheap)
+    # R&D on #44: a stem under 3 characters counts only as a whole word ("on" doesn't match "one").
+    acted = {"entities": ["P", "Q"], "attributes": {"use": {"values": ["acted on", "filed"]}}, "asks": {"entity_with": {"use": "acted on"}}}
+    assert question_pointer(acted, "1. x\nQuestion: Which one gets the flag?") is not None
+    assert question_pointer(acted, "1. x\nQuestion: Which note is the one someone acts on?") is None
     r = check_file(_write(tmp_path, [_row("T02-B-01", puzzle=cheap, answer="Cy")],
                           [{"id": "T02-B-01", "structure": "constraint_grid", "model": m}]))
     assert r["ok"] and r["pass"] == 1 and r["pointers"] == 1

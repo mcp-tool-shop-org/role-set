@@ -234,7 +234,8 @@ def question_pointer(model: dict, puzzle: str) -> str | None:
     _, question = fact_lines(puzzle)
     words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", question)]
     stems = [_stem(w) for w in re.findall(r"[A-Za-z0-9]+", str(value))]
-    if any(w.startswith(st) for st in stems for w in words):
+    # A stem under 3 characters ("on" in "acted on") would match almost any word, so it counts only as a whole word.
+    if any(w.startswith(st) if len(st) >= 3 else w == st for st in stems for w in words):
         return None
     return f"the Question line names neither {str(value)!r} nor a stem of it; the key-check reads the paraphrase"
 
