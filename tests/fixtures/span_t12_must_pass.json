@@ -1,0 +1,621 @@
+[
+ {
+  "id": "T12-B-01",
+  "puzzle": "1. Three ferry fare cards, the red card, the white card and the black card, were in force one after another, one card to each span, in this order: 1 March to 31 May, 1 June to 31 August and 1 September to 30 November.\n2. The red card and the black card were never in force back to back.\n3. The black card came into force before the red card.\nQuestion: Which card was in force on 31 May?",
+  "model": {
+   "entities": [
+    "the red card",
+    "the white card",
+    "the black card"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1 March to 31 May",
+      "1 June to 31 August",
+      "1 September to 30 November"
+     ],
+     "ordered": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "not_adjacent",
+      "the red card",
+      "the black card",
+      "span"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "before",
+      "the black card",
+      "the red card",
+      "span"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "span": {
+    "attribute": "span",
+    "days": [
+     {
+      "label": "1 March",
+      "day": 1,
+      "month": 3,
+      "ordinal": 0
+     },
+     {
+      "label": "31 May",
+      "day": 31,
+      "month": 5,
+      "ordinal": 1
+     },
+     {
+      "label": "1 June",
+      "day": 1,
+      "month": 6,
+      "ordinal": 2
+     },
+     {
+      "label": "31 August",
+      "day": 31,
+      "month": 8,
+      "ordinal": 3
+     },
+     {
+      "label": "1 September",
+      "day": 1,
+      "month": 9,
+      "ordinal": 4
+     },
+     {
+      "label": "30 November",
+      "day": 30,
+      "month": 11,
+      "ordinal": 5
+     }
+    ],
+    "bounds": {
+     "1 March to 31 May": [
+      "1 March",
+      "31 May"
+     ],
+     "1 June to 31 August": [
+      "1 June",
+      "31 August"
+     ],
+     "1 September to 30 November": [
+      "1 September",
+      "30 November"
+     ]
+    }
+   },
+   "asks": {
+    "contains": "31 May"
+   }
+  },
+  "answer": "the black card",
+  "structure": "constraint_grid",
+  "reply": "31 May closes the first span, and the black card held it.\n\n| card | span |\n| --- | --- |\n| the black card | 1 March to 31 May |\n| the white card | 1 June to 31 August |\n| the red card | 1 September to 30 November |\nthe black card"
+ },
+ {
+  "id": "T12-B-02",
+  "puzzle": "1. A harbour notice board kept three issues of its mooring rules, issue 4, issue 5 and issue 6, one issue to each span, the spans running 1 January to 30 April, 1 May to 31 August and 1 September to 31 December.\n2. Issue 4 was not in force from 1 January to 30 April.\n3. Issue 5 came into force next on from issue 4.\nQuestion: Which issue was in force on 14 July?",
+  "model": {
+   "entities": [
+    "issue 4",
+    "issue 5",
+    "issue 6"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1 January to 30 April",
+      "1 May to 31 August",
+      "1 September to 31 December"
+     ],
+     "ordered": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is_not",
+      "issue 4",
+      "span",
+      "1 January to 30 April"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "offset",
+      "issue 4",
+      "issue 5",
+      "span",
+      1
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "span": {
+    "attribute": "span",
+    "days": [
+     {
+      "label": "1 January",
+      "day": 1,
+      "month": 1,
+      "ordinal": 0
+     },
+     {
+      "label": "30 April",
+      "day": 30,
+      "month": 4,
+      "ordinal": 1
+     },
+     {
+      "label": "1 May",
+      "day": 1,
+      "month": 5,
+      "ordinal": 2
+     },
+     {
+      "label": "14 July",
+      "day": 14,
+      "month": 7,
+      "ordinal": 3
+     },
+     {
+      "label": "31 August",
+      "day": 31,
+      "month": 8,
+      "ordinal": 4
+     },
+     {
+      "label": "1 September",
+      "day": 1,
+      "month": 9,
+      "ordinal": 5
+     },
+     {
+      "label": "31 December",
+      "day": 31,
+      "month": 12,
+      "ordinal": 6
+     }
+    ],
+    "bounds": {
+     "1 January to 30 April": [
+      "1 January",
+      "30 April"
+     ],
+     "1 May to 31 August": [
+      "1 May",
+      "31 August"
+     ],
+     "1 September to 31 December": [
+      "1 September",
+      "31 December"
+     ]
+    }
+   },
+   "asks": {
+    "contains": "14 July"
+   }
+  },
+  "answer": "issue 4",
+  "structure": "constraint_grid",
+  "reply": "14 July sits in 1 May to 31 August, and issue 4 held that span.\n\n| issue | span |\n| --- | --- |\n| issue 6 | 1 January to 30 April |\n| issue 4 | 1 May to 31 August |\n| issue 5 | 1 September to 31 December |\nissue 4"
+ },
+ {
+  "id": "T12-B-03",
+  "puzzle": "1. A bus depot posted four timetable sheets, sheet A, sheet B, sheet C and sheet D, each for its own quarter, the quarters in turn: 1 January to 31 March, 1 April to 30 June, 1 July to 30 September and 1 October to 31 December.\n2. Sheet C was in force from 1 October to 31 December.\n3. Sheet A was in force next to sheet C.\n4. Sheet B came into force before sheet D.\nQuestion: Which sheet was in force on 30 June?",
+  "model": {
+   "entities": [
+    "sheet A",
+    "sheet B",
+    "sheet C",
+    "sheet D"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1 January to 31 March",
+      "1 April to 30 June",
+      "1 July to 30 September",
+      "1 October to 31 December"
+     ],
+     "ordered": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is",
+      "sheet C",
+      "span",
+      "1 October to 31 December"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "adjacent",
+      "sheet A",
+      "sheet C",
+      "span"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "before",
+      "sheet B",
+      "sheet D",
+      "span"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "span": {
+    "attribute": "span",
+    "days": [
+     {
+      "label": "1 January",
+      "day": 1,
+      "month": 1,
+      "ordinal": 0
+     },
+     {
+      "label": "31 March",
+      "day": 31,
+      "month": 3,
+      "ordinal": 1
+     },
+     {
+      "label": "1 April",
+      "day": 1,
+      "month": 4,
+      "ordinal": 2
+     },
+     {
+      "label": "30 June",
+      "day": 30,
+      "month": 6,
+      "ordinal": 3
+     },
+     {
+      "label": "1 July",
+      "day": 1,
+      "month": 7,
+      "ordinal": 4
+     },
+     {
+      "label": "30 September",
+      "day": 30,
+      "month": 9,
+      "ordinal": 5
+     },
+     {
+      "label": "1 October",
+      "day": 1,
+      "month": 10,
+      "ordinal": 6
+     },
+     {
+      "label": "31 December",
+      "day": 31,
+      "month": 12,
+      "ordinal": 7
+     }
+    ],
+    "bounds": {
+     "1 January to 31 March": [
+      "1 January",
+      "31 March"
+     ],
+     "1 April to 30 June": [
+      "1 April",
+      "30 June"
+     ],
+     "1 July to 30 September": [
+      "1 July",
+      "30 September"
+     ],
+     "1 October to 31 December": [
+      "1 October",
+      "31 December"
+     ]
+    }
+   },
+   "asks": {
+    "contains": "30 June"
+   }
+  },
+  "answer": "sheet D",
+  "structure": "constraint_grid",
+  "reply": "30 June closes the second span, and sheet D held it.\n\n| sheet | span |\n| --- | --- |\n| sheet B | 1 January to 31 March |\n| sheet D | 1 April to 30 June |\n| sheet A | 1 July to 30 September |\n| sheet C | 1 October to 31 December |\nsheet D"
+ },
+ {
+  "id": "T12-B-04",
+  "puzzle": "1. A ropewalk's price list went through three printings, the Ash printing, the Birch printing and the Cedar printing, one printing per span, as listed: 1 February to 31 May, 1 June to 30 September and 1 October to 31 January.\n2. The Birch printing was in force from 1 February to 31 May or from 1 October to 31 January.\n3. The Birch printing came into force next on from the Cedar printing.\nQuestion: Which printing was in force on 9 August?",
+  "model": {
+   "entities": [
+    "the Ash printing",
+    "the Birch printing",
+    "the Cedar printing"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1 February to 31 May",
+      "1 June to 30 September",
+      "1 October to 31 January"
+     ],
+     "ordered": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "in",
+      "the Birch printing",
+      "span",
+      [
+       "1 February to 31 May",
+       "1 October to 31 January"
+      ]
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "offset",
+      "the Cedar printing",
+      "the Birch printing",
+      "span",
+      1
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "span": {
+    "attribute": "span",
+    "days": [
+     {
+      "label": "1 February",
+      "day": 1,
+      "month": 2,
+      "ordinal": 0,
+      "year": 0
+     },
+     {
+      "label": "31 May",
+      "day": 31,
+      "month": 5,
+      "ordinal": 1,
+      "year": 0
+     },
+     {
+      "label": "1 June",
+      "day": 1,
+      "month": 6,
+      "ordinal": 2,
+      "year": 0
+     },
+     {
+      "label": "9 August",
+      "day": 9,
+      "month": 8,
+      "ordinal": 3,
+      "year": 0
+     },
+     {
+      "label": "30 September",
+      "day": 30,
+      "month": 9,
+      "ordinal": 4,
+      "year": 0
+     },
+     {
+      "label": "1 October",
+      "day": 1,
+      "month": 10,
+      "ordinal": 5,
+      "year": 0
+     },
+     {
+      "label": "31 January",
+      "day": 31,
+      "month": 1,
+      "ordinal": 6,
+      "year": 1
+     }
+    ],
+    "bounds": {
+     "1 February to 31 May": [
+      "1 February",
+      "31 May"
+     ],
+     "1 June to 30 September": [
+      "1 June",
+      "30 September"
+     ],
+     "1 October to 31 January": [
+      "1 October",
+      "31 January"
+     ]
+    }
+   },
+   "asks": {
+    "contains": "9 August"
+   }
+  },
+  "answer": "the Cedar printing",
+  "structure": "constraint_grid",
+  "reply": "9 August sits in 1 June to 30 September, and the Cedar printing held that span.\n\n| printing | span |\n| --- | --- |\n| the Ash printing | 1 February to 31 May |\n| the Cedar printing | 1 June to 30 September |\n| the Birch printing | 1 October to 31 January |\nthe Cedar printing"
+ },
+ {
+  "id": "T12-B-05",
+  "puzzle": "1. A seed merchant's catalogue ran four editions over one trading year, the 9th edition, the 10th edition, the 11th edition and the 12th edition, one edition per quarter, in calendar order: 1 February to 30 April, 1 May to 31 July, 1 August to 31 October and 1 November to 31 January.\n2. The 12th edition was not in force from 1 August to 31 October.\n3. The 10th edition came into force next on from the 12th edition.\n4. The 9th edition came into force before the 11th edition.\nQuestion: Which edition was in force on 2 November?",
+  "model": {
+   "entities": [
+    "the 9th edition",
+    "the 10th edition",
+    "the 11th edition",
+    "the 12th edition"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1 February to 30 April",
+      "1 May to 31 July",
+      "1 August to 31 October",
+      "1 November to 31 January"
+     ],
+     "ordered": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is_not",
+      "the 12th edition",
+      "span",
+      "1 August to 31 October"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "offset",
+      "the 12th edition",
+      "the 10th edition",
+      "span",
+      1
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "before",
+      "the 9th edition",
+      "the 11th edition",
+      "span"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "span": {
+    "attribute": "span",
+    "days": [
+     {
+      "label": "1 February",
+      "day": 1,
+      "month": 2,
+      "ordinal": 0,
+      "year": 0
+     },
+     {
+      "label": "30 April",
+      "day": 30,
+      "month": 4,
+      "ordinal": 1,
+      "year": 0
+     },
+     {
+      "label": "1 May",
+      "day": 1,
+      "month": 5,
+      "ordinal": 2,
+      "year": 0
+     },
+     {
+      "label": "31 July",
+      "day": 31,
+      "month": 7,
+      "ordinal": 3,
+      "year": 0
+     },
+     {
+      "label": "1 August",
+      "day": 1,
+      "month": 8,
+      "ordinal": 4,
+      "year": 0
+     },
+     {
+      "label": "31 October",
+      "day": 31,
+      "month": 10,
+      "ordinal": 5,
+      "year": 0
+     },
+     {
+      "label": "1 November",
+      "day": 1,
+      "month": 11,
+      "ordinal": 6,
+      "year": 0
+     },
+     {
+      "label": "2 November",
+      "day": 2,
+      "month": 11,
+      "ordinal": 7,
+      "year": 0
+     },
+     {
+      "label": "31 January",
+      "day": 31,
+      "month": 1,
+      "ordinal": 8,
+      "year": 1
+     }
+    ],
+    "bounds": {
+     "1 February to 30 April": [
+      "1 February",
+      "30 April"
+     ],
+     "1 May to 31 July": [
+      "1 May",
+      "31 July"
+     ],
+     "1 August to 31 October": [
+      "1 August",
+      "31 October"
+     ],
+     "1 November to 31 January": [
+      "1 November",
+      "31 January"
+     ]
+    }
+   },
+   "asks": {
+    "contains": "2 November"
+   }
+  },
+  "answer": "the 11th edition",
+  "structure": "constraint_grid",
+  "reply": "2 November sits in the last span, and the 11th edition holds it in both placings the lines allow.\n\n└─ the 12th is not in 1 August to 31 October, and the 10th comes next on from it\n   ├─ 12th, 10th, 9th, 11th\n   └─ 9th, 12th, 10th, 11th\n      └─ the 11th holds 1 November to 31 January\nthe 11th edition"
+ }
+]

@@ -8,6 +8,8 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- `contains`: which edition was in force on a date, worked out by the solver. A model declares a span attribute whose values are spans with start and end days, drawn from typed day records over only the named days, and the clues map entities to spans. A question asks `{"contains": day}`, and a claim states `["contains", entity, day]`. A fact line never may. A day two spans hold goes to the owner rule the item states (earlier or later by start), or else both holders stand. A question about a day no span holds is refused. A date or clock time used as an entity is refused (aspire-si#106 round 3's placeholder). The skeleton key records the span. Fixtures: the five rebuilt T12 puzzles must pass, and round 3's five must refuse.
+- `docs/generator-design.md`: the agreed design of the puzzle generator, with R&D's rulings.
 - `roles/verifier/defects.jsonl`: one row per class of defect the reviews found, with how role-set handles it (gate, puzzle-check, brief, advisory critic, or none). `readout` ends with the open classes (`--catalog` names another file).
 - `write --closed-form`: the gates' closed-form settings for written kind-E variants (keyed carry verbatim, paraphrase or either; share; distractor margin; span), resolved through the pinned gates, whose defaults apply when it is unset. Every receipt records the settings.
 

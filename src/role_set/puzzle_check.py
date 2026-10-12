@@ -138,8 +138,22 @@ def skeleton(model: dict) -> str:
     variants = [_variants(r, model["attributes"], len(model.get("entities") or [])) for r in facts]
     readings = math.factorial(len(facts)) * math.prod(len(v) for v in variants)
     if readings > SKELETON_READINGS_MAX:
-        return _rename(model, facts)
-    return min(_rename(model, list(choice)) for order in itertools.permutations(variants) for choice in itertools.product(*order))
+        return _rename(model, facts) + _span_key(model)
+    return min(_rename(model, list(choice)) for order in itertools.permutations(variants) for choice in itertools.product(*order)) \
+        + _span_key(model)
+
+
+def _span_key(model: dict) -> str:
+    """The span part of the skeleton (R&D, 2026-10-12): the span attribute's shape, the owner rule, and whether the
+    question or claim asks `contains`. Empty for a puzzle without spans, so every other skeleton is unchanged."""
+
+    span = model.get("span")
+    if not isinstance(span, dict):
+        return ""
+    spec = model["attributes"].get(span.get("attribute"), {})
+    asks_contains = "contains" in (model.get("asks") or {}) or "contains" in json.dumps(model.get("claim") or [])
+    return "|span:" + json.dumps({"values": len(spec.get("values", [])), "owner": (span.get("owner") or {}).get("rule"),
+                                  "contains": asks_contains}, sort_keys=True)
 
 
 def models_path(data: Path) -> Path:
