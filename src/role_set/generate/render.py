@@ -45,7 +45,8 @@ def _clause(rule: list, rng: random.Random) -> str:
     return rng.choice(CLAUSES[rule[0]]).format(x=rule[1], v=rule[3])
 
 
-def sentence(rule: list, plural: str, rng: random.Random) -> str:
+def sentence(rule: list, plural: str, rng: random.Random, templates: dict | None = None) -> str:
+    TEMPLATES = {**globals()["TEMPLATES"], **(templates or {})}  # noqa: N806 - a recipe may override forms
     form = rule[0]
     if form in ("is", "is_not"):
         return rng.choice(TEMPLATES[form]).format(X=_cap(rule[1]), v=rule[3])
@@ -78,9 +79,13 @@ def setting_line(model: dict, plural: str) -> str:
 
     ents = model["entities"]
     parts = [f"{_cap(_list(ents))} are the {plural}."]
+    span_attr = (model.get("span") or {}).get("attribute")
     for a, spec in model["attributes"].items():
         vals = spec["values"]
-        if spec.get("ordered"):
+        if a == span_attr:
+            # Spans: each named with both ends, listed in calendar order.
+            parts.append(f"They were in force one after another, one to each span, in this order: {_list(vals)}.")
+        elif spec.get("ordered"):
             parts.append(f"Each stands in its own {a}, from {vals[0]} to {vals[-1]}: {_list(vals)}.")
         elif spec.get("distinct", True):
             parts.append(f"Each has its own {a}, one of {_list(vals)}.")
@@ -89,11 +94,15 @@ def setting_line(model: dict, plural: str) -> str:
     return " ".join(parts)
 
 
-def question_line(model: dict) -> str:
+def question_line(model: dict, singular: str = "one", templates: dict | None = None) -> str:
     if model.get("claim") is not None:
         c = model["claim"]
-        return f"Question: Claim: {sentence(c, '', random.Random(0))}"
+        if c[0] == "contains":
+            return f"Question: Claim: {_cap(c[1])} was in force on {c[2]}."
+        return f"Question: Claim: {sentence(c, '', random.Random(0), templates)}"
     asks = model["asks"]
+    if "contains" in asks:
+        return f"Question: Which {singular} was in force on {asks['contains']}?"
     if "of" in asks:
         vals = model["attributes"][asks["attribute"]]["values"]
         return f"Question: Is {asks['of']} {_or(vals)}?"
@@ -103,6 +112,6 @@ def question_line(model: dict) -> str:
     raise KeyError(f"no question template for {asks}")
 
 
-def render_puzzle(model: dict, plural: str, rng: random.Random) -> str:
-    lines = [setting_line(model, plural)] + [sentence(f["rule"], plural, rng) for f in model["facts"]]
-    return "\n".join(f"{i + 1}. {x}" for i, x in enumerate(lines)) + "\n" + question_line(model)
+def render_puzzle(model: dict, plural: str, rng: random.Random, templates: dict | None = None, singular: str = "one") -> str:
+    lines = [setting_line(model, plural)] + [sentence(f["rule"], plural, rng, templates) for f in model["facts"]]
+    return "\n".join(f"{i + 1}. {x}" for i, x in enumerate(lines)) + "\n" + question_line(model, singular, templates)

@@ -39,6 +39,7 @@ class Spans:
     labels: dict[str, str]  # day label (lower case) -> the label as declared
     bounds: dict[str, tuple[int, int]]  # span value -> (start ordinal, end ordinal)
     owner: dict | None  # {"rule": "earlier" | "later", "line": n}
+    months: dict[int, int] = None  # ordinal -> month, for readings that look at the month alone (R&D: typed records)
 
     def day(self, label) -> int:
         if not isinstance(label, str) or label.lower() not in self.ordinals:
@@ -75,6 +76,7 @@ def parse_spans(raw, attrs: dict[str, dict]) -> Spans:
     if not isinstance(days, list) or len(days) < 2:
         raise SpanError("span.days lists the item's named days, two or more")
     ordinals: dict[str, int] = {}
+    months: dict[int, int] = {}
     labels: dict[str, str] = {}
     prev = None
     for rec in days:
@@ -98,6 +100,7 @@ def parse_spans(raw, attrs: dict[str, dict]) -> Spans:
                                 "list the days in calendar order, and mark a year wrap with \"year\" on the records")
         prev = (rec["ordinal"], cal, rec["label"])
         ordinals[key] = rec["ordinal"]
+        months[rec["ordinal"]] = rec["month"]
         labels[key] = rec["label"].strip()
     bounds_raw = raw.get("bounds")
     values = attrs[a]["values"]
@@ -130,7 +133,7 @@ def parse_spans(raw, attrs: dict[str, dict]) -> Spans:
         # (R&D on role-set#47).
         raise SpanError("span.owner rules on a day two spans share, and no two declared spans share a day; drop the owner "
                         "rule and its line")
-    return Spans(a, ordinals, labels, bounds, owner)
+    return Spans(a, ordinals, labels, bounds, owner, months)
 
 
 def overlapping(bounds: dict[str, tuple[int, int]]) -> bool:
