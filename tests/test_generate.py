@@ -52,10 +52,27 @@ def test_the_same_seed_rebuilds_the_same_puzzle():
     assert build_t10("cups", 8, question="set").model != a.model
 
 
-def test_a_single_value_question_cannot_carry_a_t10_reading():
-    # Loosening a size word only widens the possibilities, so the key stays among them, which R&D's rule doesn't count.
-    with pytest.raises(BuildError, match="no puzzle in 40 tries"):
-        build_t10("lamps", 1, question="value", tries=40)
+def test_t10_refuses_a_single_value_question_at_once():
+    # R&D on #48, ruling 2: no reading can decide one (loosened keeps the key possible; tightened gives the key or a
+    # contradiction), so it is refused before any search, with that reason; and the question has no default.
+    import inspect
+
+    with pytest.raises(BuildError, match="no single-value questions"):
+        build_t10("lamps", 1, question="value")
+    with pytest.raises(BuildError, match="one of set, claim"):
+        build_t10("lamps", 1, question="which")
+    assert inspect.signature(build_t10).parameters["question"].default is inspect.Parameter.empty
+
+
+def test_a_contradiction_is_recorded_but_proves_nothing():
+    # R&D on #48, ruling 1: kept on the receipt with differs false.
+    model = {"entities": ["the oak door", "the pine door"], "attributes": {"state": {"values": ["open", "shut"], "distinct": False}},
+             "facts": [{"line": 2, "rule": ["count", "state", "open", "<=", 1]},
+                       {"line": 3, "rule": ["is", "the oak door", "state", "shut"]},
+                       {"line": 4, "rule": ["is", "the pine door", "state", "shut"]}], "flavour": [1],
+             "claim": ["is", "the oak door", "state", "shut"]}
+    proofs = prove(model, "falsifier_first", ["T10.ceiling_read_as_exact"])
+    assert proofs["T10.ceiling_read_as_exact"] == {"answer": "no assignment fits", "differs": False}
 
 
 def test_the_receipt_metrics_and_the_solver_pin():
@@ -121,3 +138,11 @@ def test_a_receipt_carries_the_seed_readings_metrics_and_pins():
     assert r["seed"] == 3 and r["recipe"] == "T10" and r["answer"] == b.answer and r["shortcuts"] == b.shortcuts
     assert len(r["skeleton_sha256"]) == len(r["pack_sha256"]) == len(r["solver"]["sha256"]) == 64
     json.dumps(r)
+
+
+def test_round5_t10_b01_carries_a_deciding_size_reading():
+    # R&D's optional must-pass (aspire-si 0c181e4): two counts, and each bound read as exact changes the set.
+    (f,) = json.loads((FIXTURES / "t10_round5_must_pass.json").read_text(encoding="utf-8"))
+    check_puzzle({"puzzle": f["puzzle"], "model": f["model"], "answer": f["answer"], "reply": f["reply"]}, f["structure"])
+    proofs = prove(f["model"], f["structure"], list(REGISTRY))
+    assert any(p["differs"] for p in proofs.values())

@@ -1,0 +1,56 @@
+[
+ {
+  "id": "T10-B-01",
+  "puzzle": "1. Three stoves, the kiln, the oven and the hob, are each hot, warm or cold.\n2. At least one of the stoves is hot.\n3. At most two of the stoves are hot.\nQuestion: Which stoves could be hot?",
+  "model": {
+   "entities": [
+    "kiln",
+    "oven",
+    "hob"
+   ],
+   "attributes": {
+    "heat": {
+     "values": [
+      "hot",
+      "warm",
+      "cold"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "count",
+      "heat",
+      "hot",
+      ">=",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "count",
+      "heat",
+      "hot",
+      "<=",
+      2
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "entity_with": {
+     "heat": "hot"
+    }
+   }
+  },
+  "answer": "hob; kiln; kiln and hob; kiln and oven; oven; oven and hob",
+  "structure": "underdetermined_with_explicit_set",
+  "reply": "| hot stoves |\n| --- |\n| hob |\n| kiln |\n| kiln and hob |\n| kiln and oven |\n| oven |\n| oven and hob |\n\nhob; kiln; kiln and hob; kiln and oven; oven; oven and hob"
+ }
+]

@@ -47,13 +47,16 @@ def t10_shape(pack: dict, n: int, rng: random.Random, question: str) -> Shape:
     attrs = {pack["attribute"]: {"values": list(pack["values"]), "distinct": False}}
     if question == "claim":
         return Shape(names, attrs, claim=["is", names[-1], pack["attribute"], pack["values"][0]], structure="falsifier_first")
-    if question == "set":
-        # "Which of them could be lit?": the answer is every possible group, so a loosened size word changes the set. A
-        # single-value question can't carry a T10 reading: loosening only widens the possibilities, so the key stays
-        # among them, which R&D's divergence rule doesn't count.
-        return Shape(names, attrs, asks={"entity_with": {pack["attribute"]: pack["values"][0]}},
-                     structure="underdetermined_with_explicit_set")
-    return Shape(names, attrs, asks={"attribute": pack["attribute"], "of": names[-1]})
+    # "Which of them could be lit?": the answer is every possible group, so a loosened size word changes the set.
+    return Shape(names, attrs, asks={"entity_with": {pack["attribute"]: pack["values"][0]}},
+                 structure="underdetermined_with_explicit_set")
+
+
+T10_QUESTIONS = ("set", "claim")
+# R&D on #48, ruling 2: a single-value question never carries a T10 reading. A loosened reading keeps the key among its
+# answers, and a tightened one gives the key or a contradiction, so the builder refuses it at once rather than search.
+T10_NO_VALUE = ("T10 builds no single-value questions: a loosened size word keeps the key among the possible answers, and a "
+                "tightened one gives the key or a contradiction, so no reading can decide; ask 'set' or 'claim'")
 
 
 SET_MAX = 4  # possible groups in an open-set answer; more reads as a listing exercise
@@ -68,10 +71,12 @@ def _groups(shape: Shape, sols: list[dict]):
     return lambda mask: frozenset(projs[i] for i in range(len(sols)) if mask >> i & 1)
 
 
-def build_t10(pack_name: str, seed: int, n: int = 4, question: str = "value", tries: int = MAX_TRIES) -> Built:
+def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES) -> Built:
     """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and at least one size
-    loosening that answers differently."""
+    reading that answers differently. `question` is "set" (which could be ...?) or "claim"."""
 
+    if question not in T10_QUESTIONS:
+        raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
     pack = PACKS[pack_name]
     rng = random.Random(seed)
     last = "no attempt"
