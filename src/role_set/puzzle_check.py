@@ -20,12 +20,13 @@ import hashlib
 import itertools
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 
 from role_set.assemble import VERDICTS
 from role_set.plan import PUZZLE_STRUCTURES
-from role_set.puzzle import PuzzleError, check_puzzle
+from role_set.puzzle import PuzzleError, check_puzzle, fact_lines
 
 VERDICT_STRUCTURE = "verdict"
 STRUCTURES = tuple(name for name, _ in PUZZLE_STRUCTURES) + (VERDICT_STRUCTURE,)
@@ -193,8 +194,12 @@ def check_file(data: Path, models: Path | None = None) -> dict:
         except PuzzleError as e:
             items.append({"id": rid, "result": "refused", "structure": structure, "detail": str(e)})
             continue
-        items.append({"id": rid, "result": "pass", "structure": structure, "detail": f"key {got.answer!r}" + (", a lookup" if got.lookup else ""),
-                      "skeleton": skeleton(entry["model"])})
+        item = {"id": rid, "result": "pass", "structure": structure, "detail": f"key {got.answer!r}" + (", a lookup" if got.lookup else ""),
+                "skeleton": skeleton(entry["model"])}
+        pointer = question_pointer(entry["model"], fields["puzzle"])
+        if pointer:
+            item["pointer"] = pointer
+        items.append(item)
         if got.lookup:
             lookups.setdefault(row.get("lesson") or rid[:3], []).append(rid)
     for lesson, ids in lookups.items():
@@ -205,11 +210,41 @@ def check_file(data: Path, models: Path | None = None) -> dict:
     return _tally(report)
 
 
+SUFFIXES = ("iest", "est", "ier", "ing", "ed", "er", "ly", "es", "s", "y")
+
+
+def _stem(word: str) -> str:
+    w = word.lower()
+    for suffix in SUFFIXES:
+        if w.endswith(suffix) and len(w) - len(suffix) >= 3:
+            return w[: -len(suffix)]
+    return w
+
+
+def question_pointer(model: dict, puzzle: str) -> str | None:
+    """A pointer for the key-check, never a refusal (R&D on role-set#43): a puzzle that asks which entity holds a value
+    and whose Question line names neither that value nor a stem of it ("Which bus leaves earlier?" names a stem of
+    `early`). A plain paraphrase ("fastest" for 1st) is fine as written; the key-check reads that the question is the
+    one the model asks."""
+
+    ew = (model.get("asks") or {}).get("entity_with")
+    if not isinstance(ew, dict) or len(ew) != 1:
+        return None
+    (_, value), = ew.items()
+    _, question = fact_lines(puzzle)
+    words = [w.lower() for w in re.findall(r"[A-Za-z0-9]+", question)]
+    stems = [_stem(w) for w in re.findall(r"[A-Za-z0-9]+", str(value))]
+    if any(w.startswith(st) for st in stems for w in words):
+        return None
+    return f"the Question line names neither {str(value)!r} nor a stem of it; the key-check reads the paraphrase"
+
+
 def _tally(report: dict) -> dict:
     items = report["items"]
     report.update({k: sum(1 for i in items if i["result"] == k) for k in ("pass", "verdict", "refused", "missing")})
     report["ok"] = report["refused"] == 0 and report["missing"] == 0 and not report["stray"]
     report["by_structure"] = dict(sorted(Counter(f"{i.get('structure') or '-'}: {i['result']}" for i in items).items()))
+    report["pointers"] = sum(1 for i in items if i.get("pointer") and i["result"] == "pass")
     return report
 
 
@@ -244,6 +279,8 @@ def render(report: dict) -> str:
     for i in report["items"]:
         if i["result"] != "pass":
             out.append(f"  {i['id']}: {i['result'].upper()}: {i['detail']}")
+        elif i.get("pointer"):
+            out.append(f"  {i['id']}: for the key-check: {i['pointer']}")
     return "\n".join(out)
 
 
