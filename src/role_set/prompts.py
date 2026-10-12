@@ -79,7 +79,8 @@ B_MODEL_EXAMPLE = (
 B_STRUCTURE_NOTES = {
     "underdetermined_with_explicit_set": (
         "This puzzle is underdetermined: the facts leave two or more answers to one value (asks with \"of\" or "
-        "\"entity_with\"), and 'answer' lists every possible one, separated by commas. When a possible answer is a group "
+        "\"entity_with\"), the Question asks what could be ('Which cups could hold the pen?'), and 'answer' lists every "
+        "possible one, separated by commas. When a possible answer is a group "
         "of names, join each group with 'and' and separate the groups with semicolons ('red and blue; red and green')."),
     "stopping_problem": (
         "This is a stopping problem: the Question asks after which numbered line the answer is settled, and 'answer' is "
