@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "e1b3063476b903a4a3702058f0c86bff458586cebc187c1162dfd3f732cf649d",
+          "hash": "279ecfaa524d90c9a0945281700ecae527ef5662e6b6f7dcb5c44ea2581da3e5",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "2b9946109308b0b842569c90a3b66cce0b862f79f30cce1457ab7a691a56cb03",
+          "hash": "d911d8268ddf2fdc392714220e1c256dee65373eea378de256dcbb48eb1b18a5",
           "path": "CHANGELOG.md"
         },
         {
@@ -304,7 +304,7 @@
           "path": "site/src/content/docs/handbook/index.md"
         },
         {
-          "hash": "6710c5dc84f1346bc30b7367367526ac21d32b1f3eb4323cfe6dfb881dda3312",
+          "hash": "2a5ac110cb35757b4a39b6dddcb1b73c39bd1deb4d013a0015e90e449ad43ada",
           "path": "site/src/content/docs/handbook/kinds.md"
         },
         {
@@ -1458,6 +1458,115 @@
           "path": "src/role_set/gates.py"
         },
         {
+          "hash": "c18b3d1e6b9a0e3c2221f2614308fd122a6aceb6f6c959000bdf80b8f12acbd8",
+          "noStatements": true,
+          "path": "src/role_set/generate/__init__.py"
+        },
+        {
+          "exports": [
+            "assignments",
+            "candidates",
+            "check_model",
+            "metrics",
+            "receipt",
+            "reduce",
+            "solver_version",
+            "truth"
+          ],
+          "failurePaths": [
+            {
+              "in": "check_model",
+              "kind": "raise",
+              "line": 203
+            }
+          ],
+          "hash": "563507574761452e2fd63427472206c72b80008bbc6b274d2fea52e2594e9423",
+          "importOrder": [
+            "src/role_set/puzzle.py",
+            "src/role_set/span.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "importsFiles": [
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py",
+            "src/role_set/span.py"
+          ],
+          "path": "src/role_set/generate/build.py"
+        },
+        {
+          "exports": [
+            "build_t10",
+            "t10_shape"
+          ],
+          "failurePaths": [
+            {
+              "in": "build_t10",
+              "kind": "raise",
+              "line": 129
+            },
+            {
+              "in": "_finish",
+              "kind": "except",
+              "line": 138
+            }
+          ],
+          "hash": "8bead92cd2d752e425118bbcc2a74956f61a2d6a1a0571deeffed1d3cd906ca0",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py"
+          ],
+          "path": "src/role_set/generate/recipes.py"
+        },
+        {
+          "exports": [
+            "question_line",
+            "render_puzzle",
+            "sentence",
+            "setting_line"
+          ],
+          "failurePaths": [
+            {
+              "in": "sentence",
+              "kind": "raise",
+              "line": 64
+            },
+            {
+              "in": "question_line",
+              "kind": "raise",
+              "line": 103
+            }
+          ],
+          "hash": "fd5474f21e73ddd422ae79732f5a80741a91623c7fc23c360dc265a24ecdad5f",
+          "path": "src/role_set/generate/render.py"
+        },
+        {
+          "exports": [
+            "answer",
+            "applies",
+            "differs",
+            "prove",
+            "rewrite"
+          ],
+          "failurePaths": [
+            {
+              "in": "rewrite",
+              "kind": "raise",
+              "line": 61
+            },
+            {
+              "in": "prove",
+              "kind": "except",
+              "line": 103
+            }
+          ],
+          "hash": "6d57a6006305e3d585330d314734fa4fa63921f7eb9228bbbc865aaa3c554113",
+          "importsFiles": [
+            "src/role_set/puzzle.py"
+          ],
+          "path": "src/role_set/generate/shortcuts.py"
+        },
+        {
           "entry": "heartbeat_age_s",
           "entryRule": 4,
           "exports": [
@@ -2244,325 +2353,325 @@
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 97
+              "line": 98
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 101
+              "line": 102
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 105
+              "line": 106
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 109
+              "line": 110
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 115
+              "line": 116
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 118
+              "line": 119
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 123
+              "line": 124
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 127
+              "line": 128
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 131
+              "line": 132
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 133
+              "line": 134
             },
             {
               "in": "parse_model",
               "kind": "except",
-              "line": 138
-            },
-            {
-              "in": "parse_model",
-              "kind": "raise",
               "line": 139
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 143
+              "line": 140
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 148
+              "line": 144
+            },
+            {
+              "in": "parse_model",
+              "kind": "raise",
+              "line": 149
             },
             {
               "in": "_entity",
               "kind": "raise",
-              "line": 159
+              "line": 160
             },
             {
               "in": "_attr",
               "kind": "raise",
-              "line": 164
+              "line": 165
             },
             {
               "in": "_attr",
               "kind": "raise",
-              "line": 166
+              "line": 167
             },
             {
               "in": "_value",
               "kind": "raise",
-              "line": 174
+              "line": 175
             },
             {
               "in": "_check_ref",
               "kind": "raise",
-              "line": 180
+              "line": 181
             },
             {
               "in": "_check_ref",
               "kind": "raise",
-              "line": 183
+              "line": 184
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 191
+              "line": 192
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 195
+              "line": 196
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 200
+              "line": 201
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 202
+              "line": 203
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 212
+              "line": 213
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 223
+              "line": 224
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 226
+              "line": 227
             },
             {
               "in": "_check_rule",
               "kind": "except",
-              "line": 230
-            },
-            {
-              "in": "_check_rule",
-              "kind": "raise",
               "line": 231
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 235
+              "line": 232
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 236
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 241
+              "line": 242
             },
             {
               "in": "_check_asks",
               "kind": "except",
-              "line": 244
-            },
-            {
-              "in": "_check_asks",
-              "kind": "raise",
               "line": 245
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 249
+              "line": 246
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 257
+              "line": 250
+            },
+            {
+              "in": "_check_asks",
+              "kind": "raise",
+              "line": 258
             },
             {
               "in": "fact_lines",
               "kind": "raise",
-              "line": 330
+              "line": 331
             },
             {
               "in": "check_text",
               "kind": "except",
-              "line": 389
+              "line": 390
             },
             {
               "in": "check_text",
               "kind": "except",
-              "line": 393
+              "line": 394
             },
             {
               "in": "check_text",
               "kind": "raise",
-              "line": 417
+              "line": 418
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 449
+              "line": 450
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 454
+              "line": 455
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 471
+              "line": 472
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 473
+              "line": 474
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 476
+              "line": 477
             },
             {
               "in": "__init__",
               "kind": "raise",
-              "line": 603
+              "line": 604
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 688
+              "line": 689
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 694
+              "line": 695
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 700
+              "line": 701
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 709
+              "line": 710
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 719
+              "line": 720
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 724
+              "line": 725
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 727
+              "line": 728
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 729
+              "line": 730
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 732
+              "line": 733
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 738
+              "line": 739
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 766
+              "line": 767
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 773
+              "line": 774
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 776
+              "line": 777
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 780
+              "line": 781
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 783
+              "line": 784
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 787
+              "line": 788
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 791
+              "line": 792
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 793
+              "line": 794
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 801
+              "line": 802
             }
           ],
-          "hash": "59e45307a043d7a7bb86f94ceedf8ab716394439ecb16baf9ff1523f0255b35c",
+          "hash": "75a3d650d45192a11508e3539a9d9d58f0bdae379fa6189f6c34cbffaa1a2e1c",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/span.py",
@@ -2588,12 +2697,17 @@
           ],
           "failurePaths": [
             {
+              "in": "_span_key",
+              "kind": "except",
+              "line": 160
+            },
+            {
               "in": "check_file",
               "kind": "except",
-              "line": 208
+              "line": 215
             }
           ],
-          "hash": "5781c17088b10254f901b4a2832a1fa016519d5b38e1ece1386864b336abced5",
+          "hash": "3cc75fb81a846a50a1bc6ffe1aa72ed419c02cd06450ab6ff519f193ce90f3c2",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -2875,33 +2989,29 @@
         },
         {
           "exports": [
+            "overlapping",
             "parse_spans"
           ],
           "failurePaths": [
             {
               "in": "day",
               "kind": "raise",
-              "line": 43
+              "line": 45
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 68
+              "line": 70
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 71
+              "line": 73
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 74
-            },
-            {
-              "in": "parse_spans",
-              "kind": "raise",
-              "line": 81
+              "line": 76
             },
             {
               "in": "parse_spans",
@@ -2916,12 +3026,12 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 89
+              "line": 87
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 93
+              "line": 91
             },
             {
               "in": "parse_spans",
@@ -2931,27 +3041,27 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 103
+              "line": 97
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 108
+              "line": 105
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 111
+              "line": 110
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 114
+              "line": 113
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 118
+              "line": 116
             },
             {
               "in": "parse_spans",
@@ -2961,10 +3071,20 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 124
+              "line": 122
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 126
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 131
             }
           ],
-          "hash": "1558c565bff7d015576cd9ea546444e29d5789f9eab172c7239450f88aff0bdc",
+          "hash": "da93868800b9a6a071025037740a0145ab451db2a37e1e0b834d949d9a17e66b",
           "path": "src/role_set/span.py"
         },
         {
@@ -3949,7 +4069,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 26,
+      "testedBy": 27,
       "unresolvedSites": 0
     },
     {
@@ -3971,6 +4091,10 @@
         {
           "hash": "aebf570a2f0cf3d5a2bf9b6f25f7975e6ea5b4c5d1bf3029c1ae6575b6dfd472",
           "path": "tests/fixtures/span_t12_must_pass.json"
+        },
+        {
+          "hash": "59425cd1c19a5d8c0e11f4692b526f91d13e4a950a00bc5a6196d4af757513c2",
+          "path": "tests/fixtures/t10_round2_must_refuse.json"
         },
         {
           "hash": "e12ba706af9d34fa84f69ee915936798f2743cd80682fef7e608027ca2f6333d",
@@ -4168,6 +4292,31 @@
             "src/role_set/gates.py"
           ],
           "path": "tests/test_gates.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_a_reading_with_nothing_to_rewrite_is_skipped",
+            "test_a_receipt_carries_the_seed_readings_metrics_and_pins",
+            "test_a_single_value_question_cannot_carry_a_t10_reading",
+            "test_a_t10_claim_is_proven",
+            "test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips",
+            "test_round2_t10_b01_is_refused_by_puzzle_check",
+            "test_round2_t10_puzzles_have_no_size_reading_that_decides",
+            "test_templates_agree_in_number_and_read_negative",
+            "test_the_divergence_rules_by_answer_type",
+            "test_the_receipt_metrics_and_the_solver_pin",
+            "test_the_same_seed_rebuilds_the_same_puzzle"
+          ],
+          "hash": "5bda0e4eb418327d0dfe7a487e87389e23c9d1e7e7a1abb55a5e8ab83590adb6",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/render.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py"
+          ],
+          "path": "tests/test_generate.py",
           "testFramework": "pytest"
         },
         {
@@ -4452,7 +4601,7 @@
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "b16f56fb47e5fc029a6dd6832c7453ca58cf437fc78d9f4939d9c6b8989b394a",
+          "hash": "05d0ba0e6281cedff28f7554dc847f97d3d5f920178fb3007fc08b748534940d",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
@@ -4529,16 +4678,19 @@
             "test_a_claim_on_contains_is_keyed_by_the_computed_verdict",
             "test_a_day_no_span_holds",
             "test_a_malformed_span_declaration_is_refused",
+            "test_a_time_is_a_clock_time_and_a_bare_decimal_is_not",
             "test_an_overlap_has_both_holders_unless_the_item_states_an_owner",
+            "test_an_owner_rule_needs_two_spans_that_share_a_day",
             "test_contains_is_never_a_fact_line_and_names_only_declared_days",
             "test_day_records_follow_the_calendar_and_mark_a_year_wrap",
             "test_spans_are_well_formed_and_strictly_ordered",
             "test_the_round3_placeholder_puzzles_stay_refused",
             "test_the_skeleton_records_the_span_contains_and_the_owner",
+            "test_the_skeleton_records_whether_spans_overlap",
             "test_the_solver_finds_the_holder_inclusive_at_both_ends",
             "test_the_t12_rebuilds_pass_on_contains"
           ],
-          "hash": "263327c52c9a6bc33b3f410a2d6bb44742d4f72a6a8f2a526e0fd60fd266a539",
+          "hash": "4dc0a80e3c185c65185e5b048b261c06b5b75e23c0af6886b8bd4660c0be5fa2",
           "importsFiles": [
             "src/role_set/puzzle.py",
             "src/role_set/puzzle_check.py"
@@ -4716,7 +4868,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 26
+          "files": 27
         },
         {
           "boundary": "src",
@@ -4725,7 +4877,7 @@
             "file": "src/role_set/assemble.py",
             "from": "tests/test_assemble.py"
           },
-          "files": 27
+          "files": 31
         }
       ],
       "readers": [],
@@ -4756,7 +4908,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 26,
+          "files": 27,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -5003,8 +5155,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333",
-    "tracked": 111
+    "commit": "0d7d301cffdc4e1fb84b878d3e8c39e2b430d156",
+    "tracked": 118
   },
   "landings": [
     {
@@ -5163,6 +5315,11 @@
           "by": "pyproject.toml",
           "call": "configuration",
           "confidence": "config"
+        },
+        {
+          "by": "src/role_set/generate/build.py",
+          "call": "read_bytes",
+          "confidence": "ast"
         }
       ],
       "target": "src/role_set",
@@ -5194,6 +5351,18 @@
     {
       "readers": [
         {
+          "by": "tests/test_generate.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/t10_round2_must_refuse.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
           "by": "tests/test_span.py",
           "call": "read_text",
           "confidence": "ast",
@@ -5207,6 +5376,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 30,
+  "testFiles": 32,
   "unassigned": []
 }

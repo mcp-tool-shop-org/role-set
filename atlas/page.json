@@ -21,57 +21,38 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 16,
-      "changed": 28,
+      "added": 7,
+      "changed": 8,
       "moved": 0,
-      "parts": 6,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "roles/verifier/ is now also read by README.es.md, README.fr.md, README.hi.md, README.it.md, README.ja.md, README.pt-BR.md and README.zh.md.",
+        "sentence": "src/role_set/ is now also read by src/role_set/generate/build.py.",
         "subjects": [
-          "roles/verifier/",
-          "README.es.md",
-          "README.fr.md",
-          "README.hi.md",
-          "README.it.md",
-          "README.ja.md",
-          "README.pt-BR.md",
-          "README.zh.md"
+          "src/role_set/",
+          "src/role_set/generate/build.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "roles/verifier/defects.jsonl is now read by src/role_set/defects.py.",
+        "sentence": "tests/fixtures/t10_round2_must_refuse.json is now read by tests/test_generate.py.",
         "subjects": [
-          "roles/verifier/defects.jsonl",
-          "src/role_set/defects.py"
+          "tests/fixtures/t10_round2_must_refuse.json",
+          "tests/test_generate.py"
         ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "tests/fixtures/span_t12_must_pass.json is now read by tests/test_span.py.",
-        "subjects": [
-          "tests/fixtures/span_t12_must_pass.json",
-          "tests/test_span.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 1 more new writer or reader of a place.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "16 files added and 28 changed content, across 6 parts.",
+        "sentence": "7 files added and 8 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
-      "generatedAt": "2026-10-11T18:08:38.922Z"
+      "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333",
+      "generatedAt": "2026-10-12T12:49:23.296Z"
     },
     "unchanged": false
   },
@@ -128,9 +109,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333",
+  "commit": "0d7d301cffdc4e1fb84b878d3e8c39e2b430d156",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (53 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (59 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -145,12 +126,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 26
+          "files": 27
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 27
+          "files": 31
         }
       ],
       "runs": [
@@ -232,7 +213,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-12T12:49:23.296Z",
+  "generatedAt": "2026-10-12T13:03:22.514Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 24 reads go to a path their caller passes, not to this repository.",
@@ -266,9 +247,9 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 30,
+  "testFiles": 32,
   "testedBy": {
-    "src": 26
+    "src": 27
   },
   "unnamedWrites": 1,
   "unread": [],
