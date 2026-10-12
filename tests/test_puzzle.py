@@ -245,6 +245,15 @@ def test_an_underdetermined_set_is_computed_and_must_have_two_members():
                         "underdetermined_with_explicit_set").answer == "pasta, soup"
     with pytest.raises(PuzzleError, match="leave exactly 'pasta, soup' possible, and the key says 'soup'"):
         check_puzzle(_f(puzzle=oq, model=om, answer="soup", reply="x\nAnswer: soup"), "underdetermined_with_explicit_set")
+    # R&D on aspire-si#106 round 4: a key that lists every possibility answers a question about what could be.
+    with pytest.raises(PuzzleError, match="the Question asks what could be"):
+        check_puzzle(_f(puzzle=oq.replace("What could Cy have ordered?", "What did Cy order?"), model=om, answer="soup, pasta",
+                        reply="x\nAnswer: soup, pasta"), "underdetermined_with_explicit_set")
+    for word in ("can", "might", "possible"):
+        q2 = oq.replace("What could Cy have ordered?", {"can": "Which dishes can Cy have?", "might": "What might Cy have ordered?",
+                                                         "possible": "Which dishes are possible for Cy?"}[word])
+        assert check_puzzle(_f(puzzle=q2, model=om, answer="soup, pasta", reply="x\nAnswer: soup, pasta"),
+                            "underdetermined_with_explicit_set").answer == "pasta, soup"
     mm = copy.deepcopy(GRID_MODEL)
     with pytest.raises(PuzzleError, match="asks for one value"):
         check_puzzle(_f(model=mm), "underdetermined_with_explicit_set")

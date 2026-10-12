@@ -23,6 +23,8 @@ from dataclasses import dataclass, field
 from role_set.assemble import UNIQUENESS_ASKED, closed_answer
 
 SEARCH_CAP = 200_000  # assignments; a larger puzzle is refused as too large to check
+# An open-set question asks what could be: every open-set item reviewed so far says "could" or "can".
+POSSIBILITY_ASKED = re.compile(r"\b(could|can|might|may|possible|possibly)\b", re.IGNORECASE)
 MAX_ENTITIES = 6
 MAX_ATTRIBUTES = 3
 MAX_FLAVOUR = 2
@@ -698,6 +700,10 @@ def check_puzzle(fields: dict, structure: str | None) -> Checked:
         if re.fullmatch(r"undetermined\.?", key, re.IGNORECASE):
             if not UNIQUENESS_ASKED.search(question):
                 raise PuzzleError("'undetermined' answers a question that asks whether the answer is unique; this one doesn't")
+        elif not POSSIBILITY_ASKED.search(question):
+            # "Which stoves are hot?" asks for one fact, and the key lists every possibility (R&D on aspire-si#106 round 4).
+            raise PuzzleError("the key lists every possible answer, so the Question asks what could be ('Which stoves could "
+                              "be hot?'), not what is")
         elif _grouped(m):
             if ";" not in key or _groups(m, key) != _groups(m, got.answer):
                 raise PuzzleError(f"the facts leave exactly {got.answer!r} possible, and the key says {key!r}; write each "
