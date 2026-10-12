@@ -1,0 +1,401 @@
+[
+ {
+  "id": "T12-B-01",
+  "puzzle": "1. Three fare cards are posted, the spans are January to June, July to December and the asked day, and the fares are 4 and 9.\n2. The south card does not cover January to June.\n3. 14 May is the asked day.\n4. If the north card covers January to June, 14 May draws fare 4.\nQuestion: What was the fare on 14 May?",
+  "model": {
+   "entities": [
+    "north",
+    "south",
+    "14 May"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "January to June",
+      "July to December",
+      "the asked day"
+     ],
+     "distinct": true
+    },
+    "fare": {
+     "values": [
+      "4",
+      "9"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is_not",
+      "south",
+      "span",
+      "January to June"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      "14 May",
+      "span",
+      "the asked day"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "if",
+      [
+       "is",
+       "north",
+       "span",
+       "January to June"
+      ],
+      [
+       "is",
+       "14 May",
+       "fare",
+       "4"
+      ]
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "attribute": "fare",
+    "of": "14 May"
+   }
+  },
+  "answer": "4",
+  "structure": "constraint_grid",
+  "reply": "North holds January to June, and 14 May draws fare 4 from that span.\n4",
+  "defect": "placeholder_value_to_pass_check"
+ },
+ {
+  "id": "T12-B-02",
+  "puzzle": "1. Three timetable sheets are posted, the spans are 05:00 to 11:00, 11:00 to 17:00 and the asked hour, and the fares are 3 and 8.\n2. The dawn sheet sits before the dusk sheet.\n3. 14:00 is the asked hour.\n4. If the dawn sheet covers 05:00 to 11:00, 14:00 draws fare 3.\nQuestion: What was the fare at 14:00?",
+  "model": {
+   "entities": [
+    "dawn",
+    "dusk",
+    "14:00"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "05:00 to 11:00",
+      "11:00 to 17:00",
+      "the asked hour"
+     ],
+     "ordered": true,
+     "distinct": true
+    },
+    "fare": {
+     "values": [
+      "3",
+      "8"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "before",
+      "dawn",
+      "dusk",
+      "span"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      "14:00",
+      "span",
+      "the asked hour"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "if",
+      [
+       "is",
+       "dawn",
+       "span",
+       "05:00 to 11:00"
+      ],
+      [
+       "is",
+       "14:00",
+       "fare",
+       "3"
+      ]
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "attribute": "fare",
+    "of": "14:00"
+   }
+  },
+  "answer": "3",
+  "structure": "constraint_grid",
+  "reply": "Dawn holds the early span, and 14:00 draws fare 3.\n3",
+  "defect": "placeholder_value_to_pass_check"
+ },
+ {
+  "id": "T12-B-03",
+  "puzzle": "1. Four changelog rows are posted, the spans are 1.0 to 1.4, 1.5 to 1.9, 2.0 to 2.4 and the asked build, and the limits are 7 and 2.\n2. The beta row does not cover 1.0 to 1.4.\n3. The gamma row does not cover 1.0 to 1.4.\n4. 14 March is the asked build.\n5. If the alpha row covers 1.0 to 1.4, 14 March draws limit 7.\nQuestion: What was the limit on 14 March?",
+  "model": {
+   "entities": [
+    "alpha",
+    "beta",
+    "gamma",
+    "14 March"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "1.0 to 1.4",
+      "1.5 to 1.9",
+      "2.0 to 2.4",
+      "the asked build"
+     ],
+     "distinct": true
+    },
+    "limit": {
+     "values": [
+      "7",
+      "2"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is_not",
+      "beta",
+      "span",
+      "1.0 to 1.4"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is_not",
+      "gamma",
+      "span",
+      "1.0 to 1.4"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "is",
+      "14 March",
+      "span",
+      "the asked build"
+     ]
+    },
+    {
+     "line": 5,
+     "rule": [
+      "if",
+      [
+       "is",
+       "alpha",
+       "span",
+       "1.0 to 1.4"
+      ],
+      [
+       "is",
+       "14 March",
+       "limit",
+       "7"
+      ]
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "attribute": "limit",
+    "of": "14 March"
+   }
+  },
+  "answer": "7",
+  "structure": "constraint_grid",
+  "reply": "Alpha holds 1.0 to 1.4, and 14 March draws limit 7.\n7",
+  "defect": "placeholder_value_to_pass_check"
+ },
+ {
+  "id": "T12-B-04",
+  "puzzle": "1. Three fare sheets overlap at a boundary, the spans are March to June, June to October and the asked day, and the fares are 5 and 12.\n2. The south sheet owns June to October, including the shared June day.\n3. 30 June is the asked day.\n4. If the north sheet covers March to June, 30 June draws fare 5.\nQuestion: What was the fare on 30 June?",
+  "model": {
+   "entities": [
+    "north",
+    "south",
+    "30 June"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "March to June",
+      "June to October",
+      "the asked day"
+     ],
+     "distinct": true
+    },
+    "fare": {
+     "values": [
+      "5",
+      "12"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "is",
+      "south",
+      "span",
+      "June to October"
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      "30 June",
+      "span",
+      "the asked day"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "if",
+      [
+       "is",
+       "north",
+       "span",
+       "March to June"
+      ],
+      [
+       "is",
+       "30 June",
+       "fare",
+       "5"
+      ]
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "attribute": "fare",
+    "of": "30 June"
+   }
+  },
+  "answer": "5",
+  "structure": "constraint_grid",
+  "reply": "North holds March to June, and 30 June draws fare 5 from the overlap.\n5",
+  "defect": "placeholder_value_to_pass_check"
+ },
+ {
+  "id": "T12-B-05",
+  "puzzle": "1. Exactly one board lists the three ticket prices, the spans are March to May, September to November and the asked day, and the prices are 6 and 15.\n2. The late ticket sits one span past the early ticket.\n3. Noon is the asked day.\n4. If the early ticket covers March to May, noon draws price 6.\nQuestion: What was the price at noon?",
+  "model": {
+   "entities": [
+    "early",
+    "late",
+    "noon"
+   ],
+   "attributes": {
+    "span": {
+     "values": [
+      "March to May",
+      "September to November",
+      "the asked day"
+     ],
+     "ordered": true,
+     "distinct": true
+    },
+    "price": {
+     "values": [
+      "6",
+      "15"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "offset",
+      "early",
+      "late",
+      "span",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      "noon",
+      "span",
+      "the asked day"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "if",
+      [
+       "is",
+       "early",
+       "span",
+       "March to May"
+      ],
+      [
+       "is",
+       "noon",
+       "price",
+       "6"
+      ]
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "attribute": "price",
+    "of": "noon"
+   }
+  },
+  "answer": "6",
+  "structure": "constraint_grid",
+  "reply": "The early ticket holds March to May, and noon draws price 6.\n6",
+  "defect": "placeholder_value_to_pass_check"
+ }
+]

@@ -21,6 +21,7 @@ import re
 from dataclasses import dataclass, field
 
 from role_set.assemble import UNIQUENESS_ASKED, closed_answer
+from role_set.span import SpanError, Spans, parse_spans
 
 SEARCH_CAP = 200_000  # assignments; a larger puzzle is refused as too large to check
 # An open-set question asks what could be: every open-set item reviewed so far says "could" or "can".
@@ -41,7 +42,7 @@ MAX_FLAVOUR = 2
 POSITIVE = {"is", "in", "same", "before", "after", "adjacent", "offset", "count", "and", "or", "if"}
 NEGATIVE = {"is_not", "not_in", "different", "not_adjacent", "not"}
 ARITY = {"is": 3, "is_not": 3, "in": 3, "not_in": 3, "same": 2, "different": 2, "before": 3, "after": 3, "adjacent": 3,
-         "not_adjacent": 3, "offset": 4, "count": 4, "not": 1, "if": 2}
+         "not_adjacent": 3, "offset": 4, "count": 4, "not": 1, "if": 2, "contains": 2}
 ORDERED_FORMS = {"before", "after", "adjacent", "not_adjacent", "offset"}
 COUNT_OPS = {"=": lambda a, b: a == b, "<=": lambda a, b: a <= b, ">=": lambda a, b: a >= b}
 NEGATION = re.compile(r"\b(not|never|no|neither|nor|none|nobody|\w+n't|cannot)\b", re.IGNORECASE)
@@ -57,6 +58,10 @@ NUMBERED = re.compile(r"^\s*(\d+)[.)]\s+(\S.*)$")
 VERDICT_STRUCTURES = ("tree_with_pruning", "falsifier_first", "when_to_stop")
 STOPPING_STRUCTURES = ("stopping_problem", "when_to_stop")
 ANSWER_LABEL = re.compile(r"^\s*answer\s*:\s*", re.IGNORECASE)
+_MONTH_NAMES = "January|February|March|April|May|June|July|August|September|October|November|December"
+# A time is "14:00" or "2.40 pm"; a bare "2.40" is a length or a price, not a time (R&D on #47).
+DATE_ENTITY = re.compile(rf"\d{{1,2}} (?:{_MONTH_NAMES})|(?:{_MONTH_NAMES}) \d{{1,2}}|\d{{1,2}}:\d{{2}}(?:\s*[ap]\.?m\.?)?"
+                         rf"|\d{{1,2}}(?:[.:]\d{{2}})?\s*[ap]\.?m\.?|noon|midnight", re.IGNORECASE)
 
 
 class PuzzleError(ValueError):
@@ -71,6 +76,7 @@ class Model:
     flavour: list[int]
     asks: dict | None
     claim: list | None
+    span: Spans | None = None
 
 
 @dataclass
@@ -94,6 +100,11 @@ def parse_model(raw) -> Model:
     if not isinstance(ents, list) or not 2 <= len(ents) <= MAX_ENTITIES or not all(isinstance(e, str) and e.strip() for e in ents) \
             or len({e.lower() for e in ents}) != len(ents):
         raise PuzzleError(f"model.entities must be 2 to {MAX_ENTITIES} distinct names")
+    dated = [e for e in ents if DATE_ENTITY.fullmatch(e.strip())]
+    if dated:
+        # aspire-si#106 round 3: the date became an entity with a made-up span, and a conditional handed it the answer.
+        raise PuzzleError(f"{dated[0]!r} is a date or a time, not an entity: name it as a day in model.span and ask which "
+                          "span holds it (asks.contains), so the solver does the matching")
     attrs = raw.get("attributes")
     if not isinstance(attrs, dict) or not 1 <= len(attrs) <= MAX_ATTRIBUTES:
         raise PuzzleError(f"model.attributes must hold 1 to {MAX_ATTRIBUTES} attributes")
@@ -122,7 +133,15 @@ def parse_model(raw) -> Model:
     if len(flavour) > MAX_FLAVOUR:
         raise PuzzleError(f"at most {MAX_FLAVOUR} flavour lines")
     m = Model(ents, norm, parsed, flavour, raw.get("asks"), raw.get("claim"))
+    if raw.get("span") is not None:
+        try:
+            m.span = parse_spans(raw["span"], norm)
+        except SpanError as e:
+            raise PuzzleError(str(e)) from e
     for _, rule in m.facts:
+        if isinstance(rule, list) and rule and "contains" in _forms(rule):
+            # Which span holds a day is the solver's to work out, never a line's to state (R&D, 2026-10-11).
+            raise PuzzleError("contains is computed by the solver: ask it or claim it, never state it as a fact line")
         _check_rule(m, rule)
     if m.claim is not None:
         _check_rule(m, m.claim)
@@ -203,6 +222,14 @@ def _check_rule(m: Model, rule) -> None:
         _attr(m, args[2], ordered=True)
         if form == "offset" and not isinstance(args[3], int):
             raise PuzzleError("offset takes a whole number of places")
+    elif form == "contains":
+        if m.span is None:
+            raise PuzzleError("contains needs model.span: the span attribute, its named days and each span's bounds")
+        _check_ref(m, args[0])
+        try:
+            m.span.day(args[1])
+        except SpanError as e:
+            raise PuzzleError(str(e)) from e
     elif form == "count":
         _value(m, args[0], args[1])
         if args[2] not in COUNT_OPS or not isinstance(args[3], int):
@@ -210,7 +237,14 @@ def _check_rule(m: Model, rule) -> None:
 
 
 def _check_asks(m: Model, asks: dict) -> None:
-    if "entity_with" in asks:
+    if "contains" in asks:
+        if m.span is None:
+            raise PuzzleError("asks.contains needs model.span: the span attribute, its named days and each span's bounds")
+        try:
+            m.span.day(asks["contains"])
+        except SpanError as e:
+            raise PuzzleError(str(e)) from e
+    elif "entity_with" in asks:
         ew = asks["entity_with"]
         if not isinstance(ew, dict) or len(ew) != 1:
             raise PuzzleError("asks.entity_with is {attribute: value}")
@@ -221,7 +255,8 @@ def _check_asks(m: Model, asks: dict) -> None:
         if "of" in asks:
             _entity(m, asks["of"])
     else:
-        raise PuzzleError("model.asks is {\"attribute\": a}, {\"attribute\": a, \"of\": entity} or {\"entity_with\": {a: value}}")
+        raise PuzzleError("model.asks is {\"attribute\": a}, {\"attribute\": a, \"of\": entity}, {\"entity_with\": {a: value}} "
+                          "or {\"contains\": day}")
 
 
 # ---- names a rule uses, polarity ---------------------------------------------------------------------------------
@@ -241,6 +276,8 @@ def rule_names(rule) -> list[str]:
         return _ref_names(args[0]) + [str(v) for v in args[2]]
     if form == "count":
         return [str(args[1])]
+    if form == "contains":
+        return _ref_names(args[0]) + [str(args[1])]
     return _ref_names(args[0]) + _ref_names(args[1])
 
 
@@ -312,10 +349,21 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
             problems.append(f"flavour cites line {n}, and the puzzle has no line {n}")
         elif n in cited:
             problems.append(f"line {n} is both a fact and flavour")
+    owner = (m.span.owner if m.span else None) or {}
+    if owner:
+        # The rule for a day two spans hold is stated in the item, never kept in the model alone (R&D, 2026-10-12).
+        n = owner["line"]
+        if n not in lines:
+            problems.append(f"span.owner cites line {n}, and the puzzle has no line {n}")
+        elif n in cited or n in m.flavour:
+            problems.append(f"line {n} states the owner rule, so it can't also be a fact or flavour")
+        elif not re.search(r"\b" + owner["rule"] + r"\b", lines[n], re.IGNORECASE):
+            problems.append(f"line {n} is cited for the owner rule but never says {owner['rule']!r}; state which span owns a day both hold")
     for n in lines:
-        if n not in cited and n not in m.flavour:
+        if n not in cited and n not in m.flavour and n != owner.get("line"):
             problems.append(f"line {n} has no rule in the model; give it one, or list it in flavour if it states no fact")
-    for name in m.entities + [v for a in m.attrs.values() for v in a["values"]]:
+    days = [m.span.label(d) for d in m.span.ordinals] if m.span else []
+    for name in m.entities + [v for a in m.attrs.values() for v in a["values"]] + days:
         if not _named(name, puzzle):
             problems.append(f"{name!r} is in the model but the puzzle never names it")
     for n in m.flavour:
@@ -353,6 +401,8 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
     leaked = brief_leak(puzzle)
     if leaked:
         problems.append(f"the puzzle repeats the brief's instruction ({leaked!r}); a puzzle states facts and a question only")
+    if m.asks and "contains" in m.asks and not _named(m.span.label(m.asks["contains"]), question):
+        problems.append(f"the model asks which span holds {m.asks['contains']!r}, and the Question line doesn't name that day")
     if m.claim is not None:
         missing = [x for x in rule_names(m.claim) if not _named(x, question)]
         if missing:
@@ -457,6 +507,8 @@ def holds(m: Model, sol: dict, rule) -> bool:
     if form == "count":
         v = _value(m, args[0], args[1])
         return COUNT_OPS[args[2]](sum(1 for x in sol[args[0]] if x == v), args[3])
+    if form == "contains":
+        return _resolve(m, sol, args[0]) in m.span.holders(list(sol[m.span.attribute]), m.span.day(args[1]))
     order = m.attrs[args[2]]["values"]
     pa, pb = order.index(sol[args[2]][_resolve(m, sol, args[0])]), order.index(sol[args[2]][_resolve(m, sol, args[1])])
     if form == "before":
@@ -472,6 +524,8 @@ def holds(m: Model, sol: dict, rule) -> bool:
 
 def _project(m: Model, sol: dict):
     asks = m.asks or {}
+    if "contains" in asks:
+        return tuple(m.entities[i] for i in m.span.holders(list(sol[m.span.attribute]), m.span.day(asks["contains"])))
     if "entity_with" in asks:
         (a, v), = asks["entity_with"].items()
         v = _value(m, a, v)
@@ -484,6 +538,8 @@ def _project(m: Model, sol: dict):
 
 def render(m: Model, proj) -> str:
     asks = m.asks or {}
+    if "contains" in asks:
+        return ", ".join(proj) if proj else "none"
     if "entity_with" in asks:
         return ", ".join(proj)
     if "of" in asks:
@@ -496,6 +552,9 @@ def _grouped(m: Model) -> bool:
     form follows from the question, not from the answers, so a set of one-name groups ("elm; oak; yew") never reads as
     the single group of three ("elm, oak, yew"; R&D on role-set#45, T10-B-05)."""
 
+    if "contains" in (m.asks or {}):
+        # Without an owner rule a shared day has every holder for its answer, so the possible answers are groups.
+        return m.span is not None and m.span.owner is None
     ew = (m.asks or {}).get("entity_with")
     if not ew:
         return False
@@ -661,8 +720,11 @@ def solve(m: Model, structure: str | None, question: str) -> Checked:
             raise PuzzleError("the facts never settle what is asked, so there is no fact to stop at")
     else:
         considered = list(range(len(m.facts)))
+    if "contains" in (m.asks or {}) and structure != "underdetermined_with_explicit_set" and projs == {()}:
+        # A day no span holds has no answer to ask for (R&D, 2026-10-11); a claim about it is decided as any claim is.
+        raise PuzzleError(f"no span holds {m.asks['contains']!r}, so the question has no answer; ask about a day a span holds")
     if structure == "underdetermined_with_explicit_set":
-        if "of" not in (m.asks or {}) and "entity_with" not in (m.asks or {}):
+        if not {"of", "entity_with", "contains"} & set(m.asks or {}):
             raise PuzzleError("an underdetermined puzzle asks for one value (asks.of or asks.entity_with), so its possible answers form a list")
         if len(projs) < 2:
             raise PuzzleError("an underdetermined puzzle leaves at least two answers; these facts settle it")
@@ -724,6 +786,10 @@ def check_puzzle(fields: dict, structure: str | None) -> Checked:
         digits = re.search(r"\d+", key)
         if not digits or int(digits.group(0)) != got.stop_at:
             raise PuzzleError(f"the answer is settled after line {got.stop_at}, so the key is {got.stop_at}, not {key!r}")
+    elif "contains" in (m.asks or {}):
+        # The holders of a day are a set: a shared day without an owner rule has every holder for its answer.
+        if {x.strip().lower() for x in key.split(",") if x.strip()} != {x.strip().lower() for x in got.answer.split(",")}:
+            raise PuzzleError(f"the facts give {got.answer!r}, and the key says {key!r}")
     elif not _same(key, got.answer):
         raise PuzzleError(f"the facts give {got.answer!r}, and the key says {key!r}")
     last = [x for x in str(fields.get("reply") or "").splitlines() if x.strip()]

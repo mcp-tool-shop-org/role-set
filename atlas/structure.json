@@ -59,7 +59,11 @@
       "externals": 0,
       "files": [
         {
-          "hash": "f7516a245522daec9c7b60e0b73bd42bdba4f2cc92697fcb9097d2163ee36109",
+          "hash": "e1b3063476b903a4a3702058f0c86bff458586cebc187c1162dfd3f732cf649d",
+          "path": "docs/generator-design.md"
+        },
+        {
+          "hash": "3e7e812a0126af5a51780529ca2e19776cb8b176d0242a37c9e9619557d59517",
           "path": "docs/role-set-design.md"
         },
         {
@@ -98,8 +102,12 @@
       "externals": 0,
       "files": [
         {
-          "hash": "24a22ac342b36b4ed954f3d71916706684df7dbc85e5650b18160623210728a2",
+          "hash": "7f235c64c1b7b3422ff321a04e065b9dfaa7484775d752eb4eaee10c74a02b2e",
           "path": "roles/verifier/README.md"
+        },
+        {
+          "hash": "4ed2090d33143da627fb496bcf45266b84bea954f79ad11357f015f89ae18927",
+          "path": "roles/verifier/defects.jsonl"
         },
         {
           "hash": "953173685e610f18f558935eddb9f1aacb36f0fa01ab9776a3cbbb140c823bf0",
@@ -141,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "5c0d78fcc05a5ada5a18661e9068162a27b9f383e740d7dcae5785570f3390be",
+          "hash": "2b9946109308b0b842569c90a3b66cce0b862f79f30cce1457ab7a691a56cb03",
           "path": "CHANGELOG.md"
         },
         {
@@ -149,8 +157,36 @@
           "path": "LICENSE"
         },
         {
-          "hash": "a69c027f5f3188496de6a0569315bb99eef5ac25fe7618b5c8039cf18aefdf53",
+          "hash": "649caecb872379f040d811dcf1e9f8c90b1759cb001363e4bfab927147bdf78d",
+          "path": "README.es.md"
+        },
+        {
+          "hash": "4d4f379becd8da286631aabebd0bf8f85bf4834ade634eb6e2b02001feddab62",
+          "path": "README.fr.md"
+        },
+        {
+          "hash": "2fccd8cb4ad9a3ffe7f88d57570bb382edf8933459105c95229c488e723288fd",
+          "path": "README.hi.md"
+        },
+        {
+          "hash": "f4ba31d19a2db0aca18a6f0b35ce55995359001a26357d08eb96113aae2f0831",
+          "path": "README.it.md"
+        },
+        {
+          "hash": "13270559796cc2b4138b2bd3ff3b2a7030522c0e19679cdb21bad0836232a15e",
+          "path": "README.ja.md"
+        },
+        {
+          "hash": "6481fb4bf6b603e4edb6f9fe9f88b8def07c37cbbd21fec5f88ed558ebbebeb2",
           "path": "README.md"
+        },
+        {
+          "hash": "98f9807f4bf1794d892e996e310f2b731ad985ffc8608cad241b96262187cf3e",
+          "path": "README.pt-BR.md"
+        },
+        {
+          "hash": "a95dd0c6cfc3d3255abfbdc731364a28a3fb735dffba8a07ea26291697725497",
+          "path": "README.zh.md"
         },
         {
           "hash": "6a11fb52fc1ecfaf909ca73fc4dcb0fb9ff931ffb29fac36c7028660dbafa035",
@@ -169,11 +205,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "c945a1699e273f55bf330e874367477de0bea28b14c9bd2998c4d2068f408353",
+          "hash": "7c517178426f8a0cb256a468a5ca128a31805707e2beefdd543e5cad4e6027ec",
           "path": "pyproject.toml"
         },
         {
-          "hash": "0000a225cade1e2884b28eca4788c008bd4a7ddc9a1227736518d5425cf44518",
+          "hash": "e24e687745d5ff5cc092ba5f9403b93ae6dbc7ab92e352d59e27b0810269a439",
           "path": "uv.lock"
         },
         {
@@ -260,15 +296,15 @@
           "path": "site/src/content/docs/handbook/configuration.md"
         },
         {
-          "hash": "28fa9df0bfbd1d8a431e80f3c8d574f352c23c4192c5e2babec3226bb18111bf",
+          "hash": "3b4471a11fead7c8695b4ae7c7039504c1f61266f906e9b438d2c9cf1ae4f9ac",
           "path": "site/src/content/docs/handbook/getting-started.md"
         },
         {
-          "hash": "a2f377b4cd11405adc20eb59f58c223c64835da6663761269d1f30fab27858de",
+          "hash": "77655784dcb05db3ad4e062178d50c5f712d9f22209fff869f0940074351e5a0",
           "path": "site/src/content/docs/handbook/index.md"
         },
         {
-          "hash": "dc7f06599eb0d9df78e6ff09a1f02752bf38389016400f3a487b81aff83695f0",
+          "hash": "6710c5dc84f1346bc30b7367367526ac21d32b1f3eb4323cfe6dfb881dda3312",
           "path": "site/src/content/docs/handbook/kinds.md"
         },
         {
@@ -280,7 +316,7 @@
           "path": "site/src/content/docs/handbook/store.md"
         },
         {
-          "hash": "5b2b8f1f914f6aef6e6a73cca7c1fac8bc70af6ae1059f53069bee9722931fd7",
+          "hash": "272a2ba6a6ab675f3d0422e2b667803655f505528a3be1abc4e4ffd4c3b45fe3",
           "path": "site/src/content/docs/handbook/usage.md"
         },
         {
@@ -297,7 +333,7 @@
         },
         {
           "constantOnly": true,
-          "hash": "dbb542b4d918fb95858209d164c4d4be711760e1102538ffd2d3ef5a2c71b21f",
+          "hash": "80a2ca841174adb9ec6406e9d1b3c1c40e957c77a13b5010bce2baed83b4e5f4",
           "path": "site/src/site-config.ts"
         },
         {
@@ -358,27 +394,22 @@
             {
               "in": "trait_name",
               "kind": "raise",
-              "line": 66
+              "line": 72
             },
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 119
+              "line": 127
             },
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 121
+              "line": 129
             },
             {
               "in": "closed_form_variant",
               "kind": "raise",
-              "line": 125
-            },
-            {
-              "in": "closed_form_variant",
-              "kind": "raise",
-              "line": 132
+              "line": 133
             },
             {
               "in": "closed_form_variant",
@@ -386,64 +417,64 @@
               "line": 136
             },
             {
-              "in": "closed_form_variant",
+              "in": "three_lines",
               "kind": "raise",
-              "line": 140
+              "line": 172
             },
             {
               "in": "three_lines",
               "kind": "raise",
-              "line": 175
+              "line": 174
             },
             {
               "in": "three_lines",
               "kind": "raise",
-              "line": 177
-            },
-            {
-              "in": "three_lines",
-              "kind": "raise",
-              "line": 179
+              "line": 176
             },
             {
               "in": "verbatim_lines",
               "kind": "raise",
-              "line": 192
+              "line": 189
             },
             {
               "in": "verbatim_lines",
               "kind": "raise",
-              "line": 196
+              "line": 193
             },
             {
               "in": "_require",
               "kind": "raise",
-              "line": 203
+              "line": 200
             },
             {
               "in": "_reply_prose",
               "kind": "raise",
-              "line": 217
+              "line": 214
             },
             {
               "in": "_clean_framing",
               "kind": "raise",
-              "line": 229
+              "line": 226
             },
             {
               "in": "_no_repeated_lines",
               "kind": "raise",
-              "line": 239
+              "line": 236
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 280
+              "line": 277
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 282
+              "line": 279
+            },
+            {
+              "in": "assemble",
+              "kind": "raise",
+              "line": 289
             },
             {
               "in": "assemble",
@@ -458,32 +489,32 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 298
+              "line": 299
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 302
+              "line": 308
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 311
+              "line": 317
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 320
+              "line": 325
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 328
+              "line": 330
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 333
+              "line": 334
             },
             {
               "in": "assemble",
@@ -493,7 +524,7 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 340
+              "line": 379
             },
             {
               "in": "assemble",
@@ -503,7 +534,7 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 385
+              "line": 386
             },
             {
               "in": "assemble",
@@ -513,30 +544,25 @@
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 392
+              "line": 393
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 396
+              "line": 418
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 421
+              "line": 420
             },
             {
               "in": "assemble",
               "kind": "raise",
-              "line": 423
-            },
-            {
-              "in": "assemble",
-              "kind": "raise",
-              "line": 443
+              "line": 440
             }
           ],
-          "hash": "0bc46d7af22ef09935d8142256be999dd3010fd610a1c23bc4ca6b66ed47757e",
+          "hash": "46a1e2c727b3256b4b05a824301a7d9d81422d6674884aa346881ea838158a9c",
           "importsFiles": [
             "src/role_set/plan.py"
           ],
@@ -573,53 +599,69 @@
             {
               "in": "_plan",
               "kind": "except",
-              "line": 60
+              "line": 61
             },
             {
               "in": "_cost",
               "kind": "except",
-              "line": 76
+              "line": 77
+            },
+            {
+              "in": "_closed_form_arg",
+              "kind": "except",
+              "line": 108
+            },
+            {
+              "in": "_closed_form_arg",
+              "kind": "raise",
+              "line": 109
+            },
+            {
+              "in": "_closed_form_arg",
+              "kind": "raise",
+              "line": 111
             },
             {
               "in": "_write",
               "kind": "except",
-              "line": 112
+              "line": 130
             },
             {
               "in": "_pack_sync",
               "kind": "except",
-              "line": 122
+              "line": 140
             },
             {
               "in": "_pack_verify",
               "kind": "except",
-              "line": 132
+              "line": 150
             },
             {
               "in": "_ingest",
               "kind": "except",
-              "line": 143
+              "line": 161
             },
             {
               "in": "_critic_control",
               "kind": "raise",
-              "line": 172
+              "line": 190
             },
             {
               "in": "_critic_control",
               "kind": "raise",
-              "line": 175
+              "line": 193
             },
             {
               "in": "_critic_control",
               "kind": "except",
-              "line": 177
+              "line": 195
             }
           ],
-          "hash": "d992bbc356082a419a2e9d7b64e5cd0fec6715b7a1d2029b15210727be7e81b7",
+          "hash": "ebd369b2395af8912c78457afe2c3f70cb828d60e7a60a7c4be7c389c5276384",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/autostart.py",
+            "src/role_set/defects.py",
             "src/role_set/puzzle_check.py",
             "src/role_set/readout.py",
             "src/role_set/cost.py",
@@ -641,6 +683,7 @@
             "src/role_set/autostart.py",
             "src/role_set/cost.py",
             "src/role_set/critic_control.py",
+            "src/role_set/defects.py",
             "src/role_set/gates.py",
             "src/role_set/guards.py",
             "src/role_set/harvest.py",
@@ -660,14 +703,14 @@
             {
               "calls": [
                 {
-                  "line": 59,
+                  "line": 60,
                   "name": "plan_batch",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 63,
+                  "line": 64,
                   "name": "check_plan",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -682,7 +725,7 @@
             {
               "calls": [
                 {
-                  "line": 75,
+                  "line": 76,
                   "name": "estimate",
                   "target": {
                     "file": "src/role_set/cost.py"
@@ -697,7 +740,21 @@
             {
               "calls": [
                 {
-                  "line": 88,
+                  "line": 89,
+                  "name": "find",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 90,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 91,
                   "name": "readout",
                   "target": {
                     "file": "src/role_set/readout.py"
@@ -712,14 +769,14 @@
             {
               "calls": [
                 {
-                  "line": 98,
+                  "line": 116,
                   "name": "WriteConfig",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 111,
+                  "line": 129,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -734,7 +791,7 @@
             {
               "calls": [
                 {
-                  "line": 121,
+                  "line": 139,
                   "name": "sync",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -749,7 +806,7 @@
             {
               "calls": [
                 {
-                  "line": 131,
+                  "line": 149,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -764,14 +821,14 @@
             {
               "calls": [
                 {
-                  "line": 141,
+                  "line": 159,
                   "name": "interview_questions",
                   "target": {
                     "file": "src/role_set/ingest.py"
                   }
                 },
                 {
-                  "line": 142,
+                  "line": 160,
                   "name": "ingest",
                   "target": {
                     "file": "src/role_set/ingest.py"
@@ -786,14 +843,14 @@
             {
               "calls": [
                 {
-                  "line": 151,
+                  "line": 169,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 152,
+                  "line": 170,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -808,21 +865,21 @@
             {
               "calls": [
                 {
-                  "line": 157,
+                  "line": 175,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 158,
+                  "line": 176,
                   "name": "void_round",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 159,
+                  "line": 177,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -837,28 +894,28 @@
             {
               "calls": [
                 {
-                  "line": 167,
+                  "line": 185,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 168,
+                  "line": 186,
                   "name": "require_grant",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 169,
+                  "line": 187,
                   "name": "require_heartbeat",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 170,
+                  "line": 188,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -866,14 +923,14 @@
                 },
                 {
                   "branch": "\"cloud\" in args.critic_model.lower()",
-                  "line": 172,
+                  "line": 190,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 173,
+                  "line": 191,
                   "name": "allowed_critics",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -881,21 +938,21 @@
                 },
                 {
                   "branch": "args.critic_model not in critics",
-                  "line": 175,
+                  "line": 193,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 176,
+                  "line": 194,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 180,
+                  "line": 198,
                   "name": "load_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -903,7 +960,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 195,
+                  "line": 213,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -911,7 +968,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 195,
+                  "line": 213,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -919,7 +976,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 196,
+                  "line": 214,
                   "name": "trait_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -927,7 +984,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 196,
+                  "line": 214,
                   "name": "TRAIT_STEPS",
                   "passed": true,
                   "target": {
@@ -936,7 +993,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 199,
+                  "line": 217,
                   "name": "answer_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -944,35 +1001,35 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 201,
+                  "line": 219,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
                   }
                 },
                 {
-                  "line": 214,
+                  "line": 232,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 215,
+                  "line": 233,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 218,
+                  "line": 236,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 220,
+                  "line": 238,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
@@ -987,7 +1044,7 @@
             {
               "calls": [
                 {
-                  "line": 230,
+                  "line": 248,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -1002,7 +1059,7 @@
             {
               "calls": [
                 {
-                  "line": 249,
+                  "line": 267,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -1018,21 +1075,28 @@
             {
               "calls": [
                 {
-                  "line": 358,
+                  "line": 383,
                   "name": "stamp",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 359,
+                  "line": 384,
                   "name": "check_file",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 363,
+                  "line": 384,
+                  "name": "refuse_repeats",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 388,
                   "name": "render",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1047,7 +1111,7 @@
             {
               "calls": [
                 {
-                  "line": 368,
+                  "line": 393,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1062,7 +1126,7 @@
             {
               "calls": [
                 {
-                  "line": 249,
+                  "line": 267,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -1114,7 +1178,7 @@
             "trait_named",
             "verdict_messages"
           ],
-          "hash": "e25abfc484f915cbb21015595bc74f58c8cdeeac7d98f00f54dd6a615467c454",
+          "hash": "d5736ed21161401239899d7be165b35e7bb692dd5e6865157e6d889eb48ebeea",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/gates.py"
@@ -1298,6 +1362,47 @@
         },
         {
           "exports": [
+            "find",
+            "load",
+            "open_classes"
+          ],
+          "failurePaths": [
+            {
+              "in": "load",
+              "kind": "except",
+              "line": 36
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 37
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 40
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 42
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 44
+            },
+            {
+              "in": "load",
+              "kind": "raise",
+              "line": 46
+            }
+          ],
+          "hash": "49061050a201828de96814d8564f88ae13220e724485064515a77e59cea6c0d5",
+          "path": "src/role_set/defects.py"
+        },
+        {
+          "exports": [
             "load_exclusions",
             "load_exemplars",
             "pick",
@@ -1326,20 +1431,30 @@
             {
               "in": "load_gates",
               "kind": "except",
-              "line": 55
+              "line": 73
             },
             {
               "in": "load_gates",
               "kind": "raise",
-              "line": 56
+              "line": 74
             },
             {
               "in": "load_gates",
               "kind": "raise",
-              "line": 64
+              "line": 83
+            },
+            {
+              "in": "load_gates",
+              "kind": "except",
+              "line": 86
+            },
+            {
+              "in": "load_gates",
+              "kind": "raise",
+              "line": 87
             }
           ],
-          "hash": "9dd58e7d45a57a177cdc018056735170f499012ad7cea8b903f7f6fe25f657e2",
+          "hash": "6c340e7eee9d0c62f97495c2befc7f6cad513abea02b5136ec454c845965dba8",
           "path": "src/role_set/gates.py"
         },
         {
@@ -1755,7 +1870,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "5e98e4f67f078c5f2e430315fa2ec645d3421c9a8f5d5a225ccbffd6a684bbdb",
+          "hash": "a59f9ba8179376a0012a28b305baf30aebd40cebe75ba8a31626a498406aa854",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -1944,6 +2059,7 @@
           "entry": "writer_messages",
           "entryRule": 4,
           "exports": [
+            "closed_form_carry_rule",
             "hard_rules",
             "kind_key",
             "lesson_sentences",
@@ -1959,15 +2075,15 @@
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 335
+              "line": 358
             },
             {
               "in": "parse_json_object",
               "kind": "raise",
-              "line": 338
+              "line": 361
             }
           ],
-          "hash": "0c7effea7f7cd9ac3319cfef5f4b250490d3d297c3ee25fa013089404f4007c1",
+          "hash": "14e7721a69eb610831edbd8a4de9db3a7bda25ddbc79e50a8f71d129cbb1a0cc",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1979,7 +2095,7 @@
             {
               "calls": [
                 {
-                  "line": 102,
+                  "line": 104,
                   "name": "rglob",
                   "target": null
                 }
@@ -1992,14 +2108,14 @@
             {
               "calls": [
                 {
-                  "line": 202,
+                  "line": 224,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
                   }
                 },
                 {
-                  "line": 205,
+                  "line": 227,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -2007,21 +2123,21 @@
                   }
                 },
                 {
-                  "line": 219,
+                  "line": 241,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 223,
+                  "line": 245,
                   "name": "get",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 223,
+                  "line": 245,
                   "name": "VERDICTS",
                   "passed": true,
                   "target": {
@@ -2037,7 +2153,7 @@
             {
               "calls": [
                 {
-                  "line": 202,
+                  "line": 224,
                   "name": "trait_step",
                   "target": {
                     "file": "src/role_set/trait_steps.py"
@@ -2045,7 +2161,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 205,
+                  "line": 227,
                   "name": "DEFAULTS_NOTE",
                   "passed": true,
                   "target": {
@@ -2054,7 +2170,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 219,
+                  "line": 241,
                   "name": "slot_flaw",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2062,7 +2178,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 223,
+                  "line": 245,
                   "name": "get",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2070,7 +2186,7 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 223,
+                  "line": 245,
                   "name": "VERDICTS",
                   "passed": true,
                   "target": {
@@ -2079,12 +2195,12 @@
                   "via": "slot_brief"
                 },
                 {
-                  "line": 275,
+                  "line": 298,
                   "name": "rstrip",
                   "target": null
                 },
                 {
-                  "line": 306,
+                  "line": 329,
                   "name": "splitlines",
                   "target": null,
                   "via": "lesson_sentences"
@@ -2098,7 +2214,7 @@
             {
               "calls": [
                 {
-                  "line": 306,
+                  "line": 329,
                   "name": "splitlines",
                   "target": null
                 }
@@ -2112,6 +2228,7 @@
         },
         {
           "exports": [
+            "asks_possibility",
             "brief_leak",
             "check_puzzle",
             "check_text",
@@ -2119,6 +2236,7 @@
             "holds",
             "parse_model",
             "render",
+            "render_set",
             "rule_names",
             "solve"
           ],
@@ -2126,258 +2244,334 @@
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 79
+              "line": 97
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 83
+              "line": 101
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 86
+              "line": 105
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 92
+              "line": 109
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 95
+              "line": 115
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 100
+              "line": 118
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 104
+              "line": 123
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 108
+              "line": 127
             },
             {
               "in": "parse_model",
               "kind": "raise",
-              "line": 110
+              "line": 131
             },
             {
               "in": "parse_model",
-              "kind": "raise",
-              "line": 117
-            },
-            {
-              "in": "_entity",
-              "kind": "raise",
-              "line": 128
-            },
-            {
-              "in": "_attr",
               "kind": "raise",
               "line": 133
             },
             {
-              "in": "_attr",
-              "kind": "raise",
-              "line": 135
+              "in": "parse_model",
+              "kind": "except",
+              "line": 138
             },
             {
-              "in": "_value",
+              "in": "parse_model",
+              "kind": "raise",
+              "line": 139
+            },
+            {
+              "in": "parse_model",
               "kind": "raise",
               "line": 143
             },
             {
-              "in": "_check_ref",
+              "in": "parse_model",
               "kind": "raise",
-              "line": 149
+              "line": 148
             },
             {
-              "in": "_check_ref",
+              "in": "_entity",
               "kind": "raise",
-              "line": 152
+              "line": 159
             },
             {
-              "in": "_check_rule",
-              "kind": "raise",
-              "line": 160
-            },
-            {
-              "in": "_check_rule",
+              "in": "_attr",
               "kind": "raise",
               "line": 164
             },
             {
-              "in": "_check_rule",
+              "in": "_attr",
               "kind": "raise",
-              "line": 169
+              "line": 166
+            },
+            {
+              "in": "_value",
+              "kind": "raise",
+              "line": 174
+            },
+            {
+              "in": "_check_ref",
+              "kind": "raise",
+              "line": 180
+            },
+            {
+              "in": "_check_ref",
+              "kind": "raise",
+              "line": 183
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 171
+              "line": 191
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 181
+              "line": 195
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 192
+              "line": 200
             },
             {
               "in": "_check_rule",
               "kind": "raise",
-              "line": 196
+              "line": 202
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 212
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 223
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 226
+            },
+            {
+              "in": "_check_rule",
+              "kind": "except",
+              "line": 230
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 231
+            },
+            {
+              "in": "_check_rule",
+              "kind": "raise",
+              "line": 235
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 203
+              "line": 241
+            },
+            {
+              "in": "_check_asks",
+              "kind": "except",
+              "line": 244
             },
             {
               "in": "_check_asks",
               "kind": "raise",
-              "line": 211
+              "line": 245
+            },
+            {
+              "in": "_check_asks",
+              "kind": "raise",
+              "line": 249
+            },
+            {
+              "in": "_check_asks",
+              "kind": "raise",
+              "line": 257
             },
             {
               "in": "fact_lines",
               "kind": "raise",
-              "line": 281
+              "line": 330
             },
             {
               "in": "check_text",
               "kind": "except",
-              "line": 329
+              "line": 389
             },
             {
               "in": "check_text",
               "kind": "except",
-              "line": 333
+              "line": 393
             },
             {
               "in": "check_text",
               "kind": "raise",
-              "line": 350
+              "line": 417
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 382
+              "line": 449
             },
             {
               "in": "_check_direction",
               "kind": "raise",
-              "line": 387
+              "line": 454
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 404
+              "line": 471
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 406
+              "line": 473
             },
             {
               "in": "_check_order_stated",
               "kind": "raise",
-              "line": 409
+              "line": 476
             },
             {
               "in": "__init__",
               "kind": "raise",
-              "line": 488
+              "line": 603
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 573
+              "line": 688
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 579
+              "line": 694
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 585
+              "line": 700
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 594
+              "line": 709
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 604
+              "line": 719
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 609
+              "line": 724
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 611
+              "line": 727
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 614
+              "line": 729
             },
             {
               "in": "solve",
               "kind": "raise",
-              "line": 620
+              "line": 732
+            },
+            {
+              "in": "solve",
+              "kind": "raise",
+              "line": 738
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 648
+              "line": 766
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 655
+              "line": 773
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 657
+              "line": 776
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 661
+              "line": 780
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 663
+              "line": 783
             },
             {
               "in": "check_puzzle",
               "kind": "raise",
-              "line": 669
+              "line": 787
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 791
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 793
+            },
+            {
+              "in": "check_puzzle",
+              "kind": "raise",
+              "line": 801
             }
           ],
-          "hash": "41c04f73f6e8bfe5518967f0b813649d1af65ac05e7096c3f5cf54df0e08cd86",
+          "hash": "59e45307a043d7a7bb86f94ceedf8ab716394439ecb16baf9ff1523f0255b35c",
+          "importOrder": [
+            "src/role_set/assemble.py",
+            "src/role_set/span.py",
+            "src/role_set/critic.py"
+          ],
           "importsFiles": [
             "src/role_set/assemble.py",
-            "src/role_set/critic.py"
+            "src/role_set/critic.py",
+            "src/role_set/span.py"
           ],
           "path": "src/role_set/puzzle.py"
         },
@@ -2385,18 +2579,21 @@
           "exports": [
             "check_file",
             "models_path",
+            "question_pointer",
+            "refuse_repeats",
             "render",
             "row_sha256",
+            "skeleton",
             "stamp"
           ],
           "failurePaths": [
             {
               "in": "check_file",
               "kind": "except",
-              "line": 81
+              "line": 208
             }
           ],
-          "hash": "f8123a59aeac8a98162484dd15d8c7f726b31635ca0464a2eb0f92cd3a6807e7",
+          "hash": "5781c17088b10254f901b4a2832a1fa016519d5b38e1ece1386864b336abced5",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -2411,12 +2608,14 @@
             "keyed_letters",
             "keyed_longest",
             "markdown",
+            "open_defects_markdown",
             "readout",
             "summarize"
           ],
-          "hash": "02b73f137ece039f3cb8e27648b001d7261cfa8d0767c93933b2fe00c46a267a",
+          "hash": "96e18dad39e55b131a95a0c8992b731a2cfb1f714a8b82a10feaf093c9592991",
           "importsFiles": [
             "src/role_set/assemble.py",
+            "src/role_set/defects.py",
             "src/role_set/runner.py"
           ],
           "path": "src/role_set/readout.py",
@@ -2424,12 +2623,12 @@
             {
               "calls": [
                 {
-                  "line": 21,
+                  "line": 22,
                   "name": "exists",
                   "target": null
                 },
                 {
-                  "line": 23,
+                  "line": 24,
                   "name": "read_text",
                   "target": null
                 }
@@ -2442,14 +2641,14 @@
             {
               "calls": [
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "sub",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "match",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2464,26 +2663,26 @@
             {
               "calls": [
                 {
-                  "line": 21,
+                  "line": 22,
                   "name": "exists",
                   "target": null,
                   "via": "_lines"
                 },
                 {
-                  "line": 23,
+                  "line": 24,
                   "name": "read_text",
                   "target": null,
                   "via": "_lines"
                 },
                 {
-                  "line": 130,
+                  "line": 131,
                   "name": "refusal_rule",
                   "target": {
                     "file": "src/role_set/runner.py"
                   }
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "sub",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2491,7 +2690,7 @@
                   "via": "keyed_longest"
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "match",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2507,19 +2706,19 @@
             {
               "calls": [
                 {
-                  "line": 21,
+                  "line": 22,
                   "name": "exists",
                   "target": null,
                   "via": "_lines"
                 },
                 {
-                  "line": 23,
+                  "line": 24,
                   "name": "read_text",
                   "target": null,
                   "via": "_lines"
                 },
                 {
-                  "line": 130,
+                  "line": 131,
                   "name": "refusal_rule",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -2527,7 +2726,7 @@
                   "via": "summarize"
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "sub",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -2535,12 +2734,19 @@
                   "via": "keyed_longest"
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "match",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   },
                   "via": "keyed_longest"
+                },
+                {
+                  "line": 225,
+                  "name": "open_classes",
+                  "target": {
+                    "file": "src/role_set/defects.py"
+                  }
                 }
               ],
               "exported": true,
@@ -2644,7 +2850,7 @@
               "line": 901
             }
           ],
-          "hash": "48d806fa6f7ef5de99fe590b4328a29944e5bef7d9775bb6f0718d525548ea4f",
+          "hash": "3fd2abd0bcfcc8da6c99021768b7ad994fceb981f278c0ef281d2f6dd365e3ee",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -2666,6 +2872,100 @@
             "src/role_set/transport.py"
           ],
           "path": "src/role_set/runner.py"
+        },
+        {
+          "exports": [
+            "parse_spans"
+          ],
+          "failurePaths": [
+            {
+              "in": "day",
+              "kind": "raise",
+              "line": 43
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 68
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 71
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 74
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 81
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 83
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 85
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 89
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 93
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 95
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 103
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 108
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 111
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 114
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 118
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 120
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 124
+            }
+          ],
+          "hash": "1558c565bff7d015576cd9ea546444e29d5789f9eab172c7239450f88aff0bdc",
+          "path": "src/role_set/span.py"
         },
         {
           "entry": "finish_ingest",
@@ -2979,110 +3279,110 @@
             {
               "in": "trait_names_from_pack",
               "kind": "except",
-              "line": 91
+              "line": 92
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 112
-            },
-            {
-              "in": "build",
-              "kind": "raise",
               "line": 113
             },
             {
               "in": "build",
-              "kind": "except",
-              "line": 123
-            },
-            {
-              "in": "build",
-              "kind": "except",
-              "line": 133
-            },
-            {
-              "in": "build",
               "kind": "raise",
+              "line": 114
+            },
+            {
+              "in": "build",
+              "kind": "except",
+              "line": 124
+            },
+            {
+              "in": "build",
+              "kind": "except",
               "line": 134
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 138
+              "line": 135
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 139
             },
             {
               "in": "card",
               "kind": "raise",
-              "line": 145
+              "line": 146
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 156
-            },
-            {
-              "in": "build",
-              "kind": "raise",
               "line": 157
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 174
+              "line": 158
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 177
+              "line": 175
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 179
+              "line": 178
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 180
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 181
+              "line": 182
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 182
+              "line": 183
             },
             {
               "in": "require_rehearsal_dir",
               "kind": "raise",
-              "line": 210
+              "line": 211
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 226
-            },
-            {
-              "in": "run",
-              "kind": "raise",
               "line": 227
             },
             {
               "in": "run",
-              "kind": "except",
-              "line": 234
+              "kind": "raise",
+              "line": 228
             },
             {
               "in": "run",
-              "kind": "raise",
+              "kind": "except",
               "line": 235
             },
             {
               "in": "run",
+              "kind": "raise",
+              "line": 236
+            },
+            {
+              "in": "run",
               "kind": "except",
-              "line": 242
+              "line": 243
             }
           ],
-          "hash": "1e78295c51510393316eca84cc6bf5d8d3cf814d9dff0fb2fa8192e9c065c410",
+          "hash": "5f343882a702907615b877fcab776e8bed31964b857da57c839afc3d6a414d37",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/exemplars.py",
@@ -3102,19 +3402,19 @@
             {
               "calls": [
                 {
-                  "line": 71,
+                  "line": 72,
                   "name": "read_text",
                   "target": null
                 },
                 {
-                  "line": 72,
+                  "line": 73,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "read_bytes",
                   "target": null
                 }
@@ -3127,7 +3427,7 @@
             {
               "calls": [
                 {
-                  "line": 90,
+                  "line": 91,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -3142,7 +3442,7 @@
             {
               "calls": [
                 {
-                  "line": 97,
+                  "line": 98,
                   "name": "read_text",
                   "target": null
                 }
@@ -3155,7 +3455,7 @@
             {
               "calls": [
                 {
-                  "line": 102,
+                  "line": 103,
                   "name": "read_text",
                   "target": null
                 }
@@ -3168,13 +3468,13 @@
             {
               "calls": [
                 {
-                  "line": 71,
+                  "line": 72,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 72,
+                  "line": 73,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -3182,27 +3482,27 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 111,
+                  "line": 112,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
                   }
                 },
                 {
-                  "line": 114,
+                  "line": 115,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
                   }
                 },
                 {
-                  "line": 90,
+                  "line": 91,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -3211,7 +3511,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 119,
+                  "line": 120,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -3219,7 +3519,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 120,
+                  "line": 121,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -3227,7 +3527,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 122,
+                  "line": 123,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -3235,41 +3535,41 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 124,
+                  "line": 125,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
                   }
                 },
                 {
-                  "line": 129,
+                  "line": 130,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 130,
+                  "line": 131,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 97,
+                  "line": 98,
                   "name": "read_text",
                   "target": null,
                   "via": "allowed_writers"
                 },
                 {
-                  "line": 132,
+                  "line": 133,
                   "name": "require_model_allowed",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 143,
+                  "line": 144,
                   "name": "require_grant",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3278,7 +3578,7 @@
                 },
                 {
                   "branch": "cfg.heartbeat is None",
-                  "line": 145,
+                  "line": 146,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3286,7 +3586,7 @@
                   "via": "card"
                 },
                 {
-                  "line": 146,
+                  "line": 147,
                   "name": "require_heartbeat",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3294,14 +3594,14 @@
                   "via": "card"
                 },
                 {
-                  "line": 155,
+                  "line": 156,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 171,
+                  "line": 172,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3309,21 +3609,21 @@
                 },
                 {
                   "branch": "not c_model or \"cloud\" in c_model.lower()",
-                  "line": 174,
+                  "line": 175,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 102,
+                  "line": 103,
                   "name": "read_text",
                   "target": null,
                   "via": "allowed_critics"
                 },
                 {
                   "branch": "c_model not in critics",
-                  "line": 177,
+                  "line": 178,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3331,14 +3631,14 @@
                 },
                 {
                   "branch": "critics[c_model].get(\"role\") == \"critic-comparison\"",
-                  "line": 179,
+                  "line": 180,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 180,
+                  "line": 181,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3353,13 +3653,13 @@
             {
               "calls": [
                 {
-                  "line": 71,
+                  "line": 72,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 72,
+                  "line": 73,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -3367,13 +3667,13 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 78,
+                  "line": 79,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 111,
+                  "line": 112,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -3381,7 +3681,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 114,
+                  "line": 115,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -3389,7 +3689,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 90,
+                  "line": 91,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -3398,7 +3698,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 119,
+                  "line": 120,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -3407,7 +3707,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 120,
+                  "line": 121,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -3416,7 +3716,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 122,
+                  "line": 123,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -3425,7 +3725,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 124,
+                  "line": 125,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -3433,7 +3733,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 129,
+                  "line": 130,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -3441,7 +3741,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 130,
+                  "line": 131,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3449,13 +3749,13 @@
                   "via": "build"
                 },
                 {
-                  "line": 97,
+                  "line": 98,
                   "name": "read_text",
                   "target": null,
                   "via": "allowed_writers"
                 },
                 {
-                  "line": 132,
+                  "line": 133,
                   "name": "require_model_allowed",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3463,7 +3763,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 143,
+                  "line": 144,
                   "name": "require_grant",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3472,7 +3772,7 @@
                 },
                 {
                   "branch": "cfg.heartbeat is None",
-                  "line": 145,
+                  "line": 146,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3480,7 +3780,7 @@
                   "via": "card"
                 },
                 {
-                  "line": 146,
+                  "line": 147,
                   "name": "require_heartbeat",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3488,7 +3788,7 @@
                   "via": "card"
                 },
                 {
-                  "line": 155,
+                  "line": 156,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3496,7 +3796,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 171,
+                  "line": 172,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3505,7 +3805,7 @@
                 },
                 {
                   "branch": "not c_model or \"cloud\" in c_model.lower()",
-                  "line": 174,
+                  "line": 175,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3513,14 +3813,14 @@
                   "via": "build"
                 },
                 {
-                  "line": 102,
+                  "line": 103,
                   "name": "read_text",
                   "target": null,
                   "via": "allowed_critics"
                 },
                 {
                   "branch": "c_model not in critics",
-                  "line": 177,
+                  "line": 178,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3529,7 +3829,7 @@
                 },
                 {
                   "branch": "critics[c_model].get(\"role\") == \"critic-comparison\"",
-                  "line": 179,
+                  "line": 180,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3537,7 +3837,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 180,
+                  "line": 181,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3562,7 +3862,7 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 22,
+          "reads": 24,
           "where": [
             "caller"
           ],
@@ -3615,7 +3915,7 @@
           "writes": 0
         },
         {
-          "reads": 1,
+          "reads": 2,
           "where": [
             "cwd:roles/"
           ],
@@ -3643,13 +3943,13 @@
           "writes": 0
         }
       ],
-      "outsideReads": 34,
+      "outsideReads": 37,
       "outsideWrites": 12,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 23,
+      "testedBy": 26,
       "unresolvedSites": 0
     },
     {
@@ -3669,20 +3969,28 @@
           "path": "tests/fixtures/puzzle-check/sample.models.jsonl"
         },
         {
+          "hash": "aebf570a2f0cf3d5a2bf9b6f25f7975e6ea5b4c5d1bf3029c1ae6575b6dfd472",
+          "path": "tests/fixtures/span_t12_must_pass.json"
+        },
+        {
+          "hash": "e12ba706af9d34fa84f69ee915936798f2743cd80682fef7e608027ca2f6333d",
+          "path": "tests/fixtures/t12_round3_must_refuse.json"
+        },
+        {
           "exports": [
-            "test_a_distractor_made_by_swapping_one_part_of_the_answer_is_refused",
             "test_a_writers_own_letter_labels_are_stripped_before_lettering",
             "test_assemble_a_and_b",
             "test_assemble_c_with_flaw_and_without",
             "test_assemble_d_single_two_turn_stands_and_changes",
             "test_assemble_e_written_and_verdict",
+            "test_assembly_leaves_the_carry_rule_to_the_gates",
             "test_closed_form_variants_key_exactly_one_option_that_carries_a_key_point",
             "test_slot_flaw_alternates",
             "test_the_keyed_letter_is_shuffled_per_slot_deterministically_and_spread_across_slots",
             "test_three_lines_and_verbatim",
             "test_trait_name_rules"
           ],
-          "hash": "716a45141d9a9ddf0db070d059fae319aff4609f0344c718e36c4eb189836212",
+          "hash": "c64bde3d9a414745ecc605b7a6f5f4fde78537d11aee33d076df9d3a19ed86a2",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py"
@@ -3745,6 +4053,22 @@
             "src/role_set/pack.py"
           ],
           "path": "tests/test_cli.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_the_brief_states_the_runs_carry_setting",
+            "test_the_closed_form_option_parses_a_json_object_and_nothing_else",
+            "test_the_written_e_rules_carry_the_setting_into_the_brief"
+          ],
+          "hash": "e406b7ee85793dffdc1077a9a5de40e029ba20f09d4b8392bee688e7a26bcae0",
+          "importsFiles": [
+            "src/role_set/cli.py",
+            "src/role_set/plan.py",
+            "src/role_set/prompts.py",
+            "tests/test_runner.py"
+          ],
+          "path": "tests/test_closed_form.py",
           "testFramework": "pytest"
         },
         {
@@ -3814,12 +4138,32 @@
         },
         {
           "exports": [
-            "test_gates_without_the_scorer_rules_are_refused_at_load",
+            "test_a_catalog_with_no_open_class_says_so",
+            "test_a_malformed_catalog_is_refused",
+            "test_every_open_class_is_listed_in_the_readout",
+            "test_the_catalog_loads_and_every_row_holds_its_shape"
+          ],
+          "hash": "3fa322ac083afdc9e929e61e8e021aac5675838131663aadbaae645de419ccc3",
+          "importsFiles": [
+            "src/role_set/cli.py",
+            "src/role_set/defects.py",
+            "src/role_set/plan.py",
+            "src/role_set/readout.py",
+            "tests/test_runner.py"
+          ],
+          "path": "tests/test_defects.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_a_stand_in_without_settings_calls_the_checks_as_before",
+            "test_closed_form_settings_are_resolved_through_the_gates_and_reach_every_check",
+            "test_gates_without_the_scorer_or_closed_form_rules_are_refused_at_load",
             "test_load_gates_wraps_the_package",
             "test_missing_package_is_a_refusal",
             "test_trait_words_come_from_the_gates_constants"
           ],
-          "hash": "b1d4dee4861fa7821d5015744375fbb99b2bbd1980e49f54f3391c83402a34ba",
+          "hash": "524fafd5a24ef61fbfdd407ee7486a2f58a6907414a0366d3a2e1023d746d630",
           "importsFiles": [
             "src/role_set/gates.py"
           ],
@@ -3965,7 +4309,7 @@
             "test_each_accepted_row_is_written_beside_its_critic_checks",
             "test_injection_trap_is_tagged_only_when_the_line_is_in_the_material"
           ],
-          "hash": "971efc433c53a60c3dea11f30e2a7d776ef2f8f4b71b65df0af4abc8b063a6eb",
+          "hash": "aa81a370ca6e694a9c7c6bb2396dabc7fe95132cda7396c84528718febbdd125",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -4068,6 +4412,7 @@
         {
           "exports": [
             "test_a_b_trace_that_trips_the_stuck_rule_is_refused",
+            "test_a_bare_key_with_colons_in_its_values_ends_the_reply",
             "test_a_bare_number_as_a_predicate_reads_as_model_syntax",
             "test_a_claim_is_keyed_by_the_computed_verdict",
             "test_a_closed_grid_passes_and_its_key_is_computed",
@@ -4080,6 +4425,7 @@
             "test_a_stopping_problem_is_keyed_by_the_computed_line",
             "test_a_wrong_key_and_a_reply_without_the_answer_line_are_refused",
             "test_an_underdetermined_set_is_computed_and_must_have_two_members",
+            "test_an_underdetermined_set_of_groups_keeps_which_names_go_together",
             "test_any_single_fact_that_settles_the_answer_makes_a_lookup_and_a_claim_can_be_one",
             "test_contradictory_facts_are_refused",
             "test_elimination_with_a_count",
@@ -4102,10 +4448,11 @@
             "test_t13_b07_an_if_on_its_own_stated_antecedent_is_a_lookup",
             "test_the_briefs_worked_example_is_a_model_the_code_accepts",
             "test_the_lookup_cap_is_read_again_under_the_accept_lock",
+            "test_the_question_names_the_entity_the_model_asks_about",
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "82be676528d944f768be7275f04b2c2c2a1de56be81ebdcfbbbf8232b9d64538",
+          "hash": "b16f56fb47e5fc029a6dd6832c7453ca58cf437fc78d9f4939d9c6b8989b394a",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
@@ -4126,13 +4473,17 @@
         {
           "exports": [
             "test_a_modelled_puzzle_passes_and_a_verdict_item_is_out_of_scope",
+            "test_a_question_that_paraphrases_the_asked_value_is_a_pointer_not_a_refusal",
             "test_a_row_changed_after_its_model_was_written_is_refused",
+            "test_a_skeleton_repeated_in_another_file_is_refused_naming_the_first",
+            "test_a_symmetric_clue_in_either_order_and_a_negative_offset_are_one_skeleton",
             "test_refusals_missing_lines_stray_ids_and_a_second_lookup",
+            "test_skeletons_ignore_names_order_and_direction_but_keep_attribute_shape",
             "test_stamp_writes_the_hashes_then_a_later_edit_shows_up",
             "test_structure_must_be_a_menu_name_and_verdict_needs_a_verdict_key",
             "test_the_cli_reports_and_exits_on_the_result"
           ],
-          "hash": "0929e382fefb41d24988d6d249cea3fe9c9f1f93bc77612a25743ce033e27bdf",
+          "hash": "34a2b86c52b2738f3e569659e76a390dedc668658104a8e1bcca3e92484aa512",
           "importsFiles": [
             "src/role_set/cli.py",
             "src/role_set/puzzle_check.py"
@@ -4171,6 +4522,28 @@
             "src/role_set/runner.py"
           ],
           "path": "tests/test_runner.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_a_claim_on_contains_is_keyed_by_the_computed_verdict",
+            "test_a_day_no_span_holds",
+            "test_a_malformed_span_declaration_is_refused",
+            "test_an_overlap_has_both_holders_unless_the_item_states_an_owner",
+            "test_contains_is_never_a_fact_line_and_names_only_declared_days",
+            "test_day_records_follow_the_calendar_and_mark_a_year_wrap",
+            "test_spans_are_well_formed_and_strictly_ordered",
+            "test_the_round3_placeholder_puzzles_stay_refused",
+            "test_the_skeleton_records_the_span_contains_and_the_owner",
+            "test_the_solver_finds_the_holder_inclusive_at_both_ends",
+            "test_the_t12_rebuilds_pass_on_contains"
+          ],
+          "hash": "263327c52c9a6bc33b3f410a2d6bb44742d4f72a6a8f2a526e0fd60fd266a539",
+          "importsFiles": [
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "path": "tests/test_span.py",
           "testFramework": "pytest"
         },
         {
@@ -4229,7 +4602,7 @@
             "test_the_committed_writer_list_marks_the_rehearsal_writer",
             "test_write_halts_are_reported_and_cleanup_runs"
           ],
-          "hash": "eeba49c45647da043de401e460d9b58d5b7b309e411ba02abd4871f889363bef",
+          "hash": "1594111dde0425d496f0d33c17206b9040763c2fcb0f799b84e088b36f7fe4ad",
           "importOrder": [
             "src/role_set/cli.py",
             "src/role_set/pack.py",
@@ -4343,7 +4716,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 23
+          "files": 26
         },
         {
           "boundary": "src",
@@ -4352,7 +4725,7 @@
             "file": "src/role_set/assemble.py",
             "from": "tests/test_assemble.py"
           },
-          "files": 25
+          "files": 27
         }
       ],
       "readers": [],
@@ -4383,7 +4756,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 23,
+          "files": 26,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -4592,7 +4965,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 25
+          "files": 27
         }
       ],
       "readers": [],
@@ -4630,8 +5003,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
-    "tracked": 95
+    "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333",
+    "tracked": 111
   },
   "landings": [
     {
@@ -4672,7 +5045,42 @@
     {
       "readers": [
         {
+          "by": "README.es.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.fr.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.hi.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.it.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.ja.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
           "by": "README.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.pt-BR.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "README.zh.md",
           "call": "--pack",
           "confidence": "text"
         },
@@ -4703,6 +5111,17 @@
         }
       ],
       "target": "roles/verifier",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/defects.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "roles/verifier/defects.jsonl",
       "writers": []
     },
     {
@@ -4759,11 +5178,35 @@
       ],
       "target": "tests/fixtures/puzzle-check/sample.jsonl",
       "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "tests/test_span.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/span_t12_must_pass.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "tests/test_span.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/t12_round3_must_refuse.json",
+      "writers": []
     }
   ],
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 25,
+  "testFiles": 30,
   "unassigned": []
 }

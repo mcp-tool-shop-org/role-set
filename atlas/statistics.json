@@ -113,7 +113,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "site",
-      "qualifyingSourceCommits": 0,
+      "qualifyingSourceCommits": 1,
       "rebaseline": null
     },
     {
@@ -126,12 +126,12 @@
         ],
         "importsOnly": []
       },
-      "cohesion": 0.262506,
+      "cohesion": 0.177304,
       "cohesionDropped": false,
-      "confidence": "low",
+      "confidence": "full",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 28,
+      "qualifyingSourceCommits": 38,
       "rebaseline": null
     },
     {
@@ -146,10 +146,10 @@
       },
       "cohesion": 0,
       "cohesionDropped": false,
-      "confidence": "low",
+      "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 29,
+      "qualifyingSourceCommits": 39,
       "rebaseline": null
     }
   ],
@@ -187,8 +187,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 1,
-        "lines": 28,
+        "commits": 10,
+        "lines": 48,
         "path": "CHANGELOG.md"
       },
       {
@@ -197,9 +197,44 @@
         "path": "LICENSE"
       },
       {
-        "commits": 6,
-        "lines": 209,
+        "commits": 3,
+        "lines": 159,
+        "path": "README.es.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.fr.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.hi.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.it.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.ja.md"
+      },
+      {
+        "commits": 8,
+        "lines": 217,
         "path": "README.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.pt-BR.md"
+      },
+      {
+        "commits": 3,
+        "lines": 159,
+        "path": "README.zh.md"
       },
       {
         "commits": 1,
@@ -222,28 +257,28 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 15,
-        "lines": 314,
+        "commits": 16,
+        "lines": 355,
         "path": "atlas/README.md"
       },
       {
-        "commits": 2,
-        "lines": 30,
+        "commits": 3,
+        "lines": 40,
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 15,
-        "lines": 961,
+        "commits": 16,
+        "lines": 1112,
         "path": "atlas/page.json"
       },
       {
-        "commits": 15,
-        "lines": 2042,
+        "commits": 16,
+        "lines": 2342,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 15,
-        "lines": 6827,
+        "commits": 16,
+        "lines": 7233,
         "path": "atlas/structure.json"
       },
       {
@@ -252,8 +287,13 @@
         "path": "codecov.yml"
       },
       {
-        "commits": 11,
-        "lines": 679,
+        "commits": 1,
+        "lines": 209,
+        "path": "docs/generator-design.md"
+      },
+      {
+        "commits": 12,
+        "lines": 731,
         "path": "docs/role-set-design.md"
       },
       {
@@ -277,14 +317,19 @@
         "path": "docs/runs/2026-10-12-pilot-3.md"
       },
       {
-        "commits": 5,
-        "lines": 48,
+        "commits": 6,
+        "lines": 50,
         "path": "pyproject.toml"
       },
       {
-        "commits": 2,
-        "lines": 28,
+        "commits": 3,
+        "lines": 44,
         "path": "roles/verifier/README.md"
+      },
+      {
+        "commits": 3,
+        "lines": 46,
+        "path": "roles/verifier/defects.jsonl"
       },
       {
         "commits": 1,
@@ -347,18 +392,18 @@
         "path": "site/src/content/docs/handbook/configuration.md"
       },
       {
-        "commits": 1,
-        "lines": 70,
+        "commits": 2,
+        "lines": 72,
         "path": "site/src/content/docs/handbook/getting-started.md"
       },
       {
-        "commits": 1,
-        "lines": 33,
+        "commits": 2,
+        "lines": 35,
         "path": "site/src/content/docs/handbook/index.md"
       },
       {
-        "commits": 1,
-        "lines": 62,
+        "commits": 8,
+        "lines": 76,
         "path": "site/src/content/docs/handbook/kinds.md"
       },
       {
@@ -372,8 +417,8 @@
         "path": "site/src/content/docs/handbook/store.md"
       },
       {
-        "commits": 1,
-        "lines": 82,
+        "commits": 3,
+        "lines": 86,
         "path": "site/src/content/docs/handbook/usage.md"
       },
       {
@@ -382,8 +427,8 @@
         "path": "site/src/pages/index.astro"
       },
       {
-        "commits": 1,
-        "lines": 98,
+        "commits": 2,
+        "lines": 100,
         "path": "site/src/site-config.ts"
       },
       {
@@ -407,8 +452,8 @@
         "path": "src/role_set/__init__.py"
       },
       {
-        "commits": 7,
-        "lines": 586,
+        "commits": 9,
+        "lines": 631,
         "path": "src/role_set/assemble.py"
       },
       {
@@ -417,8 +462,8 @@
         "path": "src/role_set/autostart.py"
       },
       {
-        "commits": 13,
-        "lines": 417,
+        "commits": 16,
+        "lines": 452,
         "path": "src/role_set/cli.py"
       },
       {
@@ -427,8 +472,8 @@
         "path": "src/role_set/cost.py"
       },
       {
-        "commits": 6,
-        "lines": 339,
+        "commits": 7,
+        "lines": 344,
         "path": "src/role_set/critic.py"
       },
       {
@@ -437,13 +482,18 @@
         "path": "src/role_set/critic_control.py"
       },
       {
+        "commits": 1,
+        "lines": 63,
+        "path": "src/role_set/defects.py"
+      },
+      {
         "commits": 2,
         "lines": 87,
         "path": "src/role_set/exemplars.py"
       },
       {
-        "commits": 4,
-        "lines": 69,
+        "commits": 5,
+        "lines": 108,
         "path": "src/role_set/gates.py"
       },
       {
@@ -462,8 +512,8 @@
         "path": "src/role_set/ingest.py"
       },
       {
-        "commits": 9,
-        "lines": 326,
+        "commits": 11,
+        "lines": 334,
         "path": "src/role_set/mock.py"
       },
       {
@@ -477,29 +527,34 @@
         "path": "src/role_set/plan.py"
       },
       {
-        "commits": 13,
-        "lines": 397,
+        "commits": 17,
+        "lines": 456,
         "path": "src/role_set/prompts.py"
       },
       {
-        "commits": 3,
-        "lines": 732,
+        "commits": 8,
+        "lines": 880,
         "path": "src/role_set/puzzle.py"
       },
       {
-        "commits": 1,
-        "lines": 123,
+        "commits": 5,
+        "lines": 363,
         "path": "src/role_set/puzzle_check.py"
       },
       {
-        "commits": 6,
-        "lines": 215,
+        "commits": 7,
+        "lines": 234,
         "path": "src/role_set/readout.py"
       },
       {
-        "commits": 14,
-        "lines": 1194,
+        "commits": 15,
+        "lines": 1198,
         "path": "src/role_set/runner.py"
+      },
+      {
+        "commits": 1,
+        "lines": 126,
+        "path": "src/role_set/span.py"
       },
       {
         "commits": 1,
@@ -522,8 +577,8 @@
         "path": "src/role_set/transport.py"
       },
       {
-        "commits": 9,
-        "lines": 305,
+        "commits": 10,
+        "lines": 310,
         "path": "src/role_set/write.py"
       },
       {
@@ -537,8 +592,18 @@
         "path": "tests/fixtures/puzzle-check/sample.models.jsonl"
       },
       {
-        "commits": 4,
-        "lines": 228,
+        "commits": 1,
+        "lines": 621,
+        "path": "tests/fixtures/span_t12_must_pass.json"
+      },
+      {
+        "commits": 1,
+        "lines": 401,
+        "path": "tests/fixtures/t12_round3_must_refuse.json"
+      },
+      {
+        "commits": 5,
+        "lines": 259,
         "path": "tests/test_assemble.py"
       },
       {
@@ -550,6 +615,11 @@
         "commits": 8,
         "lines": 156,
         "path": "tests/test_cli.py"
+      },
+      {
+        "commits": 1,
+        "lines": 42,
+        "path": "tests/test_closed_form.py"
       },
       {
         "commits": 1,
@@ -567,8 +637,13 @@
         "path": "tests/test_critic_side.py"
       },
       {
-        "commits": 4,
+        "commits": 1,
         "lines": 62,
+        "path": "tests/test_defects.py"
+      },
+      {
+        "commits": 5,
+        "lines": 113,
         "path": "tests/test_gates.py"
       },
       {
@@ -602,8 +677,8 @@
         "path": "tests/test_paid_run_data.py"
       },
       {
-        "commits": 2,
-        "lines": 169,
+        "commits": 3,
+        "lines": 173,
         "path": "tests/test_pilot2_findings.py"
       },
       {
@@ -622,19 +697,24 @@
         "path": "tests/test_prompts_critic.py"
       },
       {
-        "commits": 3,
-        "lines": 504,
+        "commits": 7,
+        "lines": 597,
         "path": "tests/test_puzzle.py"
       },
       {
-        "commits": 1,
-        "lines": 107,
+        "commits": 4,
+        "lines": 209,
         "path": "tests/test_puzzle_check.py"
       },
       {
         "commits": 10,
         "lines": 479,
         "path": "tests/test_runner.py"
+      },
+      {
+        "commits": 1,
+        "lines": 242,
+        "path": "tests/test_span.py"
       },
       {
         "commits": 2,
@@ -647,13 +727,13 @@
         "path": "tests/test_warmup_and_critic_record.py"
       },
       {
-        "commits": 8,
-        "lines": 287,
+        "commits": 9,
+        "lines": 295,
         "path": "tests/test_write.py"
       },
       {
-        "commits": 4,
-        "lines": 144,
+        "commits": 5,
+        "lines": 150,
         "path": "uv.lock"
       },
       {
@@ -667,11 +747,18 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-11T18:08:38.922Z",
+  "generatedAt": "2026-10-12T12:49:23.296Z",
   "generatedFrom": {
-    "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462"
+    "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333"
   },
   "pairs": [
+    {
+      "a": "CHANGELOG.md",
+      "b": "site/src/content/docs/handbook/kinds.md",
+      "either": 9,
+      "shared": 7,
+      "strength": 0.777778
+    },
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
@@ -717,76 +804,83 @@
     {
       "a": "docs/role-set-design.md",
       "b": "src/role_set/runner.py",
+      "either": 18,
+      "shared": 9,
+      "strength": 0.5
+    },
+    {
+      "a": "pyproject.toml",
+      "b": "uv.lock",
+      "either": 5,
+      "shared": 5,
+      "strength": 1
+    },
+    {
+      "a": "src/role_set/assemble.py",
+      "b": "src/role_set/prompts.py",
+      "either": 17,
+      "shared": 9,
+      "strength": 0.529412
+    },
+    {
+      "a": "src/role_set/assemble.py",
+      "b": "tests/test_assemble.py",
+      "either": 9,
+      "shared": 5,
+      "strength": 0.555556
+    },
+    {
+      "a": "src/role_set/cli.py",
+      "b": "tests/test_cli.py",
+      "either": 16,
+      "shared": 8,
+      "strength": 0.5
+    },
+    {
+      "a": "src/role_set/gates.py",
+      "b": "tests/test_gates.py",
+      "either": 5,
+      "shared": 5,
+      "strength": 1
+    },
+    {
+      "a": "src/role_set/prompts.py",
+      "b": "src/role_set/runner.py",
+      "either": 21,
+      "shared": 11,
+      "strength": 0.52381
+    },
+    {
+      "a": "src/role_set/puzzle.py",
+      "b": "tests/test_puzzle.py",
+      "either": 8,
+      "shared": 7,
+      "strength": 0.875
+    },
+    {
+      "a": "src/role_set/readout.py",
+      "b": "tests/test_paid_run_data.py",
+      "either": 9,
+      "shared": 6,
+      "strength": 0.666667
+    },
+    {
+      "a": "src/role_set/runner.py",
+      "b": "tests/test_runner.py",
       "either": 16,
       "shared": 9,
       "strength": 0.5625
     },
     {
-      "a": "docs/role-set-design.md",
-      "b": "src/role_set/write.py",
-      "either": 13,
-      "shared": 7,
-      "strength": 0.538462
-    },
-    {
-      "a": "docs/role-set-design.md",
-      "b": "tests/test_runner.py",
-      "either": 14,
-      "shared": 7,
-      "strength": 0.5
-    },
-    {
-      "a": "src/role_set/assemble.py",
-      "b": "src/role_set/prompts.py",
-      "either": 13,
-      "shared": 7,
-      "strength": 0.538462
-    },
-    {
-      "a": "src/role_set/cli.py",
-      "b": "tests/test_cli.py",
-      "either": 13,
-      "shared": 8,
-      "strength": 0.615385
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "src/role_set/runner.py",
-      "either": 17,
-      "shared": 10,
-      "strength": 0.588235
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "tests/test_paid_run_data.py",
-      "either": 14,
-      "shared": 7,
-      "strength": 0.5
-    },
-    {
-      "a": "src/role_set/readout.py",
-      "b": "tests/test_paid_run_data.py",
-      "either": 8,
-      "shared": 6,
-      "strength": 0.75
-    },
-    {
-      "a": "src/role_set/runner.py",
-      "b": "tests/test_runner.py",
-      "either": 15,
-      "shared": 9,
-      "strength": 0.6
-    },
-    {
       "a": "src/role_set/write.py",
       "b": "tests/test_write.py",
-      "either": 10,
-      "shared": 7,
-      "strength": 0.7
+      "either": 11,
+      "shared": 8,
+      "strength": 0.727273
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 25,
+    "appliedChangesetLimit": 29,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -795,16 +889,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-11T14:05:29-04:00",
-    "inScopeFiles": 100,
+    "headDate": "2026-10-12T08:49:12-04:00",
+    "inScopeFiles": 116,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 35,
+    "qualifyingCommits": 47,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-14T18:05:29.000Z",
+    "since": "2026-04-15T12:49:12.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
@@ -820,7 +914,7 @@
     ],
     "sourceFileReach": 20,
     "sourceFileRise": 25,
-    "sourceFilesReachingStrongFloor": 4,
+    "sourceFilesReachingStrongFloor": 6,
     "strength": 0.5,
     "windowDays": 180
   },

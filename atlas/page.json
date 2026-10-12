@@ -21,80 +21,57 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 25,
-      "changed": 4,
-      "moved": 1,
-      "parts": 5,
+      "added": 16,
+      "changed": 28,
+      "moved": 0,
+      "parts": 6,
       "removed": 0
     },
     "items": [
       {
-        "kind": "door",
-        "sentence": "Deploy site to GitHub Pages (.github/workflows/pages.yml) is a new door. It starts on a push to main touching 2 paths; or by hand. It runs site/astro.config.mjs and site/src/.",
-        "subjects": [
-          ".github/workflows/pages.yml",
-          "site/astro.config.mjs",
-          "site/src/"
-        ]
-      },
-      {
         "kind": "landing",
-        "sentence": "CHANGELOG.md is now read by tests/test_assemble.py, tests/test_harvest_exemplars.py and tests/test_write.py.",
-        "subjects": [
-          "CHANGELOG.md",
-          "tests/test_assemble.py",
-          "tests/test_harvest_exemplars.py",
-          "tests/test_write.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "roles/verifier/ is now read by README.md, site/src/content/docs/handbook/configuration.md, site/src/content/docs/handbook/getting-started.md, site/src/content/docs/handbook/kinds.md and site/src/content/docs/handbook/usage.md.",
+        "sentence": "roles/verifier/ is now also read by README.es.md, README.fr.md, README.hi.md, README.it.md, README.ja.md, README.pt-BR.md and README.zh.md.",
         "subjects": [
           "roles/verifier/",
-          "README.md",
-          "site/src/content/docs/handbook/configuration.md",
-          "site/src/content/docs/handbook/getting-started.md",
-          "site/src/content/docs/handbook/kinds.md",
-          "site/src/content/docs/handbook/usage.md"
+          "README.es.md",
+          "README.fr.md",
+          "README.hi.md",
+          "README.it.md",
+          "README.ja.md",
+          "README.pt-BR.md",
+          "README.zh.md"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "site/src/content/docs/ is now read by site/astro.config.mjs.",
+        "sentence": "roles/verifier/defects.jsonl is now read by src/role_set/defects.py.",
         "subjects": [
-          "site/src/content/docs/",
-          "site/astro.config.mjs"
+          "roles/verifier/defects.jsonl",
+          "src/role_set/defects.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "And 2 more new writers and readers of places.",
+        "sentence": "tests/fixtures/span_t12_must_pass.json is now read by tests/test_span.py.",
+        "subjects": [
+          "tests/fixtures/span_t12_must_pass.json",
+          "tests/test_span.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 1 more new writer or reader of a place.",
         "subjects": []
       },
       {
-        "kind": "part",
-        "sentence": "scripts is a new part, drawn from `scripts/**`.",
-        "subjects": [
-          "scripts"
-        ]
-      },
-      {
-        "kind": "part",
-        "sentence": "site is a new part, drawn from `site/**`.",
-        "subjects": [
-          "site"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "25 files added, 1 moved and 4 changed content, across 5 parts.",
+        "sentence": "16 files added and 28 changed content, across 6 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "30fd4223b1f20e11937d8abd72cbef667e69b9d2",
-      "generatedAt": "2026-10-11T17:37:41.101Z"
+      "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
+      "generatedAt": "2026-10-11T18:08:38.922Z"
     },
     "unchanged": false
   },
@@ -102,7 +79,7 @@
     {
       "a": "src/role_set/readout.py",
       "b": "tests/test_paid_run_data.py",
-      "either": 8,
+      "either": 9,
       "partLabels": [
         "src",
         "tests"
@@ -115,8 +92,8 @@
       "shared": 6
     },
     {
-      "a": "src/role_set/prompts.py",
-      "b": "src/role_set/runner.py",
+      "a": "src/role_set/assemble.py",
+      "b": "src/role_set/prompts.py",
       "either": 17,
       "partLabels": [
         "src",
@@ -127,12 +104,12 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 10
+      "shared": 9
     },
     {
-      "a": "src/role_set/assemble.py",
-      "b": "src/role_set/prompts.py",
-      "either": 13,
+      "a": "src/role_set/prompts.py",
+      "b": "src/role_set/runner.py",
+      "either": 21,
       "partLabels": [
         "src",
         "src"
@@ -142,33 +119,18 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 7
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "tests/test_paid_run_data.py",
-      "either": 14,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
-      "shared": 7
+      "shared": 11
     }
   ],
   "changesTogetherNote": [
-    "3 files changed together with their own tests, as expected.",
+    "6 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 4 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 3,
-  "commit": "db4d276f495a0b527c9982e615cc94d4b5bf7462",
+  "changesTogetherWithTests": 6,
+  "commit": "5d8aba6e600c6fc3389175cdda687a6c490d2333",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (48 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (53 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -183,12 +145,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 23
+          "files": 26
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 25
+          "files": 27
         }
       ],
       "runs": [
@@ -251,7 +213,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 25
+          "files": 27
         }
       ],
       "runs": [
@@ -270,12 +232,12 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-11T18:08:38.922Z",
+  "generatedAt": "2026-10-12T12:49:23.296Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
-    "5 writes and 22 reads go to a path their caller passes, not to this repository.",
+    "5 writes and 24 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
-    "8 reads go to the directory the command is run in, not to this repository.",
+    "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -304,9 +266,9 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 25,
+  "testFiles": 30,
   "testedBy": {
-    "src": 23
+    "src": 26
   },
   "unnamedWrites": 1,
   "unread": [],

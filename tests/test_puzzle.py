@@ -583,9 +583,12 @@ def test_a_bare_number_as_a_predicate_reads_as_model_syntax():
 def test_t03_b06_an_if_on_a_stated_before_is_a_lookup():
     from role_set.puzzle import parse_model, solve
 
-    m = parse_model({"entities": ["4pm", "6pm"], "attributes": {"slot": {"values": ["slot 1", "slot 2"], "ordered": True},
-                                                             "rate": {"values": ["2 pounds an hour", "unlisted"]}},
-                     "facts": [{"line": 2, "rule": ["if", ["before", "4pm", "6pm", "slot"], ["is", "4pm", "rate", "2 pounds an hour"]]},
-                               {"line": 3, "rule": ["before", "4pm", "6pm", "slot"]}],
-                     "flavour": [1], "asks": {"attribute": "rate", "of": "4pm"}})
+    # The entities were "4pm" and "6pm"; a clock time is no longer an entity (#47), so the sessions carry names.
+    m = parse_model({"entities": ["the early session", "the late session"],
+                     "attributes": {"slot": {"values": ["slot 1", "slot 2"], "ordered": True},
+                                    "rate": {"values": ["2 pounds an hour", "unlisted"]}},
+                     "facts": [{"line": 2, "rule": ["if", ["before", "the early session", "the late session", "slot"],
+                                                    ["is", "the early session", "rate", "2 pounds an hour"]]},
+                               {"line": 3, "rule": ["before", "the early session", "the late session", "slot"]}],
+                     "flavour": [1], "asks": {"attribute": "rate", "of": "the early session"}})
     assert solve(m, "scheduling_with_exclusions", "").lookup is True
