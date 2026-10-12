@@ -345,6 +345,11 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
         missing = [x for x in rule_names(m.claim) if not _named(x, question)]
         if missing:
             problems.append(f"the claim uses {missing[0]!r}, which the Question line doesn't name")
+    # A question the model doesn't ask: the model solved "the fee of edition 7" while the text asked the fee on a date,
+    # which the month lines settled with no edition line at all (R&D and the Specialist on aspire-si#106, T12-B-01..05).
+    if m.asks and "of" in m.asks and not _named(str(m.asks["of"]), question):
+        problems.append(f"the model asks about {m.asks['of']!r}, and the Question line doesn't name it; ask the question "
+                        "the model solves")
     if problems:
         more = len(problems) - MAX_PROBLEMS
         listed = "; ".join(f"{i}) {x}" for i, x in enumerate(problems[:MAX_PROBLEMS], 1)) if len(problems) > 1 else problems[0]

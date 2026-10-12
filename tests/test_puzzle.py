@@ -209,6 +209,16 @@ def test_an_underdetermined_set_is_computed_and_must_have_two_members():
         check_puzzle(_f(model=mm), "underdetermined_with_explicit_set")
 
 
+def test_the_question_names_the_entity_the_model_asks_about():
+    # aspire-si#106, T12-B-01..05: the model asked the fee of an edition, and the text asked the fee on a date.
+    m = copy.deepcopy(GRID_MODEL)
+    m["asks"] = {"attribute": "dish", "of": "Cy"}
+    asked = GRID.replace("Who ordered what?", "What did Cy order?")
+    assert check_puzzle(_f(puzzle=asked, model=m, answer="soup"), "constraint_grid").answer == "soup"
+    _refused("the model asks about 'Cy', and the Question line doesn't name it",
+             puzzle=GRID.replace("Who ordered what?", "What did the third friend order?"), model=m, answer="soup")
+
+
 def test_a_claim_is_keyed_by_the_computed_verdict():
     q = CUPS.format(q="Is it true that Gold holds the pen?")
     m = copy.deepcopy(CUPS_MODEL)

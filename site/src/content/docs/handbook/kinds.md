@@ -39,7 +39,7 @@ uv run role-set critic-control --answer-leg --items reviewed.jsonl --grant <gran
 
 ## The B solver
 
-The solver checks a puzzle the writer has given twice: numbered lines a person can read, and a `model` the code can search. It refuses the draft unless the model is tied to those lines, every fact is needed, and the search produces the key. The writer is not asked whether the puzzle has one solution.
+The solver checks a puzzle the writer has given twice: numbered lines a person can read, and a `model` the code can search. It refuses the draft unless the model is tied to those lines, the Question line names the entity the model asks about, every fact is needed, and the search produces the key. The writer is not asked whether the puzzle has one solution.
 
 The closed rule forms are the ones the solver assigns an arity: `is`, `is_not`, `in`, `not_in`, `same`, `different`, `before`, `after`, `adjacent`, `not_adjacent`, `offset`, `count`, `not`, and `if`. A puzzle outside that set is not checked by being called kind B.
 
