@@ -59,8 +59,9 @@ VERDICT_STRUCTURES = ("tree_with_pruning", "falsifier_first", "when_to_stop")
 STOPPING_STRUCTURES = ("stopping_problem", "when_to_stop")
 ANSWER_LABEL = re.compile(r"^\s*answer\s*:\s*", re.IGNORECASE)
 _MONTH_NAMES = "January|February|March|April|May|June|July|August|September|October|November|December"
-DATE_ENTITY = re.compile(rf"\d{{1,2}} (?:{_MONTH_NAMES})|(?:{_MONTH_NAMES}) \d{{1,2}}|\d{{1,2}}[:.]\d{{2}}|noon|midnight",
-                         re.IGNORECASE)
+# A time is "14:00" or "2.40 pm"; a bare "2.40" is a length or a price, not a time (R&D on #47).
+DATE_ENTITY = re.compile(rf"\d{{1,2}} (?:{_MONTH_NAMES})|(?:{_MONTH_NAMES}) \d{{1,2}}|\d{{1,2}}:\d{{2}}(?:\s*[ap]\.?m\.?)?"
+                         rf"|\d{{1,2}}(?:[.:]\d{{2}})?\s*[ap]\.?m\.?|noon|midnight", re.IGNORECASE)
 
 
 class PuzzleError(ValueError):

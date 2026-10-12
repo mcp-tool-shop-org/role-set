@@ -240,3 +240,26 @@ def test_a_malformed_span_declaration_is_refused(change, match):
         m["span"] = out
     with pytest.raises(PuzzleError, match=match):
         parse_model(m)
+
+
+def test_an_owner_rule_needs_two_spans_that_share_a_day():
+    # R&D on #47: "the later card counts" over spans that never overlap was accepted and counted against nothing.
+    puzzle = CARDS.replace("Question:", "4. A day two cards both list belongs to the later card.\nQuestion:")
+    m = copy.deepcopy(CARDS_MODEL)
+    m["span"]["owner"] = {"rule": "later", "line": 4}
+    with pytest.raises(PuzzleError, match="no two declared spans share a day"):
+        check_puzzle(_fields(puzzle, m, "the black card"), "constraint_grid")
+
+
+def test_a_time_is_a_clock_time_and_a_bare_decimal_is_not():
+    from role_set.puzzle import DATE_ENTITY
+
+    for t in ("14:00", "2.40 pm", "9 am", "noon", "14 May", "May 14"):
+        assert DATE_ENTITY.fullmatch(t), t
+    for t in ("2.40", "the 9th edition", "issue 4", "Mayfield"):
+        assert not DATE_ENTITY.fullmatch(t), t
+
+
+def test_the_skeleton_records_whether_spans_overlap():
+    _, over = _overlap()
+    assert '"overlap": true' in skeleton(over) and '"overlap": false' in skeleton(CARDS_MODEL)

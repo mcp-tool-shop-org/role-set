@@ -11,8 +11,10 @@ computes `contains`: which entity holds a named day. A question can ask it ({"co
              "bounds": {"1 May to 31 August": ["1 May", "31 August"], ...},
              "owner": {"rule": "later", "line": 4}}           # optional
 
-Days are only the days the item names, in calendar order; a year wrap needs "year" on the records. A day held by two spans
-goes to the owner rule's span (by start), or else both holders stand.
+Days are only the days the item names, in calendar order; a year wrap needs "year" on the records. A day label carries no
+year ("1 January", never "1 January 2026"): the year is the record's "year" field, which only orders a wrap. A day held by
+two spans goes to the owner rule's span (by start), or else both holders stand; an owner rule needs two spans that share a
+day.
 """
 
 from __future__ import annotations
@@ -123,4 +125,16 @@ def parse_spans(raw, attrs: dict[str, dict]) -> Spans:
                               or not isinstance(owner.get("line"), int)):
         raise SpanError("span.owner is {\"rule\": \"earlier\" | \"later\", \"line\": n}, the line that states which span "
                         "owns a day both hold")
+    if owner is not None and not overlapping(bounds):
+        # An owner rule over spans that never share a day decides nothing, and its line would count against nothing
+        # (R&D on role-set#47).
+        raise SpanError("span.owner rules on a day two spans share, and no two declared spans share a day; drop the owner "
+                        "rule and its line")
     return Spans(a, ordinals, labels, bounds, owner)
+
+
+def overlapping(bounds: dict[str, tuple[int, int]]) -> bool:
+    """Whether any two declared spans share a day (inclusive bounds)."""
+
+    spans = sorted(bounds.values())
+    return any(nxt[0] <= cur[1] for cur, nxt in zip(spans, spans[1:]))

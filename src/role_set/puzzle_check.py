@@ -144,16 +144,23 @@ def skeleton(model: dict) -> str:
 
 
 def _span_key(model: dict) -> str:
-    """The span part of the skeleton (R&D, 2026-10-12): the span attribute's shape, the owner rule, and whether the
-    question or claim asks `contains`. Empty for a puzzle without spans, so every other skeleton is unchanged."""
+    """The span part of the skeleton (R&D, 2026-10-12): the span attribute's shape, the owner rule, whether the question
+    or claim asks `contains`, and whether any two spans share a day. Empty for a puzzle without spans, so every other
+    skeleton is unchanged."""
 
     span = model.get("span")
     if not isinstance(span, dict):
         return ""
     spec = model["attributes"].get(span.get("attribute"), {})
     asks_contains = "contains" in (model.get("asks") or {}) or "contains" in json.dumps(model.get("claim") or [])
+    ordinals = {d.get("label", "").lower(): d.get("ordinal") for d in span.get("days") or [] if isinstance(d, dict)}
+    try:
+        spans = sorted((ordinals[a.lower()], ordinals[b.lower()]) for a, b in (span.get("bounds") or {}).values())
+        overlap = any(n[0] <= c[1] for c, n in zip(spans, spans[1:]))
+    except (KeyError, TypeError, ValueError, AttributeError):
+        overlap = None
     return "|span:" + json.dumps({"values": len(spec.get("values", [])), "owner": (span.get("owner") or {}).get("rule"),
-                                  "contains": asks_contains}, sort_keys=True)
+                                  "contains": asks_contains, "overlap": overlap}, sort_keys=True)
 
 
 def models_path(data: Path) -> Path:
