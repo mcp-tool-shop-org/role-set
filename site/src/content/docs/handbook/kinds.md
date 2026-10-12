@@ -57,6 +57,8 @@ Two limits that are easy to miss:
 
 `puzzle-check` is the same solver pointed at a reviewed data file and its `.models.jsonl` sidecar. It exits 0 only when every B item has a sidecar line whose `row_sha256` matches the row, every modelled item passes, no lesson has more than one lookup, the sidecar names nothing the data file does not hold as kind B, and no two passing puzzles across the files given share a fact skeleton. A skeleton is the facts with entities, attributes and values renamed in order of first appearance, each attribute keeping its value count and order, "after" read as "before" reversed, a symmetric clue (next to, not next to, same, different) read in either order, a negative clue on a two-value attribute read as the other value and a count on one read from either side ("at least 2 of 3 lit" is "at most 1 of 3 dark"), and line order set aside.
 
+When an underdetermined puzzle asks which entities hold a value on an attribute that may repeat, its possible answers are groups. The key writes each group with "and" and separates the groups with semicolons ("red and blue; red and green", or "elm; oak; yew" for groups of one).
+
 A puzzle that asks which entity holds a value, with a Question line that names neither that value nor a stem of it ("fastest" for 1st), passes with a line for the key-check. A paraphrase is fine as written. The pointer is there so a reader checks that the question is the one the model asks.
 
 An item whose structure is a verdict over free-text material is not run through this search. The command counts it as outside the solver. It does not count it as passed. Verdict and evidence for that item stay with the checks those kinds already have, plus the key-check.

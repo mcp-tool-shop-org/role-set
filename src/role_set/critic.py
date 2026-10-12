@@ -220,7 +220,8 @@ PATTERN_INSTRUCTION = re.compile(r"(?:(?<=[.?!]\s)|^)\s*(?:(?:please\s+)?(?:show
                                  r"|the point of (?:the|this) exercise[^.?!\n]*[.?!]?)", re.I)
 ANSWER_LINE = re.compile(r"^\s*\**\s*ANSWER\s*\**\s*:\s*(.+?)\s*$", re.I | re.M)
 ANSWER_FORMS = {"label": "one of supported, unsupported or cannot_tell", "value": "a single value",
-                "list": "an ordered list separated by commas", "map": "assignments written 'name=value; name=value'"}
+                "list": "an ordered list separated by commas", "map": "assignments written 'name=value; name=value'",
+                "groups": "every possible group, each written 'name and name', separated by semicolons"}
 
 
 def puzzle_for_critic(puzzle: str) -> str:
@@ -272,4 +273,6 @@ def same_answer(a: tuple, b: tuple) -> bool:
         return {bare(k): bare(v) for k, v in va.items()} == {bare(k): bare(v) for k, v in vb.items()}
     if ka == "list":
         return [bare(x) for x in va] == [bare(x) for x in vb]
+    if ka == "groups":
+        return sorted(sorted(bare(x) for x in g) for g in va) == sorted(sorted(bare(x) for x in g) for g in vb)
     return bare(str(va)) == bare(str(vb))

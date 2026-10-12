@@ -25,8 +25,10 @@ UNIQUENESS_ASKED = re.compile(r"\b(unique|only one|is there (?:a|one|exactly)|ca
 
 
 def closed_answer(text: str) -> tuple[str, object] | None:
-    """A kind-B answer in closed form, normalised: ("label", v), ("map", {name: value}), ("list", [items]) or
-    ("value", v); None for anything else (an explanation, a sentence with a reason, a clause after a dash)."""
+    """A kind-B answer in closed form, normalised: ("label", v), ("map", {name: value}), ("list", [items]),
+    ("groups", [sorted names per group], sorted) for an underdetermined set of groups ("red and blue; red and green",
+    role-set#45) or ("value", v); None for anything else (an explanation, a sentence with a reason, a clause after a
+    dash)."""
 
     t = " ".join(str(text).split()).strip().rstrip(".")
     if not t or re.search(r"\s[—–-]\s|\bbecause\b|\bsince\b", t, re.I):
@@ -37,6 +39,10 @@ def closed_answer(text: str) -> tuple[str, object] | None:
     parts = [p.strip() for p in t.split(";") if p.strip()]
     if "=" in t and all(re.fullmatch(r"[^=;]{1,40}=[^=;]{1,40}", p) for p in parts):
         return ("map", {k.strip().lower(): v.strip().lower() for k, v in (p.split("=", 1) for p in parts)})
+    if "=" not in t and ":" not in t and len(parts) > 1:
+        groups = [[n.strip().lower() for n in re.split(r"\band\b|,", p) if n.strip()] for p in parts]
+        if all(g and all(len(n.split()) <= CLOSED_ITEM_WORDS for n in g) for g in groups):
+            return ("groups", sorted(sorted(g) for g in groups))
     items = [i.strip() for i in t.split(",") if i.strip()]
     if ";" not in t and ":" not in t and all(len(i.split()) <= CLOSED_ITEM_WORDS for i in items):
         return ("list", [i.lower() for i in items]) if len(items) > 1 else ("value", items[0].lower())
@@ -154,7 +160,8 @@ def names_not_in_puzzle(answer: str, puzzle: str) -> list[str]:
     if form is None or form[0] == "label":
         return []
     kind, v = form
-    items = list(v.keys()) + list(v.values()) if kind == "map" else (v if kind == "list" else [v])
+    items = (list(v.keys()) + list(v.values()) if kind == "map" else v if kind == "list"
+             else [n for g in v for n in g if n != "none"] if kind == "groups" else [v])
     text = " ".join(puzzle.lower().split())
     # A uniqueness question's key ("undetermined", yes or no) names no candidate.
     return [i for i in items if bare(i) and bare(i) not in text and bare(i) not in ("yes", "no") and not OPEN_KEY.fullmatch(bare(i))]

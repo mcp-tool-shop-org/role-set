@@ -190,13 +190,45 @@ def test_a_stopping_problem_is_keyed_by_the_computed_line():
         check_puzzle(_f(puzzle=q.replace("4. The pen is not in Blue.\n", ""), model=m, answer="3"), "stopping_problem")
 
 
+def test_an_underdetermined_set_of_groups_keeps_which_names_go_together():
+    # aspire-si#106 round 3: "Which sets of cups could be hot?" flattened to "red, blue, red, green", and a token set
+    # compare would have passed "red, blue, green" too.
+    cups = ("1. The red cup, the blue cup and the green cup are each hot or cold.\n2. Exactly two of the three cups are hot.\n"
+            "3. The red cup is hot.\nQuestion: Which sets of cups could be hot?")
+    m = {"entities": ["red", "blue", "green"], "attributes": {"heat": {"values": ["hot", "cold"], "distinct": False}},
+         "facts": [{"line": 2, "rule": ["count", "heat", "hot", "=", 2]}, {"line": 3, "rule": ["is", "red", "heat", "hot"]}],
+         "flavour": [1], "asks": {"entity_with": {"heat": "hot"}}}
+    key = "red and blue; red and green"
+    got = check_puzzle(_f(puzzle=cups, model=m, answer="green and red; blue and red", reply="x\nAnswer: green and red; blue and red"),
+                       "underdetermined_with_explicit_set")
+    assert got.answer == key
+    for wrong in ("red, blue, red, green", "red, blue, green", "red and blue", "red and blue; red and teal"):
+        with pytest.raises(PuzzleError, match="write each possible group with 'and'"):
+            check_puzzle(_f(puzzle=cups, model=m, answer=wrong, reply=f"x\nAnswer: {wrong}"), "underdetermined_with_explicit_set")
+    # R&D on #45: the form follows the question. One-name groups stay groups ("elm; oak; yew"), never the single
+    # group of three, and a name with "and" in it stays whole.
+    one = cups.replace("Exactly two", "Exactly one").replace("3. The red cup is hot.", "3. The red cup is cold.")
+    m1 = copy.deepcopy(m)
+    m1["facts"] = [{"line": 2, "rule": ["count", "heat", "hot", "=", 1]}, {"line": 3, "rule": ["is", "red", "heat", "cold"]}]
+    assert check_puzzle(_f(puzzle=one, model=m1, answer="green; blue", reply="x\nAnswer: green; blue"),
+                        "underdetermined_with_explicit_set").answer == "blue; green"
+    with pytest.raises(PuzzleError, match="write each possible group with 'and'"):
+        check_puzzle(_f(puzzle=one, model=m1, answer="blue, green", reply="x\nAnswer: blue, green"), "underdetermined_with_explicit_set")
+    sp = one.replace("the green cup", "the salt and pepper cup")
+    m2 = copy.deepcopy(m1)
+    m2["entities"] = ["red", "blue", "salt and pepper"]
+    assert check_puzzle(_f(puzzle=sp, model=m2, answer="salt and pepper; blue", reply="x\nAnswer: salt and pepper; blue"),
+                        "underdetermined_with_explicit_set").answer == "blue; salt and pepper"
+
+
 def test_an_underdetermined_set_is_computed_and_must_have_two_members():
     q = CUPS.format(q="Which cups could hold the pen?").replace("4. The pen is not in Blue.\n", "")
     m = copy.deepcopy(CUPS_MODEL)
     m["facts"] = m["facts"][:2]
-    got = check_puzzle(_f(puzzle=q, model=m, answer="Gold, Blue", reply="x\nAnswer: Gold, Blue"), "underdetermined_with_explicit_set")
-    assert got.answer == "Blue, Gold"
-    with pytest.raises(PuzzleError, match="leave exactly 'Blue, Gold' possible"):
+    # "holds" may repeat, so each possible answer is a group, here of one cup (R&D on role-set#45).
+    got = check_puzzle(_f(puzzle=q, model=m, answer="Gold; Blue", reply="x\nAnswer: Gold; Blue"), "underdetermined_with_explicit_set")
+    assert got.answer == "Blue; Gold"
+    with pytest.raises(PuzzleError, match="leave exactly 'Blue; Gold' possible"):
         check_puzzle(_f(puzzle=q, model=m, answer="Gold"), "underdetermined_with_explicit_set")
     with pytest.raises(PuzzleError, match="these facts settle it"):
         check_puzzle(_f(puzzle=CUPS.format(q="Which cups could hold the pen?"), model=CUPS_MODEL, answer="Gold"), "underdetermined_with_explicit_set")
@@ -204,6 +236,15 @@ def test_an_underdetermined_set_is_computed_and_must_have_two_members():
     assert check_puzzle(_f(puzzle=uq, model=m, answer="undetermined", reply="x\nAnswer: undetermined"), "underdetermined_with_explicit_set")
     with pytest.raises(PuzzleError, match="answers a question that asks whether the answer is unique"):
         check_puzzle(_f(puzzle=q, model=m, answer="undetermined", reply="x\nAnswer: undetermined"), "underdetermined_with_explicit_set")
+    # One value per answer (asks.of on a distinct attribute) keeps the comma list.
+    om = copy.deepcopy(GRID_MODEL)
+    om["facts"] = om["facts"][:1]
+    om["asks"] = {"attribute": "dish", "of": "Cy"}
+    oq = GRID.replace("3. Cy didn't order pasta.\n", "").replace("Who ordered what?", "What could Cy have ordered?")
+    assert check_puzzle(_f(puzzle=oq, model=om, answer="soup, pasta", reply="x\nAnswer: soup, pasta"),
+                        "underdetermined_with_explicit_set").answer == "pasta, soup"
+    with pytest.raises(PuzzleError, match="leave exactly 'pasta, soup' possible, and the key says 'soup'"):
+        check_puzzle(_f(puzzle=oq, model=om, answer="soup", reply="x\nAnswer: soup"), "underdetermined_with_explicit_set")
     mm = copy.deepcopy(GRID_MODEL)
     with pytest.raises(PuzzleError, match="asks for one value"):
         check_puzzle(_f(model=mm), "underdetermined_with_explicit_set")
