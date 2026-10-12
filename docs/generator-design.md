@@ -207,3 +207,43 @@ R&D's conditions for it, each with a test in `tests/test_span.py`:
 4. Only declared days can be asked or claimed.
 5. The fixtures: the five T12 rebuilds pass, and round 3's placeholder puzzles stay refused.
 6. The skeleton key records the span, `contains` and the owner rule.
+
+## The clue-form API (slice 1, as built)
+
+This is the contract between the builder and the wording. Seat C's domain packs and templates work to it.
+
+**The model is the contract.** `build` emits an ordinary role-set model:
+- every fact is a rule in the solver's forms;
+- the facts are numbered from line 2, and line 1 is the setting line;
+- the solver, puzzle-check, the sidecar and the readout take it unchanged.
+
+**Clue forms the builder uses** (`generate/build.py`, `CLUE_FORMS`): `is`, `is_not`, `in`, `not_in`, `before`, `after`, `adjacent`, `not_adjacent`, `offset` (k = 1 or 2), `count` (`=`, `>=`, `<=`), and `if` (an `is` antecedent, with an `is` or `is_not` consequent). A recipe chooses its subset.
+
+**Templates** (`generate/render.py`, `TEMPLATES`) map each form key to sentences with named slots:
+- **Form keys:** `is`, `is_not`, `in`, `not_in`, `before`, `after`, `adjacent`, `not_adjacent`, `offset1`, `offset2`, `count=`, `count>=`, `count<=` and `if`. `CLAUSES` holds `is` and `is_not` as clause bodies for use inside `if`.
+- **Slots:** `{X}`/`{x}` and `{Y}`/`{y}` are entities (capitalised or not), `{v}`, `{v1}` and `{v2}` are values, `{k}` is a number word, `{be}` is "is" or "are" agreeing with `{k}`, `{plural}` is the pack's plural noun, and `{p}`/`{q}` are clauses.
+
+**Every sentence must round-trip through `check_text`:**
+- it names exactly what its rule names;
+- a negative rule reads negative (not, never, neither, nor, n't);
+- "before" or "after" appears only on the matching rule, in argument order;
+- an `offset` sentence avoids both words ("next on from", "two places on from").
+
+Rendering refuses a sentence that breaks a tie.
+
+**Domain packs** (`generate/recipes.py`, `PACKS`; a slice-1 baseline): `plural`, `names` (entities as written, each a whole word no other name contains), `attribute`, and `values`. Before a freeze, Seat C's packs add:
+- sense rules;
+- at least 4 packs per lesson;
+- at least 3 templates per form.
+
+**Shortcut registry** (`generate/shortcuts.py`, `REGISTRY`): named readings stored as data, which the generator proves and puzzle-check will re-run.
+- T10 registers R&D's four size readings.
+- A reading that leads to a contradiction proves nothing: each reading must give a definite wrong answer.
+- A single-value question can't carry a T10 reading, because loosening only widens the possibilities. T10 therefore uses open-set ("which could be …?") and claim questions.
+
+**Receipts** (`build.receipt`) carry:
+- the seed, tries and recipe;
+- the trait clue;
+- every reading with its answer;
+- the three difficulty metrics;
+- the skeleton hash, the pack hash, and the solver hash.

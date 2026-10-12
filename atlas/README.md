@@ -1,20 +1,18 @@
 # role-set: how it works
 
-Mapped at 2026-10-12 from commit 5d8aba6 by Atlas 1.24.0.
+Mapped at 2026-10-12 from commit 0d7d301 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (53 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (59 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-11 (db4d276)
+## What changed since 2026-10-12 (5d8aba6)
 
-- roles/verifier/ is now also read by README.es.md, README.fr.md, README.hi.md, README.it.md, README.ja.md, README.pt-BR.md and README.zh.md.
-- roles/verifier/defects.jsonl is now read by src/role_set/defects.py.
-- tests/fixtures/span_t12_must_pass.json is now read by tests/test_span.py.
-- And 1 more new writer or reader of a place.
-- 16 files added and 28 changed content, across 6 parts.
+- src/role_set/ is now also read by src/role_set/generate/build.py.
+- tests/fixtures/t10_round2_must_refuse.json is now read by tests/test_generate.py.
+- 7 files added and 8 changed content, across 5 parts.
 
 ## What comes in
 
@@ -25,7 +23,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (27 files).
+2. That reaches src (31 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results

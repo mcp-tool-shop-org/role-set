@@ -1,0 +1,264 @@
+[
+ {
+  "id": "T10-B-01",
+  "puzzle": "1. The north window, the south window and the west window are each open or shut.\n2. Exactly one of the three windows is shut.\n3. The north window is open.\nQuestion: Which windows could be shut?",
+  "model": {
+   "entities": [
+    "north",
+    "south",
+    "west"
+   ],
+   "attributes": {
+    "state": {
+     "values": [
+      "open",
+      "shut"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "count",
+      "state",
+      "shut",
+      "=",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      "north",
+      "state",
+      "open"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "entity_with": {
+     "state": "shut"
+    }
+   }
+  },
+  "answer": "south, west",
+  "structure": "underdetermined_with_explicit_set",
+  "defect": "trait_step_not_deciding"
+ },
+ {
+  "id": "T10-B-02",
+  "puzzle": "1. The brass lamp, the copper lamp, the tin lamp, the iron lamp and the lead lamp are each lit or dark.\n2. At least one of the five lamps is dark.\n3. At most one of the five lamps is dark.\n4. The brass lamp is lit.\n5. The copper lamp is lit.\nQuestion: Which lamps could be dark?",
+  "model": {
+   "entities": [
+    "brass",
+    "copper",
+    "tin",
+    "iron",
+    "lead"
+   ],
+   "attributes": {
+    "state": {
+     "values": [
+      "lit",
+      "dark"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "count",
+      "state",
+      "dark",
+      ">=",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "count",
+      "state",
+      "dark",
+      "<=",
+      1
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "is",
+      "brass",
+      "state",
+      "lit"
+     ]
+    },
+    {
+     "line": 5,
+     "rule": [
+      "is",
+      "copper",
+      "state",
+      "lit"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "entity_with": {
+     "state": "dark"
+    }
+   }
+  },
+  "answer": "iron, lead, tin",
+  "structure": "underdetermined_with_explicit_set",
+  "defect": "trait_step_not_deciding"
+ },
+ {
+  "id": "T10-B-03",
+  "puzzle": "1. The fore hatch, the aft hatch, the port hatch and the starboard hatch are each open or shut, and the row is first, second, third, fourth.\n2. At most one of the four hatches is shut.\n3. The hatch in first place is shut.\n4. The fore hatch sits before the aft hatch.\n5. The port hatch sits before the starboard hatch.\nQuestion: Which hatches could be shut?",
+  "model": {
+   "entities": [
+    "fore",
+    "aft",
+    "port",
+    "starboard"
+   ],
+   "attributes": {
+    "state": {
+     "values": [
+      "open",
+      "shut"
+     ],
+     "distinct": false
+    },
+    "rank": {
+     "values": [
+      "first",
+      "second",
+      "third",
+      "fourth"
+     ],
+     "ordered": true,
+     "distinct": true
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "count",
+      "state",
+      "shut",
+      "<=",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "is",
+      {
+       "rank": "first"
+      },
+      "state",
+      "shut"
+     ]
+    },
+    {
+     "line": 4,
+     "rule": [
+      "before",
+      "fore",
+      "aft",
+      "rank"
+     ]
+    },
+    {
+     "line": 5,
+     "rule": [
+      "before",
+      "port",
+      "starboard",
+      "rank"
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "entity_with": {
+     "state": "shut"
+    }
+   }
+  },
+  "answer": "fore, port",
+  "structure": "underdetermined_with_explicit_set",
+  "defect": "trait_step_not_deciding"
+ },
+ {
+  "id": "T10-B-04",
+  "puzzle": "1. The oak door, the pine door, the ash door and the yew door are each open or shut.\n2. At least one of the four doors is shut.\n3. At most one of the four doors is shut.\nQuestion: Which doors could be shut?",
+  "model": {
+   "entities": [
+    "oak",
+    "pine",
+    "ash",
+    "yew"
+   ],
+   "attributes": {
+    "state": {
+     "values": [
+      "open",
+      "shut"
+     ],
+     "distinct": false
+    }
+   },
+   "facts": [
+    {
+     "line": 2,
+     "rule": [
+      "count",
+      "state",
+      "shut",
+      ">=",
+      1
+     ]
+    },
+    {
+     "line": 3,
+     "rule": [
+      "count",
+      "state",
+      "shut",
+      "<=",
+      1
+     ]
+    }
+   ],
+   "flavour": [
+    1
+   ],
+   "asks": {
+    "entity_with": {
+     "state": "shut"
+    }
+   }
+  },
+  "answer": "ash, oak, pine, yew",
+  "structure": "underdetermined_with_explicit_set",
+  "defect": "trait_step_not_deciding"
+ }
+]
