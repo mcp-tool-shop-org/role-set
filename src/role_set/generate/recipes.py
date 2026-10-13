@@ -205,6 +205,7 @@ def _decider(shape: Shape, sols: list[dict], hidden: int):
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
           "December")
 MONTH_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+MID_MONTH = 0.5  # the chance a boundary between spans falls mid-month
 T12_PACKS = {
     "issues": {"plural": "issues", "singular": "issue", "names": ["issue 3", "issue 4", "issue 5", "issue 6", "issue 7", "issue 8"]},
     "cards": {"plural": "cards", "singular": "card", "names": ["the red card", "the white card", "the black card", "the green card"]},
@@ -233,24 +234,39 @@ def _label(day: int, month: int) -> str:
 
 
 def t12_calendar(n: int, rng: random.Random, position: int | None = None) -> tuple[list[str], dict, str]:
-    """n contiguous spans of 2 to 4 whole months from a random start month, an asked date inside one of them (now and
-    then a boundary day, so the boundary reading has something to act on), and the typed day records. `position` names
-    the span that holds the asked date (0 the earliest, n - 1 the newest); by default it is drawn at random."""
+    """n contiguous spans touching 2 to 4 months each, from a random start month; an asked date inside one of them (now
+    and then a boundary day, so the boundary reading has something to act on); and the typed day records. `position`
+    names the span that holds the asked date (0 the earliest, n - 1 the newest); by default it is drawn at random.
+
+    A boundary between spans falls mid-month half the time: one span ends on a day from the 10th to the 20th and the next
+    starts the day after, in the same month. An inner asked day then often sits in that shared month, on the asked
+    span's side, so a reader matching the month alone has two spans to choose from (`T12.month_alone`; R&D approved the
+    mid-month boundaries on role-set#50)."""
 
     lengths = [rng.randint(2, 4) for _ in range(n)]
     while sum(lengths) > 12:
         lengths[lengths.index(max(lengths))] -= 1
     start = rng.randint(1, 12)
-    spans, cursor = [], 0  # cursor counts months from the start month; year = cursor // 12 on the wrap
+    bounds: list[tuple[tuple, tuple]] = []  # (start, end) as (year, month, day), year counted from the start month
+    lo, cursor = (0, start, 1), 0  # cursor: months from the start month to the next span's first month
+    for i, ln in enumerate(lengths):
+        ly, lm = divmod(start - 1 + cursor + ln - 1, 12)
+        lm += 1
+        if i < n - 1 and rng.random() < MID_MONTH:
+            d = rng.randint(10, 20)
+            hi, nxt = (ly, lm, d), (ly, lm, d + 1)
+            cursor += ln - 1  # the next span starts in this same month
+        else:
+            ny, nm = divmod(start - 1 + cursor + ln, 12)
+            hi, nxt = (ly, lm, MONTH_DAYS[lm - 1]), (ny, nm + 1, 1)
+            cursor += ln
+        bounds.append((lo, hi))
+        lo = nxt
     records: dict[str, tuple] = {}
-    for ln in lengths:
-        m0 = (start - 1 + cursor) % 12 + 1
-        m1 = (start - 1 + cursor + ln - 1) % 12 + 1
-        y0, y1 = (start - 1 + cursor) // 12, (start - 1 + cursor + ln - 1) // 12
-        lo, hi = _label(1, m0), _label(MONTH_DAYS[m1 - 1], m1)
-        records[lo], records[hi] = (y0, m0, 1), (y1, m1, MONTH_DAYS[m1 - 1])
-        spans.append(f"{lo} to {hi}")
-        cursor += ln
+    spans = []
+    for a, b in bounds:
+        records[_label(a[2], a[1])], records[_label(b[2], b[1])] = a, b
+        spans.append(f"{_label(a[2], a[1])} to {_label(b[2], b[1])}")
     pick = rng.randrange(n) if position is None else position
     lo_label, hi_label = spans[pick].split(" to ")
     if rng.random() < (0.6 if pick == n - 1 else 0.3):
@@ -260,13 +276,27 @@ def t12_calendar(n: int, rng: random.Random, position: int | None = None) -> tup
         # edition was almost never the answer, which would make "never the newest" a shortcut of its own.
         asked = rng.choice(([hi_label] if pick < n - 1 else []) + ([lo_label] if pick > 0 else []))
     else:
-        y, mth, _ = records[lo_label]
-        month_off = rng.randrange(lengths[pick])
-        mm = (mth - 1 + month_off) % 12 + 1
-        yy = y + (mth - 1 + month_off) // 12
-        dd = rng.choice([d for d in (6, 9, 14, 17, 20, 23) if d <= MONTH_DAYS[mm - 1]])
-        asked = _label(dd, mm)
-        records.setdefault(asked, (yy, mm, dd))
+        (y0, m0, d0), (y1, m1, d1) = bounds[pick]
+        inside: dict[tuple, list[int]] = {}  # (year, month) -> days strictly inside the span
+        k = 0
+        while True:
+            yy, mm = divmod(m0 - 1 + k, 12)
+            ym = (y0 + yy, mm + 1)
+            first = d0 if ym == (y0, m0) else 1
+            last = d1 if ym == (y1, m1) else MONTH_DAYS[ym[1] - 1]
+            days = [d for d in (3, 6, 9, 14, 17, 20, 23, 26) if first < d < last]
+            if days:
+                inside[ym] = days
+            if ym == (y1, m1):
+                break
+            k += 1
+        # A month the span shares with a neighbour: its first month when it starts after the 1st, its last when it ends
+        # before the month's end.
+        shared = [ym for ym in inside if (ym == (y0, m0) and d0 > 1) or (ym == (y1, m1) and d1 < MONTH_DAYS[m1 - 1])]
+        ym = rng.choice(shared) if shared and rng.random() < 0.5 else rng.choice(sorted(inside))
+        dd = rng.choice(inside[ym])
+        asked = _label(dd, ym[1])
+        records.setdefault(asked, (ym[0], ym[1], dd))
     wrap = any(r[0] for r in records.values())
     ordered = sorted(records.items(), key=lambda kv: kv[1])
     days = [{"label": lab, "day": d, "month": mm, "ordinal": i, **({"year": y} if wrap else {})}

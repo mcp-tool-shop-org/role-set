@@ -114,3 +114,30 @@ def test_answer_position_is_none_without_a_dated_question():
     from role_set.generate.recipes import build_t10
 
     assert answer_position(build_t10("cups", 1, "claim").model) is None
+
+
+def _next_day(day, month):
+    from role_set.generate.recipes import MONTH_DAYS
+
+    return (day + 1, month) if day < MONTH_DAYS[month - 1] else (1, month % 12 + 1)
+
+
+def test_spans_touch_and_some_boundaries_fall_mid_month():
+    mid = shared_asks = 0
+    for seed in range(60):
+        spans, span, asked = t12_calendar(4, random.Random(seed))
+        rec = {d["label"]: (d["day"], d["month"]) for d in span["days"]}
+        for a, b in zip(spans, spans[1:]):
+            end, start = rec[a.split(" to ")[1]], rec[b.split(" to ")[0]]
+            assert _next_day(*end) == start  # no gap and no overlap
+            mid += start[0] != 1
+        # An asked day in a month a boundary splits, strictly inside its span.
+        boundary_months = {rec[s.split(" to ")[0]][1] for s in spans if rec[s.split(" to ")[0]][0] != 1}
+        shared_asks += rec[asked][1] in boundary_months and asked not in {x for s in spans for x in s.split(" to ")}
+    assert mid >= 40 and shared_asks >= 10
+
+
+def test_mid_month_boundaries_keep_newest_answers_near_their_share():
+    builds = [build_t12(p, s, n=n) for p in sorted(T12_PACKS) for n in (3, 4) for s in range(1, 11)]
+    newest = sum(not b.shortcuts["T12.newest"]["differs"] for b in builds)
+    assert newest >= len(builds) // 5  # about 1 in n is expected; the keep filter used to leave 12 in 160
