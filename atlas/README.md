@@ -1,18 +1,18 @@
 # role-set: how it works
 
-Mapped at 2026-10-12 from commit 0d7d301 by Atlas 1.24.0.
+Mapped at 2026-10-13 from commit 24c9309 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (59 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (60 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-12 (5d8aba6)
+## What changed since 2026-10-12 (0d7d301)
 
-- src/role_set/ is now also read by src/role_set/generate/build.py.
-- tests/fixtures/t10_round2_must_refuse.json is now read by tests/test_generate.py.
-- 7 files added and 8 changed content, across 5 parts.
+- tests/fixtures/span_t12_must_pass.json is now also read by tests/test_generate_t12.py.
+- tests/fixtures/t10_round5_must_pass.json is now read by tests/test_generate.py.
+- 2 files added and 7 changed content, across 4 parts.
 
 ## What comes in
 

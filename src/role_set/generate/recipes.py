@@ -78,7 +78,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     if question not in T10_QUESTIONS:
         raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
     pack = PACKS[pack_name]
-    rng = random.Random(seed)
+    rng = random.Random(f"T10:{pack_name}:{question}:{seed}")  # each pack and question its own stream
     last = "no attempt"
     for attempt in range(1, tries + 1):
         shape = t10_shape(pack, n, rng, question)
@@ -199,3 +199,114 @@ def _decider(shape: Shape, sols: list[dict], hidden: int):
         seen = {projs[i] for i in range(len(sols)) if mask >> i & 1}
         return len(seen) == 1
     return decided
+
+
+# ---- T12: which edition was in force on a date (R&D's shape 1, solved on `contains`) -------------------------------
+MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
+          "December")
+MONTH_DAYS = (31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31)
+T12_PACKS = {
+    "issues": {"plural": "issues", "singular": "issue", "names": ["issue 3", "issue 4", "issue 5", "issue 6", "issue 7", "issue 8"]},
+    "cards": {"plural": "cards", "singular": "card", "names": ["the red card", "the white card", "the black card", "the green card"]},
+    "sheets": {"plural": "sheets", "singular": "sheet", "names": ["sheet A", "sheet B", "sheet C", "sheet D"]},
+    "editions": {"plural": "editions", "singular": "edition",
+                 "names": ["the 8th edition", "the 9th edition", "the 10th edition", "the 11th edition", "the 12th edition"]},
+}
+# Span wording: each sentence names exactly its rule's names, and direction words appear only on before/after.
+T12_TEMPLATES = {
+    "is_not": ["{X} was not in force from {v}."],
+    "in": ["{X} was in force from {v1} or from {v2}."],
+    "not_in": ["{X} was in force neither from {v1} nor from {v2}."],
+    "before": ["{X} came into force before {y}."],
+    "after": ["{X} came into force after {y}."],
+    "adjacent": ["{X} and {y} were in force back to back."],
+    "not_adjacent": ["{X} and {y} were never in force back to back."],
+    "offset1": ["{Y} came into force next on from {x}."],
+    "offset2": ["{Y} came into force two spans on from {x}."],
+}
+T12 = Recipe("T12", "", tuple(n for n, s in REGISTRY.items() if s["lesson"] == "T12"),
+             ("is_not", "in", "not_in", "before", "after", "adjacent", "not_adjacent", "offset"))
+
+
+def _label(day: int, month: int) -> str:
+    return f"{day} {MONTHS[month - 1]}"
+
+
+def t12_calendar(n: int, rng: random.Random) -> tuple[list[str], dict, str]:
+    """n contiguous spans of 2 to 4 whole months from a random start month, an asked date inside one of them (now and
+    then a span's closing day, so the boundary reading has something to act on), and the typed day records."""
+
+    lengths = [rng.randint(2, 4) for _ in range(n)]
+    while sum(lengths) > 12:
+        lengths[lengths.index(max(lengths))] -= 1
+    start = rng.randint(1, 12)
+    spans, cursor = [], 0  # cursor counts months from the start month; year = cursor // 12 on the wrap
+    records: dict[str, tuple] = {}
+    for ln in lengths:
+        m0 = (start - 1 + cursor) % 12 + 1
+        m1 = (start - 1 + cursor + ln - 1) % 12 + 1
+        y0, y1 = (start - 1 + cursor) // 12, (start - 1 + cursor + ln - 1) // 12
+        lo, hi = _label(1, m0), _label(MONTH_DAYS[m1 - 1], m1)
+        records[lo], records[hi] = (y0, m0, 1), (y1, m1, MONTH_DAYS[m1 - 1])
+        spans.append(f"{lo} to {hi}")
+        cursor += ln
+    pick = rng.randrange(n)
+    lo_label, hi_label = spans[pick].split(" to ")
+    if rng.random() < 0.3:
+        asked = hi_label
+    else:
+        y, mth, _ = records[lo_label]
+        month_off = rng.randrange(lengths[pick])
+        mm = (mth - 1 + month_off) % 12 + 1
+        yy = y + (mth - 1 + month_off) // 12
+        dd = rng.choice([d for d in (6, 9, 14, 17, 20, 23) if d <= MONTH_DAYS[mm - 1]])
+        asked = _label(dd, mm)
+        records.setdefault(asked, (yy, mm, dd))
+    wrap = any(r[0] for r in records.values())
+    ordered = sorted(records.items(), key=lambda kv: kv[1])
+    days = [{"label": lab, "day": d, "month": mm, "ordinal": i, **({"year": y} if wrap else {})}
+            for i, (lab, (y, mm, d)) in enumerate(ordered)]
+    return spans, {"attribute": "span", "days": days, "bounds": {s: s.split(" to ") for s in spans}}, asked
+
+
+def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = MAX_TRIES) -> Built:
+    """One T12 puzzle: which edition was in force on a date. The clues map editions to spans (never stating one outright),
+    the solver matches the date, and at least one of R&D's four T12 readings names a different edition."""
+
+    pack = T12_PACKS[pack_name]
+    rng = random.Random(f"T12:{pack_name}:{n}:{seed}")  # each pack its own calendar stream
+    last = "no attempt"
+    for attempt in range(1, tries + 1):
+        spans, span, asked = t12_calendar(n, rng)
+        names = tuple(rng.sample(pack["names"], n))
+        shape = Shape(names, {"span": {"values": spans, "ordered": True}}, asks={"contains": asked}, span=span)
+        sols = assignments(shape)
+        pool = candidates(shape, T12.forms)
+        bits = {_key(c): truth(shape, sols, c) for c in pool}
+        hidden = rng.randrange(len(sols))
+        others = [c for c in pool if bits[_key(c)] >> hidden & 1]
+        rng.shuffle(others)
+        decided = _decider(shape, sols, hidden)
+        chosen: list[list] = []
+        for c in others:
+            if chosen and decided(_mask(chosen, bits, len(sols))):
+                break
+            if _mask(chosen + [c], bits, len(sols)) != _mask(chosen, bits, len(sols)):
+                chosen.append(c)
+        if not chosen or not decided(_mask(chosen, bits, len(sols))):
+            last = "the clues never settled the edition"
+            continue
+        kept = reduce(shape, sols, chosen, bits, decided, rng)
+        model = shape.model(kept)
+        try:
+            answer = check_model(model, shape.structure)
+        except PuzzleError as e:
+            last = str(e)
+            continue
+        proofs = prove(model, shape.structure, list(T12.shortcuts))
+        if not any(p["differs"] for p in proofs.values()):
+            last = "no T12 reading named a different edition"
+            continue
+        return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
+                     seed=seed, tries=attempt)
+    raise BuildError(f"T12 ({pack_name}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")

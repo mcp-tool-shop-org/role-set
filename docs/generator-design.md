@@ -247,3 +247,20 @@ Rendering refuses a sentence that breaks a tie.
 - every reading with its answer;
 - the three difficulty metrics;
 - the skeleton hash, the pack hash, and the solver hash.
+
+## T12 recipe (slice 1, as built)
+
+**Shape.**
+- 3 or 4 editions over contiguous whole-month spans. The asked date falls inside one span, and is now and then that span's closing day.
+- The clue forms are `is_not`, `in`, `not_in`, `before`, `after`, `adjacent`, `not_adjacent` and `offset`. There is no plain `is`, so the mapping always comes from clues.
+- The solver matches the date through `contains`.
+
+**Readings** (answer readings in `REGISTRY`): each names the edition a careless reader would, from the same clues.
+- `T12.newest`: the edition in force last.
+- `T12.highest_number`: the edition with the highest number. It applies only when every name carries a number.
+- `T12.boundary_next`: a span's closing day handed to the following span, or its opening day to the one before.
+- `T12.month_alone`: every span whose start or end names the asked month.
+
+A puzzle is kept only when at least one reading names a different edition.
+
+**Wording.** `T12_TEMPLATES` overrides the generic forms with span phrasing ("was not in force from …", "came into force next on from …"). The setting line lists the spans in calendar order.
