@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from role_set.generate.build import BuildError, metrics, solver_version
+from role_set.generate.build import CLUE_FORMS, BuildError, metrics, solver_version
 from role_set.generate.recipes import PACKS, build_t10
 from role_set.generate.render import CLAUSES, NUMBER_WORDS, TEMPLATES, render_puzzle, sentence
 from role_set.generate.shortcuts import REGISTRY, answer, differs, prove, rewrite
@@ -193,6 +193,45 @@ def test_pack_names_are_whole_words_no_other_name_contains():
                 if a == b:
                     continue
                 assert re.search(r"(?<!\w)" + re.escape(a) + r"(?!\w)", b) is None, (key, a, b)
+
+
+# What a sense block may hold. Every key is optional. counts holds only min and max_share.
+_SENSE_KEYS = {"forms", "counts", "unsayable", "value_words", "question_value"}
+_COUNT_KEYS = {"min", "max_share"}
+
+
+def test_every_sense_block_has_only_the_sense_keys_known_forms_and_real_unsayable_pairs():
+    for key, pack in PACKS.items():
+        if key not in _BASELINE:
+            assert "sense" in pack, key
+        sense = pack.get("sense")
+        if sense is None:
+            continue
+        assert isinstance(sense, dict) and sense and set(sense) <= _SENSE_KEYS, key
+        if "forms" in sense:
+            assert isinstance(sense["forms"], list) and sense["forms"], key
+            assert set(sense["forms"]) <= set(CLUE_FORMS), (key, sense["forms"])
+            # before and after name an order. These attributes are states, so a block does not list them.
+            assert "before" not in sense["forms"] and "after" not in sense["forms"], key
+        if "counts" in sense:
+            counts = sense["counts"]
+            assert isinstance(counts, dict) and set(counts) <= _COUNT_KEYS, key
+            if "min" in counts:
+                assert counts["min"] >= 1, key
+            if "max_share" in counts:
+                assert 0 < counts["max_share"] <= 1, key
+        if "unsayable" in sense:
+            assert isinstance(sense["unsayable"], list), key
+            for pair in sense["unsayable"]:
+                assert set(pair) == {"entity", "value"}, (key, pair)
+                assert pair["entity"] in pack["names"], (key, pair["entity"])
+                assert pair["value"] in pack["values"], (key, pair["value"])
+        if "value_words" in sense:
+            for label, word in sense["value_words"].items():
+                assert label in pack["values"], (key, label)
+                assert word == label, (key, label)
+        if "question_value" in sense:
+            assert sense["question_value"] in pack["values"], key
 
 
 def test_every_template_round_trips_through_check_text():

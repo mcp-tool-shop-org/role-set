@@ -20,7 +20,8 @@ from role_set.puzzle import PuzzleError
 
 # Domain packs: plural, names, one attribute, values. Each name is a whole word no other name in the pack contains.
 # lamps, cups and doors are the slice-1 baseline (the tests use them). The rest are everyday domains in that shape.
-# The design asks for sense rules before a freeze and does not define their form, so a pack has no sense-rule field.
+# A new pack carries a sense block: the clues, counts and wording a generator may say. The stated facts still decide
+# which assignments are possible. The builder leaves the block unread.
 PACKS = {
     "lamps": {"plural": "lamps", "names": ["the brass lamp", "the copper lamp", "the tin lamp", "the iron lamp", "the lead lamp"],
               "attribute": "light", "values": ["lit", "dark"]},
@@ -29,18 +30,28 @@ PACKS = {
     "doors": {"plural": "doors", "names": ["the oak door", "the pine door", "the ash door", "the elm door", "the yew door"],
               "attribute": "state", "values": ["open", "shut"]},
     "pans": {"plural": "pans", "names": ["the stock pan", "the sauce pan", "the milk pan", "the stew pan", "the jam pan"],
-             "attribute": "heat", "values": ["boiling", "simmering", "cold"]},
+             "attribute": "heat", "values": ["boiling", "simmering", "cold"],
+             "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
+                       "counts": {"min": 1, "max_share": 0.75}}},
     "machines": {"plural": "machines", "names": ["the drill press", "the band saw", "the wood lathe", "the bench grinder",
                                                  "the thickness planer"],
-                 "attribute": "motor", "values": ["running", "idle", "jammed"]},
+                 "attribute": "motor", "values": ["running", "idle", "jammed"],
+                 "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
+                           "counts": {"min": 1, "max_share": 0.75}}},
     "trains": {"plural": "trains", "names": ["the coastal train", "the valley train", "the harbour train", "the meadow train",
                                              "the summit train"],
-               "attribute": "punctuality", "values": ["on time", "delayed", "cancelled"]},
+               "attribute": "punctuality", "values": ["on time", "delayed", "cancelled"],
+               "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
+                         "counts": {"min": 1, "max_share": 0.75}}},
     "beds": {"plural": "beds", "names": ["the rose bed", "the herb bed", "the lily bed", "the fern bed", "the moss bed"],
-             "attribute": "moisture", "values": ["damp", "dry", "soaked"]},
+             "attribute": "moisture", "values": ["damp", "dry", "soaked"],
+             "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
+                       "counts": {"min": 1, "max_share": 0.75}}},
     "clinics": {"plural": "clinics", "names": ["the asthma clinic", "the dental clinic", "the eye clinic", "the skin clinic",
                                                "the fracture clinic"],
-                "attribute": "session", "values": ["open", "closed", "booked"]},
+                "attribute": "session", "values": ["open", "closed", "booked"],
+                "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
+                          "counts": {"min": 1, "max_share": 0.75}}},
 }
 
 
