@@ -192,7 +192,23 @@ def receipt(built: Built, recipe: str, pack: dict, structure: str) -> dict:
             "trait_clue": built.trait_clue, "shortcuts": built.shortcuts, "metrics": built.metrics,
             "skeleton_sha256": hashlib.sha256(skeleton(built.model).encode("utf-8")).hexdigest(),
             "pack_sha256": hashlib.sha256(json.dumps(pack, sort_keys=True).encode("utf-8")).hexdigest(),
-            "solver": solver_version()}
+            "solver": solver_version(), "position": answer_position(built.model)}
+
+
+def answer_position(model: dict) -> str | None:
+    """Where a dated question's answer sits in the span order: "earliest", "newest" or "between" (relative, so 3- and
+    4-span puzzles compare). None for a puzzle with no `contains` question. The selector floors these per file, so that
+    "never the newest" (or "always the earliest") is not a working shortcut (R&D, filter_induced_shortcut)."""
+
+    m = parse_model(model)
+    if m.span is None or "contains" not in (m.asks or {}):
+        return None
+    order = m.attrs[m.span.attribute]["values"]
+    day = m.span.day(m.asks["contains"])
+    held = [i for i, v in enumerate(order) if m.span.bounds[v][0] <= day <= m.span.bounds[v][1]]
+    if len(held) != 1:
+        return None  # a shared day goes to the owner rule; slice 1 builds no overlaps
+    return "earliest" if held[0] == 0 else "newest" if held[0] == len(order) - 1 else "between"
 
 
 def check_model(model: dict, structure: str) -> str:

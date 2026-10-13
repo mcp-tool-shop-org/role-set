@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "c0c244492fce7ca4b64e800571701d4b2502d855a684ca818fc8f361fa85cabb",
+          "hash": "fda13ee9370061d95e68764cf95c100e278aac88246f2645f617cff614edfab5",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "d91c1a8ca47885f47284999dd29f2a47bf2de1de072594b9fed74abb331d0c28",
+          "hash": "a4493d2f4e57d2a94c02d4de30d06d533addd90e8c480397ca7114edea84ec6a",
           "path": "CHANGELOG.md"
         },
         {
@@ -1464,6 +1464,7 @@
         },
         {
           "exports": [
+            "answer_position",
             "assignments",
             "candidates",
             "check_model",
@@ -1477,10 +1478,10 @@
             {
               "in": "check_model",
               "kind": "raise",
-              "line": 203
+              "line": 219
             }
           ],
-          "hash": "563507574761452e2fd63427472206c72b80008bbc6b274d2fea52e2594e9423",
+          "hash": "2908203be812a22350babf306d28c9850e95b747d9fd1eafb47c69ce19c5fd76",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/span.py",
@@ -1518,16 +1519,21 @@
             },
             {
               "in": "build_t12",
+              "kind": "raise",
+              "line": 287
+            },
+            {
+              "in": "build_t12",
               "kind": "except",
-              "line": 303
+              "line": 315
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 312
+              "line": 324
             }
           ],
-          "hash": "5192882342a3f2d84679664efc49a39aad8f280a8ed6ef65b6cf3fee726401ef",
+          "hash": "9ea310162745944feeb3c0b2a46404d610d066c4614296043f43d3f96359b585",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1556,6 +1562,51 @@
           ],
           "hash": "504e5aca57a2291e5d9e2836077c2760f787a367fcb4f02552bc198badc2191d",
           "path": "src/role_set/generate/render.py"
+        },
+        {
+          "exports": [
+            "check_file",
+            "differing",
+            "loosens_eq",
+            "select"
+          ],
+          "failurePaths": [
+            {
+              "in": "_lesson",
+              "kind": "raise",
+              "line": 70
+            },
+            {
+              "in": "check_file",
+              "kind": "raise",
+              "line": 79
+            },
+            {
+              "in": "select",
+              "kind": "raise",
+              "line": 118
+            },
+            {
+              "in": "select",
+              "kind": "raise",
+              "line": 128
+            },
+            {
+              "in": "select",
+              "kind": "raise",
+              "line": 134
+            },
+            {
+              "in": "select",
+              "kind": "raise",
+              "line": 172
+            }
+          ],
+          "hash": "b63ea5b05632dbd233a79806e4b942bd3a897d3387336576ffbd66e23b97bbbb",
+          "importsFiles": [
+            "src/role_set/generate/shortcuts.py"
+          ],
+          "path": "src/role_set/generate/select.py"
         },
         {
           "exports": [
@@ -4092,7 +4143,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 28,
+      "testedBy": 29,
       "unresolvedSites": 0
     },
     {
@@ -4350,15 +4401,26 @@
         },
         {
           "exports": [
+            "test_a_batch_can_ask_for_a_newest_edition_answer",
+            "test_a_position_outside_the_calendar_is_refused",
             "test_a_t12_puzzle_is_proven_and_its_wording_round_trips",
+            "test_answer_position_is_none_without_a_dated_question",
             "test_each_t12_reading",
             "test_month_alone_names_a_span_that_only_shares_the_month",
             "test_the_calendar_is_contiguous_typed_and_marks_a_wrap",
             "test_the_same_seed_rebuilds_the_same_t12_puzzle_and_packs_differ",
             "test_the_t12_rebuilds_carry_a_reading_that_names_another_edition"
           ],
-          "hash": "762a6087df53b30070c5327567c52bfdd5503ed22e86314fb0ff535875688768",
+          "hash": "4e235b4bb1fcb0b3f96dd458c5a04f7cf671e0316597e22070b81e9bb25cd288",
+          "importOrder": [
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/render.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py",
+            "src/role_set/generate/build.py"
+          ],
           "importsFiles": [
+            "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/render.py",
             "src/role_set/generate/shortcuts.py",
@@ -4723,6 +4785,31 @@
         },
         {
           "exports": [
+            "dated",
+            "rec",
+            "test_a_dated_file_floors_answer_positions",
+            "test_a_file_is_chosen_per_lesson_and_the_count_is_known",
+            "test_a_pool_with_one_reading_is_refused_and_says_so",
+            "test_a_real_t12_pool_where_newest_dominates_still_fills_a_file",
+            "test_check_file_names_what_a_file_breaks",
+            "test_counting_every_differing_reading_cannot_hold_for_t12",
+            "test_counting_every_differing_reading_is_stricter",
+            "test_each_item_rests_on_a_reading_that_differs_on_it",
+            "test_loosening_eq_rests_on_at_most_half",
+            "test_the_floor_scales_with_the_file",
+            "test_the_newest_slot_is_kept_for_a_late_newest_answer"
+          ],
+          "hash": "35b73426b2fdb6d2f4a627c1b0d1bce7198bf84107b8c0e67448591207c375b3",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/select.py"
+          ],
+          "path": "tests/test_select.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_a_claim_on_contains_is_keyed_by_the_computed_verdict",
             "test_a_day_no_span_holds",
             "test_a_malformed_span_declaration_is_refused",
@@ -4916,7 +5003,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 28
+          "files": 29
         },
         {
           "boundary": "src",
@@ -4925,7 +5012,7 @@
             "file": "src/role_set/assemble.py",
             "from": "tests/test_assemble.py"
           },
-          "files": 31
+          "files": 32
         }
       ],
       "readers": [],
@@ -4956,7 +5043,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 28,
+          "files": 29,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -5203,8 +5290,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "24c9309b924b95fd68b1959f86f6cf34501d6b09",
-    "tracked": 120
+    "commit": "28b672e497e235fc649c2469b5ce6dd5bcdb07f8",
+    "tracked": 122
   },
   "landings": [
     {
@@ -5442,6 +5529,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 34,
+  "testFiles": 35,
   "unassigned": []
 }

@@ -89,3 +89,28 @@ def test_month_alone_names_a_span_that_only_shares_the_month():
     parse_model(m)
     got = answer_reading("T12.month_alone", m)["value"]
     assert "the black card" in got and "the white card" in got  # both May-named spans' holders, the true one among them
+
+
+@pytest.mark.parametrize("pack", sorted(T12_PACKS))
+def test_a_batch_can_ask_for_a_newest_edition_answer(pack):
+    from role_set.generate.build import answer_position
+
+    for n in (3, 4):
+        for seed in (1, 2, 3):
+            b = build_t12(pack, seed, n=n, position=n - 1)
+            assert answer_position(b.model) == "newest" and any(r["differs"] for r in b.shortcuts.values())
+        assert answer_position(build_t12(pack, 1, n=n, position=0).model) == "earliest"
+
+
+def test_a_position_outside_the_calendar_is_refused():
+    from role_set.generate.build import BuildError
+
+    with pytest.raises(BuildError, match="span index"):
+        build_t12("issues", 1, n=3, position=3)
+
+
+def test_answer_position_is_none_without_a_dated_question():
+    from role_set.generate.build import answer_position
+    from role_set.generate.recipes import build_t10
+
+    assert answer_position(build_t10("cups", 1, "claim").model) is None
