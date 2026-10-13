@@ -22,39 +22,23 @@
   "changes": {
     "fileCounts": {
       "added": 2,
-      "changed": 7,
+      "changed": 5,
       "moved": 0,
       "parts": 4,
       "removed": 0
     },
     "items": [
       {
-        "kind": "landing",
-        "sentence": "tests/fixtures/span_t12_must_pass.json is now also read by tests/test_generate_t12.py.",
-        "subjects": [
-          "tests/fixtures/span_t12_must_pass.json",
-          "tests/test_generate_t12.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "tests/fixtures/t10_round5_must_pass.json is now read by tests/test_generate.py.",
-        "subjects": [
-          "tests/fixtures/t10_round5_must_pass.json",
-          "tests/test_generate.py"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "2 files added and 7 changed content, across 4 parts.",
+        "sentence": "Nothing structural changed since 2026-10-13; 2 files added and 5 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "0d7d301cffdc4e1fb84b878d3e8c39e2b430d156",
-      "generatedAt": "2026-10-12T13:03:22.514Z"
+      "commit": "24c9309b924b95fd68b1959f86f6cf34501d6b09",
+      "generatedAt": "2026-10-13T22:56:22.852Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
@@ -109,9 +93,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "24c9309b924b95fd68b1959f86f6cf34501d6b09",
+  "commit": "28b672e497e235fc649c2469b5ce6dd5bcdb07f8",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (60 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (62 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -126,12 +110,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 28
+          "files": 29
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 31
+          "files": 32
         }
       ],
       "runs": [
@@ -213,7 +197,7 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [],
-  "generatedAt": "2026-10-13T22:56:22.852Z",
+  "generatedAt": "2026-10-13T23:06:03.165Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 24 reads go to a path their caller passes, not to this repository.",
@@ -247,9 +231,9 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 34,
+  "testFiles": 35,
   "testedBy": {
-    "src": 28
+    "src": 29
   },
   "unnamedWrites": 1,
   "unread": [],

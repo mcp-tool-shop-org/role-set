@@ -232,9 +232,10 @@ def _label(day: int, month: int) -> str:
     return f"{day} {MONTHS[month - 1]}"
 
 
-def t12_calendar(n: int, rng: random.Random) -> tuple[list[str], dict, str]:
+def t12_calendar(n: int, rng: random.Random, position: int | None = None) -> tuple[list[str], dict, str]:
     """n contiguous spans of 2 to 4 whole months from a random start month, an asked date inside one of them (now and
-    then a span's closing day, so the boundary reading has something to act on), and the typed day records."""
+    then a boundary day, so the boundary reading has something to act on), and the typed day records. `position` names
+    the span that holds the asked date (0 the earliest, n - 1 the newest); by default it is drawn at random."""
 
     lengths = [rng.randint(2, 4) for _ in range(n)]
     while sum(lengths) > 12:
@@ -250,10 +251,14 @@ def t12_calendar(n: int, rng: random.Random) -> tuple[list[str], dict, str]:
         records[lo], records[hi] = (y0, m0, 1), (y1, m1, MONTH_DAYS[m1 - 1])
         spans.append(f"{lo} to {hi}")
         cursor += ln
-    pick = rng.randrange(n)
+    pick = rng.randrange(n) if position is None else position
     lo_label, hi_label = spans[pick].split(" to ")
-    if rng.random() < 0.3:
-        asked = hi_label
+    if rng.random() < (0.6 if pick == n - 1 else 0.3):
+        # A boundary day: a closing day goes to the next span under the boundary reading, an opening day to the one
+        # before. The last span has no next, so it is asked on its opening day, and more often: in a pack without
+        # numbered names that is the only way a last-span answer has a reading to differ, and without it the newest
+        # edition was almost never the answer, which would make "never the newest" a shortcut of its own.
+        asked = rng.choice(([hi_label] if pick < n - 1 else []) + ([lo_label] if pick > 0 else []))
     else:
         y, mth, _ = records[lo_label]
         month_off = rng.randrange(lengths[pick])
@@ -269,15 +274,22 @@ def t12_calendar(n: int, rng: random.Random) -> tuple[list[str], dict, str]:
     return spans, {"attribute": "span", "days": days, "bounds": {s: s.split(" to ") for s in spans}}, asked
 
 
-def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = MAX_TRIES) -> Built:
+def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = MAX_TRIES, position: int | None = None) -> Built:
     """One T12 puzzle: which edition was in force on a date. The clues map editions to spans (never stating one outright),
-    the solver matches the date, and at least one of R&D's four T12 readings names a different edition."""
+    the solver matches the date, and at least one of R&D's four T12 readings names a different edition.
 
+    `position` asks for the answer's span (n - 1 is the newest edition). The keep filter rejects a puzzle no reading
+    differs on, and that rejects more newest-edition answers than others, so a batch that leaves the position to chance
+    under-supplies them (R&D's filter_induced_shortcut, on role-set#50); the selector floors positions per file, and this
+    is how a batch asks for the ones it is short of."""
+
+    if position is not None and not 0 <= position < n:
+        raise BuildError(f"position is a span index from 0 to {n - 1}")
     pack = T12_PACKS[pack_name]
-    rng = random.Random(f"T12:{pack_name}:{n}:{seed}")  # each pack its own calendar stream
+    rng = random.Random(f"T12:{pack_name}:{n}:{seed}" + ("" if position is None else f":p{position}"))
     last = "no attempt"
     for attempt in range(1, tries + 1):
-        spans, span, asked = t12_calendar(n, rng)
+        spans, span, asked = t12_calendar(n, rng, position)
         names = tuple(rng.sample(pack["names"], n))
         shape = Shape(names, {"span": {"values": spans, "ordered": True}}, asks={"contains": asked}, span=span)
         sols = assignments(shape)

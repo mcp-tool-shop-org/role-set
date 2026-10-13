@@ -264,3 +264,27 @@ Rendering refuses a sentence that breaks a tie.
 A puzzle is kept only when at least one reading names a different edition.
 
 **Wording.** `T12_TEMPLATES` overrides the generic forms with span phrasing ("was not in force from …", "came into force next on from …"). The setting line lists the spans in calendar order.
+
+## The selector (slice 1, as built)
+
+`role_set.generate.select` chooses a lesson's review file from generated receipts. No generated file is written without it.
+
+**Shortcut floor (design rule 3).** Each chosen item rests on one reading that differs from its key:
+- at least 2 distinct readings rested on;
+- no reading rested on by more than half the file (2 of 5);
+- at most half the file rests on a reading that loosens `=`.
+
+`Floor.count` sets what a reading's share counts:
+- `"rests_on"` (the default): each item once, under the reading it rests on;
+- `"differs"`: every reading that differs on it. This is stricter, and for T12 it can't be met, because `T12.newest` differs whenever the answer isn't the newest edition. Holding newest to 2 of 5 would need three newest answers, and the position floor allows two.
+
+**Position floor (R&D on role-set#50, class `filter_induced_shortcut`).** The keep filter rejected more newest-edition answers than others: about 12 in 160 builds, against about 46 expected. That made "never the newest" a working shortcut. Three changes answer it:
+- each receipt records `position` (`earliest`, `between`, `newest`; None without a dated question);
+- the selector holds each position to half the file, and asks for at least one newest-edition answer;
+- the builder takes `position=` to build the answers a batch is short of.
+
+The T12 calendar also asks a span's opening day as well as its closing day, and asks the last span on its opening day more often (0.6 against 0.3). In a pack without numbered names, that is the only way a newest-edition answer has a reading to differ.
+
+A pack without numbered names (cards, sheets) has two T12 readings, so it can't fill a file of 5 alone: two per reading caps it at 4. Review files mix packs. `month_alone` fires only after the mid-month boundaries follow-up, which R&D approved on 2026-10-13.
+
+Every bound is a `Floor` field (the maintainer's "configurable wins" rule). R&D's rulings set the defaults.
