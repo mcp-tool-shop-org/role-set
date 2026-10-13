@@ -211,8 +211,9 @@ def test_every_sense_block_has_only_the_sense_keys_known_forms_and_real_unsayabl
         if "forms" in sense:
             assert isinstance(sense["forms"], list) and sense["forms"], key
             assert set(sense["forms"]) <= set(CLUE_FORMS), (key, sense["forms"])
-            # before and after name an order. These attributes are states, so a block does not list them.
-            assert "before" not in sense["forms"] and "after" not in sense["forms"], key
+            # before, after, adjacent, not_adjacent and offset name an order.
+            # These attributes are states, so a block does not list them.
+            assert {"before", "after", "adjacent", "not_adjacent", "offset"}.isdisjoint(sense["forms"]), key
         if "counts" in sense:
             counts = sense["counts"]
             assert isinstance(counts, dict) and set(counts) <= _COUNT_KEYS, key
@@ -229,7 +230,7 @@ def test_every_sense_block_has_only_the_sense_keys_known_forms_and_real_unsayabl
         if "value_words" in sense:
             for label, word in sense["value_words"].items():
                 assert label in pack["values"], (key, label)
-                assert word == label, (key, label)
+                assert isinstance(word, str) and word and word != label, (key, label)
         if "question_value" in sense:
             assert sense["question_value"] in pack["values"], key
 
