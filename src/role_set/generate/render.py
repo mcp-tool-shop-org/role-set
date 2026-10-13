@@ -2,10 +2,10 @@
 round-trip through `check_text` (each line names exactly what its rule names, negative lines read negative, direction
 words match the rule), so a template that breaks a tie is refused at render time, not at review.
 
-The clue-form API: TEMPLATES maps each rule form to sentences with named slots. Slots: {x} and {y} (entities), {a}
-(attribute), {v}, {v1}, {v2} (values), {k} (a number word), {plural} (the pack's plural noun), and for `if`, {p} and {q}
-(clauses rendered by the clause templates). Seat C's packs add sentences per form (at least 3 each before a freeze); the
-set here is the slice-1 baseline.
+The clue-form API: TEMPLATES maps each rule form to sentences with named slots. Slots: {X}/{x} and {Y}/{y} (entities,
+capitalised or not), {v}, {v1}, {v2} (values), {k} (a number word), {be} ("is" or "are"), {plural} (the pack's plural
+noun), and for `if`, {p} and {q} (clauses from CLAUSES). Each form has at least three sentences. A sentence uses only
+the slots `sentence` passes for that form.
 """
 
 from __future__ import annotations
@@ -14,26 +14,31 @@ import random
 
 NUMBER_WORDS = ("zero", "one", "two", "three", "four", "five", "six")
 
-# Clauses: the body of a sentence, reused inside `if`.
+# Clauses: the body of a sentence, reused inside `if`. {x} is the entity as written, so a clause can sit mid-sentence.
 CLAUSES: dict[str, list[str]] = {
-    "is": ["{x} is {v}"],
-    "is_not": ["{x} is not {v}"],
+    "is": ["{x} is {v}", "we find {x} {v}", "{x} counts as {v}"],
+    "is_not": ["{x} is not {v}", "{x} isn't {v}", "we never find {x} {v}"],
 }
+# {X} and {Y} arrive already capitalised, so those sentences start with the entity. "is" is index 1 because a claim
+# question renders through Random(0), and that draw picks index 1.
 TEMPLATES: dict[str, list[str]] = {
-    "is": ["{X} is {v}."],
-    "is_not": ["{X} is not {v}.", "{X} isn't {v}."],
-    "in": ["{X} is {v1} or {v2}."],
-    "not_in": ["{X} is neither {v1} nor {v2}."],
-    "before": ["{X} comes before {y}."],
-    "after": ["{X} comes after {y}."],
-    "adjacent": ["{X} is next to {y}."],
-    "not_adjacent": ["{X} is not next to {y}."],
-    "offset1": ["{Y} is next on from {x}."],
-    "offset2": ["{Y} is two places on from {x}."],
-    "count=": ["Exactly {k} of the {plural} {be} {v}."],
-    "count>=": ["At least {k} of the {plural} {be} {v}."],
-    "count<=": ["At most {k} of the {plural} {be} {v}."],
-    "if": ["If {p}, then {q}."],
+    "is": ["{X} counts as {v}.", "{X} is {v}.", "{X} shows as {v}."],
+    "is_not": ["{X} is not {v}.", "{X} isn't {v}.", "{X} never shows as {v}."],
+    "in": ["{X} is {v1} or {v2}.", "{X} is either {v1} or {v2}.", "{X} matches {v1} or {v2}."],
+    "not_in": ["{X} is neither {v1} nor {v2}.", "{X} matches neither {v1} nor {v2}.", "{X} is not {v1} and not {v2}."],
+    "before": ["{X} comes before {y}.", "{X} is earlier than {y}.", "{X} stands ahead of {y}."],
+    "after": ["{X} comes after {y}.", "{X} is later than {y}.", "{X} stands behind {y}."],
+    "adjacent": ["{X} is next to {y}.", "{X} sits beside {y}.", "{X} touches {y}."],
+    "not_adjacent": ["{X} is not next to {y}.", "{X} isn't beside {y}.", "{X} never touches {y}."],
+    "offset1": ["{Y} is next on from {x}.", "{Y} is one place on from {x}.", "{Y} sits one place past {x}."],
+    "offset2": ["{Y} is two places on from {x}.", "{Y} sits two places past {x}.", "{Y} comes two places on from {x}."],
+    "count=": ["Exactly {k} of the {plural} {be} {v}.", "Of the {plural}, {k} {be} {v}.",
+               "The tally of {v} {plural} is {k}."],
+    "count>=": ["At least {k} of the {plural} {be} {v}.", "Of the {plural}, {k} or more {be} {v}.",
+                "The {plural} include {k} or more that {be} {v}."],
+    "count<=": ["At most {k} of the {plural} {be} {v}.", "Of the {plural}, {k} or fewer {be} {v}.",
+                "Up to {k} of the {plural} {be} {v}."],
+    "if": ["If {p}, then {q}.", "When {p}, {q}.", "Then {q}, if {p}."],
 }
 
 

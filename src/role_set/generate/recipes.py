@@ -18,8 +18,9 @@ from role_set.generate.shortcuts import REGISTRY, answer, differs, prove
 from role_set.generate.t10_variety import cell_for
 from role_set.puzzle import PuzzleError
 
-# Slice-1 domain packs: names, a plural noun and a two- or three-value state. Seat C's packs replace these (with sense
-# rules) once the clue-form API is settled; each pack here keeps every name a whole word no other name contains.
+# Domain packs: plural, names, one attribute, values. Each name is a whole word no other name in the pack contains.
+# lamps, cups and doors are the slice-1 baseline (the tests use them). The rest are everyday domains in that shape.
+# The design asks for sense rules before a freeze and does not define their form, so a pack has no sense-rule field.
 PACKS = {
     "lamps": {"plural": "lamps", "names": ["the brass lamp", "the copper lamp", "the tin lamp", "the iron lamp", "the lead lamp"],
               "attribute": "light", "values": ["lit", "dark"]},
@@ -27,6 +28,19 @@ PACKS = {
              "attribute": "heat", "values": ["hot", "warm", "cold"]},
     "doors": {"plural": "doors", "names": ["the oak door", "the pine door", "the ash door", "the elm door", "the yew door"],
               "attribute": "state", "values": ["open", "shut"]},
+    "pans": {"plural": "pans", "names": ["the stock pan", "the sauce pan", "the milk pan", "the stew pan", "the jam pan"],
+             "attribute": "heat", "values": ["boiling", "simmering", "cold"]},
+    "machines": {"plural": "machines", "names": ["the drill press", "the band saw", "the wood lathe", "the bench grinder",
+                                                 "the thickness planer"],
+                 "attribute": "motor", "values": ["running", "idle", "jammed"]},
+    "trains": {"plural": "trains", "names": ["the coastal train", "the valley train", "the harbour train", "the meadow train",
+                                             "the summit train"],
+               "attribute": "punctuality", "values": ["on time", "delayed", "cancelled"]},
+    "beds": {"plural": "beds", "names": ["the rose bed", "the herb bed", "the lily bed", "the fern bed", "the moss bed"],
+             "attribute": "moisture", "values": ["damp", "dry", "soaked"]},
+    "clinics": {"plural": "clinics", "names": ["the asthma clinic", "the dental clinic", "the eye clinic", "the skin clinic",
+                                               "the fracture clinic"],
+                "attribute": "session", "values": ["open", "closed", "booked"]},
 }
 
 
