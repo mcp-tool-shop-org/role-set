@@ -280,7 +280,7 @@ A puzzle is kept only when at least one reading names a different edition.
 
 **Position floor (R&D on role-set#50, class `filter_induced_shortcut`).** The keep filter rejected more newest-edition answers than others: about 12 in 160 builds, against about 46 expected. That made "never the newest" a working shortcut. Three changes answer it:
 - each receipt records `position` (`earliest`, `between`, `newest`; None without a dated question);
-- the selector holds each position to half the file, and asks for at least one newest-edition answer;
+- the selector holds each position to half the file, and asks for at least `min_newest_share` of it (0.2, rounded up: one of five) to have the newest edition as its answer (R&D on role-set#51);
 - the builder takes `position=` to build the answers a batch is short of.
 
 The T12 calendar also asks a span's opening day as well as its closing day, and asks the last span on its opening day more often (0.6 against 0.3). In a pack without numbered names, that is the only way a newest-edition answer has a reading to differ.
@@ -288,6 +288,8 @@ The T12 calendar also asks a span's opening day as well as its closing day, and 
 A pack without numbered names (cards, sheets) has two T12 readings, so it can't fill a file of 5 alone: two per reading caps it at 4. Review files mix packs. `month_alone` fires only after the mid-month boundaries follow-up, which R&D approved on 2026-10-13.
 
 Every bound is a `Floor` field (the maintainer's "configurable wins" rule). R&D's rulings set the defaults.
+
+`file_receipt` records a chosen file: the floor it was chosen under and, for each item, the reading it rests on, its answer position, and its recipe, seed and skeleton hash (R&D on role-set#51, which also accepted `rests_on` as the default count).
 
 ## T10 variety (as built, role-set#53, 2026-10-14)
 
@@ -379,3 +381,18 @@ The floors are unchanged: at least 75% distinct canonical skeletons in a stratum
    uv run python scripts/t10_variety_record.py
    ```
 5. Run `uv run pytest -m "not sweep"` and the `workflow_dispatch` `sweep` job in CI.
+
+## T11 recipe (slice 1, as built)
+
+T11 is "what a mistake costs": look for the falsifier before calling a claim supported. Its questions are claims, built on `is`, `is_not`, `in`, `not_in` and `if` over one unordered state attribute.
+
+**The reading.** `T11.consistent_so_supported` is the reading R&D approved on 2026-10-11. It keeps only the facts that name an entity the claim names, and calls the claim supported when an assignment fits them with the claim true.
+
+**The sides.** `build_t11(pack, seed, side)` builds either side.
+- *Find:* the key is unsupported, the reading says supported, and no single line refutes the claim on its own. The falsifier sits across lines, for example "the pine door isn't shut", then "if the pine door is open, the yew door is not open", then "if the yew door is shut, the elm door is shut", against "the elm door is open".
+- *Confirm:* the key is supported, and no single line supports it on its own. The builder searches for a contrast: a one-slot change to one clue (an entity, a value, a value pair or the form word, in either clause of an `if`) that leaves an assignment and refutes the claim in every one. The receipt records it as `{line, form, from, to}`.
+- Every clue that decides the claim by itself is dropped before the chain is built.
+
+**No count clue.** A count is T10's trait. An item a count decides tests T10's literal size word, not the search across lines. Round 3's T11-B-03 and B-05 were count-decided, and B-05 repeated T10-B-01's skeleton. `t11_refusal` refuses both: they are the must-refuse fixtures, and batch 6's B-01 and B-02 are the must-pass fixtures.
+
+**In the selector.** A confirm item has no reading that differs, because the subject-only reading agrees with a supported key. It rests on its contrast, named `T11.contrast.<form>`, so lookups can't fill the floor (the per-file floor, confirmed by R&D). A file of 5 therefore holds at most 2 find items under the single reading, and its other items rest on contrasts of at least two forms.

@@ -1,0 +1,117 @@
+[
+  {
+    "id": "T11-B-03",
+    "source": "aspire-si fe67993 (batch 6 round 3)",
+    "side": "confirm",
+    "structure": "falsifier_first",
+    "answer": "supported",
+    "puzzle": "1. The mince pie, the apple pie, the cherry pie, the plum pie and the peach pie are each sweet or sour.\n2. At least four of the five pies are sweet.\n3. The mince pie is sour.\nQuestion: Claim: the apple pie is sweet.",
+    "model": {
+      "entities": [
+        "mince",
+        "apple",
+        "cherry",
+        "plum",
+        "peach"
+      ],
+      "attributes": {
+        "taste": {
+          "values": [
+            "sweet",
+            "sour"
+          ],
+          "distinct": false
+        }
+      },
+      "facts": [
+        {
+          "line": 2,
+          "rule": [
+            "count",
+            "taste",
+            "sweet",
+            ">=",
+            4
+          ]
+        },
+        {
+          "line": 3,
+          "rule": [
+            "is",
+            "mince",
+            "taste",
+            "sour"
+          ]
+        }
+      ],
+      "flavour": [
+        1
+      ],
+      "claim": [
+        "is",
+        "apple",
+        "taste",
+        "sweet"
+      ]
+    },
+    "refused_for": "a count clue decides the claim: the size word is T10's trait, not the search across lines"
+  },
+  {
+    "id": "T11-B-05",
+    "source": "aspire-si fe67993 (batch 6 round 3)",
+    "side": "confirm",
+    "structure": "falsifier_first",
+    "answer": "supported",
+    "puzzle": "1. The bread knife, the paring knife, the carving knife, the fillet knife, the boning knife and the cleaver are each sharp or blunt.\n2. Exactly five of the six knives are sharp.\n3. The bread knife is blunt.\nQuestion: Claim: the paring knife is sharp.",
+    "model": {
+      "entities": [
+        "bread",
+        "paring",
+        "carving",
+        "fillet",
+        "boning",
+        "cleaver"
+      ],
+      "attributes": {
+        "edge": {
+          "values": [
+            "sharp",
+            "blunt"
+          ],
+          "distinct": false
+        }
+      },
+      "facts": [
+        {
+          "line": 2,
+          "rule": [
+            "count",
+            "edge",
+            "sharp",
+            "=",
+            5
+          ]
+        },
+        {
+          "line": 3,
+          "rule": [
+            "is",
+            "bread",
+            "edge",
+            "blunt"
+          ]
+        }
+      ],
+      "flavour": [
+        1
+      ],
+      "claim": [
+        "is",
+        "paring",
+        "edge",
+        "sharp"
+      ]
+    },
+    "refused_for": "a count clue decides the claim, and the item repeats T10-B-01's fact skeleton"
+  }
+]

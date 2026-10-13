@@ -113,7 +113,7 @@ def test_a_reading_with_nothing_to_rewrite_is_skipped():
              "facts": [{"line": 2, "rule": ["count", "state", "open", "=", 1]}], "flavour": [1],
              "claim": ["is", "the oak door", "state", "open"]}
     assert rewrite("T10.floor_read_as_exact", model) is None
-    assert set(prove(model, "falsifier_first", list(REGISTRY))) == {"T10.exact_read_as_floor", "T10.exact_read_as_ceiling"}
+    assert set(prove(model, "falsifier_first", [n for n in REGISTRY if n.startswith("T10.")])) == {"T10.exact_read_as_floor", "T10.exact_read_as_ceiling"}
 
 
 def test_templates_agree_in_number_and_read_negative():

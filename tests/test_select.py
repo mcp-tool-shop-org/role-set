@@ -123,7 +123,7 @@ def test_a_dated_file_floors_answer_positions():
            [(dated("earliest", BOUNDARY), BOUNDARY)] * 2
     got = check_file(file)
     assert any("between edition on 3" in m for m in got) and any("newest edition on 0" in m for m in got)
-    assert check_file(file, Floor(position_max_share=1, min_newest=0)) == []  # the floor is config
+    assert check_file(file, Floor(position_max_share=1, min_newest_share=0)) == []  # the floor is config
 
 
 def test_the_newest_slot_is_kept_for_a_late_newest_answer():

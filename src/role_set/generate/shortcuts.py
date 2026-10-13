@@ -36,6 +36,10 @@ REGISTRY: dict[str, dict] = {
                           "reads": "a span's closing day given to the span that follows (its opening day to the one before)"},
     "T12.month_alone": {"lesson": "T12", "rewrite": "answer",
                         "reads": "any span whose start or end names the asked month, without its day"},
+    # T11, approved by R&D on 2026-10-11 ("consistent, so supported", using only the lines that mention the claim's
+    # subject). An answer reading: the verdict a reader gives who stops at the lines about the claim's own names.
+    "T11.consistent_so_supported": {"lesson": "T11", "rewrite": "answer",
+                                    "reads": "the claim fits the lines that name its subject, so it is supported"},
 }
 
 
@@ -89,26 +93,59 @@ def answer(model: dict, structure: str) -> dict:
     return {"kind": "values", "value": sorted(render(m, p) for p in projs)}
 
 
-def _solutions(m) -> list[dict]:
+def _solutions(m, facts=None) -> list[dict]:
+    """Every assignment the facts allow (the model's own facts by default)."""
+
     import itertools
 
     from role_set.puzzle import holds
 
+    rules = [r for _, r in m.facts] if facts is None else facts
     spaces = []
     for a in m.attrs.values():
         n = len(m.entities)
         spaces.append(list(itertools.permutations(a["values"])) if a["distinct"] else list(itertools.product(a["values"], repeat=n)))
     names = list(m.attrs)
     sols = (dict(zip(names, combo)) for combo in itertools.product(*spaces))
-    return [s for s in sols if all(holds(m, s, r) for _, r in m.facts)]
+    return [s for s in sols if all(holds(m, s, r) for r in rules)]
+
+
+def names_in(rule, entities) -> set[str]:
+    """The entities a rule names, through `if`, `and`, `or` and `not`."""
+
+    found = set()
+    for part in rule:
+        if isinstance(part, list):
+            found |= names_in(part, entities)
+        elif isinstance(part, str) and part in entities:
+            found.add(part)
+    return found
+
+
+def subject_reading(model: dict) -> dict | None:
+    """T11's lazy reading: keep only the facts that name an entity the claim names, and call the claim supported when an
+    assignment fits them with the claim true. None for a model with no claim."""
+
+    from role_set.puzzle import holds
+
+    m = parse_model(model)
+    if m.claim is None:
+        return None
+    subject = names_in(m.claim, set(m.entities))
+    facts = [r for _, r in m.facts if names_in(r, set(m.entities)) & subject]
+    fits = any(holds(m, s, m.claim) for s in _solutions(m, facts))
+    return {"kind": "claim", "value": "supported" if fits else "unsupported"}
 
 
 def answer_reading(name: str, model: dict) -> dict | None:
-    """A T12 reading's answer: the edition(s) a reader skipping the date match names, over every placing the clues allow.
-    None when the reading has nothing to act on (no numbers, no boundary day, no other span naming the month)."""
+    """An answer reading's answer. T11: the subject-only verdict. T12: the edition(s) a reader skipping the date match
+    names, over every placing the clues allow. None when the reading has nothing to act on (no numbers, no boundary day,
+    no other span naming the month)."""
 
     import re
 
+    if name == "T11.consistent_so_supported":
+        return subject_reading(model)
     m = parse_model(model)
     if m.span is None or "contains" not in (m.asks or {}):
         return None

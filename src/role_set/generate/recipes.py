@@ -317,6 +317,145 @@ def _decider(shape: Shape, sols: list[dict], hidden: int):
     return decided
 
 
+# ---- T11: what a mistake costs; look for the falsifier before calling a claim supported (claim-keyed) --------------
+# R&D, 2026-10-11. The lazy reading is "consistent, so supported" on the lines that name the claim's subject.
+# - Find side: the key is unsupported, the lazy reading says supported, and no single line refutes the claim alone.
+# - Confirm side: the key is supported, proved by a recorded contrast: a one-clue change that flips it to unsupported.
+# No count clue: a count is T10's trait, and an item it decides tests T10 (round 3's T11-B-03 and B-05, the second a
+# repeat of T10-B-01's skeleton).
+T11 = Recipe("T11", "", tuple(n for n, s in REGISTRY.items() if s["lesson"] == "T11"),
+             ("is", "is_not", "in", "not_in", "if"))
+T11_SIDES = ("find", "confirm")
+
+
+def t11_refusal(model: dict, side: str) -> str | None:
+    """Why a claim model can't stand as a T11 item on this side (None when it can). The builder's checks, also run on
+    hand-written items: the regression fixtures go through here."""
+
+    from role_set.generate.shortcuts import subject_reading
+    from role_set.puzzle import Table, parse_model
+
+    m = parse_model(model)
+    if m.claim is None:
+        return "T11 items are claims"
+    if any(r[0] == "count" for _, r in m.facts):
+        return "a count clue decides it, and a count is T10's trait; build the chain on is, is_not, in, not_in and if"
+    t = Table(m)
+    v = t.verdict(t.all)
+    want = "unsupported" if side == "find" else "supported"
+    if v != want:
+        return f"the {side} side needs a claim the facts make {want}; this one is {v}"
+    for line, r in m.facts:
+        alone = Table(parse_model({**model, "facts": [{"line": line, "rule": r}]}))
+        if alone.verdict(alone.all) == v:
+            return f"line {line} decides the claim on its own; T11 needs the search across lines"
+    if side == "find" and subject_reading(model)["value"] == v:
+        return "the lines that name the claim's subject already refute it, so the falsifier is not across lines"
+    return None
+
+
+def _leaves(rule: list) -> list:
+    out = []
+    for part in rule:
+        if isinstance(part, list) and part and part[0] in T11.forms:
+            out += _leaves(part)  # the two clauses of an `if`
+        else:
+            out.append(tuple(part) if isinstance(part, list) else part)  # a value pair is one leaf
+    return out
+
+
+def _one_slot(a: list, b: list) -> bool:
+    """Whether two rules differ in exactly one leaf: a form word, an entity, a value or value pair, in either clause of
+    an `if`. "If the oak door is open, the elm door is open" against "..., the elm door is shut" is one slot."""
+
+    la, lb = _leaves(a), _leaves(b)
+    return len(la) == len(lb) and sum(x != y for x, y in zip(la, lb)) == 1
+
+
+def t11_contrast(shape: Shape, sols: list[dict], kept: list[list], pool: list[list], bits: dict, claim_true: list[bool],
+                 rng: random.Random) -> dict | None:
+    """A one-slot change to one kept clue that leaves an assignment and makes the claim false in every one: the contrast
+    a confirm-side item is proved by and counts under in the selector (R&D, 2026-10-11 and the per-file floor)."""
+
+    n = len(sols)
+    found = []
+    for i, fact in enumerate(kept):
+        rest = _mask(kept[:i] + kept[i + 1:], bits, n)
+        for c in pool:
+            if not _one_slot(fact, c):
+                continue
+            mask = rest & bits[_key(c)]
+            if mask and not any(claim_true[j] for j in range(n) if mask >> j & 1):
+                found.append({"line": i + 2, "form": fact[0], "from": fact, "to": c})
+    return rng.choice(found) if found else None
+
+
+def build_t11(pack_name: str, seed: int, side: str, n: int = 4, tries: int = MAX_TRIES) -> Built:
+    """One T11 puzzle: a claim decided only by reading across lines. `side` is "find" (the claim is refuted, and the
+    lines naming its subject alone would pass it) or "confirm" (the claim holds, with a recorded contrast)."""
+
+    if side not in T11_SIDES:
+        raise BuildError(f"T11 side is one of {', '.join(T11_SIDES)}")
+    from role_set.generate.build import _norm
+    from role_set.puzzle import holds
+
+    pack = PACKS[pack_name]
+    rng = random.Random(f"T11:{pack_name}:{side}:{n}:{seed}")
+    last = "no attempt"
+    for attempt in range(1, tries + 1):
+        names = tuple(rng.sample(pack["names"], n))
+        attr = pack["attribute"]
+        claim = ["is", names[0], attr, rng.choice(pack["values"])]
+        shape = Shape(names, {attr: {"values": list(pack["values"]), "distinct": False}}, claim=claim,
+                      structure="falsifier_first")
+        sols = assignments(shape)
+        m = _norm(shape)
+        claim_true = [holds(m, s, claim) for s in sols]
+        hiddens = [i for i, t in enumerate(claim_true) if t == (side == "confirm")]
+        hidden = rng.choice(hiddens)
+        pool = candidates(shape, T11.forms)
+        bits = {_key(c): truth(shape, sols, c) for c in pool}
+        decided = _decider(shape, sols, hidden)
+        # A clue that settles the claim by itself is a lookup, never part of a T11 chain.
+        others = [c for c in pool if bits[_key(c)] >> hidden & 1 and not decided(bits[_key(c)])]
+        rng.shuffle(others)
+        chosen: list[list] = []
+        for c in others:
+            if chosen and decided(_mask(chosen, bits, len(sols))):
+                break
+            if c[0] == "if" and sum(1 for x in chosen if x[0] == "if") >= MAX_IF:
+                continue
+            if _mask(chosen + [c], bits, len(sols)) != _mask(chosen, bits, len(sols)):
+                chosen.append(c)
+        if not chosen or not decided(_mask(chosen, bits, len(sols))):
+            last = "the clues never settled the claim"
+            continue
+        kept = reduce(shape, sols, chosen, bits, decided, rng)
+        model = shape.model(kept)
+        why = t11_refusal(model, side)
+        if why:
+            last = why
+            continue
+        try:
+            answer = check_model(model, shape.structure)
+        except PuzzleError as e:
+            last = str(e)
+            continue
+        contrast = None
+        if side == "confirm":
+            contrast = t11_contrast(shape, sols, kept, pool, bits, claim_true, rng)
+            if contrast is None:
+                last = "no one-slot change to a clue flips the claim"
+                continue
+        proofs = prove(model, shape.structure, list(T11.shortcuts))
+        if side == "find" and not any(p["differs"] for p in proofs.values()):
+            last = "the subject-only reading gave the key"
+            continue
+        return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
+                     seed=seed, tries=attempt, contrast=contrast)
+    raise BuildError(f"T11 ({pack_name}, {side}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")
+
+
 # ---- T12: which edition was in force on a date (R&D's shape 1, solved on `contains`) -------------------------------
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November",
           "December")
