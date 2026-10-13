@@ -49,7 +49,7 @@ PACKS = {
                        "counts": {"min": 1, "max_share": 0.75}}},
     "clinics": {"plural": "clinics", "names": ["the asthma clinic", "the dental clinic", "the eye clinic", "the skin clinic",
                                                "the fracture clinic"],
-                "attribute": "session", "values": ["open", "closed", "on standby"],
+                "attribute": "session", "values": ["morning", "afternoon", "evening"],
                 "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
                           "counts": {"min": 1, "max_share": 0.75}}},
 }
