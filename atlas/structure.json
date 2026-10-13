@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "279ecfaa524d90c9a0945281700ecae527ef5662e6b6f7dcb5c44ea2581da3e5",
+          "hash": "c0c244492fce7ca4b64e800571701d4b2502d855a684ca818fc8f361fa85cabb",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "d911d8268ddf2fdc392714220e1c256dee65373eea378de256dcbb48eb1b18a5",
+          "hash": "d91c1a8ca47885f47284999dd29f2a47bf2de1de072594b9fed74abb331d0c28",
           "path": "CHANGELOG.md"
         },
         {
@@ -1496,21 +1496,38 @@
         {
           "exports": [
             "build_t10",
-            "t10_shape"
+            "build_t12",
+            "t10_shape",
+            "t12_calendar"
           ],
           "failurePaths": [
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 129
+              "line": 79
+            },
+            {
+              "in": "build_t10",
+              "kind": "raise",
+              "line": 134
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 138
+              "line": 143
+            },
+            {
+              "in": "build_t12",
+              "kind": "except",
+              "line": 303
+            },
+            {
+              "in": "build_t12",
+              "kind": "raise",
+              "line": 312
             }
           ],
-          "hash": "8bead92cd2d752e425118bbcc2a74956f61a2d6a1a0571deeffed1d3cd906ca0",
+          "hash": "5192882342a3f2d84679664efc49a39aad8f280a8ed6ef65b6cf3fee726401ef",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1529,20 +1546,21 @@
             {
               "in": "sentence",
               "kind": "raise",
-              "line": 64
+              "line": 65
             },
             {
               "in": "question_line",
               "kind": "raise",
-              "line": 103
+              "line": 112
             }
           ],
-          "hash": "fd5474f21e73ddd422ae79732f5a80741a91623c7fc23c360dc265a24ecdad5f",
+          "hash": "504e5aca57a2291e5d9e2836077c2760f787a367fcb4f02552bc198badc2191d",
           "path": "src/role_set/generate/render.py"
         },
         {
           "exports": [
             "answer",
+            "answer_reading",
             "applies",
             "differs",
             "prove",
@@ -1552,15 +1570,20 @@
             {
               "in": "rewrite",
               "kind": "raise",
-              "line": 61
+              "line": 72
+            },
+            {
+              "in": "answer_reading",
+              "kind": "raise",
+              "line": 149
             },
             {
               "in": "prove",
               "kind": "except",
-              "line": 103
+              "line": 179
             }
           ],
-          "hash": "6d57a6006305e3d585330d314734fa4fa63921f7eb9228bbbc865aaa3c554113",
+          "hash": "17b93a4b850f765fe40739a0125fc99f681dd5f34f84008a81e2572b781464de",
           "importsFiles": [
             "src/role_set/puzzle.py"
           ],
@@ -2996,27 +3019,22 @@
             {
               "in": "day",
               "kind": "raise",
-              "line": 45
+              "line": 46
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 70
+              "line": 71
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 73
+              "line": 74
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 76
-            },
-            {
-              "in": "parse_spans",
-              "kind": "raise",
-              "line": 83
+              "line": 77
             },
             {
               "in": "parse_spans",
@@ -3031,12 +3049,12 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 91
+              "line": 89
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 95
+              "line": 93
             },
             {
               "in": "parse_spans",
@@ -3046,12 +3064,12 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 105
+              "line": 99
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 110
+              "line": 108
             },
             {
               "in": "parse_spans",
@@ -3066,25 +3084,30 @@
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 120
+              "line": 119
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 122
+              "line": 123
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 126
+              "line": 125
             },
             {
               "in": "parse_spans",
               "kind": "raise",
-              "line": 131
+              "line": 129
+            },
+            {
+              "in": "parse_spans",
+              "kind": "raise",
+              "line": 134
             }
           ],
-          "hash": "da93868800b9a6a071025037740a0145ab451db2a37e1e0b834d949d9a17e66b",
+          "hash": "8ad4cff6e734aa20464c754cbee9b58e3828301af56c9d47bb05e84df1750d4c",
           "path": "src/role_set/span.py"
         },
         {
@@ -4069,7 +4092,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 27,
+      "testedBy": 28,
       "unresolvedSites": 0
     },
     {
@@ -4095,6 +4118,10 @@
         {
           "hash": "59425cd1c19a5d8c0e11f4692b526f91d13e4a950a00bc5a6196d4af757513c2",
           "path": "tests/fixtures/t10_round2_must_refuse.json"
+        },
+        {
+          "hash": "af5b729f40eabd0b70a29d871170ed75e5ac1213eb1adb7cdcea56391d199ee5",
+          "path": "tests/fixtures/t10_round5_must_pass.json"
         },
         {
           "hash": "e12ba706af9d34fa84f69ee915936798f2743cd80682fef7e608027ca2f6333d",
@@ -4296,19 +4323,21 @@
         },
         {
           "exports": [
+            "test_a_contradiction_is_recorded_but_proves_nothing",
             "test_a_reading_with_nothing_to_rewrite_is_skipped",
             "test_a_receipt_carries_the_seed_readings_metrics_and_pins",
-            "test_a_single_value_question_cannot_carry_a_t10_reading",
             "test_a_t10_claim_is_proven",
             "test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips",
             "test_round2_t10_b01_is_refused_by_puzzle_check",
             "test_round2_t10_puzzles_have_no_size_reading_that_decides",
+            "test_round5_t10_b01_carries_a_deciding_size_reading",
+            "test_t10_refuses_a_single_value_question_at_once",
             "test_templates_agree_in_number_and_read_negative",
             "test_the_divergence_rules_by_answer_type",
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "5bda0e4eb418327d0dfe7a487e87389e23c9d1e7e7a1abb55a5e8ab83590adb6",
+          "hash": "04ba6deff49ac30f89fa26cda4b344d1d1c5cdedf3f66d5c4e9d6a53c566d320",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -4317,6 +4346,25 @@
             "src/role_set/puzzle.py"
           ],
           "path": "tests/test_generate.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "test_a_t12_puzzle_is_proven_and_its_wording_round_trips",
+            "test_each_t12_reading",
+            "test_month_alone_names_a_span_that_only_shares_the_month",
+            "test_the_calendar_is_contiguous_typed_and_marks_a_wrap",
+            "test_the_same_seed_rebuilds_the_same_t12_puzzle_and_packs_differ",
+            "test_the_t12_rebuilds_carry_a_reading_that_names_another_edition"
+          ],
+          "hash": "762a6087df53b30070c5327567c52bfdd5503ed22e86314fb0ff535875688768",
+          "importsFiles": [
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/render.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py"
+          ],
+          "path": "tests/test_generate_t12.py",
           "testFramework": "pytest"
         },
         {
@@ -4868,7 +4916,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 27
+          "files": 28
         },
         {
           "boundary": "src",
@@ -4908,7 +4956,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 27,
+          "files": 28,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -5155,8 +5203,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "0d7d301cffdc4e1fb84b878d3e8c39e2b430d156",
-    "tracked": 118
+    "commit": "24c9309b924b95fd68b1959f86f6cf34501d6b09",
+    "tracked": 120
   },
   "landings": [
     {
@@ -5339,6 +5387,12 @@
     {
       "readers": [
         {
+          "by": "tests/test_generate_t12.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
           "by": "tests/test_span.py",
           "call": "read_text",
           "confidence": "ast",
@@ -5363,6 +5417,18 @@
     {
       "readers": [
         {
+          "by": "tests/test_generate.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/t10_round5_must_pass.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
           "by": "tests/test_span.py",
           "call": "read_text",
           "confidence": "ast",
@@ -5376,6 +5442,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 32,
+  "testFiles": 34,
   "unassigned": []
 }
