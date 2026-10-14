@@ -2,7 +2,7 @@
 title: Configuration
 description: The writer pins, the critic pin, and the role pack a run is allowed to serve.
 sidebar:
-  order: 4
+  order: 6
 ---
 
 Two files decide what a run is allowed to call, and what text it is allowed to serve. Both are in the repository, and neither is a secret.
@@ -62,6 +62,8 @@ uv run role-set pack verify --pack roles/verifier
 What sync is expected to fill: the role lessons, one file per trait, the kind table, amendments, rules, an exclusion list, the puzzle-structure menu, pressure kinds, injection kinds, and exemplars taken from merged batches. This repository does not ship that text. `roles/verifier` here has `sources.json`, `exemplar-exclude.json`, and a README that names the layout. Run sync before a write that should see the lessons.
 
 `write` does not scan the pack for operator identity. Scan a pack before you publish one.
+
+The pack's files, the Advocate draft, and how the hash is built are on [Role packs](./roles/).
 
 ## What lands on an accepted receipt
 

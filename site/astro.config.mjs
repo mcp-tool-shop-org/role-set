@@ -10,7 +10,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'role-set',
-      description: 'Prototype. Plans role-shaping items, writes them through a loopback model, and records the gates each item passed.',
+      description: 'Prototype. Plans role-shaping items, writes the parts a writer should write, records the gates each item passed, and builds kind B puzzles in code that are proven before a model words them.',
       logo: {
         src: './src/assets/logo.png',
         alt: 'role-set',

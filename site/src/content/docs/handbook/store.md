@@ -2,7 +2,7 @@
 title: Store and firewall
 description: How ingest refuses held-out material, and what store status does not return.
 sidebar:
-  order: 5
+  order: 7
 ---
 
 The store is a SQLite file you name. It is not inside this repo and not inside the aspire-si clone. `ingest` is the only command that writes rows into it. `store` reports counts, or appends a void. Neither command prints a stored row back out.

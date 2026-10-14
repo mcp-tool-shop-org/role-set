@@ -3,7 +3,7 @@ import type { SiteConfig } from '@mcptoolshop/site-theme';
 export const config: SiteConfig = {
   title: 'role-set',
   description:
-    'Prototype. Plans role-shaping items, writes them through a loopback model, and records the gates each item passed. Nothing it writes is training data until a person checks it.',
+    'Prototype. Plans role-shaping items, writes the parts a writer should write, records the gates each item passed, and builds kind B puzzles in code that are proven before a model words them. Nothing it writes is training data until a person checks it.',
   logoBadge: 'RS',
   brandName: 'role-set',
   repoUrl: 'https://github.com/mcp-tool-shop-org/role-set',
@@ -15,7 +15,7 @@ export const config: SiteConfig = {
     headline: 'Plan every item,',
     headlineAccent: 'then write it on the loopback.',
     description:
-      'role-set fixes a batch before any model call, asks a writer only for the parts a writer should write, and records the gates each item passed. It is a prototype. Nothing it writes is in a training set.',
+      'role-set fixes a batch before any model call, asks a writer only for the parts a writer should write, and records the gates each item passed. Its T10 generator builds kind B puzzles in code, proves each one with the solver, and holds the variety floors with a committed record. It is a prototype. Nothing it writes is training data until a person checks it.',
     primaryCta: { href: 'https://github.com/mcp-tool-shop-org/role-set', label: 'View on GitHub' },
     secondaryCta: { href: 'handbook/', label: 'Read the Handbook' },
     previews: [
