@@ -288,3 +288,26 @@ The T12 calendar also asks a span's opening day as well as its closing day, and 
 A pack without numbered names (cards, sheets) has two T12 readings, so it can't fill a file of 5 alone: two per reading caps it at 4. Review files mix packs. `month_alone` fires only after the mid-month boundaries follow-up, which R&D approved on 2026-10-13.
 
 Every bound is a `Floor` field (the maintainer's "configurable wins" rule). R&D's rulings set the defaults.
+
+## T10 variety (as built, role-set#53, 2026-10-14)
+
+**The cell map.**
+- Each (pack, question, seed) maps to a structural cell: entity count n (3-5), count word (exactly, at least, at most), k (1 to n-1), and a target of 0-2 `if` clues.
+- The usable cells are probed once and committed as `src/role_set/generate/t10_cells.json`, by `scripts/t10_usable_cells.py`.
+- Seeds index the table so that one pack's 20 seeds land in 20 different cells, and each pack is offset so packs spread over different cells.
+- A build whose reduced puzzle loses its cell's `if` target retries inside that seed. Finished builds are never discarded for repeating a skeleton.
+
+**What carries the variety.** The cell map does. Deletion now runs in tiers (`is`, then `is_not`, then `if`, with the count clue last), but on the locked seeds the share of puzzles keeping an `if` didn't rise. So it isn't credited.
+
+**The boundary on claim items (R&D).**
+- When an at-least or at-most clue directly decides a single entity, the true count must equal k.
+- So on claim items, reading the size word as "exactly" gives the key's answer. Claim items can't catch that misreading.
+- Set items carry the check: 16 of 38 set inequalities on the locked seeds have the hidden count off k.
+
+**Known defect, fixed separately (`trait_not_tested`, from #48).**
+- In all 9 three-value claim items with an at-least or at-most trait, the shortcut check passed on a second "exactly" count clue, and the trait's own misreading gave the key's answer.
+- Those items still test "exactly". Their count word is a cell label only.
+- The cause is that `_finish` accepts a build when any registered reading differs. It should require the trait clue's own reading to differ.
+- The follow-up gives T10 one count clue, makes claims "exactly" only, and records why a claim can't test "at least" or "at most".
+
+**Open gap.** Two-value claim packs (lamps, doors) have no usable at-least or at-most claim cell. The follow-up above explains why that's structural.
