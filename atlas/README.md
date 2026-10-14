@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-14 from commit bed8cde by Atlas 1.24.0.
+Mapped at 2026-10-14 from commit ca6ac1d by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,13 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (65 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-13 (28b672e)
+## What changed since 2026-10-14 (bed8cde)
 
-- scripts now imports src.
-- src/role_set/generate/t10_cells.json is now written by scripts/t10_usable_cells.py.
-- src/role_set/generate/t10_cells.json is now read by src/role_set/generate/t10_variety.py.
-- src was authored and is now mixed.
-- 4 files added and 3 changed content, across 3 parts.
+Nothing structural changed since 2026-10-14; 9 files changed content.
 
 ## What comes in
 

@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "fda13ee9370061d95e68764cf95c100e278aac88246f2645f617cff614edfab5",
+          "hash": "c0a49c79e3e17e4f69e8c1cb6c766c35013a240eaa77b8ec7d4fcca6986b1dd3",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "a4493d2f4e57d2a94c02d4de30d06d533addd90e8c480397ca7114edea84ec6a",
+          "hash": "b032337407d2b25de7cb101156c79b4fd51c3ead7d00c87185d9f82331e479d4",
           "path": "CHANGELOG.md"
         },
         {
@@ -249,15 +249,15 @@
             {
               "in": "probe",
               "kind": "except",
-              "line": 42
+              "line": 43
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 66
+              "line": 67
             }
           ],
-          "hash": "627586d085b87dba4823b53172b2643106dcdb3e3c3cdab3571741e04de9e7f0",
+          "hash": "b385e8743ad50232913f4b4695654c4e9482f066c98416b8c09169026812217a",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py"
@@ -1532,35 +1532,45 @@
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 102
+              "line": 103
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 168
+              "line": 112
+            },
+            {
+              "in": "build_t10",
+              "kind": "raise",
+              "line": 172
+            },
+            {
+              "in": "_trait_reading_differs",
+              "kind": "except",
+              "line": 200
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 177
+              "line": 213
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 322
+              "line": 360
             },
             {
               "in": "build_t12",
               "kind": "except",
-              "line": 350
+              "line": 388
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 359
+              "line": 397
             }
           ],
-          "hash": "2af951c54ce4b52e92f21a4f6875dbe6e45ce94ded1137907834d3a44c7a043f",
+          "hash": "bd52e37af16717d2388bf4b0348c1935daab1a9e3957679220e8fd58ced4fc36",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1596,41 +1606,42 @@
             "check_file",
             "differing",
             "loosens_eq",
+            "resting_readings",
             "select"
           ],
           "failurePaths": [
             {
               "in": "_lesson",
               "kind": "raise",
-              "line": 70
+              "line": 83
             },
             {
               "in": "check_file",
               "kind": "raise",
-              "line": 79
+              "line": 92
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 118
+              "line": 133
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 128
+              "line": 143
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 134
+              "line": 149
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 172
+              "line": 187
             }
           ],
-          "hash": "b63ea5b05632dbd233a79806e4b942bd3a897d3387336576ffbd66e23b97bbbb",
+          "hash": "71a95762f823abd6890bc7dd5ceb3068d9a44052829378ba9b56ffac30644a98",
           "importsFiles": [
             "src/role_set/generate/shortcuts.py"
           ],
@@ -1669,7 +1680,7 @@
           "path": "src/role_set/generate/shortcuts.py"
         },
         {
-          "hash": "be5314e0b7c5514493c38260eb2223ba1eaef831591662b358ca9dd68ba61f84",
+          "hash": "f9615f9fd038bcf5614f6b3b7ebdf674bc8b562cc46093849c41bfb2ab3ac9f9",
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
@@ -1682,10 +1693,10 @@
             {
               "in": "cell_for",
               "kind": "raise",
-              "line": 83
+              "line": 84
             }
           ],
-          "hash": "4be960eee15b45ca8315c77105e356b2c88d400396a58831748bfd7b7470fd1a",
+          "hash": "1529e4576ec6dff2bd0b100db4a6405cc9ca627ddd444f1319fee8fc0f684833",
           "path": "src/role_set/generate/t10_variety.py"
         },
         {
@@ -4835,6 +4846,7 @@
           "exports": [
             "dated",
             "rec",
+            "test_a_count_item_rests_on_its_trait_operator",
             "test_a_dated_file_floors_answer_positions",
             "test_a_file_is_chosen_per_lesson_and_the_count_is_known",
             "test_a_pool_with_one_reading_is_refused_and_says_so",
@@ -4847,7 +4859,7 @@
             "test_the_floor_scales_with_the_file",
             "test_the_newest_slot_is_kept_for_a_late_newest_answer"
           ],
-          "hash": "35b73426b2fdb6d2f4a627c1b0d1bce7198bf84107b8c0e67448591207c375b3",
+          "hash": "b0ba71bbc6e7890b31a2282ea438a5806878a3acaf4db18126adc0aef3c369dd",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -4883,18 +4895,21 @@
         },
         {
           "exports": [
+            "test_a_claim_refuses_an_at_least_cell",
+            "test_claim_cells_are_exactly_and_set_cells_keep_three_size_words",
             "test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last",
             "test_locked_seeds_clear_the_variety_floors_in_every_stratum",
             "test_twenty_seeds_in_one_file_take_twenty_cells"
           ],
-          "hash": "7a79a829e48f6528eef92962c24cfc71b8729de23f8e4a0cba459a8cf87c08bb",
+          "hash": "ffbd986cb6faf3ea3221565c2115dd88cc86e8a9ec8603c2b8f63eecbfb1fa3d",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/shortcuts.py",
             "src/role_set/generate/t10_variety.py"
           ],
-          "path": "tests/test_t10_variety.py"
+          "path": "tests/test_t10_variety.py",
+          "testFramework": "pytest"
         },
         {
           "exports": [
@@ -5358,7 +5373,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "bed8cde86b749130461ce7e961002e66e4cb3c6e",
+    "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
     "tracked": 126
   },
   "landings": [
