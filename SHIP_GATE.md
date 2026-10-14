@@ -60,7 +60,7 @@
 ## E. Identity (soft gate — does not block ship)
 
 - [x] `[all]` Logo in README header (2026-10-14, the brand URL returns 200; brand pull request 102 merged 2026-10-11)
-- [ ] `[all]` Translations (polyglot-mcp, 8 languages) (open until the Publisher runs polyglot on the final 0.2.0 README and commits `README.*.md` to this branch; the Publisher ticks this line in that commit)
+- [x] `[all]` Translations (polyglot-mcp, 8 languages): the Publisher ran polyglot (TranslateGemma 27B, local) on the final 0.2.0 README and committed `README.*.md` to this branch (checked 2026-10-14)
 - [x] `[org]` Landing page (@mcptoolshop/site-theme) (2026-10-14, `site` build wrote `dist/index.html`, `dist/handbook/index.html`, and `dist/pagefind/pagefind.js`; nine handbook pages, two new)
 - [x] `[all]` GitHub repo metadata: description, homepage, topics (2026-10-14, `gh repo view` shows a description, the Pages homepage and three topics; refreshed strings for 0.2.0 are proposed to the Publisher, who runs `gh repo edit`)
 
