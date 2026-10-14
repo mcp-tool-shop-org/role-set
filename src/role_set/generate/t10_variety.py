@@ -427,7 +427,7 @@ def assignment(question: str, nvalues: int, file_index: int) -> dict[str, list[d
         for pack in packs:
             for cell in cells_of[pack]:
                 found = data.get(cell_key(cell))
-                if found and found.get("builds"):
+                if found and found.get("builds") and not found.get("failed"):
                     weights[cell_id(cell)] = max(1, int(found["distinct"]))
         _PLANS[key] = assign_cells(packs, cells_of, zero_if_cap(kind, question), weights, file_index)
     return _PLANS[key]

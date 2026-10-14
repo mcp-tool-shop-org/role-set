@@ -135,7 +135,7 @@ def test_twelve_three_value_packs_allocate_with_no_within_file_repeats():
             cell_id(cell): max(1, int(q_cap[cell_key(cell)]["distinct"]))
             for pack in real_packs
             for cell in cells_of[pack]
-            if cell_key(cell) in q_cap and q_cap[cell_key(cell)].get("builds")
+            if cell_key(cell) in q_cap and q_cap[cell_key(cell)].get("builds") and not q_cap[cell_key(cell)].get("failed")
         }
         plan = assign_cells(packs_12, cells_of, cap, weights, file_index=0)
         zero_visits: Counter = Counter()
