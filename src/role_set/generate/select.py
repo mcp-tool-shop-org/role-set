@@ -17,6 +17,9 @@ shortcut (R&D on role-set#50, class filter_induced_shortcut). Receipts without a
 "differs" counts an item under every reading that differs on it, which is stricter. The floor is a configurable gate, and
 R&D's ruling sets the default.
 
+A count item rests on a reading of its trait clue's operator. A reading that differs only by rewriting some other count
+clue does not test the trait (class trait_not_tested), so the item does not rest on it.
+
 The search is deterministic: candidates are taken in the order given, and the first file that meets the floor is returned,
 so the same receipts give the same file.
 """
@@ -60,6 +63,16 @@ def differing(receipt: dict) -> list[str]:
     return [n for n in REGISTRY if receipt["shortcuts"].get(n, {}).get("differs")]
 
 
+def resting_readings(receipt: dict) -> list[str]:
+    """The readings an item may rest on. A count trait rests only on a reading of its own operator."""
+
+    options = differing(receipt)
+    trait = receipt.get("trait_clue") or []
+    if not trait or trait[0] != "count":
+        return options
+    return [n for n in options if REGISTRY[n].get("from") == trait[3]]
+
+
 def loosens_eq(name: str) -> bool:
     return REGISTRY[name].get("rewrite") == "count_op" and REGISTRY[name].get("from") == "="
 
@@ -85,6 +98,8 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
     for r, name in file:
         if name not in differing(r):
             problems.append(f"an item rests on {name!r}, which does not differ from its key")
+        elif name not in resting_readings(r):
+            problems.append(f"an item rests on {name!r}, which does not read its trait clue")
         for n in ([name] if floor.count == "rests_on" else differing(r)):
             tally[n] = tally.get(n, 0) + 1
         loose += loosens_eq(name)
@@ -117,7 +132,7 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
     if floor.count not in COUNTS:
         raise SelectError(f"floor.count is one of {COUNTS}")
     _lesson(pool)
-    options = [differing(r) for r in pool]
+    options = [resting_readings(r) for r in pool]
     cap, lcap = floor.cap(floor.max_share), floor.cap(floor.loosening_max_share)
     supply: dict[str, int] = {}
     for opts in options:
@@ -125,7 +140,7 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
             supply[n] = supply.get(n, 0) + 1
     usable = sum(min(c, cap) for c in supply.values())
     if usable < floor.size or len(supply) < floor.min_distinct:
-        raise SelectError(f"the pool can't fill a file of {floor.size}: differing readings {dict(sorted(supply.items()))}, "
+        raise SelectError(f"the pool can't fill a file of {floor.size}: readings to rest on {dict(sorted(supply.items()))}, "
                           f"at most {cap} per reading and {floor.min_distinct} distinct; generate more seeds")
     pos = [r.get("position") for r in pool]
     dated = any(pos)
@@ -169,6 +184,6 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
         return False
 
     if not search(0):
-        raise SelectError(f"no file of {floor.size} meets the floor (differing readings {dict(sorted(supply.items()))}, "
+        raise SelectError(f"no file of {floor.size} meets the floor (readings to rest on {dict(sorted(supply.items()))}, "
                           f"count={floor.count!r}); generate more seeds or loosen the floor in config")
     return list(chosen)
