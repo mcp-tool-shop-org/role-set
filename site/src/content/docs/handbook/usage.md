@@ -80,3 +80,7 @@ uv run role-set puzzle-check --json path/to/batch.jsonl
 ```
 
 Each data file `<name>.jsonl` is read beside `<name>.models.jsonl`. `--stamp` writes `row_sha256` onto sidecar lines from the rows as they stand. Use that once, on purpose, when you are creating the sidecar. After that, a changed row no longer matches, which is the point. Give every data file in the directory in one run: a puzzle whose fact skeleton repeats an earlier one in any file given is refused, naming the first. Exit 1 means some check failed. The limits are on the [kinds page](./kinds/).
+
+## The generator scripts
+
+Puzzles the generator builds go through the same `puzzle-check`. The generator itself has no `role-set` command. Its three scripts, `scripts/t10_usable_cells.py`, `scripts/t10_cell_capacity.py` and `scripts/t10_variety_record.py`, remake the committed tables and the record, and two of them have a `--check` form that reads without rebuilding. When to run which, and in what order, is on [The T10 generator](./generator/) page.

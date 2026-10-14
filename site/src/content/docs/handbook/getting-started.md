@@ -12,7 +12,7 @@ uv sync --frozen
 uv run role-set --version
 ```
 
-`0.1.0` is the prototype. Do not treat a later tag as this release until the maintainer cuts one.
+`0.2.0` is the prototype. It is still 0.x: interfaces and data shapes can change without notice.
 
 ## Plan
 
@@ -58,13 +58,26 @@ uv run role-set readout --run out/mock
 
 ```text
 uv sync --frozen
-uv run pytest
+uv run pytest -m "not sweep"
 ```
 
-Line coverage has a floor of 90, set in `pyproject.toml`, and CI fails the job under it. CI also runs `plan` on lessons `T02,T03` and `puzzle-check` on `tests/fixtures/puzzle-check/sample.jsonl`. No step loads a model.
+That is the suite CI's `test` job runs. Line coverage has a floor of 90, set in `pyproject.toml` and matched by the Codecov targets in `codecov.yml`, and the run fails under it. It measures about 97. The suite includes the T10 record check: it recomputes the record's hash and the variety floors from the committed record in minutes. The exhaustive rebuild is the `sweep` marker, which CI runs only on `workflow_dispatch`. See [The T10 generator](./generator/).
 
-`scripts/verify.ps1` (and `scripts/verify.sh`) runs that same local set: sync, pytest, one plan, one puzzle-check.
+CI also runs atlas check, `plan` on lessons `T02,T03` and `puzzle-check` on `tests/fixtures/puzzle-check/sample.jsonl`. No step loads a model.
+
+`scripts/verify.ps1` (and `scripts/verify.sh`) runs a local set in one command: sync, pytest, one plan, one puzzle-check. Its pytest call does not pass `-m "not sweep"`, so it also runs the sweep and takes much longer than CI's job.
+
+## Try the generator
+
+The generator has no `role-set` command. Its checks run on the committed files and call no model:
+
+```text
+uv run python scripts/t10_usable_cells.py --check
+uv run python scripts/t10_variety_record.py --check
+```
+
+The first prints supply, demand and headroom for each stratum. The second verifies the committed record and prints the locked-seed figures.
 
 ## What you have not done yet
 
-A mock run does not exercise the grant, the heartbeat, or a loopback model. Those are in [Usage](./usage/). The pack's lessons and the pin file are in [Configuration](./configuration/).
+A mock run does not exercise the grant, the heartbeat, or a loopback model. Those are in [Usage](./usage/). The pin file is in [Configuration](./configuration/), and the packs are in [Role packs](./roles/).

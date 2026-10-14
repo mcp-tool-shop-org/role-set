@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "71f5fd85226558ae20f6fe6ec2cea24f83071bff8bdfa0ec494a58d62e9c524a",
+          "hash": "bcf3fde7d2099e6734cb1afb8eb51d91f62b79bae11772a0b291d88d58899aee",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "26231c5006a668b653903baff5c851975068426cd0f5be746f04ab2afbd3a7d5",
+          "hash": "4607fe44fc072597bf2e153fcf329065839785bc1a7315d0b61bc068feb30ae9",
           "path": "docs/generator-design.md"
         },
         {
@@ -169,7 +169,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "4ce7cbf22605cc61fdd98ddd7b326a817561933b2ccf4b15f3673407807cb386",
+          "hash": "f9442fd6bbfdad931234787bfd947257c97bd9c57fe59ae3f60e566c619df49a",
           "path": "CHANGELOG.md"
         },
         {
@@ -177,47 +177,47 @@
           "path": "LICENSE"
         },
         {
-          "hash": "649caecb872379f040d811dcf1e9f8c90b1759cb001363e4bfab927147bdf78d",
+          "hash": "d537e7de972d16a07ab44f5081b579c91c0bf1b58874358f14f38664c859bf48",
           "path": "README.es.md"
         },
         {
-          "hash": "4d4f379becd8da286631aabebd0bf8f85bf4834ade634eb6e2b02001feddab62",
+          "hash": "abd0a7ff42b0fa9145be5543ad60172183a3e5dbcf123ce4aa7537f94ecc34d8",
           "path": "README.fr.md"
         },
         {
-          "hash": "2fccd8cb4ad9a3ffe7f88d57570bb382edf8933459105c95229c488e723288fd",
+          "hash": "8aeee0a951d0aafe2eac36681425342c357357e5d991d6b54e1029ce72aac97a",
           "path": "README.hi.md"
         },
         {
-          "hash": "f4ba31d19a2db0aca18a6f0b35ce55995359001a26357d08eb96113aae2f0831",
+          "hash": "c2a199d818e1923b0fb27781b8e7517d905d47681c46be8732b7da1fab03d93c",
           "path": "README.it.md"
         },
         {
-          "hash": "13270559796cc2b4138b2bd3ff3b2a7030522c0e19679cdb21bad0836232a15e",
+          "hash": "9601325087657ecb1e6ec4c65e16efc4c930f0f379a31cc438a47907cf15856c",
           "path": "README.ja.md"
         },
         {
-          "hash": "6481fb4bf6b603e4edb6f9fe9f88b8def07c37cbbd21fec5f88ed558ebbebeb2",
+          "hash": "aea87badf928abbd89f1327a90406be53da304743698f8113a8d2537f8ee7cc3",
           "path": "README.md"
         },
         {
-          "hash": "98f9807f4bf1794d892e996e310f2b731ad985ffc8608cad241b96262187cf3e",
+          "hash": "7a79eb2cab88be82dca3090ae8f365e7f24ff60b643eb0ee5a72cae5984f7bc4",
           "path": "README.pt-BR.md"
         },
         {
-          "hash": "a95dd0c6cfc3d3255abfbdc731364a28a3fb735dffba8a07ea26291697725497",
+          "hash": "d9b377f4c2ee39cce25a49f5fed13f620944fbe37eae20d1f29ce574405a13fa",
           "path": "README.zh.md"
         },
         {
-          "hash": "6a11fb52fc1ecfaf909ca73fc4dcb0fb9ff931ffb29fac36c7028660dbafa035",
+          "hash": "00d171a7ec622fa6b0d9961f4a3736cfecefbea2bb31f24ea20daab01c5e08c5",
           "path": "SCORECARD.md"
         },
         {
-          "hash": "3a7b0b697ab91ff95e7c1add6e18419b1ad8da33723a614209b59dc0dad72fbc",
+          "hash": "25f8af6a76a7d50079e9c98bb782c1c743d17893b9835fbe69744ea7c1ddea3e",
           "path": "SECURITY.md"
         },
         {
-          "hash": "fb0617068916cdbd98556944b9838d7a009b3274f734f6da103a02ed84cc2392",
+          "hash": "55e88ef8e15898c0fa57c2a9b958c87485b63cf5b47ccfcf2b62c73a107bfd76",
           "path": "SHIP_GATE.md"
         },
         {
@@ -225,11 +225,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "5c4b58b30889874a9aba2f82dbd25ad38277343f06a3091da86516216ac09a8a",
+          "hash": "819c0a9480eeb0e53a351e6ad88035f4d90376895b521e3b9f352ffda52776ed",
           "path": "pyproject.toml"
         },
         {
-          "hash": "7d33a476d15db4ca3061c3249534e4e6114e0f94d151c8362f1bfcfe1a427efe",
+          "hash": "88a5cb54704ef2b397be809a9c9650ad51a5779d81eb092ab58225cb92d248bd",
           "path": "uv.lock"
         },
         {
@@ -268,10 +268,10 @@
             {
               "in": "one",
               "kind": "except",
-              "line": 39
+              "line": 44
             }
           ],
-          "hash": "53287ae555ff3725736fa5eb271c5cf21ec42a7e8635b9667cf8d9f2f7f3ae3d",
+          "hash": "ca4122a6861a66c1d5f56bd06c360dd362cad5fcb36c0b9cd5a66e0b557bcd1c",
           "importsFiles": [
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/t10_variety.py"
@@ -290,20 +290,20 @@
             {
               "in": "probe",
               "kind": "except",
-              "line": 47
+              "line": 53
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 84
+              "line": 90
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 100
+              "line": 110
             }
           ],
-          "hash": "68469416f8feaa3fe0035829561c8354b0c09d21ac38623aee2868b64a88e232",
+          "hash": "350927dd2773c18484ae7bde1c71617eb4317aaee87b9bc215c79008ce56a673",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -320,30 +320,40 @@
             {
               "in": "_measure_one",
               "kind": "except",
-              "line": 78
+              "line": 83
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 126
+              "line": 137
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 129
+              "line": 140
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 131
+              "line": 143
+            },
+            {
+              "in": "check_committed",
+              "kind": "raise",
+              "line": 145
+            },
+            {
+              "in": "check_committed",
+              "kind": "raise",
+              "line": 147
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 155
+              "line": 171
             }
           ],
-          "hash": "84f0d4d00f86688c1c902a2b6fe84d719b8d90b22bfdf6652f6f79bddf25e644",
+          "hash": "27cb5fe55386d319d60ccf95fc58c0f947d70b57c75fd36ec038178b633b7835",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -382,7 +392,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "1c3aef8aeeae988bfe0731acd4a3185224bd6f426d4beb8a978b527fb1f2ab5f",
+          "hash": "60d96485607d3a8f78da34c4206d3c64d0119f463d0368602850a99c41e60336",
           "path": "site/astro.config.mjs"
         },
         {
@@ -407,31 +417,39 @@
           "path": "site/src/content.config.ts"
         },
         {
-          "hash": "0067551d8a136ce53678d0e0773bcb2b73c01c5485a3ea9f50c48265a06818e1",
+          "hash": "64e01babc90f10953cbdce3ff13e7405ee225861069e0e9e62bc9fb54dc53db9",
           "path": "site/src/content/docs/handbook/configuration.md"
         },
         {
-          "hash": "3b4471a11fead7c8695b4ae7c7039504c1f61266f906e9b438d2c9cf1ae4f9ac",
+          "hash": "dba5d24db4caa0e4ad7982587623a096c140d7dd275352e6e3200a07b49ddab7",
+          "path": "site/src/content/docs/handbook/generator.md"
+        },
+        {
+          "hash": "4b4e8f89f7fae4b5660fab2cbcf9e2459b1893421aed6c8a94de36dba85675d6",
           "path": "site/src/content/docs/handbook/getting-started.md"
         },
         {
-          "hash": "77655784dcb05db3ad4e062178d50c5f712d9f22209fff869f0940074351e5a0",
+          "hash": "c58bd3d91b4e00bed432c78cfe70cbfbb1fb1e34b0d22e6e19c87dbbd9d3d690",
           "path": "site/src/content/docs/handbook/index.md"
         },
         {
-          "hash": "2a5ac110cb35757b4a39b6dddcb1b73c39bd1deb4d013a0015e90e449ad43ada",
+          "hash": "1ef1ab1cb3d362b86d3dfc62851492ca501ea7e27cf3bf6f79d8d9e0ebc6e3ae",
           "path": "site/src/content/docs/handbook/kinds.md"
         },
         {
-          "hash": "7642894e582a08a429e7de3aecdaa3b63d468930d5a6f90f4d2aaea2189ddef2",
+          "hash": "ca4741b31c79a100b64c22bd12bd105355726b85b9534a6e49441dacf42e5e74",
+          "path": "site/src/content/docs/handbook/roles.md"
+        },
+        {
+          "hash": "688da08b996cb34a2b7648d8633a01bd7dd28f8cc732bc6bf442bd0e70495e69",
           "path": "site/src/content/docs/handbook/security.md"
         },
         {
-          "hash": "2c8bedb80110f56ae381b08355fe1ee3c410a0c953bf9654faeda78777230338",
+          "hash": "3267f6a7b2375cb25a4b17cf22f0147f1bd50a933e5c2d74c4b2cf20b6bf0e24",
           "path": "site/src/content/docs/handbook/store.md"
         },
         {
-          "hash": "272a2ba6a6ab675f3d0422e2b667803655f505528a3be1abc4e4ffd4c3b45fe3",
+          "hash": "a1521b96ce02fe0de68c025ed8988fd4049bc7d33e88d5c7a4dea82062c7f74c",
           "path": "site/src/content/docs/handbook/usage.md"
         },
         {
@@ -448,7 +466,7 @@
         },
         {
           "constantOnly": true,
-          "hash": "80a2ca841174adb9ec6406e9d1b3c1c40e957c77a13b5010bce2baed83b4e5f4",
+          "hash": "24e4596655181fd4ef66c5b91be901967e9dca0247f763b2a7755958cfffc1a5",
           "path": "site/src/site-config.ts"
         },
         {
@@ -486,7 +504,7 @@
       "files": [
         {
           "constantOnly": true,
-          "hash": "787ddf6f5af2a2adc059e7b6ad179b410cc9ee79b996c5dec439a00eaf81a734",
+          "hash": "98abdb96ab054e6f2c3c4d7f00a608c0aa88b7ea67e9411e80aab074ee9d80eb",
           "path": "src/role_set/__init__.py"
         },
         {
@@ -2210,45 +2228,45 @@
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 128
+              "line": 142
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 137
+              "line": 152
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 197
+              "line": 215
             },
             {
               "in": "_trait_reading_differs",
               "kind": "except",
-              "line": 225
+              "line": 243
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 238
+              "line": 256
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 385
+              "line": 403
             },
             {
               "in": "build_t12",
               "kind": "except",
-              "line": 413
+              "line": 431
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 422
+              "line": 440
             }
           ],
-          "hash": "8a7f60dbed9e59a3a17dc08d8fadbeb151398dbaca9daf0c52135b4ac5348063",
+          "hash": "18f6907fe14225dbac55c7d03a61c9e585f395f5d52da5656682c37af6535f08",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -2358,15 +2376,15 @@
           "path": "src/role_set/generate/shortcuts.py"
         },
         {
-          "hash": "bc03ba39eb458b9477f7fc67472a40c4c19056c74db0ddc1a34c9f7b32a91f1e",
+          "hash": "0045239aca3ebc43ec2fd71e9bbace1f476ef4ed6228618763e7b78dd933501e",
           "path": "src/role_set/generate/t10_capacity.json"
         },
         {
-          "hash": "653476eca238f9a2e696fa84c671c8afb5a3d606892f70b44a97284d6418f799",
+          "hash": "3016140d346b199645c3eb8e1ca396f088459e63d1116a934cc59d4d0741ba71",
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
-          "hash": "059c5146b1ad02809f35a15b0e0bde23f6f470bba13a0e57df44d162472629b3",
+          "hash": "813eefd3ad1da7f8585f0a838e6e6bf0dc7752e148c753a1ab3f9fa047d87503",
           "path": "src/role_set/generate/t10_record.json"
         },
         {
@@ -2379,6 +2397,7 @@
             "cell_id",
             "cell_key",
             "check_record_hash",
+            "clues_if_shape",
             "load_capacity",
             "load_cells",
             "load_record",
@@ -2391,30 +2410,30 @@
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 88
+              "line": 129
             },
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 93
+              "line": 134
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 284
+              "line": 325
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 354
+              "line": 395
             },
             {
               "in": "cell_for",
               "kind": "raise",
-              "line": 400
+              "line": 442
             }
           ],
-          "hash": "22b0ce7b4acb350fdddaf1710e2d78e988e6b6a18d53a9de54394366e63a7bac",
+          "hash": "81341fec8f119047477558fae7277c332a90857d872348ee6ccd26205f209f28",
           "importsFiles": [
             "src/role_set/generate/recipes.py"
           ],
@@ -5238,7 +5257,7 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "28f0316efcd58a1f7670c1e0cb644b7730ff522df50c4d39a01898753f0752a6",
+          "hash": "ddd4fa8311f1bb586adc2b0930671b543a6c7edd48943087d525b5e3fa1b3121",
           "importOrder": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -5697,12 +5716,12 @@
           "exports": [
             "test_a_claim_refuses_an_at_least_cell",
             "test_a_seed_below_one_is_refused",
-            "test_a_seventh_three_value_pack_fails_and_names_if_shape",
+            "test_a_short_claim_stratum_fails_and_names_the_next_step",
             "test_a_stale_record_hash_fails_and_names_the_regenerate_command",
             "test_an_impossible_file_is_refused_before_a_build",
             "test_canonical_skeleton_renames_entities_and_values",
             "test_capacity_weights_come_from_the_tuning_seeds",
-            "test_claim_cells_are_exactly_and_set_cells_keep_three_size_words",
+            "test_claim_cells_are_exactly_With_if_shape_and_set_cells_keep_three_size_words",
             "test_committed_record_clears_the_variety_floors_in_every_stratum",
             "test_committed_record_hash_and_proven_entries",
             "test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last",
@@ -5710,13 +5729,15 @@
             "test_one_file_stays_inside_the_zero_if_cap",
             "test_the_capacity_gate_reports_supply_demand_and_headroom",
             "test_the_next_file_rotates_the_assignment",
+            "test_the_record_hash_list_is_closed_under_role_set_imports",
             "test_the_usable_cell_script_checks_the_committed_table",
             "test_the_variety_record_script_checks_the_committed_record",
-            "test_three_value_claims_fit_at_a_cap_of_three_and_not_at_two",
+            "test_three_value_claims_fit_at_a_cap_of_two",
+            "test_twelve_three_value_packs_allocate_with_no_within_file_repeats",
             "test_twenty_seeds_in_one_file_take_twenty_cells",
             "test_visits_prefer_cells_that_yield_more_skeletons"
           ],
-          "hash": "a197e0fcb3f8ca4196f3a4e75afa85d6bb20f7a2c13e42dfa7b71ee3d54e2918",
+          "hash": "527b3cf5e24c0779302525f57a0bce79bd5bb1a4155b6f7ba0f18f9fd075b212",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -6253,8 +6274,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "ffb9546ea1ad492e6da9ef1a82191a3fac30d299",
-    "tracked": 147
+    "commit": "4ac2ec2888741cfd5b2438520f22d002127e2e8a",
+    "tracked": 149
   },
   "landings": [
     {
@@ -6373,6 +6394,16 @@
         },
         {
           "by": "site/src/content/docs/handbook/kinds.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/roles.md",
+          "call": "--out",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/roles.md",
           "call": "--pack",
           "confidence": "text"
         },
@@ -6507,6 +6538,28 @@
         }
       ],
       "target": "src/role_set/assemble.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/critic.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/gates.py",
       "writers": []
     },
     {

@@ -23,52 +23,46 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 12,
-      "changed": 3,
+      "added": 2,
+      "changed": 36,
       "moved": 0,
-      "parts": 4,
+      "parts": 7,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "src/role_set/advocate/variety_record.json is now written by src/role_set/advocate/variety.py.",
+        "sentence": "roles/verifier/ is now also read by site/src/content/docs/handbook/roles.md.",
         "subjects": [
-          "src/role_set/advocate/variety_record.json",
-          "src/role_set/advocate/variety.py"
+          "roles/verifier/",
+          "site/src/content/docs/handbook/roles.md"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "README.md is now also read by roles/advocate/pack.json and tests/test_advocate.py.",
+        "sentence": "src/role_set/critic.py is now read by src/role_set/generate/t10_variety.py.",
         "subjects": [
-          "README.md",
-          "roles/advocate/pack.json",
-          "tests/test_advocate.py"
+          "src/role_set/critic.py",
+          "src/role_set/generate/t10_variety.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "roles/advocate/ is now read by src/role_set/advocate/variety.py.",
+        "sentence": "src/role_set/gates.py is now read by src/role_set/generate/t10_variety.py.",
         "subjects": [
-          "roles/advocate/",
-          "src/role_set/advocate/variety.py"
+          "src/role_set/gates.py",
+          "src/role_set/generate/t10_variety.py"
         ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 4 more new writers and readers of places.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "12 files added and 3 changed content, across 4 parts.",
+        "sentence": "2 files added and 36 changed content, across 7 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "169a51e48d86bdf4e971689ba8c1f54b469872d0",
-      "generatedAt": "2026-10-14T22:15:32.415Z"
+      "commit": "ffb9546ea1ad492e6da9ef1a82191a3fac30d299",
+      "generatedAt": "2026-10-14T23:40:27.400Z"
     },
     "unchanged": false
   },
@@ -120,12 +114,12 @@
     }
   ],
   "changesTogetherNote": [
-    "6 files changed together with their own tests, as expected.",
+    "5 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 6,
-  "commit": "ffb9546ea1ad492e6da9ef1a82191a3fac30d299",
+  "changesTogetherWithTests": 5,
+  "commit": "4ac2ec2888741cfd5b2438520f22d002127e2e8a",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (78 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -256,7 +250,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T23:40:27.400Z",
+  "generatedAt": "2026-10-14T23:46:00.711Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 29 reads go to a path their caller passes, not to this repository.",

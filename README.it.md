@@ -13,143 +13,126 @@
   <a href="https://mcp-tool-shop-org.github.io/role-set/"><img src="https://img.shields.io/badge/Landing_Page-live-blue" alt="Landing Page"></a>
 </p>
 
-**Prototipo, sviluppato in modalità open source.** Consulenza e sperimentazione: le interfacce e le strutture dei dati cambiano senza preavviso.
+**Prototipo, sviluppato in modalità open source.** A scopo di consulenza e sperimentazione: le interfacce e le strutture dei dati possono cambiare senza preavviso. Nessun elemento definito nell'insieme di ruoli costituisce un dato di addestramento finché non viene verificato da una persona. Ogni elemento viene sottoposto al controllo chiave da parte del reparto Ricerca e Sviluppo e a una seconda revisione prima di essere incluso in un set di addestramento.
 
-Il set di ruoli definisce gli elementi che modellano il ruolo, scrive le parti che uno scrittore dovrebbe scrivere e registra quali "gate" (controlli) ha superato ciascun elemento. È un generatore, non un giudice. Le caratteristiche di un buon verificatore risiedono nel pacchetto di ruoli, che viene scritto dagli esseri umani. Nulla di ciò che questo programma scrive è incluso in un set di addestramento. Ogni elemento passa attraverso il controllo chiave di R&D e una seconda revisione prima di avvicinarsi a uno di essi.
+L'insieme di ruoli pianifica gli elementi che definiscono il ruolo, scrive le parti che uno scrittore dovrebbe scrivere e registra quali criteri ogni elemento ha superato. Crea anche enigmi di tipo B in codice e li verifica prima che vengano visualizzati da un modello. È un generatore, non un giudice. Ciò che caratterizza un buon ruolo è contenuto in un pacchetto di ruoli, che viene scritto dalle persone.
 
-Lo scrittore e il critico sono raggiungibili solo tramite `http://127.0.0.1` con una porta esplicita. Qualsiasi altra richiesta viene rifiutata prima che venga inviato un singolo byte. Il set di ruoli non noleggia mai una macchina e non interagisce mai con un "pod". Quando un'esecuzione utilizza un pod, è "offrig" che lo noleggia e il set di ruoli vede solo il tunnel di loopback.
+Lo scrittore e il critico possono essere contattati solo tramite `http://127.0.0.1`, utilizzando una porta esplicita. Qualsiasi altra richiesta viene rifiutata prima dell'invio di un singolo byte. L'insieme di ruoli non noleggia mai una macchina e non accede mai a un pod. Quando un'esecuzione utilizza un pod, Offrig lo noleggia e l'insieme di ruoli visualizza solo il tunnel di loopback.
 
-Il progetto è descritto nel documento [docs/role-set-design.md](docs/role-set-design.md) e rispetta le linee guida del programma. Le note relative all’esecuzione sono disponibili in [docs/runs/](docs/runs/).
+Le specifiche sono disponibili qui: [docs/role-set-design.md](docs/role-set-design.md) e [docs/generator-design.md](docs/generator-design.md), e sono mantenute in linea con il programma. Le note sull'esecuzione sono disponibili in [docs/runs/](docs/runs/).
 
 ## Installazione
 
-Python 3.12, gestito da uv. Un'unica dipendenza di runtime: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si), fissata a un commit di aspire-si. I "gate" vengono importati, non copiati.
+Python 3.12, gestito da uv. Un'unica dipendenza di runtime: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fissata alla commit aspire-si `388a6bc`. Le porte vengono importate, non copiate.
 
 ```text
 uv sync --frozen
 ```
 
+## I pacchetti di ruoli
+
+Un pacchetto di ruoli è il testo che le persone hanno scritto per un determinato ruolo. L'insieme di ruoli lo fornisce in segmenti e non aggiunge nulla. Il suo hash è presente in ogni ricevuta accettata.
+
+- **Il verificatore** (`roles/verifier`). `pack sync` lo copia da un clone locale di aspire-si in una commit specifica: le lezioni, le 18 caratteristiche, la tabella dei tipi, le modifiche e le regole. `pack verify` verifica la copia rispetto al suo manifesto. Un clone aggiornato contiene solo l'elenco delle fonti, l'elenco delle esclusioni e `defects.jsonl`, il catalogo delle classi di difetti rilevate durante le revisioni. La sincronizzazione completa il resto.
+- **Il sostenitore** (`roles/advocate`). Un pacchetto scritto da una persona in questo repository, senza testo di modello al suo interno. Il direttore ha approvato il pacchetto il 14 ottobre 2026 (commit `ffb9546` sulla richiesta di pull n. 56) e il lotto 1 è in fase di creazione; non sarà disponibile su `main` fino al completamento della richiesta di pull n. 56. Il lotto 1 ha tre caratteristiche: `failed-gate-first`, `exact-figures` e `faithful-relay`. Nessun elemento del sostenitore costituisce un dato di addestramento finché non supera la fase di verifica preliminare.
+
+## Il generatore T10
+
+Gli enigmi di tipo B venivano precedentemente scritti a mano e poi verificati. Ora, il codice crea l'enigma e lo verifica, e un modello si limita a formularlo. Il generatore è il pacchetto `role_set.generate`. T10, la lezione sull'uso di termini che indicano dimensioni precise ("esattamente", "almeno", "al massimo"), è la parte che è stata modificata nella versione 0.2.0. Viene anche creato un ricettario T12 (che indica quale versione era in vigore in una determinata data). T11 non viene creato.
+
+**Verificato tramite la costruzione.** Il creatore campiona una soluzione nascosta, aggiunge indizi che sono veri al suo interno finché la risposta non è definita e cancella ogni indizio di cui la risposta non ha bisogno. Il risolutore verifica il modello. Quindi, il creatore esegue le quattro letture T10 del reparto Ricerca e Sviluppo: "esattamente" letto come "almeno", "esattamente" letto come "al massimo", "almeno" letto come "esattamente" e "al massimo" letto come "esattamente". Un enigma viene conservato solo quando una di queste letture, applicata all'indizio della caratteristica, modifica la risposta. Un enigma che supera il test con un altro tipo di indizio è classificato come `trait_not_tested` e viene rifiutato.
+
+**La mappa delle celle.** Ogni pacchetto, domanda e seme corrisponde a una cella strutturale: il numero di entità `n` (da 3 a 5), la parola che indica la quantità `op`, `k` (da 1 a n-1) e `ifs`, il numero di indizi `if` (da 0 a 2). Le domande di tipo "set" utilizzano tutte e tre le parole che indicano la quantità. Le domande di tipo "affermazione" utilizzano solo "esattamente", perché "almeno" e "al massimo" non possono modificare la validità di un'affermazione. Le celle utilizzabili vengono esaminate una sola volta e vengono memorizzate in `t10_cells.json`.
+
+**L'asse delle affermazioni `if_shape`.** Una cella di affermazione indica anche la forma dei suoi `if` indizi. Esistono sette forme: `none` per nessun `if`; `pos` o `neg` per un singolo `if`, in base alla polarità della sua conseguenza; e `chain`, `shared_consequent`, `shared_antecedent` o `disjoint` per due. Una creazione il cui enigma ridotto perde la sua forma riprova all'interno dello stesso seme.
+
+**L'allocatore.** Per una domanda e un conteggio dei valori, un file di 20 semi viene assegnato una sola volta, prima che venga creata qualsiasi cosa, tramite un flusso a costo minimo. I 20 semi di ogni pacchetto occupano 20 celle diverse. Una cella che non contiene alcun indizio `if` viene utilizzata al massimo due volte in un file (il limite zero-if). Le visite successive favoriscono le celle che hanno fornito più schemi distinti durante i test. Questi pesi vengono mantenuti separati per i pacchetti a due e tre valori.
+
+**I limiti di varietà.** In ogni strato (set e affermazione, due e tre valori): almeno il 75% di schemi canonici distinti, nessun schema ripetuto più di 3 volte e nessun schema ripetuto due volte nello stesso file di un pacchetto. I limiti vengono valutati sui semi bloccati. Sui semi bloccati da 101 a 120, le affermazioni a tre valori raggiungono 118 su 120 distinti, con una ripetizione massima di 2.
+
+**La registrazione memorizzata.** `t10_record.json` contiene 1.280 creazioni (semi da 1 a 20, da 61 a 80, da 81 a 100 e da 101 a 120, ogni pacchetto, entrambe le domande), ciascuna con la sua cella, `if_shape`, tentativi e schema canonico. Contiene un hash SHA256 sul codice sorgente del generatore, sulla tabella delle celle, sulla tabella della capacità e sui dati del pacchetto. Un test verifica che l'elenco dei file sia chiuso rispetto alle importazioni dell'insieme di ruoli. Il normale processo di test CI verifica l'hash e i limiti dalla registrazione in pochi minuti. La ricostruzione completa di ogni enigma viene eseguita come processo `sweep`, solo su `workflow_dispatch`, e fallisce in caso di qualsiasi differenza rispetto alla registrazione.
+
+**La porta della capacità e lo spazio libero.** `scripts/t10_usable_cells.py --check` segnala la disponibilità, la domanda e lo spazio libero per ogni strato e fallisce se un file non può essere inserito. Con `if_shape`, i pacchetti a tre valori hanno 61 celle di affermazione utilizzabili, rispetto alle 27 precedenti. Nessun pacchetto richiede una visita zero-`if` e un test inserisce dodici pacchetti a tre valori (i sei reali e sei cloni) senza ripetizioni all'interno di un file.
+
 ## Comandi
 
-`role-set --help` elenca i comandi. Ogni riga qui sotto è un comando che esiste attualmente.
+`role-set --help` elenca i comandi. Ogni riga qui sotto è un comando che esiste oggi. I flag sono presenti nella `--help` di ogni comando.
 
-`plan` definisce ogni "slot" per un batch a partire da un "seed". Non chiama un modello. Lo stesso "seed" riproduce il piano.
+| Comando | Cosa fa |
+|---|---|
+| `plan` | Definisce ogni slot per un lotto a partire da un seme. Non richiede l'intervento del modello. Lo stesso seme genera lo stesso piano. |
+| `cost` | Stima le ore di lavoro e i costi per un piano prima dell'avvio (`two-card` o `frontier`). Si tratta di una stima. |
+| `pack sync` / `pack verify` | Copia il pacchetto del verificatore da una copia locale di aspire-si in un determinato commit e verifica la copia rispetto al suo manifesto. |
+| `harvest` | Copia gli estratti con licenza verificata dai repository selezionati in un pool locale. La directory della copia non viene registrata. |
+| `write` | Il runner. `--mock` lo esegue senza modello e senza costi. Un'esecuzione reale richiede un loopback `--endpoint` e un `--model` da `writers.json`. |
+| `readout` | Riporta un'esecuzione per ogni lezione e tipo, indicando se è andata a buon fine o meno, dalla directory che contiene `batch-report.json`. |
+| `critic-control` | Misura il valutatore sugli elementi revisionati. Richiede un finanziamento e un file di heartbeat. `--trait-leg` e `--answer-leg` eseguono queste fasi. |
+| `ingest` / `store` | Registra le ricevute nel database, con il firewall all'ingresso. `store status` riporta i conteggi. `store void` aggiunge una voce di annullamento. |
+| `pilot-auto` | Il launcher a pagamento: attende il loopback, scrive e può essere riavviato dopo un'interruzione dovuta a una chiamata persa. |
+| `puzzle-check` | Esegue il risolutore di tipo B sui file di dati e sui relativi `.models.jsonl` file di supporto e rifiuta uno schema di fatti ripetuto. |
 
 ```text
 uv run role-set plan --lessons T02,T03 --seed 0 --out plan.json
-```
-
-`cost` stima le ore e i costi del pod per quel piano prima che venga avviato qualsiasi processo. La cifra è una stima. I profili sono `two-card` e `frontier`.
-
-```text
-uv run role-set cost --plan plan.json --profile two-card
-```
-
-`pack sync` copia il pacchetto di ruoli da un clone locale di aspire-si a un commit specifico. `pack verify` verifica tale copia rispetto al suo "manifest". Il percorso del clone non viene registrato. Un clone aggiornato di questo repository non è un pacchetto sincronizzato: `roles/verifier` contiene l'elenco delle esclusioni e l'elenco delle fonti, e la sincronizzazione completa il resto.
-
-```text
-uv run role-set pack sync --repo <aspire-si clone> --commit <sha>
-uv run role-set pack verify --pack roles/verifier
-```
-
-`harvest` copia gli estratti con licenza verificata in un pool locale. La directory del clone non viene registrata.
-
-```text
-uv run role-set harvest --allow-list allow.json --clones <clone directory>
-```
-
-`write` è l'esecutore. `--mock` esegue l'intera pipeline senza un modello e senza costi, e non richiede un finanziamento. L'output di simulazione è contrassegnato, non è un dato e viene scritto in `<out>/mock/`. Un'esecuzione che chiama un modello richiede `--endpoint` e `--model`, e l'endpoint deve essere di loopback. Il caricamento del critico, o di uno scrittore di prove locale, richiede anche `--grant` e `--heartbeat`. `--no-critic` è un'esecuzione di prova: gli elementi passano senza il secondo lettore e lo scrittore del pod non utilizza quindi la GPU locale.
-
-```text
 uv run role-set write --plan plan.json --pack roles/verifier --out out --mock
-```
-
-`readout` genera un report per ogni esecuzione per lezione e tipo, inclusa un'esecuzione che non ha accettato nulla. Legge la directory che contiene `batch-report.json`. Un `write` completato lascia quel file. `readout` è il comando che lo trasforma nel report.
-
-```text
 uv run role-set readout --run out/mock
-```
-
-`critic-control` misura il critico sugli elementi rivisti. Richiede un finanziamento e un file "heartbeat". `--trait-leg` e `--answer-leg` eseguono queste due misurazioni.
-
-```text
-uv run role-set critic-control --items reviewed.jsonl --grant <grant> --heartbeat <heartbeat file>
-```
-
-`ingest` registra le ricevute nello storage. Il firewall è attivo all'ingresso. `store status` genera il report del file. `store void` aggiunge un "void" per un round. I lettori saltano un round "void". Non elimina le righe.
-
-```text
-uv run role-set ingest --receipts <receipts directory> --store store.sqlite --repo <aspire-si clone> --commit <sha>
-uv run role-set store status --store store.sqlite
-```
-
-`pilot-auto` è il lanciatore a pagamento: una singola richiesta, quindi attende il canale di loopback, scrive e può essere riavviato dopo un'interruzione dovuta a una perdita di connessione. I test non lo chiamano mai su un endpoint attivo. CI utilizza `write --mock`.
-
-```text
-uv run role-set pilot-auto <port> <grant> <HH:MM UTC> <work directory>
-```
-
-`puzzle-check` esegue il risolutore di tipo B su un file di dati e il "sidecar" `.models.jsonl` accanto ad esso. Fornisci tutti i file di dati nella directory contemporaneamente: un puzzle la cui struttura fattuale ripete una precedente, con nomi, ordine delle righe e direzione messi da parte, viene rifiutato, indicando il primo.
-
-```text
 uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 ```
 
-## "Gate" (Controlli)
+Il generatore non ha ancora il comando `role-set`. I suoi tre script creano le tabelle e i record:
+
+| Script | Cosa fa |
+|---|---|
+| `scripts/t10_usable_cells.py` | Verifica ogni cella e scrive `t10_cells.json`. `--check` esegue il controllo della capacità sulla tabella creata e non esegue la verifica. |
+| `scripts/t10_cell_capacity.py` | Conta gli schemi distinti per cella sui set di ottimizzazione 1, 21 e 41, per livello, in `t10_capacity.json`. |
+| `scripts/t10_variety_record.py` | Ricostruisce ogni puzzle registrato in `t10_record.json`. `--check` verifica il record creato e stampa le cifre del seme bloccato. |
+
+## Controlli
 
 Cinque tipi:
 
-- **A.** Un passaggio didattico. Nessun giudizio. Viene eseguito un validatore e il controllo delle caratteristiche è solo a scopo di consulenza.
-- **B.** Un puzzle di assegnazione finito. Il risolutore verifica il modello. La risposta del critico è solo a scopo di consulenza.
-- **C.** Un controllore con un difetto inserito, o un controllore che aveva ragione. I controlli del giudizio e delle prove rifiutano. Il controllo del difetto viene registrato e non rifiuta.
-- **D.** Due turni. I controlli del giudizio e delle prove rifiutano. Il controllo delle caratteristiche è solo a scopo di consulenza.
-- **E.** Un quiz scritto o un quiz di giudizio. Un E scritto non ha un controllo del giudizio. Un E di tipo giudizio verifica il giudizio e le prove.
+- **A.** Un brano didattico. Nessuna valutazione. Viene eseguito un validatore e il controllo delle caratteristiche è solo a scopo informativo.
+- **B.** Un puzzle di assegnazione finita. Il risolutore verifica il modello. La risposta del valutatore è solo a scopo informativo.
+- **C.** Un controllore con un difetto inserito o un controllore che aveva ragione. I controlli sulla valutazione e sull'evidenza vengono rifiutati. Il controllo del difetto viene registrato e non viene rifiutato.
+- **D.** Due turni. I controlli sulla valutazione e sull'evidenza vengono rifiutati. Il controllo delle caratteristiche è solo a scopo informativo.
+- **E.** Un quiz scritto o un quiz sulla valutazione. Un quiz scritto di tipo E non ha un controllo sulla valutazione. Un quiz di tipo E sulla valutazione verifica la valutazione e l'evidenza.
 
-I controlli del giudizio e delle prove rifiutano. I controlli delle caratteristiche, delle risposte e dei difetti vengono registrati e non rifiutano, fino a quando i loro controlli non vengono superati. Il controllo delle caratteristiche ha ottenuto una media del 40,3% rispetto a una soglia dell'85% e la caratteristica peggiore ha ottenuto il 12,5% rispetto al 70%. Il controllo delle risposte ha ottenuto una media del 62,7% rispetto a una soglia del 90%. Il controllo dei difetti dell'11-10-2026 aveva 9 difetti su 24. L'applicazione del controllo delle caratteristiche o delle risposte a tali numeri rifiuterebbe elementi già noti come validi.
+I controlli sulla valutazione e sull'evidenza vengono rifiutati. I controlli sulle caratteristiche, sulla risposta e sui difetti vengono registrati e non vengono rifiutati, fino a quando i loro controlli non superano il test. Il controllo delle caratteristiche ha misurato una media del 40,3% rispetto a una soglia dell'85% e la caratteristica peggiore ha ottenuto il 12,5% rispetto al 70%. Il controllo della risposta ha misurato il 62,7% rispetto a una soglia del 90%. Il controllo del difetto del 2026-10-11 ha ottenuto 9 risultati positivi su 24.
 
-Il risolutore di tipo B copre i puzzle di assegnazione finita scritti nel suo set chiuso di forme di regole: al massimo 6 entità, 3 attributi e 200.000 assegnazioni. Non verifica il ragionamento rispetto al modello. Un elemento di tipo B basato su giudizi su materiale in testo libero è al di fuori del campo del risolutore. `puzzle-check` conta tale elemento come esterno, mai come superato.
+Il risolutore di tipo B gestisce i puzzle di assegnazione finita nel suo set chiuso di forme di regola: al massimo 6 entità, 3 attributi e 200.000 assegnazioni. Non verifica il ragionamento rispetto al modello. Un elemento di tipo B basato sulla valutazione su materiale in testo libero è al di fuori del risolutore e `puzzle-check` lo considera tale, non lo considera mai superato.
 
-Il firewall dello storage rifiuta il materiale "held-out", sigillato e delle interviste durante l'inserimento e rifiuta il materiale DEV durante una fase. Non esiste un percorso di lettura per il materiale "held-out", sigillato o delle interviste. Lo storage, l'inserimento e il firewall sono stati creati. Il controllo è stato progettato e non è mai stato eseguito.
+Il firewall del database rifiuta il materiale riservato, sigillato e quello raccolto durante le interviste durante l'inserimento e il materiale DEV durante una fase. Non esiste un percorso di lettura per questo materiale. Il sistema di controllo è stato progettato ma non è mai stato eseguito.
 
 ## Cosa conserva un'esecuzione
 
-Ogni ricevuta accettata contiene l'hash del piano e l'hash del pacchetto. Quando l'esecuzione ha utilizzato degli esempi, la ricevuta contiene anche il commit dell'esempio e l'hash del file di esclusione. Quando ha utilizzato la regola "stuck", la ricevuta contiene l'hash di tale regola. Un'esecuzione che non accetta nulla non ha ricevute. Ogni chiamata allo scrittore viene conservata in `drafts.jsonl`, accettata o rifiutata. Un'operazione di scrittura completata lascia `batch-report.json` e `readout` genera il report di tale directory.
+Ogni ricevuta accettata contiene l'hash del piano e l'hash del pacchetto. Quando l'esecuzione ha utilizzato esempi, contiene anche il commit dell'esempio e l'hash del file di esclusione. Quando ha utilizzato la regola bloccata, contiene l'hash di tale regola. La ricevuta di un puzzle generato contiene il suo seme, i tentativi, le letture, le metriche di difficoltà e gli hash dello schema, del pacchetto e del risolutore. Ogni chiamata di scrittura viene conservata in `drafts.jsonl`, sia che venga accettata o rifiutata.
 
 ## Modelli
 
-Il "pin" dello scrittore è Qwen3-235B-A22B-Instruct-2507, la versione AWQ, Apache-2.0. `writers.json` lo serve come `qwen3-235b-instruct-2507` alla revisione `96548f657d772187f16e9f04bc50aec78a9f9cdd`.
+Il pin dello scrittore è Qwen3-235B-A22B-Instruct-2507, la build AWQ, Apache-2.0, utilizzato come `qwen3-235b-instruct-2507` nella revisione `96548f657d772187f16e9f04bc50aec78a9f9cdd`. Il pin del valutatore è `gemma4:31b`, digest `6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7`, Q4_K_M, Apache-2.0, in `http://127.0.0.1:11434`. `writers.json` elenca anche uno scrittore solo per le prove e un valutatore di confronto. Un nome non presente nel file viene rifiutato, così come un nome che contiene `cloud`.
 
-Il critico è `gemma4:31b`, il digest è `6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7`, il quant è Q4_K_M, licenza Apache-2.0. Il suo endpoint in `writers.json` è `http://127.0.0.1:11434`.
+La GPU locale viene utilizzata per il valutatore e per uno scrittore di prova, solo all'interno di un finanziamento: `--grant` e un file di heartbeat modificato negli ultimi 60 secondi. Il file di heartbeat non viene aperto. Un valutatore caricato durante l'esecuzione viene scaricato al termine, anche in caso di errore. `--mock` non carica nulla.
 
-`writers.json` elenca anche uno strumento di scrittura utilizzato solo per le prove, `qwen3:8b`, e uno strumento di confronto, `granite4.1:30b` (IBM Granite 4.1, Apache-2.0). `write` rifiuta lo strumento di confronto come strumento critico per l'esecuzione. Un nome che non è presente nel file viene rifiutato. Un nome che contiene `cloud` viene rifiutato.
+## Test pilota
 
-La GPU locale viene utilizzata per lo strumento critico e per lo strumento di scrittura utilizzato per le prove, e solo all'interno di un processo. Questi percorsi richiedono `--grant` e un file di "heartbeat" il cui tempo di modifica è inferiore a 60 secondi. `critic-control` richiede entrambi ad ogni esecuzione. Il file di "heartbeat" non viene aperto. Quando un'esecuzione carica lo strumento critico, questo viene scaricato al termine, anche quando l'esecuzione si interrompe a causa di un errore. `--mock` non carica nulla.
-
-## Esecuzioni di prova
-
-Tre esecuzioni di prova a pagamento sono registrate in [docs/runs/](docs/runs/). Queste sono le uniche cifre di costo indicate in questo file README. Nessun output del generatore proveniente da queste esecuzioni è incluso in un set di addestramento.
-
-- **Esecuzione di prova 1, 2026-10-11, $3.52.** Nessuna delle 104 righe accettate contiene dati. Il reparto R&D ha contrassegnato le 43 righe C e D come assemblate in modo errato prima di qualsiasi revisione del contenuto. La nota è disponibile all'indirizzo [docs/runs/2026-10-11-235b-pilot.md](docs/runs/2026-10-11-235b-pilot.md).
-- **Esecuzione di prova 2, 2026-10-11, $3.61.** Il reparto R&D ha eseguito un controllo sui 49 candidati: 15 sono stati approvati come presentati, altri 15 necessitavano di una correzione meccanica e 19 sono stati rifiutati. La nota è disponibile all'indirizzo [docs/runs/2026-10-11-pilot-2.md](docs/runs/2026-10-11-pilot-2.md).
-- **Esecuzione di prova 3, 2026-10-11, $2.80.** Non ha prodotto alcun output. Il motore dello strumento di scrittura si è bloccato dopo l'avvio. La nota è disponibile all'indirizzo [docs/runs/2026-10-11-pilot-3.md](docs/runs/2026-10-11-pilot-3.md).
+Tre test pilota a pagamento sono registrati in [docs/runs/](docs/runs/), tutti del 2026-10-11: $3,52, $3,61 e $2,80. Queste sono le uniche cifre di costo indicate in questo file README. Nessuna riga di questi test è presente in un set di addestramento. Nel test pilota 2, il controllo delle chiavi di R&D su 49 candidati ha approvato 15 candidati come scritto, altri 15 dopo una correzione meccanica e ha rifiutato 19. Il test pilota 3 non ha scritto nulla.
 
 ## Modello di minaccia
 
-"role-set" è un generatore locale. Non è un server. Non ascolta e non raccoglie dati di telemetria.
+role-set è un generatore locale. Non è un server. Non ascolta e non raccoglie dati di telemetria.
 
-Un'esecuzione accede al piano, al pacchetto di ruoli e alla directory di output specificata. `ingest` e `store` accedono anche al file di archivio specificato. `write`, `pilot-auto` e `critic-control` accedono a un endpoint di loopback quando non sono `--mock`. `--mock` non invia nulla.
+Un'esecuzione tocca il piano, il pacchetto di ruolo e la directory di output specificata. `ingest` e `store` toccano anche il file del database specificato. `write`, `pilot-auto` e `critic-control` toccano un endpoint di loopback quando non sono `--mock`. `--mock` non invia nulla. Il generatore e i suoi script leggono e scrivono file all'interno del repository e non chiamano alcun modello.
 
-Un'esecuzione non accede a un servizio di modello cloud, a un pod, a un account di noleggio o a una chiave API di noleggio. Non legge righe sigillate, set esclusi o sessioni di intervista. `ingest` legge le dodici domande pubbliche dell'intervista dal clone di "aspire-si" specificato, alla versione specificata, e solo per poter rifiutare una riga che le ripete. Queste domande non vengono archiviate. `store status` restituisce conteggi, non righe. Segnala una vulnerabilità tramite il contatto presente in [SECURITY.md](SECURITY.md).
+Un'esecuzione non tocca un servizio di modello cloud, un pod, un account di noleggio o una chiave API di noleggio. Non legge righe sigillate, set riservati o registrazioni di interviste. `ingest` legge le dodici domande pubbliche delle interviste dalla copia di aspire-si specificata, nel commit specificato, solo per rifiutare una riga che le ripete. Queste non vengono archiviate. `store status` restituisce conteggi, non righe. Segnala una vulnerabilità tramite il contatto in [SECURITY.md](SECURITY.md).
 
 ## Test
 
 ```text
 uv sync --frozen
-uv run pytest
+uv run pytest -m "not sweep"
 ```
 
-La copertura del codice deve essere almeno del 90%, sia in `pyproject.toml` che nell’ambiente CI; in caso contrario, l’esecuzione fallisce. Il badge di copertura mostrato sopra indica il valore attuale. Nell’ambiente CI vengono eseguiti anche `role-set plan` e `puzzle-check` su un ambiente di test, senza l’utilizzo di un modello. `scripts/verify` esegue gli stessi controlli locali in un unico comando.
+La copertura delle righe ha una soglia minima del 90%, in `pyproject.toml` e `codecov.yml`, e l'esecuzione fallisce se non la raggiunge. Attualmente, la copertura è di circa il 97%. Il badge di copertura sopra mostra la cifra attuale. Il CI esegue anche il controllo di atlas, `role-set plan` e `puzzle-check` su un elemento di test, senza modello. `scripts/verify` esegue i controlli locali in un unico comando.
 
-Il manuale è pubblicato insieme alla [pagina di destinazione](https://mcp-tool-shop-org.github.io/role-set/). Questo file README è autonomo.
+Il manuale è pubblicato con la [pagina di destinazione](https://mcp-tool-shop-org.github.io/role-set/). Questo file README è autonomo.
 
-Creato da <a href="https://mcp-tool-shop.github.io/">MCP Tool Shop</a>
+Realizzato da <a href="https://mcp-tool-shop.github.io/">MCP Tool Shop</a>.

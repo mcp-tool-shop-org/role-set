@@ -68,3 +68,5 @@ A dated puzzle declares its spans in `model.span`: the span attribute, the named
 An item whose structure is a verdict over free-text material is not run through this search. The command counts it as outside the solver. It does not count it as passed. Verdict and evidence for that item stay with the checks those kinds already have, plus the key-check.
 
 Pilot 2 is why the solver exists. Three of its five B puzzles had more than one solution, and each accepted trace had a wrong forcing step. The runner's accept count was not the result that mattered. The key-check was.
+
+It is also why the generator exists. For T10 and T12, code now builds the B puzzle, the solver proves it, and a named lazy reading must give a different answer before the puzzle is kept. That is on [The T10 generator](./generator/) page.

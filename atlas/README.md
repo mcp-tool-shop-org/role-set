@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-14 from commit ffb9546 by Atlas 1.24.0.
+Mapped at 2026-10-14 from commit 4ac2ec2 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,13 +8,12 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (78 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-14 (169a51e)
+## What changed since 2026-10-14 (ffb9546)
 
-- src/role_set/advocate/variety_record.json is now written by src/role_set/advocate/variety.py.
-- README.md is now also read by roles/advocate/pack.json and tests/test_advocate.py.
-- roles/advocate/ is now read by src/role_set/advocate/variety.py.
-- And 4 more new writers and readers of places.
-- 12 files added and 3 changed content, across 4 parts.
+- roles/verifier/ is now also read by site/src/content/docs/handbook/roles.md.
+- src/role_set/critic.py is now read by src/role_set/generate/t10_variety.py.
+- src/role_set/gates.py is now read by src/role_set/generate/t10_variety.py.
+- 2 files added and 36 changed content, across 7 parts.
 
 ## What comes in
 
@@ -48,7 +47,7 @@ CI writes nothing this map can see.
 - **src/role_set/assemble.py** and **src/role_set/prompts.py** changed together in 9 of 17 commits, inside the src part.
 - **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 11 of 21 commits, inside the src part.
 
-6 files changed together with their own tests, as expected.
+5 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 

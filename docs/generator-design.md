@@ -337,4 +337,45 @@ The floors are unchanged: at least 75% distinct canonical skeletons in a stratum
   ```
   uv run python scripts/t10_variety_record.py
   ```
-  Use `uv run python scripts/t10_variety_record.py --check` to verify the committed record and print the locked-seed stratum figures (`set two` 40/40 top 1, `set three` 120/120 top 1, `claim two` 40/40 top 1, `claim three` 108/120 top 3).
+  Use `uv run python scripts/t10_variety_record.py --check` to verify the committed record and print the locked-seed stratum figures.
+
+## T10 Phase 1: the `if_shape` claim axis (as built, 2026-10-14)
+
+**Why.** Claim questions test "exactly" only, which left three-value claims with 27 structural cells (9 with no `if` clue, and 14–16 `if` cells per pack). Six three-value packs demanded 26 zero-`if` visits across 9 zero-`if` cells, requiring a stopgap zero-`if` cap of 3 (`claim three` sat at 108/120 distinct, top repeat 3 on locked seeds 61–80) and leaving 0 headroom for a seventh three-value pack.
+
+**The `if_shape` axis (`IF_SHAPES`, `clues_if_shape`).**
+- A claim cell is `(n, op, k, ifs, if_shape)` (`{"n", "op", "k", "ifs", "if_shape"}`). Set cells are unchanged (`(n, op, k, ifs)`).
+- `ifs = 0`: `"none"`.
+- `ifs = 1`: `"pos"` (`then … is v`) and `"neg"` (`then … is not v`). Antecedents stay positive (`is`).
+  - *Merged shapes (`touches` and `not`):* the candidate split of `ifs = 1` by whether the `if` clue mentions the claimed entity (`touches` vs `not`) is merged into `"pos"` and `"neg"`. `canonical_skeleton(model)` records `n`, `attributes`, and `clues` (`model["facts"]`), not `model["claim"]`. Consequently, `pos_touches` and `pos_not` (and `neg_touches` and `neg_not`) produce identical canonical skeletons and `touches` vs `not` cannot be decided from the skeleton or record entry alone. With `touches` and `not` merged, every shape in `IF_SHAPES` is decided directly from the reduced clue list (`clues_if_shape(clues)`), and distinct shapes never share a canonical skeleton.
+- `ifs = 2`, defined over the entity pairs `(p1, q1)` and `(p2, q2)` of the two `if` clues:
+  - `"chain"`: 3 distinct entities (`len({p1, q1, p2, q2}) == 3`) where one `if`'s consequent entity is the other's antecedent entity (`q1 == p2` or `q2 == p1`);
+  - `"shared_consequent"`: 3 distinct entities with the same consequent entity (`q1 == q2`);
+  - `"shared_antecedent"`: 3 distinct entities with the same antecedent entity (`p1 == p2`);
+  - `"disjoint"`: 4 distinct entities (`len({p1, q1, p2, q2}) == 4`, so `n >= 4`).
+- **Builder (`_addition_order`, `build_t10`):** `_addition_order` offers only `if` clues that can form the cell's `if_shape` (filtering to matching consequent polarity for `ifs = 1`, and to the first shuffled `if` clue and its valid partners for `ifs = 2`). A build whose reduced puzzle loses the cell's `if_shape` (`clues_if_shape(kept) != if_shape`) retries inside the same seed, counting the tries. Finished builds are never discarded for repeating a skeleton.
+
+**Restored zero-`if` cap, per-stratum capacity weights, and headroom.**
+- Probing claim cells with `if_shape` on `probe_seed = 0` (`RELIABLE_TRIES = 40`) expands usable claim cells from 23–25 per pack (14–16 `if` cells) to 52–61 per pack:
+  - `claim two` (`lamps`, `doors`): 61 usable cells each (52 `if` cells, 9 zero-`if` cells), up from 27 (18 `if` cells).
+  - `claim three`: 61 union cells (52 `if` cells, 9 zero-`if` cells) and 32 shared across all six packs (23 `if` cells, 9 zero-`if` cells): `cups` 52 (43 `if`), `pans` 52 (43 `if`), `machines` 56 (47 `if`), `trains` 52 (43 `if`), `beds` 55 (46 `if`), `clinics` 52 (43 `if`).
+- Every pack now has more than 20 `if` cells, so `zero_if_demand` is `0` in every stratum. `zero_if_cap("three", "claim")` is restored to `2` (the same as every other stratum), giving `supply = 18` against `demand = 0`.
+- `scripts/t10_cell_capacity.py` records distinct skeletons on the tuning seeds (`1, 21, 41`) split by value-count stratum (`two` vs `three`) in `t10_capacity.json`, so two-value and three-value packs never pool weights (fixing a pre-existing cross-stratum weight inflation on `set` cell `4|<=|3|1` where `cups` seed 84 failed `MAX_TRIES = 400` at `787ccf8`). `assignment()` elevates a cell's weight above `1` only when its tuning-seed probe had zero failed builds (`not found.get("failed")`).
+- Zero-`if` cap headroom (`headroom_shared`, `headroom_any`) is `None` in both claim strata because both the shared 23 `if` cells and union 52 `if` cells exceed a file of 20. `test_twelve_three_value_packs_allocate_with_no_within_file_repeats` verifies that 12 three-value packs (6 real + 6 synthetic clones, 240 builds per file) allocate under `zero_if_cap = 2` with 0 zero-`if` visits and 0 within-file repeats. If headroom ever runs out again, `capacity_report()` names `polarity_mode or in/not_in for claim cells` as the next step.
+- The committed record (`src/role_set/generate/t10_record.json`) covers seeds `1–20`, `61–80`, `81–100`, and locked verdict seeds `101–120` (1,280 builds) and records `if_shape` on every entry. On locked verdict seeds `101–120`, `claim three` reaches `118/120` distinct (98.3%), top repeat `2`, zero-`if` visits `0`, and `0` within-file repeats (against `787ccf8` baseline `112/120` distinct, top repeat `4` — failing the `<= 3` floor — and `26` zero-`if` visits).
+
+**How to add a new three-value pack (Phase 2).**
+1. Add the pack entry (with its `sense` block) to `PACKS` in `src/role_set/generate/recipes.py`.
+2. Regenerate the usable cell table and run the capacity gate:
+   ```
+   uv run python scripts/t10_usable_cells.py
+   ```
+3. Regenerate the per-stratum tuning-seed capacity table:
+   ```
+   uv run python scripts/t10_cell_capacity.py
+   ```
+4. Regenerate the committed variety record:
+   ```
+   uv run python scripts/t10_variety_record.py
+   ```
+5. Run `uv run pytest -m "not sweep"` and the `workflow_dispatch` `sweep` job in CI.
