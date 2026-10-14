@@ -78,7 +78,9 @@ def test_a_contradiction_is_recorded_but_proves_nothing():
 def test_the_receipt_metrics_and_the_solver_pin():
     b = build_t10("lamps", 2, question="set")
     m = metrics(b.model)
-    assert m == b.metrics and m["assignments_explored"] == 16
+    # The cell chooses how many entities, so the explored space is the pack's values raised to that, not a fixed 16.
+    vals = len(next(iter(b.model["attributes"].values()))["values"])
+    assert m == b.metrics and m["assignments_explored"] == vals ** len(b.model["entities"])
     assert m["load_bearing_facts"] == len(b.model["facts"]) and m["lookup_distance"] >= 0
     assert len(solver_version()["sha256"]) == 64
 
