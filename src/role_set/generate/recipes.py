@@ -44,7 +44,7 @@ PACKS = {
                "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
                          "counts": {"min": 1, "max_share": 0.75}}},
     "beds": {"plural": "beds", "names": ["the rose bed", "the herb bed", "the lily bed", "the fern bed", "the moss bed"],
-             "attribute": "moisture", "values": ["damp", "dry", "frozen"],
+             "attribute": "moisture", "values": ["damp", "dry", "waterlogged"],
              "sense": {"forms": ["is", "is_not", "in", "not_in", "count", "if"],
                        "counts": {"min": 1, "max_share": 0.75}}},
     "clinics": {"plural": "clinics", "names": ["the asthma clinic", "the dental clinic", "the eye clinic", "the skin clinic",

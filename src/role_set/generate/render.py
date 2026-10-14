@@ -38,7 +38,7 @@ TEMPLATES: dict[str, list[str]] = {
                 "The {plural} include {k} or more that {be} {v}."],
     "count<=": ["At most {k} of the {plural} {be} {v}.", "Of the {plural}, {k} or fewer {be} {v}.",
                 "Up to {k} of the {plural} {be} {v}."],
-    "if": ["If {p}, then {q}.", "When {p}, {q}.", "Then {q}, if {p}."],
+    "if": ["If {p}, then {q}.", "When {p}, {q}.", "Whenever {p}, {q}."],
 }
 
 
