@@ -189,8 +189,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 16,
-        "lines": 58,
+        "commits": 17,
+        "lines": 59,
         "path": "CHANGELOG.md"
       },
       {
@@ -259,8 +259,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 23,
-        "lines": 485,
+        "commits": 24,
+        "lines": 495,
         "path": "atlas/README.md"
       },
       {
@@ -269,18 +269,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 23,
-        "lines": 1564,
+        "commits": 24,
+        "lines": 1598,
         "path": "atlas/page.json"
       },
       {
-        "commits": 23,
-        "lines": 3309,
+        "commits": 24,
+        "lines": 3410,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 23,
-        "lines": 9533,
+        "commits": 24,
+        "lines": 9555,
         "path": "atlas/structure.json"
       },
       {
@@ -322,6 +322,26 @@
         "commits": 7,
         "lines": 54,
         "path": "pyproject.toml"
+      },
+      {
+        "commits": 1,
+        "lines": 119,
+        "path": "roles/advocate/README.md"
+      },
+      {
+        "commits": 1,
+        "lines": 12,
+        "path": "roles/advocate/behaviours.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 16,
+        "path": "roles/advocate/exemplar-exclude.json"
+      },
+      {
+        "commits": 1,
+        "lines": 50,
+        "path": "roles/advocate/sources.json"
       },
       {
         "commits": 3,
@@ -849,51 +869,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-14T21:45:35.832Z",
+  "generatedAt": "2026-10-14T22:15:32.415Z",
   "generatedFrom": {
-    "commit": "787ccf8b114a4e5617378adce32488d1eae84b69"
+    "commit": "169a51e48d86bdf4e971689ba8c1f54b469872d0"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 22,
-      "shared": 22,
+      "either": 23,
+      "shared": 23,
       "strength": 1
     },
     {
@@ -991,16 +1011,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-14T12:23:35-07:00",
+    "headDate": "2026-10-14T17:50:08-04:00",
     "inScopeFiles": 140,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 53,
+    "qualifyingCommits": 54,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-17T19:23:35.000Z",
+    "since": "2026-04-17T21:50:08.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
