@@ -240,6 +240,31 @@
           "path": "scripts/pilot-write.sh"
         },
         {
+          "exports": [
+            "every_cell",
+            "main",
+            "probe"
+          ],
+          "failurePaths": [
+            {
+              "in": "probe",
+              "kind": "except",
+              "line": 42
+            },
+            {
+              "in": "main",
+              "kind": "raise",
+              "line": 66
+            }
+          ],
+          "hash": "627586d085b87dba4823b53172b2643106dcdb3e3c3cdab3571741e04de9e7f0",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py"
+          ],
+          "path": "scripts/t10_usable_cells.py"
+        },
+        {
           "hash": "835d083a5e93d3271f8e4642684f1bd8c0adef60ca465e2fce924883a94f82c4",
           "path": "scripts/verify.ps1"
         },
@@ -1468,6 +1493,8 @@
             "assignments",
             "candidates",
             "check_model",
+            "deletion_order",
+            "deletion_tier",
             "metrics",
             "receipt",
             "reduce",
@@ -1478,10 +1505,10 @@
             {
               "in": "check_model",
               "kind": "raise",
-              "line": 219
+              "line": 235
             }
           ],
-          "hash": "2908203be812a22350babf306d28c9850e95b747d9fd1eafb47c69ce19c5fd76",
+          "hash": "80a0799f88adb35c16ba6ff33000c0041e88ab3dd4978300de8c2981fc19d545",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/span.py",
@@ -1505,38 +1532,39 @@
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 79
+              "line": 102
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 134
+              "line": 168
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 143
+              "line": 177
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 287
+              "line": 322
             },
             {
               "in": "build_t12",
               "kind": "except",
-              "line": 315
+              "line": 350
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 324
+              "line": 359
             }
           ],
-          "hash": "9ea310162745944feeb3c0b2a46404d610d066c4614296043f43d3f96359b585",
+          "hash": "2af951c54ce4b52e92f21a4f6875dbe6e45ce94ded1137907834d3a44c7a043f",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
+            "src/role_set/generate/t10_variety.py",
             "src/role_set/puzzle.py"
           ],
           "path": "src/role_set/generate/recipes.py"
@@ -1639,6 +1667,26 @@
             "src/role_set/puzzle.py"
           ],
           "path": "src/role_set/generate/shortcuts.py"
+        },
+        {
+          "hash": "be5314e0b7c5514493c38260eb2223ba1eaef831591662b358ca9dd68ba61f84",
+          "path": "src/role_set/generate/t10_cells.json"
+        },
+        {
+          "exports": [
+            "canonical_skeleton",
+            "cell_for",
+            "load_cells"
+          ],
+          "failurePaths": [
+            {
+              "in": "cell_for",
+              "kind": "raise",
+              "line": 83
+            }
+          ],
+          "hash": "4be960eee15b45ca8315c77105e356b2c88d400396a58831748bfd7b7470fd1a",
+          "path": "src/role_set/generate/t10_variety.py"
         },
         {
           "entry": "heartbeat_age_s",
@@ -4053,7 +4101,7 @@
       ],
       "importConfidence": "full",
       "name": "src",
-      "origin": "authored",
+      "origin": "mixed",
       "outsidePlaces": [
         {
           "reads": 24,
@@ -4143,7 +4191,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 29,
+      "testedBy": 30,
       "unresolvedSites": 0
     },
     {
@@ -4388,7 +4436,7 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "04ba6deff49ac30f89fa26cda4b344d1d1c5cdedf3f66d5c4e9d6a53c566d320",
+          "hash": "650b2d665d77ba3e99b0f097ec7871c9f8aa6827eab8b0a9dbfe849ba1f8ca63",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -4835,6 +4883,21 @@
         },
         {
           "exports": [
+            "test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last",
+            "test_locked_seeds_clear_the_variety_floors_in_every_stratum",
+            "test_twenty_seeds_in_one_file_take_twenty_cells"
+          ],
+          "hash": "7a79a829e48f6528eef92962c24cfc71b8729de23f8e4a0cba459a8cf87c08bb",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/generate/t10_variety.py"
+          ],
+          "path": "tests/test_t10_variety.py"
+        },
+        {
+          "exports": [
             "test_4xx_is_not_retried_and_other_hosts_are_refused",
             "test_chat_builds_an_openai_request_and_reads_usage",
             "test_ollama_chat_and_unload",
@@ -5003,7 +5066,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 29
+          "files": 30
         },
         {
           "boundary": "src",
@@ -5012,7 +5075,7 @@
             "file": "src/role_set/assemble.py",
             "from": "tests/test_assemble.py"
           },
-          "files": 32
+          "files": 33
         }
       ],
       "readers": [],
@@ -5043,7 +5106,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 29,
+          "files": 30,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -5282,6 +5345,11 @@
   ],
   "edges": [
     {
+      "from": "scripts",
+      "kind": "file",
+      "to": "src"
+    },
+    {
       "from": "tests",
       "fromTests": true,
       "kind": "file",
@@ -5290,8 +5358,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "28b672e497e235fc649c2469b5ce6dd5bcdb07f8",
-    "tracked": 122
+    "commit": "bed8cde86b749130461ce7e961002e66e4cb3c6e",
+    "tracked": 126
   },
   "landings": [
     {
@@ -5463,6 +5531,22 @@
     {
       "readers": [
         {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "read_text",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/generate/t10_cells.json",
+      "writers": [
+        {
+          "by": "scripts/t10_usable_cells.py",
+          "confidence": "ast"
+        }
+      ]
+    },
+    {
+      "readers": [
+        {
           "by": "scripts/verify.sh",
           "call": "literal",
           "confidence": "text"
@@ -5529,6 +5613,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 35,
+  "testFiles": 36,
   "unassigned": []
 }

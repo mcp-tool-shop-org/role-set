@@ -97,7 +97,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 0,
+      "qualifyingSourceCommits": 1,
       "rebaseline": null
     },
     {
@@ -124,14 +124,16 @@
         "importsAndCoChanges": [
           "tests"
         ],
-        "importsOnly": []
+        "importsOnly": [
+          "scripts"
+        ]
       },
       "cohesion": 0.173649,
       "cohesionDropped": false,
       "confidence": "full",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 40,
+      "qualifyingSourceCommits": 42,
       "rebaseline": null
     },
     {
@@ -149,7 +151,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 41,
+      "qualifyingSourceCommits": 43,
       "rebaseline": null
     }
   ],
@@ -187,8 +189,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 12,
-        "lines": 50,
+        "commits": 13,
+        "lines": 51,
         "path": "CHANGELOG.md"
       },
       {
@@ -257,8 +259,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 19,
-        "lines": 419,
+        "commits": 20,
+        "lines": 431,
         "path": "atlas/README.md"
       },
       {
@@ -267,18 +269,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 19,
-        "lines": 1329,
+        "commits": 20,
+        "lines": 1369,
         "path": "atlas/page.json"
       },
       {
-        "commits": 19,
-        "lines": 2879,
+        "commits": 20,
+        "lines": 2931,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 19,
-        "lines": 8767,
+        "commits": 20,
+        "lines": 8884,
         "path": "atlas/structure.json"
       },
       {
@@ -287,8 +289,8 @@
         "path": "codecov.yml"
       },
       {
-        "commits": 3,
-        "lines": 266,
+        "commits": 4,
+        "lines": 290,
         "path": "docs/generator-design.md"
       },
       {
@@ -345,6 +347,11 @@
         "commits": 1,
         "lines": 57,
         "path": "scripts/pilot-write.sh"
+      },
+      {
+        "commits": 1,
+        "lines": 70,
+        "path": "scripts/t10_usable_cells.py"
       },
       {
         "commits": 1,
@@ -502,13 +509,13 @@
         "path": "src/role_set/generate/__init__.py"
       },
       {
-        "commits": 1,
-        "lines": 204,
+        "commits": 3,
+        "lines": 244,
         "path": "src/role_set/generate/build.py"
       },
       {
-        "commits": 2,
-        "lines": 314,
+        "commits": 4,
+        "lines": 445,
         "path": "src/role_set/generate/recipes.py"
       },
       {
@@ -517,9 +524,24 @@
         "path": "src/role_set/generate/render.py"
       },
       {
+        "commits": 1,
+        "lines": 174,
+        "path": "src/role_set/generate/select.py"
+      },
+      {
         "commits": 2,
         "lines": 182,
         "path": "src/role_set/generate/shortcuts.py"
+      },
+      {
+        "commits": 1,
+        "lines": 1775,
+        "path": "src/role_set/generate/t10_cells.json"
+      },
+      {
+        "commits": 1,
+        "lines": 125,
+        "path": "src/role_set/generate/t10_variety.py"
       },
       {
         "commits": 2,
@@ -682,13 +704,13 @@
         "path": "tests/test_gates.py"
       },
       {
-        "commits": 1,
-        "lines": 148,
+        "commits": 2,
+        "lines": 152,
         "path": "tests/test_generate.py"
       },
       {
-        "commits": 1,
-        "lines": 91,
+        "commits": 2,
+        "lines": 116,
         "path": "tests/test_generate_t12.py"
       },
       {
@@ -758,8 +780,18 @@
       },
       {
         "commits": 1,
+        "lines": 129,
+        "path": "tests/test_select.py"
+      },
+      {
+        "commits": 1,
         "lines": 265,
         "path": "tests/test_span.py"
+      },
+      {
+        "commits": 1,
+        "lines": 103,
+        "path": "tests/test_t10_variety.py"
       },
       {
         "commits": 2,
@@ -792,58 +824,58 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-13T23:06:03.165Z",
+  "generatedAt": "2026-10-14T04:42:51.991Z",
   "generatedFrom": {
-    "commit": "28b672e497e235fc649c2469b5ce6dd5bcdb07f8"
+    "commit": "bed8cde86b749130461ce7e961002e66e4cb3c6e"
   },
   "pairs": [
     {
       "a": "CHANGELOG.md",
       "b": "site/src/content/docs/handbook/kinds.md",
-      "either": 11,
+      "either": 12,
       "shared": 7,
-      "strength": 0.636364
+      "strength": 0.583333
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 18,
-      "shared": 18,
+      "either": 19,
+      "shared": 19,
       "strength": 1
     },
     {
@@ -925,7 +957,7 @@
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 31.75,
+    "appliedChangesetLimit": 32.75,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -934,16 +966,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-13T16:01:32-07:00",
-    "inScopeFiles": 127,
+    "headDate": "2026-10-14T00:38:34-04:00",
+    "inScopeFiles": 131,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 49,
+    "qualifyingCommits": 51,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-16T23:01:32.000Z",
+    "since": "2026-04-17T04:38:34.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

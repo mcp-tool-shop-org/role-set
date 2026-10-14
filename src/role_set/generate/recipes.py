@@ -12,8 +12,9 @@ import random
 from dataclasses import dataclass
 
 from role_set.generate.build import (MAX_TRIES, BuildError, Built, Shape, _key, _mask, assignments, candidates, check_model,
-                                     metrics, reduce, truth)
+                                     deletion_order, metrics, reduce, truth)
 from role_set.generate.shortcuts import REGISTRY, prove
+from role_set.generate.t10_variety import cell_for
 from role_set.puzzle import PuzzleError
 
 # Slice-1 domain packs: names, a plural noun and a two- or three-value state. Seat C's packs replace these (with sense
@@ -71,33 +72,59 @@ def _groups(shape: Shape, sols: list[dict]):
     return lambda mask: frozenset(projs[i] for i in range(len(sols)) if mask >> i & 1)
 
 
-def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES) -> Built:
+def _if_count(clues: list[list]) -> int:
+    return sum(1 for c in clues if c[0] == "if")
+
+
+def _addition_order(others: list[list], rng: random.Random, if_target: int) -> list[list]:
+    """If clues are offered before unit clues, so the cell's if count can be in the set before the answer settles.
+    Reduction may still delete one; that attempt is refused and the seed tries again."""
+
+    ifs = [c for c in others if c[0] == "if"]
+    units = [c for c in others if c[0] != "if"]
+    rng.shuffle(ifs)
+    rng.shuffle(units)
+    return ifs + units if if_target else units
+
+
+def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES,
+              cell: dict | None = None) -> Built:
     """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and at least one size
-    reading that answers differently. `question` is "set" (which could be ...?) or "claim"."""
+    reading that answers differently. `question` is "set" (which could be ...?) or "claim".
+
+    The cell fixes how many entities, the count word, k, and how many if clues the reduced puzzle must keep. `n` stays in
+    the signature for callers that pass it; the cell is what assigns the entity count. Pass `cell` only to probe one
+    cell. The hidden solution is drawn from the assignments where that count clue is true, and not from the ones where
+    the true count is exactly k: an at-least or at-most puzzle whose count is always exactly k would teach the misreading
+    T10 exists to train out."""
 
     if question not in T10_QUESTIONS:
         raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
     pack = PACKS[pack_name]
+    spec = cell if cell is not None else cell_for(pack_name, question, seed)
+    _ = n
     rng = random.Random(f"T10:{pack_name}:{question}:{seed}")  # each pack and question its own stream
     last = "no attempt"
+    attr = pack["attribute"]
+    op, k, if_target, size = spec["op"], spec["k"], spec["ifs"], spec["n"]
     for attempt in range(1, tries + 1):
-        shape = t10_shape(pack, n, rng, question)
+        shape = t10_shape(pack, size, rng, question)
         sols = assignments(shape)
         pool = candidates(shape, T10.forms)
         bits = {_key(c): truth(shape, sols, c) for c in pool}
-        hidden = rng.randrange(len(sols))
-        true_pool = [c for c in pool if bits[_key(c)] >> hidden & 1]
-        traits = [c for c in true_pool if c[0] == T10.trait_form]
-        if not traits:
-            last = "no true count clue"
+        value = rng.choice(pack["values"])
+        trait = next(c for c in pool if c == ["count", attr, value, op, k])
+        satisfying = [i for i in range(len(sols)) if bits[_key(trait)] >> i & 1]
+        if not satisfying:
+            last = "the count is true of no assignment"
             continue
-        trait = rng.choice(traits)
-        others = [c for c in true_pool if c is not trait]
-        rng.shuffle(others)
+        hidden = rng.choice(satisfying)  # the count is true, and a larger or smaller count may be too
+        true_pool = [c for c in pool if bits[_key(c)] >> hidden & 1]
+        others = _addition_order([c for c in true_pool if c is not trait], rng, if_target)
         if shape.structure == "underdetermined_with_explicit_set":
-            kept = _open_set(shape, sols, bits, trait, others, rng)
+            kept = _open_set(shape, sols, bits, trait, others, rng, if_target)
             if kept is None:
-                last = "no clue set left a small open set that needs the count"
+                last = "no clue set left a small open set that keeps the count and the if count"
                 continue
             built = _finish(shape, kept, trait, hidden, seed, attempt)
             if isinstance(built, str):
@@ -107,24 +134,31 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
         decided = _decider(shape, sols, hidden)
         chosen = [trait]
         rest: list[list] = []
+        width = len(sols)
         for c in others:
-            if decided(_mask(chosen, bits, len(sols))):
+            if decided(_mask(chosen, bits, width)) and _if_count(chosen) >= if_target:
                 break
-            if c[0] == "if" and sum(1 for x in chosen if x[0] == "if") >= MAX_IF:
+            if c[0] == "if" and _if_count(chosen) >= min(if_target, MAX_IF):
                 continue
             # The trait clue stays on the deciding path by construction: a clue joins only while the clues without the
             # count still leave the answer open.
-            if decided(_mask(rest + [c], bits, len(sols))):
+            if decided(_mask(rest + [c], bits, width)):
                 continue
-            if _mask(chosen + [c], bits, len(sols)) != _mask(chosen, bits, len(sols)):
+            if _mask(chosen + [c], bits, width) != _mask(chosen, bits, width):
                 chosen.append(c)
                 rest.append(c)
-        if not decided(_mask(chosen, bits, len(sols))):
+        if _if_count(chosen) != if_target:
+            last = "the clues never held the cell's if count"
+            continue
+        if not decided(_mask(chosen, bits, width)):
             last = "the clues never settled the answer"
             continue
         kept = reduce(shape, sols, chosen, bits, decided, rng, keep=trait)
         if trait not in kept:
             last = "the count dropped out in reduction"
+            continue
+        if _if_count(kept) != if_target:
+            last = "reduction did not keep the cell's if count"
             continue
         built = _finish(shape, kept, trait, hidden, seed, attempt)
         if isinstance(built, str):
@@ -149,32 +183,33 @@ def _finish(shape: Shape, kept: list[list], trait: list, hidden: int, seed: int,
                  seed=seed, tries=attempt)
 
 
-def _open_set(shape: Shape, sols: list[dict], bits: dict, trait: list, others: list[list], rng: random.Random):
+def _open_set(shape: Shape, sols: list[dict], bits: dict, trait: list, others: list[list], rng: random.Random,
+              if_target: int):
     """Clues for an open-set question: add until 2 to SET_MAX groups stay possible, drop every clue the set doesn't need,
-    and keep the count only if the set changes without it."""
+    and keep the count only if the set changes without it. The reduced set must still hold the cell's if count."""
 
     groups = _groups(shape, sols)
-    n = len(sols)
+    width = len(sols)
     chosen = [trait]
     for c in others:
-        g = groups(_mask(chosen, bits, n))
-        if 2 <= len(g) <= SET_MAX:
+        g = groups(_mask(chosen, bits, width))
+        if 2 <= len(g) <= SET_MAX and _if_count(chosen) >= if_target:
             break
-        if c[0] == "if" and sum(1 for x in chosen if x[0] == "if") >= MAX_IF:
+        if c[0] == "if" and _if_count(chosen) >= min(if_target, MAX_IF):
             continue
-        if len(groups(_mask(chosen + [c], bits, n))) >= 2 and _mask(chosen + [c], bits, n) != _mask(chosen, bits, n):
+        if len(groups(_mask(chosen + [c], bits, width))) >= 2 and _mask(chosen + [c], bits, width) != _mask(chosen, bits, width):
             chosen.append(c)
-    target = groups(_mask(chosen, bits, n))
-    if not 2 <= len(target) <= SET_MAX:
+    target = groups(_mask(chosen, bits, width))
+    if not 2 <= len(target) <= SET_MAX or _if_count(chosen) < if_target:
         return None
-    order = [c for c in chosen if c is not trait]
-    rng.shuffle(order)
-    for c in order:
+    for c in deletion_order(chosen, rng, keep=trait):
         trial = [x for x in chosen if x is not c]
-        if groups(_mask(trial, bits, n)) == target:
+        if groups(_mask(trial, bits, width)) == target:
             chosen = trial
     without = [x for x in chosen if x is not trait]
-    if not without or groups(_mask(without, bits, n)) == target:
+    if not without or groups(_mask(without, bits, width)) == target:
+        return None
+    if _if_count(chosen) != if_target:
         return None
     return chosen
 

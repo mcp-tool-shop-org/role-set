@@ -152,14 +152,30 @@ def metrics(model: dict) -> dict:
     return {"assignments_explored": size, "load_bearing_facts": len(lines), "lookup_distance": max(lines) - min(lines)}
 
 
-def reduce(shape: Shape, sols: list[dict], chosen: list[list], bits: dict, decided, rng: random.Random, keep=None) -> list[list]:
-    """Delete each clue the answer doesn't need, in a seeded order; `keep` is the trait clue, which the recipe needs on
-    the deciding path and so is tried last (R&D: after reducing, check it is still there)."""
+def deletion_tier(rule: list) -> int:
+    """Which clues reduction tries to drop first. A unit fact goes before `is_not`, and `is_not` before `if`, so an if
+    that says the same thing as a unit fact is the one that stays. The count is last. A form this table does not name
+    shares `is_not`'s tier: T12's clues then keep the seeded order they already had."""
+
+    return {"is": 0, "is_not": 1, "if": 2, "count": 3}.get(rule[0], 1)
+
+
+def deletion_order(chosen: list[list], rng: random.Random, keep=None) -> list[list]:
+    """Shuffle, then stable-sort by tier, so the order inside a tier is the seeded shuffle and the tiers stay fixed."""
 
     order = [c for c in chosen if c is not keep]
     rng.shuffle(order)
+    order.sort(key=deletion_tier)
     if keep is not None:
         order.append(keep)
+    return order
+
+
+def reduce(shape: Shape, sols: list[dict], chosen: list[list], bits: dict, decided, rng: random.Random, keep=None) -> list[list]:
+    """Delete each clue the answer doesn't need. `keep` is the trait clue, tried last so a recipe can check it survived
+    (R&D: after reducing, check it is still there)."""
+
+    order = deletion_order(chosen, rng, keep)
     out = list(chosen)
     for c in order:
         trial = [x for x in out if x is not c]
