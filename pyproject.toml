@@ -16,6 +16,7 @@ role-set = "role_set.cli:main"
 dev = [
     "pytest==9.0.3",
     "pytest-cov==7.0.0",
+    "pytest-xdist==3.8.0",
 ]
 
 [build-system]
@@ -35,6 +36,9 @@ default-groups = ["dev"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "--cov=role_set --cov-report=term-missing --cov-fail-under=90"
+markers = [
+    "sweep: exhaustive T10 builds, run in CI without coverage",
+]
 
 [tool.coverage.run]
 source = ["role_set"]

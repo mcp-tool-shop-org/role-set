@@ -3,9 +3,10 @@
 # PIN_PER_STEP: 2. uv.lock pins the packages. Actions are pinned by commit sha.
 #   Atlas is pinned to 1.24.0. The coverage floor in pyproject.toml is 90.
 #   Codecov project and patch targets are 90% with a 1% threshold.
-# ANDON_AUTHORITY: 2. pytest --cov-fail-under, the identity scan and atlas check
-#   are required steps. A red step fails the job. The Codecov upload uses
-#   fail_ci_if_error: false so a private repo's upload cannot block the gate.
+# ANDON_AUTHORITY: 2. pytest --cov-fail-under, the sweep without coverage, the
+#   identity scan and atlas check are required steps. A red step fails the job.
+#   The Codecov upload uses fail_ci_if_error: false so a private repo's upload
+#   cannot block the gate.
 # NAMED_COMPENSATORS: 2. This workflow checks out the repo and runs tests. It
 #   does not publish, deploy, or write outside the runner. Undo is to close the
 #   pull request. Owner: the author of the pull request. The Publisher merges.
@@ -56,7 +57,10 @@ jobs:
         run: uv sync --frozen
 
       - name: Test
-        run: uv run pytest --cov-report=xml
+        run: uv run pytest -m "not sweep" --cov-report=xml
+
+      - name: Sweep
+        run: uv run pytest -m sweep --no-cov -n auto -s
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

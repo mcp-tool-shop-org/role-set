@@ -23,48 +23,24 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 2,
-      "changed": 9,
+      "added": 0,
+      "changed": 6,
       "moved": 0,
-      "parts": 5,
+      "parts": 3,
       "removed": 0
     },
     "items": [
       {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/t10_capacity.json is now written by scripts/t10_cell_capacity.py.",
-        "subjects": [
-          "src/role_set/generate/t10_capacity.json",
-          "scripts/t10_cell_capacity.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/t10_capacity.json is now read by src/role_set/generate/t10_variety.py.",
-        "subjects": [
-          "src/role_set/generate/t10_capacity.json",
-          "src/role_set/generate/t10_variety.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/t10_cells.json is now also read by scripts/t10_usable_cells.py.",
-        "subjects": [
-          "src/role_set/generate/t10_cells.json",
-          "scripts/t10_usable_cells.py"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "2 files added and 9 changed content, across 5 parts.",
+        "sentence": "Nothing structural changed since 2026-10-14; 6 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
-      "generatedAt": "2026-10-14T05:46:44.847Z"
+      "commit": "abe307d801c641da7cca827b907d00bb2e7fdb10",
+      "generatedAt": "2026-10-14T09:04:16.889Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
@@ -134,7 +110,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 7 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "abe307d801c641da7cca827b907d00bb2e7fdb10",
+  "commit": "2b509bb6ba017183023845b5c23cde50165a79ff",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (66 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -252,7 +228,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T09:04:16.889Z",
+  "generatedAt": "2026-10-14T10:39:55.143Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 26 reads go to a path their caller passes, not to this repository.",

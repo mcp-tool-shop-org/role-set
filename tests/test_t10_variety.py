@@ -210,67 +210,67 @@ def _hidden_count(model: dict, hidden: int, trait: list) -> int:
     return sum(1 for value in sols[hidden][trait[1]] if value == trait[2])
 
 
-def _rows():
+def _rows(question: str, kind: str):
     rows = []
     for pack in PACKS:
-        for question in ("set", "claim"):
-            for seed in VERIFY:
-                cell = cell_for(pack, question, seed)
-                built = build_t10(pack, seed, question)
-                structure = "falsifier_first" if question == "claim" else "underdetermined_with_explicit_set"
-                assert check_model(built.model, structure) == built.answer
-                proofs = prove(built.model, structure, list(T10.shortcuts))
-                assert any(p["differs"] for p in proofs.values())
-                op = built.trait_clue[3]
-                own = [name for name in T10.shortcuts if REGISTRY[name].get("from") == op]
-                trait_differs = any(proofs.get(name, {}).get("differs") for name in own)
-                assert trait_differs, (pack, question, seed, op)
-                counts = [fact["rule"] for fact in built.model["facts"] if fact["rule"][0] == "count"]
-                assert counts == [built.trait_clue]
-                if question == "claim":
-                    assert op == "="
-                ifs = sum(1 for fact in built.model["facts"] if fact["rule"][0] == "if")
-                assert ifs == cell["ifs"]
-                assert built.trait_clue[3:] == [cell["op"], cell["k"]]
-                assert len(built.model["entities"]) == cell["n"]
-                hidden = _hidden_count(built.model, built.hidden, built.trait_clue)
-                rows.append({"pack": pack, "question": question, "kind": _kind(pack), "seed": seed,
-                             "skeleton": canonical_skeleton(built.model), "op": op,
-                             "n": cell["n"], "k": cell["k"], "ifs": ifs, "refusals": built.tries - 1,
-                             "trait_differs": trait_differs,
-                             "on_boundary": op != "=" and hidden == cell["k"]})
+        if _kind(pack) != kind:
+            continue
+        for seed in VERIFY:
+            cell = cell_for(pack, question, seed)
+            built = build_t10(pack, seed, question)
+            structure = "falsifier_first" if question == "claim" else "underdetermined_with_explicit_set"
+            assert check_model(built.model, structure) == built.answer
+            proofs = prove(built.model, structure, list(T10.shortcuts))
+            assert any(p["differs"] for p in proofs.values())
+            op = built.trait_clue[3]
+            own = [name for name in T10.shortcuts if REGISTRY[name].get("from") == op]
+            trait_differs = any(proofs.get(name, {}).get("differs") for name in own)
+            assert trait_differs, (pack, question, seed, op)
+            counts = [fact["rule"] for fact in built.model["facts"] if fact["rule"][0] == "count"]
+            assert counts == [built.trait_clue]
+            if question == "claim":
+                assert op == "="
+            ifs = sum(1 for fact in built.model["facts"] if fact["rule"][0] == "if")
+            assert ifs == cell["ifs"]
+            assert built.trait_clue[3:] == [cell["op"], cell["k"]]
+            assert len(built.model["entities"]) == cell["n"]
+            hidden = _hidden_count(built.model, built.hidden, built.trait_clue)
+            rows.append({"pack": pack, "question": question, "kind": _kind(pack), "seed": seed,
+                         "skeleton": canonical_skeleton(built.model), "op": op,
+                         "n": cell["n"], "k": cell["k"], "ifs": ifs, "refusals": built.tries - 1,
+                         "trait_differs": trait_differs,
+                         "on_boundary": op != "=" and hidden == cell["k"]})
     return rows
 
 
-def _report(rows: list[dict]) -> None:
-    """The figures section 5 asks for. The floors are asserted separately; this print is the record."""
+def _report(rows: list[dict], question: str, kind: str) -> str:
+    """The figures for one stratum. The floors are asserted separately; this print is the record."""
 
-    for question in ("set", "claim"):
-        for kind in ("two", "three", None):
-            subset = [r for r in rows if r["question"] == question and (kind is None or r["kind"] == kind)]
-            skins = [r["skeleton"] for r in subset]
-            top_skeleton, top = Counter(skins).most_common(1)[0]
-            top_row = next(r for r in subset if r["skeleton"] == top_skeleton)
-            top_cell = (top_row["n"], top_row["op"], top_row["k"], top_row["ifs"])
-            zero_visits = Counter((r["n"], r["op"], r["k"]) for r in subset if r["ifs"] == 0)
-            if zero_visits:
-                busiest, busiest_n = zero_visits.most_common(1)[0]
-                zero_note = f"{sum(zero_visits.values())} max {busiest_n} at {busiest}"
-            else:
-                zero_note = "0"
-            within = {}
-            for row in subset:
-                within.setdefault(row["pack"], []).append(row["skeleton"])
-            extras = {pack: sum(n - 1 for n in Counter(skins_p).values()) for pack, skins_p in within.items()}
-            ineq = [r for r in subset if r["op"] != "="]
-            missed = sum(not r["trait_differs"] for r in subset)
-            print(f"{question} {kind or 'all'}: {len(set(skins))}/{len(skins)} top {top} cell {top_cell} "
-                  f"zero-if {zero_note} within {extras} "
-                  f"ifs {sum(r['ifs'] >= 1 for r in subset)}/{len(subset)} "
-                  f"ops {dict(Counter(r['op'] for r in subset))} n {dict(Counter(r['n'] for r in subset))} "
-                  f"boundary {sum(r['on_boundary'] for r in ineq)}/{len(ineq)} "
-                  f"trait_not_tested {missed} "
-                  f"refusals {sum(r['refusals'] for r in subset)}")
+    skins = [r["skeleton"] for r in rows]
+    top_skeleton, top = Counter(skins).most_common(1)[0]
+    top_row = next(r for r in rows if r["skeleton"] == top_skeleton)
+    top_cell = (top_row["n"], top_row["op"], top_row["k"], top_row["ifs"])
+    zero_visits = Counter((r["n"], r["op"], r["k"]) for r in rows if r["ifs"] == 0)
+    if zero_visits:
+        busiest, busiest_n = zero_visits.most_common(1)[0]
+        zero_note = f"{sum(zero_visits.values())} max {busiest_n} at {busiest}"
+    else:
+        zero_note = "0"
+    within: dict[str, list[str]] = {}
+    for row in rows:
+        within.setdefault(row["pack"], []).append(row["skeleton"])
+    extras = {pack: sum(n - 1 for n in Counter(skins_p).values()) for pack, skins_p in within.items()}
+    ineq = [r for r in rows if r["op"] != "="]
+    missed = sum(not r["trait_differs"] for r in rows)
+    line = (f"{question} {kind}: {len(set(skins))}/{len(skins)} top {top} cell {top_cell} "
+            f"zero-if {zero_note} within {extras} "
+            f"ifs {sum(r['ifs'] >= 1 for r in rows)}/{len(rows)} "
+            f"ops {dict(Counter(r['op'] for r in rows))} n {dict(Counter(r['n'] for r in rows))} "
+            f"boundary {sum(r['on_boundary'] for r in ineq)}/{len(ineq)} "
+            f"trait_not_tested {missed} "
+            f"refusals {sum(r['refusals'] for r in rows)}")
+    print(line, flush=True)
+    return line
 
 
 def _floors(rows: list[dict]) -> None:
@@ -295,11 +295,14 @@ def _zero_if_cap(rows: list[dict], cap: int) -> None:
     assert not over
 
 
-def test_locked_seeds_clear_the_variety_floors_in_every_stratum():
-    rows = _rows()
-    _report(rows)
-    for question in ("set", "claim"):
-        for kind in ("two", "three"):
-            subset = [r for r in rows if r["question"] == question and r["kind"] == kind]
-            _floors(subset)
-            _zero_if_cap(subset, zero_if_cap(kind, question))
+@pytest.mark.sweep
+@pytest.mark.parametrize(
+    ("question", "kind"),
+    [("set", "two"), ("set", "three"), ("claim", "two"), ("claim", "three")],
+    ids=["set-two", "set-three", "claim-two", "claim-three"],
+)
+def test_locked_seeds_clear_the_variety_floors_in_every_stratum(question, kind, request):
+    rows = _rows(question, kind)
+    request.node.user_properties.append(("stratum", _report(rows, question, kind)))
+    _floors(rows)
+    _zero_if_cap(rows, zero_if_cap(kind, question))

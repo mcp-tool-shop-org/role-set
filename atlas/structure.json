@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "6f49e5613d1939ca49fee22aa2292286753bef52d5f77a5451c4059f4a2693fa",
+          "hash": "c6e7c1816b8ca5de0615f44efb9b10db54fea45274de315c3084e0852fa63cb6",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "cc72c125e781d3c9c150f00caa5ad7557fa84ce93003ab6cd38ae76df7ccfbb8",
+          "hash": "d763c08431a1c0999e768e1beec7a04c517ad221497fb463430b54dbae30f9d6",
           "path": "CHANGELOG.md"
         },
         {
@@ -205,11 +205,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "7c517178426f8a0cb256a468a5ca128a31805707e2beefdd543e5cad4e6027ec",
+          "hash": "5c4b58b30889874a9aba2f82dbd25ad38277343f06a3091da86516216ac09a8a",
           "path": "pyproject.toml"
         },
         {
-          "hash": "e24e687745d5ff5cc092ba5f9403b93ae6dbc7ab92e352d59e27b0810269a439",
+          "hash": "7d33a476d15db4ca3061c3249534e4e6114e0f94d151c8362f1bfcfe1a427efe",
           "path": "uv.lock"
         },
         {
@@ -4494,6 +4494,7 @@
             "test_every_pack_and_seed_renders_a_proven_puzzle",
             "test_every_sense_block_has_only_the_sense_keys_known_forms_and_real_unsayable_pairs",
             "test_every_template_round_trips_through_check_text",
+            "test_one_fixed_seed_covers_each_cell_shape",
             "test_pack_names_are_whole_words_no_other_name_contains",
             "test_round2_t10_b01_is_refused_by_puzzle_check",
             "test_round2_t10_puzzles_have_no_size_reading_that_decides",
@@ -4504,12 +4505,21 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "4e3ad771554a9f749e8309045f3d9d4f15cefa5b6f06db29c6365f9b4199ec05",
+          "hash": "5c9ed005f08504ee554b403d35e925017278a6a081a70b2d2358bbb617517afa",
+          "importOrder": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/render.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py",
+            "src/role_set/generate/t10_variety.py"
+          ],
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/render.py",
             "src/role_set/generate/shortcuts.py",
+            "src/role_set/generate/t10_variety.py",
             "src/role_set/puzzle.py"
           ],
           "path": "tests/test_generate.py",
@@ -4969,7 +4979,7 @@
             "test_twenty_seeds_in_one_file_take_twenty_cells",
             "test_visits_prefer_cells_that_yield_more_skeletons"
           ],
-          "hash": "1eb7a33b5d6ce345209471e9c46059280b7caa451ddfd215a0a508e2e7e457ca",
+          "hash": "b744a06c75689a8dffde7fbb6683466fec4e4634e493917dd91f219533ee2f20",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -5099,6 +5109,14 @@
           "dir": "",
           "job": "test",
           "programs": [
+            "uv"
+          ],
+          "step": "Sweep"
+        },
+        {
+          "dir": "",
+          "job": "test",
+          "programs": [
             "npx"
           ],
           "step": "Atlas check"
@@ -5196,6 +5214,14 @@
           "job": "test",
           "runner": "pytest",
           "step": "Test"
+        },
+        {
+          "config": "pyproject.toml",
+          "coverage": true,
+          "files": 30,
+          "job": "test",
+          "runner": "pytest",
+          "step": "Sweep"
         }
       ],
       "triggers": [
@@ -5444,7 +5470,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "abe307d801c641da7cca827b907d00bb2e7fdb10",
+    "commit": "2b509bb6ba017183023845b5c23cde50165a79ff",
     "tracked": 128
   },
   "landings": [

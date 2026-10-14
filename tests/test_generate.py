@@ -282,10 +282,7 @@ def test_every_template_round_trips_through_check_text():
                         _round(["if", [p_form, _X, "state", "open"], [q_form, _Y, "state", "shut"]], line)
 
 
-@pytest.mark.parametrize("pack", sorted(PACKS))
-@pytest.mark.parametrize("seed", range(1, 21))
-@pytest.mark.parametrize("question", ["set", "claim"])
-def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
+def _proven(pack, seed, question):
     b = build_t10(pack, seed, question=question)
     text = _rendered(b, pack, seed)
     if question == "claim":
@@ -294,6 +291,42 @@ def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
         structure, reply = "underdetermined_with_explicit_set", "x\nAnswer: " + b.answer
     got = check_puzzle({"puzzle": text, "model": b.model, "answer": b.answer, "reply": reply}, structure)
     assert got.answer == b.answer
+
+
+def _cell_shape_cases():
+    """One fixed seed for each cell shape in seeds 1-20.
+
+    A shape is the value-count, the question, the entity count, the count word, and the if-target.
+    The seed is the earliest one in pack order. It is not chosen for speed.
+    """
+
+    from role_set.generate.t10_variety import cell_for
+
+    found = {}
+    for pack in sorted(PACKS):
+        kind = "two" if len(PACKS[pack]["values"]) == 2 else "three"
+        for question in ("set", "claim"):
+            for seed in range(1, 21):
+                cell = cell_for(pack, question, seed)
+                shape = (kind, question, cell["n"], cell["op"], cell["ifs"])
+                found.setdefault(shape, (pack, seed, question))
+    cases = []
+    for (kind, question, n, op, ifs), (pack, seed, question) in sorted(found.items()):
+        cases.append(pytest.param(pack, seed, question, id=f"{kind}-{question}-n{n}-{op}-ifs{ifs}"))
+    return cases
+
+
+@pytest.mark.sweep
+@pytest.mark.parametrize("pack", sorted(PACKS))
+@pytest.mark.parametrize("seed", range(1, 21))
+@pytest.mark.parametrize("question", ["set", "claim"])
+def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
+    _proven(pack, seed, question)
+
+
+@pytest.mark.parametrize("pack,seed,question", _cell_shape_cases())
+def test_one_fixed_seed_covers_each_cell_shape(pack, seed, question):
+    _proven(pack, seed, question)
 
 
 def test_a_receipt_carries_the_seed_readings_metrics_and_pins():
