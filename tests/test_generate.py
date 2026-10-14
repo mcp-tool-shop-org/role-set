@@ -322,7 +322,7 @@ def _cell_shape_cases():
 @pytest.mark.parametrize("seed", range(1, 21))
 @pytest.mark.parametrize("question", ["set", "claim"])
 def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
-    from role_set.generate.t10_variety import canonical_skeleton, cell_for, record_index
+    from role_set.generate.t10_variety import canonical_skeleton, cell_for, clues_if_shape, record_index
 
     b = _proven(pack, seed, question)
     expected = record_index()[(pack, question, seed)]
@@ -332,6 +332,7 @@ def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
         "seed": seed,
         "built": True,
         "cell": cell_for(pack, question, seed),
+        "if_shape": clues_if_shape([f["rule"] for f in b.model["facts"]]),
         "tries": b.tries,
         "canonical_skeleton": canonical_skeleton(b.model),
     }

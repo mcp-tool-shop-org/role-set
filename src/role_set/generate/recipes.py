@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from role_set.generate.build import (MAX_TRIES, BuildError, Built, Shape, _key, _mask, assignments, candidates, check_model,
                                      deletion_order, metrics, reduce, truth)
 from role_set.generate.shortcuts import REGISTRY, answer, differs, prove
-from role_set.generate.t10_variety import cell_for
+from role_set.generate.t10_variety import cell_for, clues_if_shape
 from role_set.puzzle import PuzzleError
 
 # Domain packs: plural, names, one attribute, values. Each name is a whole word no other name in the pack contains.
@@ -102,15 +102,28 @@ def _if_count(clues: list[list]) -> int:
     return sum(1 for c in clues if c[0] == "if")
 
 
-def _addition_order(others: list[list], rng: random.Random, if_target: int) -> list[list]:
-    """If clues are offered before unit clues, so the cell's if count can be in the set before the answer settles.
-    Reduction may still delete one; that attempt is refused and the seed tries again."""
+def _addition_order(others: list[list], rng: random.Random, if_target: int, if_shape: str | None = None) -> list[list]:
+    """If clues are offered before unit clues, so the cell's if count and if_shape can be in the set before the answer
+    settles. Reduction may still delete one; that attempt is refused and the seed tries again."""
 
     ifs = [c for c in others if c[0] == "if"]
     units = [c for c in others if c[0] != "if"]
     rng.shuffle(ifs)
     rng.shuffle(units)
-    return ifs + units if if_target else units
+    if not if_target or if_shape == "none":
+        return units
+    if if_shape is not None:
+        if if_target == 1:
+            ifs = [c for c in ifs if clues_if_shape([c]) == if_shape]
+        elif if_target == 2:
+            chosen_ifs: list[list] = []
+            for c1 in ifs:
+                partners = [c2 for c2 in ifs if c2 is not c1 and clues_if_shape([c1, c2]) == if_shape]
+                if partners:
+                    chosen_ifs = [c1, *partners]
+                    break
+            ifs = chosen_ifs
+    return ifs + units
 
 
 def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES,
@@ -118,11 +131,12 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and the trait clue's
     own size reading answers differently. `question` is "set" (which could be ...?) or "claim".
 
-    The cell fixes how many entities, the count word, k, and how many if clues the reduced puzzle must keep. `n` stays in
-    the signature for callers that pass it; the cell is what assigns the entity count. Pass `cell` only to probe one
-    cell. A claim cell is "exactly": "at least" and "at most" keep a claim's verdict. The hidden solution is drawn from
-    the assignments where that count clue is true, and not from the ones where the true count is exactly k: an at-least
-    or at-most puzzle whose count is always exactly k would teach the misreading T10 exists to train out."""
+    The cell fixes how many entities, the count word, k, and how many if clues (plus if_shape on claims) the reduced
+    puzzle must keep. `n` stays in the signature for callers that pass it; the cell is what assigns the entity count.
+    Pass `cell` only to probe one cell. A claim cell is "exactly": "at least" and "at most" keep a claim's verdict. The
+    hidden solution is drawn from the assignments where that count clue is true, and not from the ones where the true
+    count is exactly k: an at-least or at-most puzzle whose count is always exactly k would teach the misreading T10
+    exists to train out."""
 
     if question not in T10_QUESTIONS:
         raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
@@ -133,6 +147,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     last = "no attempt"
     attr = pack["attribute"]
     op, k, if_target, size = spec["op"], spec["k"], spec["ifs"], spec["n"]
+    if_shape = spec.get("if_shape")
     if question == "claim" and op != "=":
         raise BuildError(f"T10 ({pack_name}): a claim tests exactly; at least and at most do not change its verdict")
     for attempt in range(1, tries + 1):
@@ -149,7 +164,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
         hidden = rng.choice(satisfying)  # the count is true, and a larger or smaller count may be too
         true_pool = [c for c in pool if bits[_key(c)] >> hidden & 1]
         # The trait is the only count clue. A second one can pass the shortcut check without the trait's own reading.
-        others = _addition_order([c for c in true_pool if c is not trait and c[0] != "count"], rng, if_target)
+        others = _addition_order([c for c in true_pool if c is not trait and c[0] != "count"], rng, if_target, if_shape)
         if shape.structure == "underdetermined_with_explicit_set":
             kept = _open_set(shape, sols, bits, trait, others, rng, if_target)
             if kept is None:
@@ -188,6 +203,9 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
             continue
         if _if_count(kept) != if_target:
             last = "reduction did not keep the cell's if count"
+            continue
+        if if_shape is not None and clues_if_shape(kept) != if_shape:
+            last = "reduction did not keep the cell's if shape"
             continue
         built = _finish(shape, kept, trait, hidden, seed, attempt)
         if isinstance(built, str):

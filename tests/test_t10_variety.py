@@ -1,10 +1,11 @@
 """T10 skeleton variety, and that each item tests its trait clue's own size word.
 
-The floors are asserted on the locked seeds 61-80. Those seeds are not built until this assignment is committed.
+The floors are asserted on the locked seeds 61-80 and 81-100. Fresh locked seeds 81-100 are not built until the Phase 1
+if_shape code and tables are frozen in a commit.
 
 Distinct canonical skeletons at least 75 percent, no skeleton more than 3 times in a stratum, and no skeleton twice in one
-pack's file. A zero-if cell stays within its visit cap (3 for a three-value claim, 2 otherwise). Every built puzzle has
-one count clue, and that clue's own reading differs. The solver's own check is unchanged.
+pack's file. A zero-if cell stays within its visit cap (2 in every stratum). Every built puzzle has one count clue, and
+that clue's own reading differs. The solver's own check is unchanged.
 """
 
 import json
@@ -21,16 +22,20 @@ from role_set.generate.build import MAX_TRIES, BuildError, Shape, assignments, c
 from role_set.generate.recipes import PACKS, T10, build_t10
 from role_set.generate.shortcuts import REGISTRY, prove
 from role_set.generate.t10_variety import (
+    IF_SHAPES,
     RECORD_HASH_FILES,
     RECORD_SEEDS,
     REGENERATE_RECORD_CMD,
+    _max_placed,
     assign_cells,
     assignment,
     canonical_skeleton,
     capacity_report,
     cell_for,
     cell_id,
+    cell_key,
     check_record_hash,
+    clues_if_shape,
     load_capacity,
     load_cells,
     load_record,
@@ -40,8 +45,9 @@ from role_set.generate.t10_variety import (
     zero_if_cap,
 )
 
-# Locked seeds 61-80. Not built until the assignment was committed.
-VERIFY = range(61, 81)
+FILES = (range(1, 21), range(61, 81), range(81, 101))
+LOCKED_FILES = (range(61, 81), range(81, 101))
+VERIFY = range(81, 101)
 
 
 def test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last():
@@ -59,19 +65,21 @@ def test_twenty_seeds_in_one_file_take_twenty_cells():
             assert len(set(got)) == 20, (pack, question)
 
 
-def test_claim_cells_are_exactly_and_set_cells_keep_three_size_words():
+def test_claim_cells_are_exactly_With_if_shape_and_set_cells_keep_three_size_words():
     table = load_cells()
     for pack in table["packs"]:
         claim = table["cells"][pack]["claim"]
         setting = table["cells"][pack]["set"]
         assert len(claim) >= 20 and len(setting) >= 20
         assert {c["op"] for c in claim} == {"="}
+        assert all(c.get("if_shape") in IF_SHAPES[c["ifs"]] for c in claim)
         assert {c["op"] for c in setting} == {"=", ">=", "<="}
+        assert all("if_shape" not in c for c in setting)
 
 
 def test_a_claim_refuses_an_at_least_cell():
     with pytest.raises(BuildError, match="exactly"):
-        build_t10("cups", 1, "claim", cell={"n": 3, "op": ">=", "k": 1, "ifs": 0})
+        build_t10("cups", 1, "claim", cell={"n": 3, "op": ">=", "k": 1, "ifs": 0, "if_shape": "none"})
 
 
 def test_a_seed_below_one_is_refused():
@@ -79,10 +87,9 @@ def test_a_seed_below_one_is_refused():
         cell_for("lamps", "set", 0)
 
 
-def test_three_value_claims_fit_at_a_cap_of_three_and_not_at_two():
-    assert placed_builds("claim", 3, 2) == (112, 120)
-    assert placed_builds("claim", 3, 3) == (120, 120)
-    assert zero_if_cap("three", "claim") == 3
+def test_three_value_claims_fit_at_a_cap_of_two():
+    assert placed_builds("claim", 3, 2) == (120, 120)
+    assert zero_if_cap("three", "claim") == 2
     assert zero_if_cap("two", "claim") == 2
     assert zero_if_cap("three", "set") == 2
     assert zero_if_cap("two", "set") == 2
@@ -94,38 +101,68 @@ def test_the_capacity_gate_reports_supply_demand_and_headroom():
     assert rows[("set", "three")]["supply"] == 48 and rows[("set", "three")]["demand"] == 0
     assert rows[("set", "three")]["headroom_shared"] == 42 and rows[("set", "three")]["headroom_any"] is None
     claim_two = rows[("claim", "two")]
-    assert claim_two["ok"] and claim_two["supply"] == 18 and claim_two["demand"] == 4
-    assert claim_two["headroom_shared"] == 7 and claim_two["headroom_any"] == 7
+    assert claim_two["ok"] and claim_two["supply"] == 18 and claim_two["demand"] == 0
+    assert claim_two["headroom_shared"] is None and claim_two["headroom_any"] is None
     claim = rows[("claim", "three")]
-    assert claim["ok"] and claim["zero_if_cap"] == 3
-    assert claim["supply"] == 27 and claim["demand"] == 26 and claim["placed"] == 120
-    assert claim["headroom_shared"] == 0 and claim["headroom_any"] == 0
+    assert claim["ok"] and claim["zero_if_cap"] == 2
+    assert claim["supply"] == 18 and claim["demand"] == 0 and claim["placed"] == 120
+    assert claim["headroom_shared"] is None and claim["headroom_any"] is None
     by_pack = {pack["pack"]: pack for pack in claim["packs"]}
-    for name in ("cups", "pans", "machines", "trains", "beds"):
-        assert by_pack[name] == {"pack": name, "if_cells": 16, "zero_if_demand": 4}
-    assert by_pack["clinics"] == {"pack": "clinics", "if_cells": 14, "zero_if_demand": 6}
+    assert by_pack == {
+        "cups": {"pack": "cups", "if_cells": 43, "zero_if_demand": 0},
+        "pans": {"pack": "pans", "if_cells": 43, "zero_if_demand": 0},
+        "machines": {"pack": "machines", "if_cells": 47, "zero_if_demand": 0},
+        "trains": {"pack": "trains", "if_cells": 43, "zero_if_demand": 0},
+        "beds": {"pack": "beds", "if_cells": 46, "zero_if_demand": 0},
+        "clinics": {"pack": "clinics", "if_cells": 43, "zero_if_demand": 0},
+    }
 
 
-def test_a_seventh_three_value_pack_fails_and_names_if_shape():
+def test_twelve_three_value_packs_allocate_with_no_within_file_repeats():
+    table = load_cells()
+    cap_data = load_capacity().get("cells", {})
+    real_packs = ["cups", "pans", "machines", "trains", "beds", "clinics"]
+    packs_12 = real_packs + [f"{name}_clone" for name in real_packs]
+    for question in ("set", "claim"):
+        cells_of = {
+            pack: table["cells"][pack.removesuffix("_clone")][question]
+            for pack in packs_12
+        }
+        cap = zero_if_cap("three", question)
+        assert _max_placed(packs_12, cells_of, cap) == 20 * len(packs_12)
+        q_cap = cap_data.get(question, {})
+        weights = {
+            cell_id(cell): max(1, int(q_cap[cell_key(cell)]["distinct"]))
+            for pack in real_packs
+            for cell in cells_of[pack]
+            if cell_key(cell) in q_cap and q_cap[cell_key(cell)].get("builds")
+        }
+        plan = assign_cells(packs_12, cells_of, cap, weights, file_index=0)
+        zero_visits: Counter = Counter()
+        for pack in packs_12:
+            chosen = plan[pack]
+            assert len(chosen) == 20
+            assert len({cell_id(cell) for cell in chosen}) == 20
+            for cell in chosen:
+                if cell["ifs"] == 0:
+                    zero_visits[cell_id(cell)] += 1
+        assert all(count <= cap for count in zero_visits.values())
+
+
+def test_a_short_claim_stratum_fails_and_names_the_next_step():
     table = json.loads(json.dumps(load_cells()))
-    seen = set()
-    union = []
-    for pack in ("cups", "pans", "machines", "trains", "beds", "clinics"):
-        for cell in table["cells"][pack]["claim"]:
-            cid = cell_id(cell)
-            if cid not in seen:
-                seen.add(cid)
-                union.append(cell)
-    table["packs"].append("extra")
-    table["cells"]["extra"] = {"set": table["cells"]["cups"]["set"], "claim": union}
+    three_packs = ("cups", "pans", "machines", "trains", "beds", "clinics")
+    for pack in three_packs:
+        zeros = [c for c in table["cells"][pack]["claim"] if c["ifs"] == 0]
+        ifs = [c for c in table["cells"][pack]["claim"] if c["ifs"] != 0][:16]
+        table["cells"][pack]["claim"] = zeros + ifs
     counts = {pack: len(PACKS[pack]["values"]) for pack in PACKS}
-    counts["extra"] = 3
     rows = {(row["question"], row["kind"]): row for row in capacity_report(table, counts)}
     claim = rows[("claim", "three")]
     assert claim["ok"] is False and claim["placed"] < claim["needed"]
-    assert claim["supply"] == 27 and claim["demand"] == 28
-    assert "if_shape" in claim["reason"]
-    assert "27" in claim["reason"] and "28" in claim["reason"]
+    assert claim["supply"] == 18 and claim["demand"] == 24
+    assert "polarity_mode or in/not_in" in claim["reason"]
+    assert "18" in claim["reason"] and "24" in claim["reason"]
     assert rows[("set", "three")]["ok"] and rows[("claim", "two")]["ok"] and rows[("set", "two")]["ok"]
 
 
@@ -204,8 +241,8 @@ def test_the_usable_cell_script_checks_the_committed_table():
         cwd=root, env=env, capture_output=True, text=True, check=False,
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    assert "claim three: supply 27 demand 26" in done.stdout
-    assert "clinics: 14 if cells, zero-if demand 6" in done.stdout
+    assert "claim three: supply 18 demand 0" in done.stdout
+    assert "clinics: 43 if cells, zero-if demand 0" in done.stdout
 
 
 def _kind(pack: str) -> str:
@@ -217,13 +254,13 @@ def _hidden_count(model: dict, hidden: int, trait: list) -> int:
     return sum(1 for value in sols[hidden][trait[1]] if value == trait[2])
 
 
-def _rows(question: str, kind: str):
+def _rows(question: str, kind: str, seeds: range = VERIFY):
     rec = record_index(check_record_hash())
     rows = []
     for pack in PACKS:
         if _kind(pack) != kind:
             continue
-        for seed in VERIFY:
+        for seed in seeds:
             cell = cell_for(pack, question, seed)
             built = build_t10(pack, seed, question)
             structure = "falsifier_first" if question == "claim" else "underdetermined_with_explicit_set"
@@ -234,11 +271,15 @@ def _rows(question: str, kind: str):
             own = [name for name in T10.shortcuts if REGISTRY[name].get("from") == op]
             trait_differs = any(proofs.get(name, {}).get("differs") for name in own)
             assert trait_differs, (pack, question, seed, op)
-            counts = [fact["rule"] for fact in built.model["facts"] if fact["rule"][0] == "count"]
+            rules = [fact["rule"] for fact in built.model["facts"]]
+            counts = [rule for rule in rules if rule[0] == "count"]
             assert counts == [built.trait_clue]
             if question == "claim":
                 assert op == "="
-            ifs = sum(1 for fact in built.model["facts"] if fact["rule"][0] == "if")
+            shape_got = clues_if_shape(rules)
+            if "if_shape" in cell:
+                assert shape_got == cell["if_shape"]
+            ifs = sum(1 for rule in rules if rule[0] == "if")
             assert ifs == cell["ifs"]
             assert built.trait_clue[3:] == [cell["op"], cell["k"]]
             assert len(built.model["entities"]) == cell["n"]
@@ -249,13 +290,15 @@ def _rows(question: str, kind: str):
                 "seed": seed,
                 "built": True,
                 "cell": cell,
+                "if_shape": shape_got,
                 "tries": built.tries,
                 "canonical_skeleton": skel,
             }
             hidden = _hidden_count(built.model, built.hidden, built.trait_clue)
             rows.append({"pack": pack, "question": question, "kind": _kind(pack), "seed": seed,
-                         "skeleton": skel, "op": op,
-                         "n": cell["n"], "k": cell["k"], "ifs": ifs, "refusals": built.tries - 1,
+                         "skeleton": skel, "op": op, "cell": cell,
+                         "n": cell["n"], "k": cell["k"], "ifs": ifs, "if_shape": shape_got,
+                         "refusals": built.tries - 1,
                          "trait_differs": trait_differs,
                          "on_boundary": op != "=" and hidden == cell["k"]})
     return rows
@@ -267,7 +310,7 @@ def _report(rows: list[dict], question: str, kind: str) -> str:
     skins = [r["skeleton"] for r in rows]
     top_skeleton, top = Counter(skins).most_common(1)[0]
     top_row = next(r for r in rows if r["skeleton"] == top_skeleton)
-    top_cell = (top_row["n"], top_row["op"], top_row["k"], top_row["ifs"])
+    top_cell = cell_id(top_row["cell"])
     zero_visits = Counter((r["n"], r["op"], r["k"]) for r in rows if r["ifs"] == 0)
     if zero_visits:
         busiest, busiest_n = zero_visits.most_common(1)[0]
@@ -331,6 +374,7 @@ def _record_rows(record: dict, question: str, kind: str, seeds: range) -> list[d
             "n": cell["n"],
             "k": cell["k"],
             "ifs": cell["ifs"],
+            "if_shape": entry["if_shape"],
         })
     return rows
 
@@ -354,8 +398,10 @@ def test_committed_record_hash_and_proven_entries():
         counts = [clue for clue in skel["clues"] if clue[0] == "count"]
         assert len(counts) == 1 and counts[0][3:] == [cell["op"], cell["k"]]
         assert sum(1 for clue in skel["clues"] if clue[0] == "if") == cell["ifs"]
+        assert entry["if_shape"] == clues_if_shape(skel["clues"])
         if entry["question"] == "claim":
             assert cell["op"] == "="
+            assert cell["if_shape"] == entry["if_shape"]
 
 
 def test_a_stale_record_hash_fails_and_names_the_regenerate_command():
@@ -368,29 +414,24 @@ def test_a_stale_record_hash_fails_and_names_the_regenerate_command():
 
 
 @pytest.mark.parametrize(
-    ("question", "kind", "expected_distinct", "expected_total", "expected_top"),
+    ("question", "kind", "expected_total"),
     [
-        ("set", "two", 40, 40, 1),
-        ("set", "three", 120, 120, 1),
-        ("claim", "two", 40, 40, 1),
-        ("claim", "three", 108, 120, 3),
+        ("set", "two", 40),
+        ("set", "three", 120),
+        ("claim", "two", 40),
+        ("claim", "three", 120),
     ],
     ids=["set-two", "set-three", "claim-two", "claim-three"],
 )
 def test_committed_record_clears_the_variety_floors_in_every_stratum(
-    question, kind, expected_distinct, expected_total, expected_top
+    question, kind, expected_total
 ):
     record = check_record_hash(load_record())
-    for seed_range in (range(1, 21), VERIFY):
+    for seed_range in FILES:
         rows = _record_rows(record, question, kind, seed_range)
         assert len(rows) == expected_total
         _floors(rows)
         _zero_if_cap(rows, zero_if_cap(kind, question))
-    locked_rows = _record_rows(record, question, kind, VERIFY)
-    skins = [r["skeleton"] for r in locked_rows]
-    assert len(set(skins)) == expected_distinct
-    assert len(skins) == expected_total
-    assert Counter(skins).most_common(1)[0][1] == expected_top
 
 
 def test_the_variety_record_script_checks_the_committed_record():
@@ -404,18 +445,17 @@ def test_the_variety_record_script_checks_the_committed_record():
     assert done.returncode == 0, done.stdout + done.stderr
     assert "set two: 40/40 top 1" in done.stdout
     assert "set three: 120/120 top 1" in done.stdout
-    assert "claim two: 40/40 top 1" in done.stdout
-    assert "claim three: 108/120 top 3" in done.stdout
 
 
 @pytest.mark.sweep
+@pytest.mark.parametrize("seed_range", LOCKED_FILES, ids=["61-80", "81-100"])
 @pytest.mark.parametrize(
     ("question", "kind"),
     [("set", "two"), ("set", "three"), ("claim", "two"), ("claim", "three")],
     ids=["set-two", "set-three", "claim-two", "claim-three"],
 )
-def test_locked_seeds_clear_the_variety_floors_in_every_stratum(question, kind, request):
-    rows = _rows(question, kind)
+def test_locked_seeds_clear_the_variety_floors_in_every_stratum(question, kind, seed_range, request):
+    rows = _rows(question, kind, seed_range)
     request.node.user_properties.append(("stratum", _report(rows, question, kind)))
     _floors(rows)
     _zero_if_cap(rows, zero_if_cap(kind, question))

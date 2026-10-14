@@ -21,7 +21,7 @@ from pathlib import Path
 
 from role_set.generate.build import MAX_TRIES, BuildError
 from role_set.generate.recipes import PACKS, build_t10
-from role_set.generate.t10_variety import capacity_report
+from role_set.generate.t10_variety import IF_SHAPES, capacity_report
 
 PROBE_SEED = 0
 # A later seed has MAX_TRIES attempts of its own. Keep a cell only when the probe needed a tenth of that.
@@ -30,13 +30,19 @@ OPS = ("=", ">=", "<=")
 OUT = Path(__file__).resolve().parents[1] / "src" / "role_set" / "generate" / "t10_cells.json"
 
 
-def every_cell() -> list[dict]:
+def every_cell(question: str = "set") -> list[dict]:
     cells = []
     for n in (3, 4, 5):
         for op in OPS:
             for k in range(1, n):
                 for ifs in (0, 1, 2):
-                    cells.append({"n": n, "op": op, "k": k, "ifs": ifs})
+                    if question == "claim":
+                        for if_shape in IF_SHAPES[ifs]:
+                            if if_shape == "disjoint" and n < 4:
+                                continue
+                            cells.append({"n": n, "op": op, "k": k, "ifs": ifs, "if_shape": if_shape})
+                    else:
+                        cells.append({"n": n, "op": op, "k": k, "ifs": ifs})
     return cells
 
 
@@ -85,15 +91,19 @@ def check_committed() -> None:
 
 
 def main() -> None:
-    jobs = [(pack, question, cell) for pack in PACKS for question in ("set", "claim") for cell in every_cell()]
+    jobs = [(pack, question, cell) for pack in PACKS for question in ("set", "claim") for cell in every_cell(question)]
     found: dict[str, dict[str, list[dict]]] = {pack: {"set": [], "claim": []} for pack in PACKS}
     with ProcessPoolExecutor() as pool:
         for done, (pack, question, cell, ok, detail) in enumerate(pool.map(probe, jobs), 1):
             if ok:
                 found[pack][question].append(cell)
             mark = f"ok tries={detail}" if ok else "no " + str(detail).split("last refusal: ")[-1][:90]
-            print(f"{done}/{len(jobs)} {pack} {question} n={cell['n']} {cell['op']} k={cell['k']} ifs={cell['ifs']} {mark}",
-                  flush=True)
+            shape_note = f" shape={cell['if_shape']}" if "if_shape" in cell else ""
+            print(
+                f"{done}/{len(jobs)} {pack} {question} n={cell['n']} {cell['op']} k={cell['k']} "
+                f"ifs={cell['ifs']}{shape_note} {mark}",
+                flush=True,
+            )
     payload = {"probe_seed": PROBE_SEED, "tries": RELIABLE_TRIES, "packs": list(PACKS), "cells": found}
     OUT.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     if _short(found) or not gate(payload):

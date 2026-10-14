@@ -1,16 +1,17 @@
 """T10's structural cells, shared across packs of one value-count.
 
-A cell is (how many entities, which count word, k, how many if clues). The usable cells are the ones that build, recorded
-in t10_cells.json by scripts/t10_usable_cells.py. Set cells keep all three count words. Claim cells are exactly only.
+A set cell is (how many entities, which count word, k, how many if clues). A claim cell adds if_shape: none for 0 ifs,
+consequent polarity (pos or neg) for 1 if, and entity graph shape (chain, shared_consequent, shared_antecedent, or
+disjoint) for 2 ifs. The usable cells are the ones that build, recorded in t10_cells.json by scripts/t10_usable_cells.py.
+Set cells keep all three count words. Claim cells are exactly only.
 
 Packs with the same number of values draw on one skeleton space, so one assignment covers the whole stratum for a file
 of 20 seeds. A pack's 20 seeds take 20 different cells. A cell with no if clue is used only when a pack has fewer than
-20 if-cells, and at most twice in a file, except a three-value claim, where the cap is 3. The other visits spread over
-if-cells, more of them on cells that produced more distinct skeletons on the tuning seeds (t10_capacity.json). The next
-file rotates that assignment.
+20 if-cells, and at most twice in a file in every stratum. The other visits spread over if-cells, more of them on cells
+that produced more distinct skeletons on the tuning seeds (t10_capacity.json). The next file rotates that assignment.
 
 The capacity check reads the table. It does not run inside a build, and a finished puzzle is never discarded because its
-skeleton has been seen. The builder still retries inside one seed when the reduced puzzle loses its if count.
+skeleton has been seen. The builder still retries inside one seed when the reduced puzzle loses its if count or if shape.
 """
 
 from __future__ import annotations
@@ -31,7 +32,7 @@ _REC: dict | None = None
 _PLANS: dict = {}
 # One file is 20 seeds. The next file of the same packs is the next 20.
 FILE = 20
-RECORD_SEEDS = tuple(range(1, 21)) + tuple(range(61, 81))
+RECORD_SEEDS = tuple(range(1, 21)) + tuple(range(61, 81)) + tuple(range(81, 101))
 REGENERATE_RECORD_CMD = "uv run python scripts/t10_variety_record.py"
 RECORD_HASH_FILES = (
     "src/role_set/assemble.py",
@@ -48,7 +49,40 @@ RECORD_HASH_FILES = (
     "src/role_set/generate/t10_cells.json",
     "src/role_set/generate/t10_capacity.json",
 )
+IF_SHAPES: dict[int, tuple[str, ...]] = {
+    0: ("none",),
+    1: ("pos", "neg"),
+    2: ("chain", "shared_consequent", "shared_antecedent", "disjoint"),
+}
 _INF = 10**18
+
+
+def clues_if_shape(clues: list[list]) -> str:
+    """The if-shape of a clue list (raw rules or canonical skeleton clues).
+
+    For 1 if clue, 'touches' and 'not' (whether the if mentions the claimed entity) are merged into consequent polarity
+    ('pos' vs 'neg') because canonical_skeleton records facts only, not the claim, so touches vs not never differs in
+    skeleton and cannot be decided from the skeleton alone."""
+
+    ifs = [c for c in clues if c[0] == "if"]
+    if not ifs:
+        return "none"
+    if len(ifs) == 1:
+        return "pos" if ifs[0][2][0] == "is" else "neg"
+    if len(ifs) == 2:
+        p1, q1 = ifs[0][1][1], ifs[0][2][1]
+        p2, q2 = ifs[1][1][1], ifs[1][2][1]
+        ents = {p1, q1, p2, q2}
+        if len(ents) == 4:
+            return "disjoint"
+        if len(ents) == 3:
+            if q1 == p2 or q2 == p1:
+                return "chain"
+            if q1 == q2:
+                return "shared_consequent"
+            if p1 == p2:
+                return "shared_antecedent"
+    return "other"
 
 
 def load_cells() -> dict:
@@ -72,7 +106,7 @@ def record_sha256(root: Path | None = None, files: list[str] | tuple[str, ...] =
 
 
 def load_record() -> dict:
-    """The committed build record for seeds 1-20 and locked seeds 61-80 across every pack and question."""
+    """The committed build record for seeds 1-20 and locked seeds 61-80 and 81-100 across every pack and question."""
 
     global _REC
     if _REC is None:
@@ -117,19 +151,19 @@ def load_capacity() -> dict:
 
 
 def cell_id(cell: dict) -> tuple:
+    if "if_shape" in cell:
+        return (cell["n"], cell["op"], cell["k"], cell["ifs"], cell["if_shape"])
     return (cell["n"], cell["op"], cell["k"], cell["ifs"])
 
 
 def cell_key(cell: dict) -> str:
-    n, op, k, ifs = cell_id(cell)
-    return f"{n}|{op}|{k}|{ifs}"
+    return "|".join(str(part) for part in cell_id(cell))
 
 
 def zero_if_cap(kind: str, question: str) -> int:
-    """Visits one zero-if cell may take in one file. Three-value claims are the exception R&D set on 2026-10-14."""
+    """Visits one zero-if cell may take in one file."""
 
-    if kind == "three" and question == "claim":
-        return 3
+    _ = (kind, question)
     return 2
 
 
@@ -459,7 +493,8 @@ def _headroom(packs: list[str], cells_of: dict[str, list[dict]], zero_cap: int, 
 def capacity_report(table: dict | None = None, value_counts: dict[str, int] | None = None) -> list[dict]:
     """Supply, demand and headroom for each stratum. `ok` is false when the file cannot be placed.
 
-    The next step named on a failure is if_shape for claim cells. This checks the table. It is not called from a build."""
+    The next step named on a failure is polarity_mode or in/not_in for claim cells. This checks the table. It is not
+    called from a build."""
 
     table = load_cells() if table is None else table
     counts = _value_counts() if value_counts is None else value_counts
@@ -514,7 +549,7 @@ def capacity_report(table: dict | None = None, value_counts: dict[str, int] | No
                 row["reason"] = (
                     f"{question} {kind}: placed {placed} of {needed}. "
                     f"Zero-if supply is {supply} ({zero_cells} cells × {cap}), demand is {demand}. "
-                    f"Next step is if_shape for claim cells."
+                    f"Next step is polarity_mode or in/not_in for claim cells."
                 )
             rows.append(row)
     return rows
