@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "c0a49c79e3e17e4f69e8c1cb6c766c35013a240eaa77b8ec7d4fcca6986b1dd3",
+          "hash": "9681424eb504abf454cad4d510dccfa8ce5b6403ac768a0dc00d753162242a94",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "b032337407d2b25de7cb101156c79b4fd51c3ead7d00c87185d9f82331e479d4",
+          "hash": "cc72c125e781d3c9c150f00caa5ad7557fa84ce93003ab6cd38ae76df7ccfbb8",
           "path": "CHANGELOG.md"
         },
         {
@@ -241,7 +241,28 @@
         },
         {
           "exports": [
+            "main",
+            "one"
+          ],
+          "failurePaths": [
+            {
+              "in": "one",
+              "kind": "except",
+              "line": 39
+            }
+          ],
+          "hash": "53287ae555ff3725736fa5eb271c5cf21ec42a7e8635b9667cf8d9f2f7f3ae3d",
+          "importsFiles": [
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/t10_variety.py"
+          ],
+          "path": "scripts/t10_cell_capacity.py"
+        },
+        {
+          "exports": [
+            "check_committed",
             "every_cell",
+            "gate",
             "main",
             "probe"
           ],
@@ -249,18 +270,24 @@
             {
               "in": "probe",
               "kind": "except",
-              "line": 43
+              "line": 47
+            },
+            {
+              "in": "check_committed",
+              "kind": "raise",
+              "line": 84
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 67
+              "line": 100
             }
           ],
-          "hash": "b385e8743ad50232913f4b4695654c4e9482f066c98416b8c09169026812217a",
+          "hash": "68469416f8feaa3fe0035829561c8354b0c09d21ac38623aee2868b64a88e232",
           "importsFiles": [
             "src/role_set/generate/build.py",
-            "src/role_set/generate/recipes.py"
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/t10_variety.py"
           ],
           "path": "scripts/t10_usable_cells.py"
         },
@@ -1532,45 +1559,45 @@
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 103
+              "line": 128
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 112
+              "line": 137
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 172
+              "line": 197
             },
             {
               "in": "_trait_reading_differs",
               "kind": "except",
-              "line": 200
+              "line": 225
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 213
+              "line": 238
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 360
+              "line": 385
             },
             {
               "in": "build_t12",
               "kind": "except",
-              "line": 388
+              "line": 413
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 397
+              "line": 422
             }
           ],
-          "hash": "bd52e37af16717d2388bf4b0348c1935daab1a9e3957679220e8fd58ced4fc36",
+          "hash": "8a7f60dbed9e59a3a17dc08d8fadbeb151398dbaca9daf0c52135b4ac5348063",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1590,15 +1617,15 @@
             {
               "in": "sentence",
               "kind": "raise",
-              "line": 65
+              "line": 70
             },
             {
               "in": "question_line",
               "kind": "raise",
-              "line": 112
+              "line": 117
             }
           ],
-          "hash": "504e5aca57a2291e5d9e2836077c2760f787a367fcb4f02552bc198badc2191d",
+          "hash": "f2293faf911251d36792a853aac6204a776dd3f865dd183c4b8556bdc202f06f",
           "path": "src/role_set/generate/render.py"
         },
         {
@@ -1680,23 +1707,48 @@
           "path": "src/role_set/generate/shortcuts.py"
         },
         {
-          "hash": "f9615f9fd038bcf5614f6b3b7ebdf674bc8b562cc46093849c41bfb2ab3ac9f9",
+          "hash": "bc03ba39eb458b9477f7fc67472a40c4c19056c74db0ddc1a34c9f7b32a91f1e",
+          "path": "src/role_set/generate/t10_capacity.json"
+        },
+        {
+          "hash": "653476eca238f9a2e696fa84c671c8afb5a3d606892f70b44a97284d6418f799",
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
           "exports": [
+            "assign_cells",
+            "assignment",
             "canonical_skeleton",
+            "capacity_report",
             "cell_for",
-            "load_cells"
+            "cell_id",
+            "cell_key",
+            "load_capacity",
+            "load_cells",
+            "placed_builds",
+            "zero_if_cap"
           ],
           "failurePaths": [
             {
+              "in": "assign_cells",
+              "kind": "raise",
+              "line": 218
+            },
+            {
+              "in": "assign_cells",
+              "kind": "raise",
+              "line": 288
+            },
+            {
               "in": "cell_for",
               "kind": "raise",
-              "line": 84
+              "line": 334
             }
           ],
-          "hash": "1529e4576ec6dff2bd0b100db4a6405cc9ca627ddd444f1319fee8fc0f684833",
+          "hash": "ea4a7af27ec3c88b8898e279bda95e5c375815e49a9147a8953da695a893e87c",
+          "importsFiles": [
+            "src/role_set/generate/recipes.py"
+          ],
           "path": "src/role_set/generate/t10_variety.py"
         },
         {
@@ -4115,7 +4167,7 @@
       "origin": "mixed",
       "outsidePlaces": [
         {
-          "reads": 24,
+          "reads": 26,
           "where": [
             "caller"
           ],
@@ -4196,7 +4248,7 @@
           "writes": 0
         }
       ],
-      "outsideReads": 37,
+      "outsideReads": 39,
       "outsideWrites": 12,
       "role": "code",
       "testRunners": [
@@ -4438,6 +4490,11 @@
             "test_a_receipt_carries_the_seed_readings_metrics_and_pins",
             "test_a_t10_claim_is_proven",
             "test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips",
+            "test_every_form_has_three_templates_and_four_packs_beyond_the_baseline",
+            "test_every_pack_and_seed_renders_a_proven_puzzle",
+            "test_every_sense_block_has_only_the_sense_keys_known_forms_and_real_unsayable_pairs",
+            "test_every_template_round_trips_through_check_text",
+            "test_pack_names_are_whole_words_no_other_name_contains",
             "test_round2_t10_b01_is_refused_by_puzzle_check",
             "test_round2_t10_puzzles_have_no_size_reading_that_decides",
             "test_round5_t10_b01_carries_a_deciding_size_reading",
@@ -4447,7 +4504,7 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "650b2d665d77ba3e99b0f097ec7871c9f8aa6827eab8b0a9dbfe849ba1f8ca63",
+          "hash": "4e3ad771554a9f749e8309045f3d9d4f15cefa5b6f06db29c6365f9b4199ec05",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -4896,17 +4953,31 @@
         {
           "exports": [
             "test_a_claim_refuses_an_at_least_cell",
+            "test_a_seed_below_one_is_refused",
+            "test_a_seventh_three_value_pack_fails_and_names_if_shape",
+            "test_an_impossible_file_is_refused_before_a_build",
+            "test_canonical_skeleton_renames_entities_and_values",
+            "test_capacity_weights_come_from_the_tuning_seeds",
             "test_claim_cells_are_exactly_and_set_cells_keep_three_size_words",
             "test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last",
             "test_locked_seeds_clear_the_variety_floors_in_every_stratum",
-            "test_twenty_seeds_in_one_file_take_twenty_cells"
+            "test_one_file_stays_inside_the_zero_if_cap",
+            "test_the_capacity_gate_reports_supply_demand_and_headroom",
+            "test_the_next_file_rotates_the_assignment",
+            "test_the_usable_cell_script_checks_the_committed_table",
+            "test_three_value_claims_fit_at_a_cap_of_three_and_not_at_two",
+            "test_twenty_seeds_in_one_file_take_twenty_cells",
+            "test_visits_prefer_cells_that_yield_more_skeletons"
           ],
-          "hash": "ffbd986cb6faf3ea3221565c2115dd88cc86e8a9ec8603c2b8f63eecbfb1fa3d",
+          "hash": "1eb7a33b5d6ce345209471e9c46059280b7caa451ddfd215a0a508e2e7e457ca",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/shortcuts.py",
             "src/role_set/generate/t10_variety.py"
+          ],
+          "names": [
+            "scripts/t10_usable_cells.py"
           ],
           "path": "tests/test_t10_variety.py",
           "testFramework": "pytest"
@@ -5373,8 +5444,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
-    "tracked": 126
+    "commit": "abe307d801c641da7cca827b907d00bb2e7fdb10",
+    "tracked": 128
   },
   "landings": [
     {
@@ -5551,11 +5622,33 @@
           "confidence": "ast"
         }
       ],
+      "target": "src/role_set/generate/t10_capacity.json",
+      "writers": [
+        {
+          "by": "scripts/t10_cell_capacity.py",
+          "confidence": "ast"
+        }
+      ]
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/t10_usable_cells.py",
+          "call": "read_text",
+          "confidence": "ast"
+        },
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "read_text",
+          "confidence": "ast"
+        }
+      ],
       "target": "src/role_set/generate/t10_cells.json",
       "writers": [
         {
           "by": "scripts/t10_usable_cells.py",
-          "confidence": "ast"
+          "confidence": "ast",
+          "stamps": true
         }
       ]
     },

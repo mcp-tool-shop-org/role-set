@@ -23,7 +23,7 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
+      "added": 2,
       "changed": 9,
       "moved": 0,
       "parts": 5,
@@ -31,16 +31,40 @@
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "src/role_set/generate/t10_capacity.json is now written by scripts/t10_cell_capacity.py.",
+        "subjects": [
+          "src/role_set/generate/t10_capacity.json",
+          "scripts/t10_cell_capacity.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "src/role_set/generate/t10_capacity.json is now read by src/role_set/generate/t10_variety.py.",
+        "subjects": [
+          "src/role_set/generate/t10_capacity.json",
+          "src/role_set/generate/t10_variety.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "src/role_set/generate/t10_cells.json is now also read by scripts/t10_usable_cells.py.",
+        "subjects": [
+          "src/role_set/generate/t10_cells.json",
+          "scripts/t10_usable_cells.py"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-14; 9 files changed content.",
+        "sentence": "2 files added and 9 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "bed8cde86b749130461ce7e961002e66e4cb3c6e",
-      "generatedAt": "2026-10-14T04:42:51.991Z"
+      "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
+      "generatedAt": "2026-10-14T05:46:44.847Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -87,17 +111,32 @@
       ],
       "relation": "inside",
       "shared": 11
+    },
+    {
+      "a": "src/role_set/generate/recipes.py",
+      "b": "tests/test_generate.py",
+      "either": 10,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 5
     }
   ],
   "changesTogetherNote": [
     "6 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 7 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
+  "commit": "abe307d801c641da7cca827b907d00bb2e7fdb10",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (65 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (66 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -200,16 +239,23 @@
   "engine": "1.24.0",
   "generated": [
     {
+      "place": "src/role_set/generate/t10_capacity.json",
+      "writers": [
+        "scripts/t10_cell_capacity.py"
+      ]
+    },
+    {
+      "block": true,
       "place": "src/role_set/generate/t10_cells.json",
       "writers": [
         "scripts/t10_usable_cells.py"
       ]
     }
   ],
-  "generatedAt": "2026-10-14T05:46:44.847Z",
+  "generatedAt": "2026-10-14T09:04:16.889Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
-    "5 writes and 24 reads go to a path their caller passes, not to this repository.",
+    "5 writes and 26 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -257,5 +303,5 @@
     }
   ],
   "untestedNote": [],
-  "written": 1
+  "written": 2
 }
