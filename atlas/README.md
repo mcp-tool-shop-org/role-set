@@ -1,16 +1,20 @@
 # role-set: how it works
 
-Mapped at 2026-10-13 from commit 28b672e by Atlas 1.24.0.
+Mapped at 2026-10-14 from commit bed8cde by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (62 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (65 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-13 (24c9309)
+## What changed since 2026-10-13 (28b672e)
 
-Nothing structural changed since 2026-10-13; 2 files added and 5 changed content.
+- scripts now imports src.
+- src/role_set/generate/t10_cells.json is now written by scripts/t10_usable_cells.py.
+- src/role_set/generate/t10_cells.json is now read by src/role_set/generate/t10_variety.py.
+- src was authored and is now mixed.
+- 4 files added and 3 changed content, across 3 parts.
 
 ## What comes in
 
@@ -21,7 +25,7 @@ Nothing structural changed since 2026-10-13; 2 files added and 5 changed content
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (32 files).
+2. That reaches src (33 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -36,9 +40,7 @@ CI writes nothing this map can see.
 
 ## What breaks what
 
-- **src** is imported only from tests, by 1 part (tests), and sits on the path of 2 doors.
-
-scripts holds only PowerShell and shell files, which this map does not read, so what uses it cannot be seen.
+- **src** is imported by 1 part (scripts), and by 1 more only from tests; it sits on the path of 2 doors.
 
 ## What tends to change together
 
@@ -54,13 +56,11 @@ Window: 180 days; a pair counts from 3 shared commits, since 6 source files reac
 
 ## What no test touches
 
-Every code part this map reads is imported by at least one test.
-
-scripts holds only PowerShell and shell files, which this map does not read, so whether a test touches it cannot be seen.
+- **scripts** is imported by no test.
 
 ## Written but never read
 
-No place this map can see is written, so none goes unread.
+Every written place has a reader.
 
 ## Helpers that look duplicated
 
@@ -68,7 +68,7 @@ No two parts export a helper that looks alike.
 
 ## Generated, never hand-edited
 
-Nothing in this repository writes to a tracked place this map can see.
+- **src/role_set/generate/t10_cells.json** is written by scripts/t10_usable_cells.py.
 
 ## Hand-authored
 
