@@ -35,8 +35,8 @@ from role_set.generate.t10_variety import (
 from role_set.puzzle import check_puzzle
 
 OUT = Path(__file__).resolve().parents[1] / "src" / "role_set" / "generate" / "t10_record.json"
-FILES = (range(1, 21), range(61, 81), range(81, 101))
-LOCKED = set(range(81, 101))
+FILES = (range(1, 21), range(61, 81), range(81, 101), range(101, 121))
+LOCKED = set(range(101, 121))
 
 
 def _kind(pack: str) -> str:

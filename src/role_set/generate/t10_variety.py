@@ -32,7 +32,12 @@ _REC: dict | None = None
 _PLANS: dict = {}
 # One file is 20 seeds. The next file of the same packs is the next 20.
 FILE = 20
-RECORD_SEEDS = tuple(range(1, 21)) + tuple(range(61, 81)) + tuple(range(81, 101))
+RECORD_SEEDS = (
+    tuple(range(1, 21))
+    + tuple(range(61, 81))
+    + tuple(range(81, 101))
+    + tuple(range(101, 121))
+)
 REGENERATE_RECORD_CMD = "uv run python scripts/t10_variety_record.py"
 RECORD_HASH_FILES = (
     "src/role_set/assemble.py",
@@ -415,14 +420,15 @@ def assignment(question: str, nvalues: int, file_index: int) -> dict[str, list[d
         counts = _value_counts()
         packs = _packs_of(table, nvalues, counts)
         cells_of = {pack: table["cells"][pack][question] for pack in packs}
-        data = load_capacity().get("cells", {}).get(question, {})
+        kind = "three" if nvalues == 3 else "two"
+        q_data = load_capacity().get("cells", {}).get(question, {})
+        data = q_data.get(kind, q_data)
         weights = {}
         for pack in packs:
             for cell in cells_of[pack]:
                 found = data.get(cell_key(cell))
                 if found and found.get("builds"):
                     weights[cell_id(cell)] = max(1, int(found["distinct"]))
-        kind = "three" if nvalues == 3 else "two"
         _PLANS[key] = assign_cells(packs, cells_of, zero_if_cap(kind, question), weights, file_index)
     return _PLANS[key]
 

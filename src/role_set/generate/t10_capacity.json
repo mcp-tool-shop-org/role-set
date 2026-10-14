@@ -16,702 +16,1345 @@
   ],
   "cells": {
     "set": {
-      "3|<=|1|1": {
-        "distinct": 6,
-        "builds": 15,
-        "failed": 0
-      },
-      "3|<=|1|2": {
-        "distinct": 11,
-        "builds": 12,
-        "failed": 0
-      },
-      "3|<=|2|0": {
-        "distinct": 4,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|<=|2|1": {
-        "distinct": 7,
-        "builds": 9,
-        "failed": 0
-      },
-      "3|<=|2|2": {
-        "distinct": 14,
-        "builds": 14,
-        "failed": 1
-      },
-      "3|=|1|0": {
-        "distinct": 4,
-        "builds": 18,
-        "failed": 0
-      },
-      "3|=|1|1": {
-        "distinct": 18,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|1|2": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "3|=|2|1": {
-        "distinct": 11,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|2|2": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "3|>=|1|0": {
-        "distinct": 4,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|>=|1|1": {
-        "distinct": 7,
-        "builds": 9,
-        "failed": 0
-      },
-      "3|>=|1|2": {
-        "distinct": 15,
-        "builds": 15,
-        "failed": 0
-      },
-      "3|>=|2|1": {
-        "distinct": 5,
-        "builds": 15,
-        "failed": 0
-      },
-      "3|>=|2|2": {
-        "distinct": 15,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|<=|1|0": {
-        "distinct": 4,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|<=|1|1": {
-        "distinct": 10,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|<=|1|2": {
-        "distinct": 13,
-        "builds": 15,
-        "failed": 0
-      },
-      "4|<=|2|0": {
-        "distinct": 12,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|<=|2|1": {
-        "distinct": 20,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|<=|2|2": {
-        "distinct": 12,
-        "builds": 12,
-        "failed": 0
-      },
-      "4|<=|3|0": {
-        "distinct": 6,
-        "builds": 12,
-        "failed": 0
-      },
-      "4|<=|3|1": {
-        "distinct": 8,
-        "builds": 9,
-        "failed": 0
-      },
-      "4|<=|3|2": {
-        "distinct": 6,
-        "builds": 6,
-        "failed": 0
-      },
-      "4|=|1|0": {
-        "distinct": 14,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|1|1": {
-        "distinct": 20,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|2": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|0": {
-        "distinct": 13,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|1": {
-        "distinct": 19,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|2": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|0": {
-        "distinct": 3,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|3|1": {
-        "distinct": 12,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|2": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|>=|1|0": {
-        "distinct": 9,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|>=|1|1": {
-        "distinct": 13,
-        "builds": 15,
-        "failed": 0
-      },
-      "4|>=|1|2": {
-        "distinct": 6,
-        "builds": 6,
-        "failed": 0
-      },
-      "4|>=|2|0": {
-        "distinct": 9,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|>=|2|1": {
-        "distinct": 15,
-        "builds": 21,
-        "failed": 0
-      },
-      "4|>=|2|2": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|>=|3|0": {
-        "distinct": 4,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|>=|3|1": {
-        "distinct": 9,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|>=|3|2": {
-        "distinct": 19,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|<=|1|0": {
-        "distinct": 7,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|<=|1|1": {
-        "distinct": 16,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|<=|1|2": {
-        "distinct": 15,
-        "builds": 15,
-        "failed": 0
-      },
-      "5|<=|2|0": {
-        "distinct": 18,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|<=|2|1": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|<=|2|2": {
-        "distinct": 12,
-        "builds": 12,
-        "failed": 0
-      },
-      "5|<=|3|0": {
-        "distinct": 14,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|<=|3|1": {
-        "distinct": 12,
-        "builds": 12,
-        "failed": 0
-      },
-      "5|<=|3|2": {
-        "distinct": 6,
-        "builds": 6,
-        "failed": 0
-      },
-      "5|<=|4|0": {
-        "distinct": 6,
-        "builds": 8,
-        "failed": 1
-      },
-      "5|<=|4|1": {
-        "distinct": 3,
-        "builds": 3,
-        "failed": 0
-      },
-      "5|<=|4|2": {
-        "distinct": 3,
-        "builds": 3,
-        "failed": 0
-      },
-      "5|=|1|0": {
-        "distinct": 11,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|1": {
-        "distinct": 22,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|2": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|2|0": {
-        "distinct": 16,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|2|1": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|2|2": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|0": {
-        "distinct": 17,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|1": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|2": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|0": {
-        "distinct": 8,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|1": {
-        "distinct": 12,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|2": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|>=|1|0": {
-        "distinct": 10,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|>=|1|1": {
-        "distinct": 8,
-        "builds": 9,
-        "failed": 0
-      },
-      "5|>=|1|2": {
-        "distinct": 3,
-        "builds": 3,
-        "failed": 0
-      },
-      "5|>=|2|0": {
-        "distinct": 14,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|>=|2|1": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|>=|2|2": {
-        "distinct": 6,
-        "builds": 6,
-        "failed": 0
-      },
-      "5|>=|3|0": {
-        "distinct": 14,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|>=|3|1": {
-        "distinct": 19,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|>=|3|2": {
-        "distinct": 9,
-        "builds": 9,
-        "failed": 0
-      },
-      "5|>=|4|0": {
-        "distinct": 9,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|>=|4|1": {
-        "distinct": 15,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|>=|4|2": {
-        "distinct": 13,
-        "builds": 15,
-        "failed": 0
+      "two": {
+        "3|<=|1|1": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|<=|1|2": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|<=|2|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|<=|2|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|<=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|>=|1|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|>=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|>=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|>=|2|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|>=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|1|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|2|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|3|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|3|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|3|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|2": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|1|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|1|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|2|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|3|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|3|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|>=|3|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|1|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|2|0": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|3|0": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|3|1": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|3|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|4|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|4|1": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "5|<=|4|2": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "5|=|1|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|0": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|1": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|0": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|1": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|1|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|1|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|1|2": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "5|>=|2|0": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|2|1": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|3|0": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|3|1": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|3|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|4|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|4|1": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|>=|4|2": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        }
+      },
+      "three": {
+        "3|<=|1|1": {
+          "distinct": 3,
+          "builds": 9,
+          "failed": 0
+        },
+        "3|<=|1|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|<=|2|0": {
+          "distinct": 2,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|<=|2|1": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "3|<=|2|2": {
+          "distinct": 8,
+          "builds": 8,
+          "failed": 1
+        },
+        "3|=|1|0": {
+          "distinct": 4,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|1|1": {
+          "distinct": 14,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|1|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|2|1": {
+          "distinct": 6,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|2|2": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|>=|1|0": {
+          "distinct": 2,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|>=|1|1": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "3|>=|1|2": {
+          "distinct": 9,
+          "builds": 9,
+          "failed": 0
+        },
+        "3|>=|2|1": {
+          "distinct": 1,
+          "builds": 9,
+          "failed": 0
+        },
+        "3|>=|2|2": {
+          "distinct": 9,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|<=|1|0": {
+          "distinct": 2,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|<=|1|1": {
+          "distinct": 6,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|<=|1|2": {
+          "distinct": 7,
+          "builds": 9,
+          "failed": 0
+        },
+        "4|<=|2|0": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|<=|2|1": {
+          "distinct": 15,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|<=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|3|0": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|<=|3|1": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "4|=|1|0": {
+          "distinct": 14,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|1": {
+          "distinct": 16,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|2": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|0": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|1": {
+          "distinct": 14,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|0": {
+          "distinct": 3,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|1": {
+          "distinct": 7,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|>=|1|0": {
+          "distinct": 5,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|>=|1|1": {
+          "distinct": 8,
+          "builds": 9,
+          "failed": 0
+        },
+        "4|>=|2|0": {
+          "distinct": 5,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|>=|2|1": {
+          "distinct": 10,
+          "builds": 15,
+          "failed": 0
+        },
+        "4|>=|2|2": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|>=|3|0": {
+          "distinct": 2,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|>=|3|1": {
+          "distinct": 5,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|>=|3|2": {
+          "distinct": 13,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|<=|1|0": {
+          "distinct": 4,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|<=|1|1": {
+          "distinct": 12,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|<=|1|2": {
+          "distinct": 9,
+          "builds": 9,
+          "failed": 0
+        },
+        "5|<=|2|0": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|<=|2|1": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|<=|2|2": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|3|0": {
+          "distinct": 8,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|<=|3|1": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|<=|4|0": {
+          "distinct": 2,
+          "builds": 2,
+          "failed": 1
+        },
+        "5|=|1|0": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|1": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|2": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|2|0": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|2|1": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|2|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|0": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|1": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|0": {
+          "distinct": 6,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|1": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|2": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|>=|1|0": {
+          "distinct": 7,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|>=|1|1": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "5|>=|2|0": {
+          "distinct": 10,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|>=|2|1": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|>=|3|0": {
+          "distinct": 8,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|>=|3|1": {
+          "distinct": 13,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|>=|3|2": {
+          "distinct": 3,
+          "builds": 3,
+          "failed": 0
+        },
+        "5|>=|4|0": {
+          "distinct": 6,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|>=|4|1": {
+          "distinct": 11,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|>=|4|2": {
+          "distinct": 8,
+          "builds": 9,
+          "failed": 0
+        }
       }
     },
     "claim": {
-      "3|=|1|0|none": {
-        "distinct": 12,
-        "builds": 24,
-        "failed": 0
+      "two": {
+        "3|=|1|0|none": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|1|neg": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|1|pos": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|2|chain": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|2|shared_antecedent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|1|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|0|none": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|1|neg": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|1|pos": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|2|shared_antecedent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "3|=|2|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|0|none": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|1|neg": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|1|pos": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|2|disjoint": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|2|shared_antecedent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|1|2|shared_consequent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|0|none": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|1|neg": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|1|pos": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|2|chain": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|2|shared_antecedent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|2|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|0|none": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|1|neg": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|1|pos": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|2|shared_antecedent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "4|=|3|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|0|none": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|1|neg": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|1|pos": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|2|shared_antecedent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|1|2|shared_consequent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|0|none": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|1|neg": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|1|pos": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|2|shared_antecedent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|2|shared_consequent": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|0|none": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|1|neg": {
+          "distinct": 5,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|1|pos": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|2|shared_antecedent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|3|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|0|none": {
+          "distinct": 2,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|1|neg": {
+          "distinct": 3,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|1|pos": {
+          "distinct": 4,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2|chain": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2|shared_antecedent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        }
       },
-      "3|=|1|1|neg": {
-        "distinct": 18,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|1|1|pos": {
-        "distinct": 21,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|1|2|chain": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "3|=|1|2|shared_antecedent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "3|=|1|2|shared_consequent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "3|=|2|0|none": {
-        "distinct": 9,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|2|1|neg": {
-        "distinct": 15,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|2|1|pos": {
-        "distinct": 11,
-        "builds": 24,
-        "failed": 0
-      },
-      "3|=|2|2|chain": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "3|=|2|2|shared_antecedent": {
-        "distinct": 19,
-        "builds": 21,
-        "failed": 0
-      },
-      "3|=|2|2|shared_consequent": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|1|0|none": {
-        "distinct": 16,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|1|neg": {
-        "distinct": 21,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|1|pos": {
-        "distinct": 21,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|2|chain": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|2|disjoint": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|1|2|shared_antecedent": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|1|2|shared_consequent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "4|=|2|0|none": {
-        "distinct": 16,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|1|neg": {
-        "distinct": 18,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|1|pos": {
-        "distinct": 22,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|2|2|chain": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|2|2|disjoint": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "4|=|2|2|shared_antecedent": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|2|2|shared_consequent": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|3|0|none": {
-        "distinct": 8,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|1|neg": {
-        "distinct": 14,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|1|pos": {
-        "distinct": 15,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|2|chain": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "4|=|3|2|disjoint": {
-        "distinct": 15,
-        "builds": 15,
-        "failed": 0
-      },
-      "4|=|3|2|shared_antecedent": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "4|=|3|2|shared_consequent": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|0|none": {
-        "distinct": 15,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|1|neg": {
-        "distinct": 21,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|1|pos": {
-        "distinct": 22,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|1|2|chain": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|=|1|2|disjoint": {
-        "distinct": 17,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|=|1|2|shared_antecedent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|1|2|shared_consequent": {
-        "distinct": 11,
-        "builds": 12,
-        "failed": 0
-      },
-      "5|=|2|0|none": {
-        "distinct": 18,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|2|1|neg": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|2|1|pos": {
-        "distinct": 23,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|2|2|chain": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|2|2|disjoint": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|=|2|2|shared_antecedent": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|2|2|shared_consequent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|3|0|none": {
-        "distinct": 16,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|1|neg": {
-        "distinct": 20,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|1|pos": {
-        "distinct": 20,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|3|2|chain": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|3|2|disjoint": {
-        "distinct": 18,
-        "builds": 18,
-        "failed": 0
-      },
-      "5|=|3|2|shared_antecedent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|3|2|shared_consequent": {
-        "distinct": 20,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|4|0|none": {
-        "distinct": 5,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|1|neg": {
-        "distinct": 11,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|1|pos": {
-        "distinct": 11,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|2|chain": {
-        "distinct": 21,
-        "builds": 21,
-        "failed": 0
-      },
-      "5|=|4|2|disjoint": {
-        "distinct": 12,
-        "builds": 12,
-        "failed": 0
-      },
-      "5|=|4|2|shared_antecedent": {
-        "distinct": 24,
-        "builds": 24,
-        "failed": 0
-      },
-      "5|=|4|2|shared_consequent": {
-        "distinct": 19,
-        "builds": 21,
-        "failed": 0
+      "three": {
+        "3|=|1|0|none": {
+          "distinct": 8,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|1|1|neg": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|1|1|pos": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|1|2|chain": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "3|=|1|2|shared_antecedent": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "3|=|1|2|shared_consequent": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "3|=|2|0|none": {
+          "distinct": 5,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|2|1|neg": {
+          "distinct": 10,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|2|1|pos": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "3|=|2|2|chain": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "3|=|2|2|shared_antecedent": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "3|=|2|2|shared_consequent": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|1|0|none": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|1|neg": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|1|pos": {
+          "distinct": 16,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|2|chain": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|2|disjoint": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|1|2|shared_antecedent": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|1|2|shared_consequent": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "4|=|2|0|none": {
+          "distinct": 10,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|1|neg": {
+          "distinct": 12,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|1|pos": {
+          "distinct": 16,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|2|2|chain": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|2|2|disjoint": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "4|=|2|2|shared_antecedent": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|2|2|shared_consequent": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|3|0|none": {
+          "distinct": 5,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|1|neg": {
+          "distinct": 9,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|1|pos": {
+          "distinct": 10,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|2|chain": {
+          "distinct": 11,
+          "builds": 12,
+          "failed": 0
+        },
+        "4|=|3|2|disjoint": {
+          "distinct": 9,
+          "builds": 9,
+          "failed": 0
+        },
+        "4|=|3|2|shared_antecedent": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "4|=|3|2|shared_consequent": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|0|none": {
+          "distinct": 11,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|1|neg": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|1|pos": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|1|2|chain": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|=|1|2|disjoint": {
+          "distinct": 11,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|=|1|2|shared_antecedent": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|1|2|shared_consequent": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|2|0|none": {
+          "distinct": 13,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|2|1|neg": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|2|1|pos": {
+          "distinct": 17,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|2|2|chain": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|2|2|disjoint": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|=|2|2|shared_antecedent": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|2|2|shared_consequent": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|3|0|none": {
+          "distinct": 11,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|1|neg": {
+          "distinct": 15,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|1|pos": {
+          "distinct": 14,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|3|2|chain": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|3|2|disjoint": {
+          "distinct": 12,
+          "builds": 12,
+          "failed": 0
+        },
+        "5|=|3|2|shared_antecedent": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|3|2|shared_consequent": {
+          "distinct": 14,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|4|0|none": {
+          "distinct": 3,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|1|neg": {
+          "distinct": 8,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|1|pos": {
+          "distinct": 7,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|2|chain": {
+          "distinct": 15,
+          "builds": 15,
+          "failed": 0
+        },
+        "5|=|4|2|disjoint": {
+          "distinct": 6,
+          "builds": 6,
+          "failed": 0
+        },
+        "5|=|4|2|shared_antecedent": {
+          "distinct": 18,
+          "builds": 18,
+          "failed": 0
+        },
+        "5|=|4|2|shared_consequent": {
+          "distinct": 13,
+          "builds": 15,
+          "failed": 0
+        }
       }
     }
   }

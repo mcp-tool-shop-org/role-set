@@ -45,9 +45,9 @@ from role_set.generate.t10_variety import (
     zero_if_cap,
 )
 
-FILES = (range(1, 21), range(61, 81), range(81, 101))
-LOCKED_FILES = (range(61, 81), range(81, 101))
-VERIFY = range(81, 101)
+FILES = (range(1, 21), range(61, 81), range(81, 101), range(101, 121))
+LOCKED_FILES = (range(61, 81), range(81, 101), range(101, 121))
+VERIFY = range(101, 121)
 
 
 def test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last():
@@ -130,7 +130,7 @@ def test_twelve_three_value_packs_allocate_with_no_within_file_repeats():
         }
         cap = zero_if_cap("three", question)
         assert _max_placed(packs_12, cells_of, cap) == 20 * len(packs_12)
-        q_cap = cap_data.get(question, {})
+        q_cap = cap_data.get(question, {}).get("three", {})
         weights = {
             cell_id(cell): max(1, int(q_cap[cell_key(cell)]["distinct"]))
             for pack in real_packs
@@ -211,10 +211,11 @@ def test_capacity_weights_come_from_the_tuning_seeds():
     assert data["seeds"] == [1, 21, 41]
     assert set(data["packs"]) == set(PACKS)
     for question in ("set", "claim"):
-        assert data["cells"][question]
-        for row in data["cells"][question].values():
-            assert row["distinct"] <= row["builds"]
-            assert row["builds"] + row["failed"] > 0
+        for kind in ("two", "three"):
+            assert data["cells"][question][kind]
+            for row in data["cells"][question][kind].values():
+                assert row["distinct"] <= row["builds"]
+                assert row["builds"] + row["failed"] > 0
 
 
 def test_canonical_skeleton_renames_entities_and_values():
@@ -413,6 +414,33 @@ def test_a_stale_record_hash_fails_and_names_the_regenerate_command():
         check_record_hash(bad_files)
 
 
+def test_the_record_hash_list_is_closed_under_role_set_imports():
+    import ast
+
+    root = Path(__file__).resolve().parents[1]
+    hashed = set(RECORD_HASH_FILES)
+    for rel in RECORD_HASH_FILES:
+        if not rel.endswith(".py"):
+            continue
+        tree = ast.parse((root / rel).read_text(encoding="utf-8"), filename=rel)
+        for node in ast.walk(tree):
+            mods = []
+            if isinstance(node, ast.Import):
+                mods = [alias.name for alias in node.names if alias.name.startswith("role_set")]
+            elif isinstance(node, ast.ImportFrom) and node.module and node.module.startswith("role_set"):
+                mods = [node.module]
+                for alias in node.names:
+                    cand = f"{node.module}.{alias.name}"
+                    if (root / "src" / (*cand.split("."),)).with_suffix(".py").exists():
+                        mods.append(cand)
+            for mod in mods:
+                parts = mod.split(".")
+                py_rel = "/".join(["src", *parts]) + ".py"
+                init_rel = "/".join(["src", *parts, "__init__.py"])
+                target = py_rel if (root / py_rel).exists() else init_rel
+                assert target in hashed, f"{rel} imports {mod} ({target}), which is missing from RECORD_HASH_FILES"
+
+
 @pytest.mark.parametrize(
     ("question", "kind", "expected_total"),
     [
@@ -448,7 +476,7 @@ def test_the_variety_record_script_checks_the_committed_record():
 
 
 @pytest.mark.sweep
-@pytest.mark.parametrize("seed_range", LOCKED_FILES, ids=["61-80", "81-100"])
+@pytest.mark.parametrize("seed_range", LOCKED_FILES, ids=["61-80", "81-100", "101-120"])
 @pytest.mark.parametrize(
     ("question", "kind"),
     [("set", "two"), ("set", "three"), ("claim", "two"), ("claim", "three")],
