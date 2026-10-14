@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-14 from commit 5717d53 by Atlas 1.24.0.
+Mapped at 2026-10-14 from commit 787ccf8 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,11 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-14 (4fab9b5)
+## What changed since 2026-10-14 (5717d53)
 
-- src/role_set/assemble.py is now read by src/role_set/generate/t10_variety.py.
-- src/role_set/plan.py is now read by src/role_set/generate/t10_variety.py.
-- 3 files changed content, across 2 parts.
+Nothing structural changed since 2026-10-14; 4 files added and 1 changed content.
 
 ## What comes in
 
@@ -50,7 +48,7 @@ CI writes nothing this map can see.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 7 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 

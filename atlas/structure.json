@@ -102,6 +102,22 @@
       "externals": 0,
       "files": [
         {
+          "hash": "2a88ad43775060212ea3248c7c47077b2781bb8d8b2a14d447b08ca6546b7142",
+          "path": "roles/advocate/README.md"
+        },
+        {
+          "hash": "eecad47d6cf8fb8783eb1347f7190060753aba14c6aa7ec1bf2bcc9328932591",
+          "path": "roles/advocate/behaviours.jsonl"
+        },
+        {
+          "hash": "953173685e610f18f558935eddb9f1aacb36f0fa01ab9776a3cbbb140c823bf0",
+          "path": "roles/advocate/exemplar-exclude.json"
+        },
+        {
+          "hash": "a0338d1df3d0e746177d75ad223f08fca71c4c6b6de20515c4ebf56cb7054c59",
+          "path": "roles/advocate/sources.json"
+        },
+        {
           "hash": "7f235c64c1b7b3422ff321a04e065b9dfaa7484775d752eb4eaee10c74a02b2e",
           "path": "roles/verifier/README.md"
         },
@@ -149,7 +165,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "ee911f170cc30518da1cac55f1d70704f588ecde8c8fcbca524402359a4b7c2f",
+          "hash": "12cb8310924e70ce21d4d64d1b5856b107bf189ab3da6e1c70784a3bd4a0ad29",
           "path": "CHANGELOG.md"
         },
         {
@@ -5588,8 +5604,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "5717d53208b14b5d9c9914021080a80133f866c5",
-    "tracked": 131
+    "commit": "787ccf8b114a4e5617378adce32488d1eae84b69",
+    "tracked": 135
   },
   "landings": [
     {
