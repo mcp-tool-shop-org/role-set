@@ -1,6 +1,8 @@
 {
   "regenerate": "uv run python scripts/t10_variety_record.py",
   "files": [
+    "src/role_set/assemble.py",
+    "src/role_set/plan.py",
     "src/role_set/puzzle.py",
     "src/role_set/puzzle_check.py",
     "src/role_set/span.py",
@@ -13,7 +15,7 @@
     "src/role_set/generate/t10_cells.json",
     "src/role_set/generate/t10_capacity.json"
   ],
-  "sha256": "6d7f9e62463c746dd1b8656edac89d24436660363887e43f338608ef38961b93",
+  "sha256": "19d9997a6f49d393b90614242883cb3a651033e5eeddc204149c76e39553eace",
   "seeds": [
     1,
     2,

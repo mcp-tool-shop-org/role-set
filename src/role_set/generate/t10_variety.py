@@ -34,6 +34,8 @@ FILE = 20
 RECORD_SEEDS = tuple(range(1, 21)) + tuple(range(61, 81))
 REGENERATE_RECORD_CMD = "uv run python scripts/t10_variety_record.py"
 RECORD_HASH_FILES = (
+    "src/role_set/assemble.py",
+    "src/role_set/plan.py",
     "src/role_set/puzzle.py",
     "src/role_set/puzzle_check.py",
     "src/role_set/span.py",

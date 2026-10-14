@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "b05ff3801f50a4d53734c29d9c6d04d62f6609a89bdb28bac148a541b5a7a720",
+          "hash": "26231c5006a668b653903baff5c851975068426cd0f5be746f04ab2afbd3a7d5",
           "path": "docs/generator-design.md"
         },
         {
@@ -1758,7 +1758,7 @@
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
-          "hash": "7918c4c8df69b5ea3fe54da4f008c214819bd24c00b5cb12a230d8c9af560175",
+          "hash": "059c5146b1ad02809f35a15b0e0bde23f6f470bba13a0e57df44d162472629b3",
           "path": "src/role_set/generate/t10_record.json"
         },
         {
@@ -1783,30 +1783,30 @@
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 86
+              "line": 88
             },
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 91
+              "line": 93
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 282
+              "line": 284
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 352
+              "line": 354
             },
             {
               "in": "cell_for",
               "kind": "raise",
-              "line": 398
+              "line": 400
             }
           ],
-          "hash": "0dfb3d37171e2fc479cd4dc07dfaa4d527b6abfdfb8dae5a51aef1d1f003f5b9",
+          "hash": "22b0ce7b4acb350fdddaf1710e2d78e988e6b6a18d53a9de54394366e63a7bac",
           "importsFiles": [
             "src/role_set/generate/recipes.py"
           ],
@@ -5588,7 +5588,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "4fab9b549ef0af267a6d6e4cee475c3309124981",
+    "commit": "5717d53208b14b5d9c9914021080a80133f866c5",
     "tracked": 131
   },
   "landings": [
@@ -5766,6 +5766,17 @@
           "confidence": "ast"
         }
       ],
+      "target": "src/role_set/assemble.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
       "target": "src/role_set/generate/__init__.py",
       "writers": []
     },
@@ -5886,6 +5897,17 @@
         }
       ],
       "target": "src/role_set/generate/t10_variety.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/plan.py",
       "writers": []
     },
     {

@@ -23,51 +23,38 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 3,
-      "changed": 6,
+      "added": 0,
+      "changed": 3,
       "moved": 0,
-      "parts": 6,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "src/role_set/generate/t10_record.json is now written by scripts/t10_variety_record.py.",
+        "sentence": "src/role_set/assemble.py is now read by src/role_set/generate/t10_variety.py.",
         "subjects": [
-          "src/role_set/generate/t10_record.json",
-          "scripts/t10_variety_record.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/__init__.py is now read by src/role_set/generate/t10_variety.py.",
-        "subjects": [
-          "src/role_set/generate/__init__.py",
+          "src/role_set/assemble.py",
           "src/role_set/generate/t10_variety.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "src/role_set/generate/build.py is now read by src/role_set/generate/t10_variety.py.",
+        "sentence": "src/role_set/plan.py is now read by src/role_set/generate/t10_variety.py.",
         "subjects": [
-          "src/role_set/generate/build.py",
+          "src/role_set/plan.py",
           "src/role_set/generate/t10_variety.py"
         ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 8 more new writers and readers of places.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "3 files added and 6 changed content, across 6 parts.",
+        "sentence": "3 files changed content, across 2 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "2b509bb6ba017183023845b5c23cde50165a79ff",
-      "generatedAt": "2026-10-14T10:39:55.143Z"
+      "commit": "4fab9b549ef0af267a6d6e4cee475c3309124981",
+      "generatedAt": "2026-10-14T18:52:26.982Z"
     },
     "unchanged": false
   },
@@ -124,7 +111,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 7 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "4fab9b549ef0af267a6d6e4cee475c3309124981",
+  "commit": "5717d53208b14b5d9c9914021080a80133f866c5",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -248,7 +235,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T18:52:26.982Z",
+  "generatedAt": "2026-10-14T19:13:52.286Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 27 reads go to a path their caller passes, not to this repository.",
