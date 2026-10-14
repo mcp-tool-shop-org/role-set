@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "71f5fd85226558ae20f6fe6ec2cea24f83071bff8bdfa0ec494a58d62e9c524a",
+          "hash": "bcf3fde7d2099e6734cb1afb8eb51d91f62b79bae11772a0b291d88d58899aee",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "26231c5006a668b653903baff5c851975068426cd0f5be746f04ab2afbd3a7d5",
+          "hash": "4607fe44fc072597bf2e153fcf329065839785bc1a7315d0b61bc068feb30ae9",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "ee911f170cc30518da1cac55f1d70704f588ecde8c8fcbca524402359a4b7c2f",
+          "hash": "d2d3f9c34e9db6004bb207d63853e0616c600f0ca26babd493315f3bc9e0db46",
           "path": "CHANGELOG.md"
         },
         {
@@ -248,10 +248,10 @@
             {
               "in": "one",
               "kind": "except",
-              "line": 39
+              "line": 44
             }
           ],
-          "hash": "53287ae555ff3725736fa5eb271c5cf21ec42a7e8635b9667cf8d9f2f7f3ae3d",
+          "hash": "ca4122a6861a66c1d5f56bd06c360dd362cad5fcb36c0b9cd5a66e0b557bcd1c",
           "importsFiles": [
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/t10_variety.py"
@@ -270,20 +270,20 @@
             {
               "in": "probe",
               "kind": "except",
-              "line": 47
+              "line": 53
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 84
+              "line": 90
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 100
+              "line": 110
             }
           ],
-          "hash": "68469416f8feaa3fe0035829561c8354b0c09d21ac38623aee2868b64a88e232",
+          "hash": "350927dd2773c18484ae7bde1c71617eb4317aaee87b9bc215c79008ce56a673",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -300,30 +300,40 @@
             {
               "in": "_measure_one",
               "kind": "except",
-              "line": 78
+              "line": 83
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 126
+              "line": 137
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 129
+              "line": 140
             },
             {
               "in": "check_committed",
               "kind": "raise",
-              "line": 131
+              "line": 143
+            },
+            {
+              "in": "check_committed",
+              "kind": "raise",
+              "line": 145
+            },
+            {
+              "in": "check_committed",
+              "kind": "raise",
+              "line": 147
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 155
+              "line": 171
             }
           ],
-          "hash": "84f0d4d00f86688c1c902a2b6fe84d719b8d90b22bfdf6652f6f79bddf25e644",
+          "hash": "27cb5fe55386d319d60ccf95fc58c0f947d70b57c75fd36ec038178b633b7835",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -1602,45 +1612,45 @@
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 128
+              "line": 142
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 137
+              "line": 152
             },
             {
               "in": "build_t10",
               "kind": "raise",
-              "line": 197
+              "line": 215
             },
             {
               "in": "_trait_reading_differs",
               "kind": "except",
-              "line": 225
+              "line": 243
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 238
+              "line": 256
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 385
+              "line": 403
             },
             {
               "in": "build_t12",
               "kind": "except",
-              "line": 413
+              "line": 431
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 422
+              "line": 440
             }
           ],
-          "hash": "8a7f60dbed9e59a3a17dc08d8fadbeb151398dbaca9daf0c52135b4ac5348063",
+          "hash": "18f6907fe14225dbac55c7d03a61c9e585f395f5d52da5656682c37af6535f08",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1750,15 +1760,15 @@
           "path": "src/role_set/generate/shortcuts.py"
         },
         {
-          "hash": "bc03ba39eb458b9477f7fc67472a40c4c19056c74db0ddc1a34c9f7b32a91f1e",
+          "hash": "0045239aca3ebc43ec2fd71e9bbace1f476ef4ed6228618763e7b78dd933501e",
           "path": "src/role_set/generate/t10_capacity.json"
         },
         {
-          "hash": "653476eca238f9a2e696fa84c671c8afb5a3d606892f70b44a97284d6418f799",
+          "hash": "3016140d346b199645c3eb8e1ca396f088459e63d1116a934cc59d4d0741ba71",
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
-          "hash": "059c5146b1ad02809f35a15b0e0bde23f6f470bba13a0e57df44d162472629b3",
+          "hash": "813eefd3ad1da7f8585f0a838e6e6bf0dc7752e148c753a1ab3f9fa047d87503",
           "path": "src/role_set/generate/t10_record.json"
         },
         {
@@ -1771,6 +1781,7 @@
             "cell_id",
             "cell_key",
             "check_record_hash",
+            "clues_if_shape",
             "load_capacity",
             "load_cells",
             "load_record",
@@ -1783,30 +1794,30 @@
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 88
+              "line": 129
             },
             {
               "in": "check_record_hash",
               "kind": "raise",
-              "line": 93
+              "line": 134
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 284
+              "line": 325
             },
             {
               "in": "assign_cells",
               "kind": "raise",
-              "line": 354
+              "line": 395
             },
             {
               "in": "cell_for",
               "kind": "raise",
-              "line": 400
+              "line": 442
             }
           ],
-          "hash": "22b0ce7b4acb350fdddaf1710e2d78e988e6b6a18d53a9de54394366e63a7bac",
+          "hash": "81341fec8f119047477558fae7277c332a90857d872348ee6ccd26205f209f28",
           "importsFiles": [
             "src/role_set/generate/recipes.py"
           ],
@@ -4573,7 +4584,7 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "28f0316efcd58a1f7670c1e0cb644b7730ff522df50c4d39a01898753f0752a6",
+          "hash": "ddd4fa8311f1bb586adc2b0930671b543a6c7edd48943087d525b5e3fa1b3121",
           "importOrder": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -5032,12 +5043,12 @@
           "exports": [
             "test_a_claim_refuses_an_at_least_cell",
             "test_a_seed_below_one_is_refused",
-            "test_a_seventh_three_value_pack_fails_and_names_if_shape",
+            "test_a_short_claim_stratum_fails_and_names_the_next_step",
             "test_a_stale_record_hash_fails_and_names_the_regenerate_command",
             "test_an_impossible_file_is_refused_before_a_build",
             "test_canonical_skeleton_renames_entities_and_values",
             "test_capacity_weights_come_from_the_tuning_seeds",
-            "test_claim_cells_are_exactly_and_set_cells_keep_three_size_words",
+            "test_claim_cells_are_exactly_With_if_shape_and_set_cells_keep_three_size_words",
             "test_committed_record_clears_the_variety_floors_in_every_stratum",
             "test_committed_record_hash_and_proven_entries",
             "test_deletion_tries_a_unit_fact_before_an_if_and_the_count_last",
@@ -5045,13 +5056,15 @@
             "test_one_file_stays_inside_the_zero_if_cap",
             "test_the_capacity_gate_reports_supply_demand_and_headroom",
             "test_the_next_file_rotates_the_assignment",
+            "test_the_record_hash_list_is_closed_under_role_set_imports",
             "test_the_usable_cell_script_checks_the_committed_table",
             "test_the_variety_record_script_checks_the_committed_record",
-            "test_three_value_claims_fit_at_a_cap_of_three_and_not_at_two",
+            "test_three_value_claims_fit_at_a_cap_of_two",
+            "test_twelve_three_value_packs_allocate_with_no_within_file_repeats",
             "test_twenty_seeds_in_one_file_take_twenty_cells",
             "test_visits_prefer_cells_that_yield_more_skeletons"
           ],
-          "hash": "a197e0fcb3f8ca4196f3a4e75afa85d6bb20f7a2c13e42dfa7b71ee3d54e2918",
+          "hash": "527b3cf5e24c0779302525f57a0bce79bd5bb1a4155b6f7ba0f18f9fd075b212",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -5588,7 +5601,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "5717d53208b14b5d9c9914021080a80133f866c5",
+    "commit": "e5b0c15a9e4a384333cad1416539227d1dcad4f7",
     "tracked": 131
   },
   "landings": [
@@ -5767,6 +5780,28 @@
         }
       ],
       "target": "src/role_set/assemble.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/critic.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/generate/t10_variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/gates.py",
       "writers": []
     },
     {

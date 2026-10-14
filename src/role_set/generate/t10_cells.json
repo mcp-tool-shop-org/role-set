@@ -446,163 +446,428 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "disjoint"
         }
       ]
     },
@@ -938,151 +1203,365 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "disjoint"
         }
       ]
     },
@@ -1526,163 +2005,428 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "disjoint"
         }
       ]
     },
@@ -2042,151 +2786,365 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "disjoint"
         }
       ]
     },
@@ -2540,151 +3498,393 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         }
       ]
     },
@@ -3020,151 +4220,365 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         }
       ]
     },
@@ -3524,151 +4938,386 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         }
       ]
     },
@@ -4004,139 +5653,365 @@
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 3,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 3,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 2,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 4,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 4,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 1,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 1,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 2,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 2,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 3,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 3,
+          "ifs": 2,
+          "if_shape": "disjoint"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 0
+          "ifs": 0,
+          "if_shape": "none"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 1
+          "ifs": 1,
+          "if_shape": "pos"
         },
         {
           "n": 5,
           "op": "=",
           "k": 4,
-          "ifs": 2
+          "ifs": 1,
+          "if_shape": "neg"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "chain"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_consequent"
+        },
+        {
+          "n": 5,
+          "op": "=",
+          "k": 4,
+          "ifs": 2,
+          "if_shape": "shared_antecedent"
         }
       ]
     }
