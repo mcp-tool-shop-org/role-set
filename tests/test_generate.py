@@ -1,6 +1,7 @@
 """The kind-B generator, slice 1: generate-then-reduce, the shortcut registry, the T10 recipe and template wording
 (docs/generator-design.md)."""
 
+import functools
 import json
 import random
 import re
@@ -25,11 +26,7 @@ def _rendered(b, pack, seed):
 @pytest.mark.parametrize("pack", sorted(PACKS))
 @pytest.mark.parametrize("seed", [1, 2])
 def test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips(pack, seed):
-    b = build_t10(pack, seed, question="set")
-    text = _rendered(b, pack, seed)
-    got = check_puzzle({"puzzle": text, "model": b.model, "answer": b.answer, "reply": "x\nAnswer: " + b.answer},
-                       "underdetermined_with_explicit_set")
-    assert got.answer == b.answer
+    b = _proven(pack, seed, "set")
     # The count is on the deciding path, and a size loosening changes the set (design pin: the trait step decides).
     assert b.trait_clue in [f["rule"] for f in b.model["facts"]] and b.trait_clue[0] == "count"
     assert any(p["differs"] for p in b.shortcuts.values())
@@ -39,11 +36,9 @@ def test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips(pack, seed)
 
 @pytest.mark.parametrize("pack", sorted(PACKS))
 def test_a_t10_claim_is_proven(pack):
-    b = build_t10(pack, 1, question="claim")
+    b = _proven(pack, 1, "claim")
     text = _rendered(b, pack, 1)
     assert "Question: Claim:" in text
-    assert check_puzzle({"puzzle": text, "model": b.model, "answer": b.answer, "reply": "x\n" + b.answer},
-                        "falsifier_first").answer == b.answer
     assert any(p["differs"] for p in b.shortcuts.values())
 
 
@@ -282,6 +277,7 @@ def test_every_template_round_trips_through_check_text():
                         _round(["if", [p_form, _X, "state", "open"], [q_form, _Y, "state", "shut"]], line)
 
 
+@functools.lru_cache(maxsize=None)
 def _proven(pack, seed, question):
     b = build_t10(pack, seed, question=question)
     text = _rendered(b, pack, seed)

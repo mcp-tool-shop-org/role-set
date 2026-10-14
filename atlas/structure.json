@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "71f5fd85226558ae20f6fe6ec2cea24f83071bff8bdfa0ec494a58d62e9c524a",
+          "hash": "bcf3fde7d2099e6734cb1afb8eb51d91f62b79bae11772a0b291d88d58899aee",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -4584,7 +4584,7 @@
             "test_the_receipt_metrics_and_the_solver_pin",
             "test_the_same_seed_rebuilds_the_same_puzzle"
           ],
-          "hash": "afcc6813d661e1f556a8091c922e8e394027c8bf91c7dfbb5b3014d8d8f7adbf",
+          "hash": "ddd4fa8311f1bb586adc2b0930671b543a6c7edd48943087d525b5e3fa1b3121",
           "importOrder": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -5601,7 +5601,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "d38d929e6015b0f209b0ad561eb045b6b1e56b88",
+    "commit": "e5b0c15a9e4a384333cad1416539227d1dcad4f7",
     "tracked": 131
   },
   "landings": [
