@@ -20,7 +20,7 @@ A real writer or critic has to be `http://127.0.0.1` with an explicit port. The 
 ## Two packs, one generator
 
 - **The verifier pack** is synced from aspire-si at a commit and is the pack every run so far has used.
-- **The Advocate pack** is a draft a person wrote, on pull request #56, waiting for the Director's approval. It is not on `main`.
+- **The Advocate pack** is a pack a person wrote, approved by the Director on 2026-10-14 on pull request #56, where batch 1 is being built. It is not on `main` until #56 merges.
 - **The T10 generator** builds puzzles on the strict size words, proves each one with the solver and R&D's four readings, spreads them over structural cells, and holds R&D's variety floors through a record that CI checks on every pull request.
 
 ## Where the numbers come from
@@ -35,7 +35,7 @@ The generator's figures (cells, distinct skeletons, headroom) come from the comm
 - [Usage](./usage/) is the real runner, `pilot-auto`, and `readout`.
 - [Kinds and gates](./kinds/) is A through E, and the limits of the B solver.
 - [The T10 generator](./generator/) is cells, `if_shape`, the allocator, the floors, and the record gate.
-- [Role packs](./roles/) is the verifier and the Advocate draft, and how a pack is hashed and verified.
+- [Role packs](./roles/) is the verifier and the Advocate, and how a pack is hashed and verified.
 - [Configuration](./configuration/) is `writers.json`, the pins, and the grant.
 - [Store and firewall](./store/) is ingest, voids, and what is refused at the door.
 - [Security](./security/) is what a run touches.

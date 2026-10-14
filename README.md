@@ -34,7 +34,7 @@ uv sync --frozen
 A role pack is the text people wrote for one role. role-set serves it in slices and adds nothing to it. Its hash is on every accepted receipt.
 
 - **The verifier** (`roles/verifier`). `pack sync` copies it from a local aspire-si clone at a commit: the lessons, the 18 traits, the kind table, the amendments and the rules. `pack verify` checks the copy against its manifest. A fresh clone holds only the source list, the exclude list and `defects.jsonl`, the catalog of defect classes the reviews found. Sync fills the rest.
-- **The Advocate** (`roles/advocate`). A pack a person wrote in this repository, with no model text in it. It is a **draft** on pull request #56, waiting for the Director's approval, and it is not on `main` yet. Batch 1 has three traits: `failed-gate-first`, `exact-figures` and `faithful-relay`. No Advocate item is built until the Director approves the pack.
+- **The Advocate** (`roles/advocate`). A pack a person wrote in this repository, with no model text in it. The Director approved the pack on 2026-10-14 (commit `ffb9546` on pull request #56), and batch 1 is being built there; it is not on `main` until #56 merges. Batch 1 has three traits: `failed-gate-first`, `exact-figures` and `faithful-relay`. No Advocate item is training data until it passes the pilot read.
 
 ## The T10 generator
 

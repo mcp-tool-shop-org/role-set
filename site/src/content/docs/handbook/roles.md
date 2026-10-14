@@ -1,13 +1,13 @@
 ---
 title: Role packs
-description: The verifier pack and the Advocate draft, their files, and how a pack is served, hashed and verified.
+description: The verifier pack and the Advocate pack, their files, and how a pack is served, hashed and verified.
 sidebar:
   order: 5
 ---
 
 A role pack is the text people wrote for one role: what the role is, its traits, and the rules a writer must keep. role-set serves it to the writer in slices and adds nothing to it. The program never decides what a good role-holder is. The pack does.
 
-There are two packs. One is in use. The other is a draft.
+There are two packs. One is in use. The other is approved and being built on a pull request.
 
 ## The verifier
 
@@ -40,9 +40,9 @@ What the repository itself holds, before any sync:
 
 `defects.jsonl` is not synced and is not served to the writer. Each row has `id`, `name`, `description`, `first_source`, `handled` and `anchor`. `handled` is one of `gate` (a refusal in code, or a refusing critic check), `puzzle-check`, `brief` (a writer instruction only), `critic` (advisory, never refusing) or `none` (nothing yet, with `anchor` naming the candidate check). `readout` ends with every `none` row, so the open gaps are in front of every run. When a class becomes checkable, it moves off `brief` or `none` in the same change as the check.
 
-## The Advocate (a draft)
+## The Advocate (on #56)
 
-`roles/advocate` is a pack a person wrote, with no model text in it. It is a **draft** on pull request #56, waiting for the Director's approval. It is not on `main`, and no Advocate item is built until the Director approves it.
+`roles/advocate` is a pack a person wrote, with no model text in it. The Director approved it on 2026-10-14 (commit `ffb9546` on pull request #56), and batch 1 is being built there. It is not on `main` until #56 merges, and no Advocate item is training data until it passes the pilot read.
 
 The Advocate is the person in an AI organisation who turns technical results into a clear decision, carries needs and updates in both directions, upholds ethics and governance, and brings tools in safely. Batch 1 is the daily part of that job: a faithful, decision-ready brief from a record, and a faithful relay. It has three traits, built and judged one at a time:
 
@@ -52,7 +52,7 @@ The Advocate is the person in an AI organisation who turns technical results int
 | `exact-figures` | every figure as its receipt has it | no figure the receipt does not have | A, C |
 | `faithful-relay` | carry every point the recipient needs, add no instruction | escalate a decision the relay cannot make | B, D |
 
-The draft's files:
+The pack's files:
 
 ```text
 README.md              the role, the studio shape, the three traits, the standing rules
@@ -63,7 +63,7 @@ exemplar-exclude.json  the verifier's exclusion list, carried over unchanged
 
 `behaviours.jsonl` has the same fields as the verifier's `defects.jsonl`, and every row is `handled: none` until its check is built. Batch 1 uses synthetic records only, and names people by role title only.
 
-The Advocate draft is not synced from aspire-si and has no `pack.json` yet. How it is hashed and served is part of the Advocate build on #56, not of this release.
+The Advocate pack is not synced from aspire-si and has no `pack.json` yet. How it is hashed and served is part of the Advocate build on #56, not of this release.
 
 ## How a pack is served
 

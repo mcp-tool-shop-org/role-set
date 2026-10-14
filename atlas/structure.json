@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "f67a00290deda7ed450f06ae3863772446cd40d9ecd30846df324afdb70d61f4",
+          "hash": "0b8798c5a7baf4145336137325abb20941108944e1084b9e5563c86321183a69",
           "path": "CHANGELOG.md"
         },
         {
@@ -177,7 +177,7 @@
           "path": "README.ja.md"
         },
         {
-          "hash": "f5c0cc53a20e5643c93a75e673d87428f4ed31ea22227b09b88f094058140043",
+          "hash": "aea87badf928abbd89f1327a90406be53da304743698f8113a8d2537f8ee7cc3",
           "path": "README.md"
         },
         {
@@ -409,7 +409,7 @@
           "path": "site/src/content/docs/handbook/getting-started.md"
         },
         {
-          "hash": "550419ec693f8dbef30175087c786146e4448e40cd248c0d93c9550ce6d7d0ce",
+          "hash": "c58bd3d91b4e00bed432c78cfe70cbfbb1fb1e34b0d22e6e19c87dbbd9d3d690",
           "path": "site/src/content/docs/handbook/index.md"
         },
         {
@@ -417,7 +417,7 @@
           "path": "site/src/content/docs/handbook/kinds.md"
         },
         {
-          "hash": "372b5dec6cea23b39b76b0b077a40b236bd8453a0f0bf4053ddfa36c80251b93",
+          "hash": "ca4741b31c79a100b64c22bd12bd105355726b85b9534a6e49441dacf42e5e74",
           "path": "site/src/content/docs/handbook/roles.md"
         },
         {
@@ -5609,7 +5609,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "549a6194a574527875031009187edd9710068052",
+    "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa",
     "tracked": 133
   },
   "landings": [

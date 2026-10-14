@@ -35,7 +35,7 @@ checks.
 
 ### Changed
 
-- The README, the handbook and the landing page describe 0.2.0: the two role packs (the verifier, and the Advocate as a draft on #56), the T10 generator, the commands and the coverage floor. The handbook adds two pages, "The T10 generator" and "Role packs". `SECURITY.md` supports 0.2.x.
+- The README, the handbook and the landing page describe 0.2.0: the two role packs (the verifier, and the Advocate, approved and being built on #56), the T10 generator, the commands and the coverage floor. The handbook adds two pages, "The T10 generator" and "Role packs". `SECURITY.md` supports 0.2.x.
 - Capacity weights are kept apart for two-value and three-value packs, and a cell's weight rises above 1 only when its tuning-seed probe had no failed build (#55).
 - The zero-if cap is 2 in every stratum. It had been raised to 3 for three-value claims as a stopgap before `if_shape` (#55).
 - An underdetermined puzzle's Question asks what could be ("could", "can", "might", "may", "possible").
