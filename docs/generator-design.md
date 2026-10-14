@@ -328,3 +328,13 @@ Packs with the same number of values share a skeleton space. The canonical skele
 `if_shape` is not built in this change. It is the next step if a claim stratum misses a floor on the locked seeds 61-80, or before another three-value pack is added. `polarity_mode` and a claim-role axis stay out.
 
 The floors are unchanged: at least 75% distinct canonical skeletons in a stratum, no skeleton more than 3 times, and no skeleton twice in one pack's file. The verdict on this assignment is the locked seeds 61-80.
+
+**How CI gates the variety floors.**
+- **The committed record.** `src/role_set/generate/t10_record.json` stores the full measurement across seeds 1–20 and the locked seeds 61–80 for every pack and both `set` and `claim` (640 builds). For each build it records `built`, `cell`, `tries`, and `canonical_skeleton`.
+- **The hash and fast check.** The record carries a `sha256` over the listed files that decide those builds (the solver and generator source, `t10_cells.json`, `t10_capacity.json`, and the pack data in `recipes.py`). In the normal 15-minute CI `test` job (`pytest -m "not sweep"`), `tests/test_t10_variety.py` recomputes that hash and fails on a mismatch with the regenerate command, asserts every entry built a proven puzzle, and computes the variety floors per stratum directly from the stored `canonical_skeleton` entries (distinct ≥ 75%, top repeat ≤ 3, no repeat within a pack's file). One fixed seed per cell shape from seeds 1–20 stays under coverage as a real build.
+- **The dispatch sweep job.** In `.github/workflows/ci.yml`, the `sweep` job runs on `workflow_dispatch` (`ubuntu-latest`, `timeout-minutes: 60`, `uv run pytest -m sweep --no-cov -n auto -s`). It rebuilds all 640 puzzles (seeds 1–20 in `test_every_pack_and_seed_renders_a_proven_puzzle` and locked seeds 61–80 by stratum in `test_locked_seeds_clear_the_variety_floors_in_every_stratum`) and fails on any difference from the committed record.
+- **How to regenerate.** After changing any hashed generator file, cell table, capacity table, or pack data, run:
+  ```
+  uv run python scripts/t10_variety_record.py
+  ```
+  Use `uv run python scripts/t10_variety_record.py --check` to verify the committed record and print the locked-seed stratum figures (`set two` 40/40 top 1, `set three` 120/120 top 1, `claim two` 40/40 top 1, `claim three` 108/120 top 3).

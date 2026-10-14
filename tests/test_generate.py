@@ -291,6 +291,7 @@ def _proven(pack, seed, question):
         structure, reply = "underdetermined_with_explicit_set", "x\nAnswer: " + b.answer
     got = check_puzzle({"puzzle": text, "model": b.model, "answer": b.answer, "reply": reply}, structure)
     assert got.answer == b.answer
+    return b
 
 
 def _cell_shape_cases():
@@ -321,7 +322,20 @@ def _cell_shape_cases():
 @pytest.mark.parametrize("seed", range(1, 21))
 @pytest.mark.parametrize("question", ["set", "claim"])
 def test_every_pack_and_seed_renders_a_proven_puzzle(pack, seed, question):
-    _proven(pack, seed, question)
+    from role_set.generate.t10_variety import canonical_skeleton, cell_for, record_index
+
+    b = _proven(pack, seed, question)
+    expected = record_index()[(pack, question, seed)]
+    actual = {
+        "pack": pack,
+        "question": question,
+        "seed": seed,
+        "built": True,
+        "cell": cell_for(pack, question, seed),
+        "tries": b.tries,
+        "canonical_skeleton": canonical_skeleton(b.model),
+    }
+    assert actual == expected
 
 
 @pytest.mark.parametrize("pack,seed,question", _cell_shape_cases())

@@ -17,19 +17,26 @@ from pathlib import Path
 
 import pytest
 
-from role_set.generate.build import BuildError, Shape, assignments, check_model, deletion_order
+from role_set.generate.build import MAX_TRIES, BuildError, Shape, assignments, check_model, deletion_order
 from role_set.generate.recipes import PACKS, T10, build_t10
 from role_set.generate.shortcuts import REGISTRY, prove
 from role_set.generate.t10_variety import (
+    RECORD_HASH_FILES,
+    RECORD_SEEDS,
+    REGENERATE_RECORD_CMD,
     assign_cells,
     assignment,
     canonical_skeleton,
     capacity_report,
     cell_for,
     cell_id,
+    check_record_hash,
     load_capacity,
     load_cells,
+    load_record,
     placed_builds,
+    record_index,
+    record_sha256,
     zero_if_cap,
 )
 
@@ -211,6 +218,7 @@ def _hidden_count(model: dict, hidden: int, trait: list) -> int:
 
 
 def _rows(question: str, kind: str):
+    rec = record_index(check_record_hash())
     rows = []
     for pack in PACKS:
         if _kind(pack) != kind:
@@ -234,9 +242,19 @@ def _rows(question: str, kind: str):
             assert ifs == cell["ifs"]
             assert built.trait_clue[3:] == [cell["op"], cell["k"]]
             assert len(built.model["entities"]) == cell["n"]
+            skel = canonical_skeleton(built.model)
+            assert rec[(pack, question, seed)] == {
+                "pack": pack,
+                "question": question,
+                "seed": seed,
+                "built": True,
+                "cell": cell,
+                "tries": built.tries,
+                "canonical_skeleton": skel,
+            }
             hidden = _hidden_count(built.model, built.hidden, built.trait_clue)
             rows.append({"pack": pack, "question": question, "kind": _kind(pack), "seed": seed,
-                         "skeleton": canonical_skeleton(built.model), "op": op,
+                         "skeleton": skel, "op": op,
                          "n": cell["n"], "k": cell["k"], "ifs": ifs, "refusals": built.tries - 1,
                          "trait_differs": trait_differs,
                          "on_boundary": op != "=" and hidden == cell["k"]})
@@ -293,6 +311,101 @@ def _zero_if_cap(rows: list[dict], cap: int) -> None:
             visits[((row["seed"] - 1) // 20, row["n"], row["op"], row["k"])] += 1
     over = {cell: count for cell, count in visits.items() if count > cap}
     assert not over
+
+
+def _record_rows(record: dict, question: str, kind: str, seeds: range) -> list[dict]:
+    seed_set = set(seeds)
+    rows = []
+    for entry in record["builds"]:
+        if entry["question"] != question or _kind(entry["pack"]) != kind or entry["seed"] not in seed_set:
+            continue
+        assert entry["built"] is True
+        cell = entry["cell"]
+        rows.append({
+            "pack": entry["pack"],
+            "question": question,
+            "kind": kind,
+            "seed": entry["seed"],
+            "skeleton": entry["canonical_skeleton"],
+            "op": cell["op"],
+            "n": cell["n"],
+            "k": cell["k"],
+            "ifs": cell["ifs"],
+        })
+    return rows
+
+
+def test_committed_record_hash_and_proven_entries():
+    record = check_record_hash(load_record())
+    assert record["regenerate"] == REGENERATE_RECORD_CMD
+    assert record["files"] == list(RECORD_HASH_FILES)
+    assert record["sha256"] == record_sha256()
+    expected_keys = [(pack, question, seed) for pack in PACKS for question in ("set", "claim") for seed in RECORD_SEEDS]
+    builds = record["builds"]
+    assert [(row["pack"], row["question"], row["seed"]) for row in builds] == expected_keys
+    assert list(record_index(record)) == expected_keys
+    for entry in builds:
+        assert entry["built"] is True
+        cell = cell_for(entry["pack"], entry["question"], entry["seed"])
+        assert entry["cell"] == cell
+        assert isinstance(entry["tries"], int) and 1 <= entry["tries"] <= MAX_TRIES
+        skel = json.loads(entry["canonical_skeleton"])
+        assert skel["n"] == cell["n"]
+        counts = [clue for clue in skel["clues"] if clue[0] == "count"]
+        assert len(counts) == 1 and counts[0][3:] == [cell["op"], cell["k"]]
+        assert sum(1 for clue in skel["clues"] if clue[0] == "if") == cell["ifs"]
+        if entry["question"] == "claim":
+            assert cell["op"] == "="
+
+
+def test_a_stale_record_hash_fails_and_names_the_regenerate_command():
+    stale = dict(load_record(), sha256="0" * 64)
+    with pytest.raises(ValueError, match=REGENERATE_RECORD_CMD):
+        check_record_hash(stale)
+    bad_files = dict(load_record(), files=["src/role_set/puzzle.py"])
+    with pytest.raises(ValueError, match=REGENERATE_RECORD_CMD):
+        check_record_hash(bad_files)
+
+
+@pytest.mark.parametrize(
+    ("question", "kind", "expected_distinct", "expected_total", "expected_top"),
+    [
+        ("set", "two", 40, 40, 1),
+        ("set", "three", 120, 120, 1),
+        ("claim", "two", 40, 40, 1),
+        ("claim", "three", 108, 120, 3),
+    ],
+    ids=["set-two", "set-three", "claim-two", "claim-three"],
+)
+def test_committed_record_clears_the_variety_floors_in_every_stratum(
+    question, kind, expected_distinct, expected_total, expected_top
+):
+    record = check_record_hash(load_record())
+    for seed_range in (range(1, 21), VERIFY):
+        rows = _record_rows(record, question, kind, seed_range)
+        assert len(rows) == expected_total
+        _floors(rows)
+        _zero_if_cap(rows, zero_if_cap(kind, question))
+    locked_rows = _record_rows(record, question, kind, VERIFY)
+    skins = [r["skeleton"] for r in locked_rows]
+    assert len(set(skins)) == expected_distinct
+    assert len(skins) == expected_total
+    assert Counter(skins).most_common(1)[0][1] == expected_top
+
+
+def test_the_variety_record_script_checks_the_committed_record():
+    root = Path(__file__).resolve().parents[1]
+    env = os.environ.copy()
+    env["PYTHONPATH"] = str(root / "src")
+    done = subprocess.run(
+        [sys.executable, str(root / "scripts" / "t10_variety_record.py"), "--check"],
+        cwd=root, env=env, capture_output=True, text=True, check=False,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert "set two: 40/40 top 1" in done.stdout
+    assert "set three: 120/120 top 1" in done.stdout
+    assert "claim two: 40/40 top 1" in done.stdout
+    assert "claim three: 108/120 top 3" in done.stdout
 
 
 @pytest.mark.sweep

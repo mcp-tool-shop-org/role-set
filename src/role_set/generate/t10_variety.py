@@ -15,6 +15,7 @@ skeleton has been seen. The builder still retries inside one seed when the reduc
 
 from __future__ import annotations
 
+import hashlib
 import heapq
 import json
 import math
@@ -23,12 +24,31 @@ from pathlib import Path
 
 _DATA = Path(__file__).with_name("t10_cells.json")
 _CAPACITY = Path(__file__).with_name("t10_capacity.json")
+_RECORD = Path(__file__).with_name("t10_record.json")
 _CELLS: dict | None = None
 _CAP: dict | None = None
+_REC: dict | None = None
 _PLANS: dict = {}
 # One file is 20 seeds. The next file of the same packs is the next 20.
 FILE = 20
+RECORD_SEEDS = tuple(range(1, 21)) + tuple(range(61, 81))
+REGENERATE_RECORD_CMD = "uv run python scripts/t10_variety_record.py"
+RECORD_HASH_FILES = (
+    "src/role_set/puzzle.py",
+    "src/role_set/puzzle_check.py",
+    "src/role_set/span.py",
+    "src/role_set/generate/__init__.py",
+    "src/role_set/generate/build.py",
+    "src/role_set/generate/recipes.py",
+    "src/role_set/generate/render.py",
+    "src/role_set/generate/shortcuts.py",
+    "src/role_set/generate/t10_variety.py",
+    "src/role_set/generate/t10_cells.json",
+    "src/role_set/generate/t10_capacity.json",
+)
 _INF = 10**18
+
+
 def load_cells() -> dict:
     """The committed list: pack, question, then the cells that built within MAX_TRIES."""
 
@@ -36,6 +56,50 @@ def load_cells() -> dict:
     if _CELLS is None:
         _CELLS = json.loads(_DATA.read_text(encoding="utf-8"))
     return _CELLS
+
+
+def record_sha256(root: Path | None = None, files: list[str] | tuple[str, ...] = RECORD_HASH_FILES) -> str:
+    """SHA-256 over the generator source, cell tables and pack data that decide T10 builds."""
+
+    base = Path(__file__).resolve().parents[3] if root is None else root
+    digest = hashlib.sha256()
+    for rel in files:
+        digest.update(rel.encode("utf-8") + b"\0")
+        digest.update((base / rel).read_bytes().replace(b"\r\n", b"\n") + b"\0")
+    return digest.hexdigest()
+
+
+def load_record() -> dict:
+    """The committed build record for seeds 1-20 and locked seeds 61-80 across every pack and question."""
+
+    global _REC
+    if _REC is None:
+        _REC = json.loads(_RECORD.read_text(encoding="utf-8"))
+    return _REC
+
+
+def check_record_hash(record: dict | None = None, root: Path | None = None) -> dict:
+    """Verify the committed record lists the hashed files and matches their current sha256."""
+
+    data = load_record() if record is None else record
+    if data.get("regenerate") != REGENERATE_RECORD_CMD or data.get("files") != list(RECORD_HASH_FILES):
+        raise ValueError(
+            f"T10 variety record metadata mismatch; regenerate with: {REGENERATE_RECORD_CMD}"
+        )
+    actual = record_sha256(root=root, files=data["files"])
+    if data.get("sha256") != actual:
+        raise ValueError(
+            f"T10 variety record sha256 mismatch ({data.get('sha256')} != {actual}); "
+            f"regenerate with: {REGENERATE_RECORD_CMD}"
+        )
+    return data
+
+
+def record_index(record: dict | None = None) -> dict[tuple[str, str, int], dict]:
+    """Map (pack, question, seed) to its build entry in the committed record."""
+
+    data = load_record() if record is None else record
+    return {(row["pack"], row["question"], row["seed"]): row for row in data["builds"]}
 
 
 def load_capacity() -> dict:
