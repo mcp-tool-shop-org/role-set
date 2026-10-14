@@ -24,23 +24,39 @@
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 9,
+      "changed": 3,
       "moved": 0,
-      "parts": 5,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "src/role_set/assemble.py is now read by src/role_set/generate/t10_variety.py.",
+        "subjects": [
+          "src/role_set/assemble.py",
+          "src/role_set/generate/t10_variety.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "src/role_set/plan.py is now read by src/role_set/generate/t10_variety.py.",
+        "subjects": [
+          "src/role_set/plan.py",
+          "src/role_set/generate/t10_variety.py"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-14; 9 files changed content.",
+        "sentence": "3 files changed content, across 2 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "bed8cde86b749130461ce7e961002e66e4cb3c6e",
-      "generatedAt": "2026-10-14T04:42:51.991Z"
+      "commit": "4fab9b549ef0af267a6d6e4cee475c3309124981",
+      "generatedAt": "2026-10-14T18:52:26.982Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -92,12 +108,12 @@
   "changesTogetherNote": [
     "6 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 7 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "ca6ac1d6a5b77e863e7f0b884811c617f6aba431",
+  "commit": "5717d53208b14b5d9c9914021080a80133f866c5",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (65 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -112,7 +128,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 30
+          "files": 31
         },
         {
           "boundary": "src",
@@ -200,16 +216,29 @@
   "engine": "1.24.0",
   "generated": [
     {
+      "place": "src/role_set/generate/t10_capacity.json",
+      "writers": [
+        "scripts/t10_cell_capacity.py"
+      ]
+    },
+    {
+      "block": true,
       "place": "src/role_set/generate/t10_cells.json",
       "writers": [
         "scripts/t10_usable_cells.py"
       ]
+    },
+    {
+      "place": "src/role_set/generate/t10_record.json",
+      "writers": [
+        "scripts/t10_variety_record.py"
+      ]
     }
   ],
-  "generatedAt": "2026-10-14T05:46:44.847Z",
+  "generatedAt": "2026-10-14T19:13:52.286Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
-    "5 writes and 24 reads go to a path their caller passes, not to this repository.",
+    "5 writes and 27 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -240,7 +269,7 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 36,
+  "testFiles": 37,
   "testedBy": {
     "scripts": 0,
     "src": 30
@@ -257,5 +286,5 @@
     }
   ],
   "untestedNote": [],
-  "written": 1
+  "written": 3
 }

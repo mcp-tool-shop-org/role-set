@@ -3,9 +3,11 @@
 # PIN_PER_STEP: 2. uv.lock pins the packages. Actions are pinned by commit sha.
 #   Atlas is pinned to 1.24.0. The coverage floor in pyproject.toml is 90.
 #   Codecov project and patch targets are 90% with a 1% threshold.
-# ANDON_AUTHORITY: 2. pytest --cov-fail-under, the identity scan and atlas check
-#   are required steps. A red step fails the job. The Codecov upload uses
-#   fail_ci_if_error: false so a private repo's upload cannot block the gate.
+# ANDON_AUTHORITY: 2. pytest --cov-fail-under (including the committed variety
+#   record check), the workflow_dispatch sweep job, the identity scan and atlas
+#   check are required gates. A red step fails the job.
+#   The Codecov upload uses fail_ci_if_error: false so a private repo's upload
+#   cannot block the gate.
 # NAMED_COMPENSATORS: 2. This workflow checks out the repo and runs tests. It
 #   does not publish, deploy, or write outside the runner. Undo is to close the
 #   pull request. Owner: the author of the pull request. The Publisher merges.
@@ -56,7 +58,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Test
-        run: uv run pytest --cov-report=xml
+        run: uv run pytest -m "not sweep" --cov-report=xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
@@ -75,3 +77,23 @@ jobs:
 
       - name: Puzzle check on a fixture
         run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
+
+  sweep:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Sweep
+        run: uv run pytest -m sweep --no-cov -n auto -s
