@@ -53,7 +53,7 @@ Audit: 15 checked, 23 skipped with a reason, 1 unchecked (translations), pass ra
 | B. Error handling | 4/10 | Unchanged: `REFUSED:` lines and per-command exit codes. No structured error object, no `--debug` |
 | C. Operator docs | 9/10 | README, CHANGELOG [0.2.0], and nine handbook pages, two new (the generator end to end, the role packs). No log-level flag |
 | D. Shipping hygiene | 6/10 | Version 0.2.0 in `pyproject.toml`, `__version__` and `uv.lock`; coverage floor 90 at 97%; the record gate in CI. Still no dependency scanner, and `scripts/verify` runs the sweep |
-| E. Identity (soft) | 8/10 | Logo URL returns 200, landing page and handbook build with search, repo metadata in place. Translations wait on the Publisher's polyglot run |
-| **Overall** | **35/50** | Up from 31. A prototype release, 0.x by the version rule, not a 1.0 |
+| E. Identity (soft) | 10/10 | Logo URL returns 200, landing page and handbook build with search, repo metadata in place, README translated into seven languages (polyglot, TranslateGemma 27B, local) |
+| **Overall** | **37/50** | Up from 31. A prototype release, 0.x by the version rule, not a 1.0 |
 
-When the Publisher's translation commit lands and ticks its line, the audit exits 0 and E reads 10/10 (overall 37/50).
+After the Publisher's translation commit (`ea24d70`, merged as `891b364`), the audit on `main` reads 16 checked, 23 skipped with a reason, 0 unchecked, pass rate 100%, exit 0 (re-run 2026-10-14).
