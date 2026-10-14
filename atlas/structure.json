@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "d2d3f9c34e9db6004bb207d63853e0616c600f0ca26babd493315f3bc9e0db46",
+          "hash": "f67a00290deda7ed450f06ae3863772446cd40d9ecd30846df324afdb70d61f4",
           "path": "CHANGELOG.md"
         },
         {
@@ -177,7 +177,7 @@
           "path": "README.ja.md"
         },
         {
-          "hash": "6481fb4bf6b603e4edb6f9fe9f88b8def07c37cbbd21fec5f88ed558ebbebeb2",
+          "hash": "f5c0cc53a20e5643c93a75e673d87428f4ed31ea22227b09b88f094058140043",
           "path": "README.md"
         },
         {
@@ -189,15 +189,15 @@
           "path": "README.zh.md"
         },
         {
-          "hash": "6a11fb52fc1ecfaf909ca73fc4dcb0fb9ff931ffb29fac36c7028660dbafa035",
+          "hash": "00d171a7ec622fa6b0d9961f4a3736cfecefbea2bb31f24ea20daab01c5e08c5",
           "path": "SCORECARD.md"
         },
         {
-          "hash": "3a7b0b697ab91ff95e7c1add6e18419b1ad8da33723a614209b59dc0dad72fbc",
+          "hash": "25f8af6a76a7d50079e9c98bb782c1c743d17893b9835fbe69744ea7c1ddea3e",
           "path": "SECURITY.md"
         },
         {
-          "hash": "fb0617068916cdbd98556944b9838d7a009b3274f734f6da103a02ed84cc2392",
+          "hash": "3271e60ce29e353106f300d70a327647d75d32a94b349d53517aa557ee437a82",
           "path": "SHIP_GATE.md"
         },
         {
@@ -205,11 +205,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "5c4b58b30889874a9aba2f82dbd25ad38277343f06a3091da86516216ac09a8a",
+          "hash": "819c0a9480eeb0e53a351e6ad88035f4d90376895b521e3b9f352ffda52776ed",
           "path": "pyproject.toml"
         },
         {
-          "hash": "7d33a476d15db4ca3061c3249534e4e6114e0f94d151c8362f1bfcfe1a427efe",
+          "hash": "88a5cb54704ef2b397be809a9c9650ad51a5779d81eb092ab58225cb92d248bd",
           "path": "uv.lock"
         },
         {
@@ -372,7 +372,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "1c3aef8aeeae988bfe0731acd4a3185224bd6f426d4beb8a978b527fb1f2ab5f",
+          "hash": "60d96485607d3a8f78da34c4206d3c64d0119f463d0368602850a99c41e60336",
           "path": "site/astro.config.mjs"
         },
         {
@@ -397,31 +397,39 @@
           "path": "site/src/content.config.ts"
         },
         {
-          "hash": "0067551d8a136ce53678d0e0773bcb2b73c01c5485a3ea9f50c48265a06818e1",
+          "hash": "64e01babc90f10953cbdce3ff13e7405ee225861069e0e9e62bc9fb54dc53db9",
           "path": "site/src/content/docs/handbook/configuration.md"
         },
         {
-          "hash": "3b4471a11fead7c8695b4ae7c7039504c1f61266f906e9b438d2c9cf1ae4f9ac",
+          "hash": "dba5d24db4caa0e4ad7982587623a096c140d7dd275352e6e3200a07b49ddab7",
+          "path": "site/src/content/docs/handbook/generator.md"
+        },
+        {
+          "hash": "4b4e8f89f7fae4b5660fab2cbcf9e2459b1893421aed6c8a94de36dba85675d6",
           "path": "site/src/content/docs/handbook/getting-started.md"
         },
         {
-          "hash": "77655784dcb05db3ad4e062178d50c5f712d9f22209fff869f0940074351e5a0",
+          "hash": "550419ec693f8dbef30175087c786146e4448e40cd248c0d93c9550ce6d7d0ce",
           "path": "site/src/content/docs/handbook/index.md"
         },
         {
-          "hash": "2a5ac110cb35757b4a39b6dddcb1b73c39bd1deb4d013a0015e90e449ad43ada",
+          "hash": "1ef1ab1cb3d362b86d3dfc62851492ca501ea7e27cf3bf6f79d8d9e0ebc6e3ae",
           "path": "site/src/content/docs/handbook/kinds.md"
         },
         {
-          "hash": "7642894e582a08a429e7de3aecdaa3b63d468930d5a6f90f4d2aaea2189ddef2",
+          "hash": "372b5dec6cea23b39b76b0b077a40b236bd8453a0f0bf4053ddfa36c80251b93",
+          "path": "site/src/content/docs/handbook/roles.md"
+        },
+        {
+          "hash": "688da08b996cb34a2b7648d8633a01bd7dd28f8cc732bc6bf442bd0e70495e69",
           "path": "site/src/content/docs/handbook/security.md"
         },
         {
-          "hash": "2c8bedb80110f56ae381b08355fe1ee3c410a0c953bf9654faeda78777230338",
+          "hash": "3267f6a7b2375cb25a4b17cf22f0147f1bd50a933e5c2d74c4b2cf20b6bf0e24",
           "path": "site/src/content/docs/handbook/store.md"
         },
         {
-          "hash": "272a2ba6a6ab675f3d0422e2b667803655f505528a3be1abc4e4ffd4c3b45fe3",
+          "hash": "a1521b96ce02fe0de68c025ed8988fd4049bc7d33e88d5c7a4dea82062c7f74c",
           "path": "site/src/content/docs/handbook/usage.md"
         },
         {
@@ -438,7 +446,7 @@
         },
         {
           "constantOnly": true,
-          "hash": "80a2ca841174adb9ec6406e9d1b3c1c40e957c77a13b5010bce2baed83b4e5f4",
+          "hash": "24e4596655181fd4ef66c5b91be901967e9dca0247f763b2a7755958cfffc1a5",
           "path": "site/src/site-config.ts"
         },
         {
@@ -476,7 +484,7 @@
       "files": [
         {
           "constantOnly": true,
-          "hash": "787ddf6f5af2a2adc059e7b6ad179b410cc9ee79b996c5dec439a00eaf81a734",
+          "hash": "98abdb96ab054e6f2c3c4d7f00a608c0aa88b7ea67e9411e80aab074ee9d80eb",
           "path": "src/role_set/__init__.py"
         },
         {
@@ -5601,8 +5609,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "e5b0c15a9e4a384333cad1416539227d1dcad4f7",
-    "tracked": 131
+    "commit": "549a6194a574527875031009187edd9710068052",
+    "tracked": 133
   },
   "landings": [
     {
@@ -5699,6 +5707,16 @@
         },
         {
           "by": "site/src/content/docs/handbook/kinds.md",
+          "call": "--pack",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/roles.md",
+          "call": "--out",
+          "confidence": "text"
+        },
+        {
+          "by": "site/src/content/docs/handbook/roles.md",
           "call": "--pack",
           "confidence": "text"
         },

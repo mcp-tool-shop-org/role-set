@@ -13,9 +13,10 @@ and ship a fix within 30 days.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | Yes, as a prototype |
+| 0.2.x   | Yes, as a prototype |
+| 0.1.x   | No |
 
-0.1.0 is a prototype. Interfaces and data shapes can change without notice.
+0.2.0 is a prototype. Interfaces and data shapes can change without notice.
 
 ## Scope
 

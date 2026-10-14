@@ -5,14 +5,14 @@
 
 **Tags:** `[all]` every repo · `[npm]` `[pypi]` `[vsix]` `[desktop]` `[container]` published artifacts · `[mcp]` MCP servers · `[cli]` CLI tools
 
-**This release:** 0.1.0 prototype, 2026-10-11. Gate E stays open where the work is not done. A skipped line says why.
+**This release:** 0.2.0 prototype, 2026-10-14. A re-treatment of 0.1.0 for the T10 generator. Lines re-run for this release carry 2026-10-14. A skipped line says why.
 
 ---
 
 ## A. Security Baseline
 
-- [x] `[all]` SECURITY.md exists (report email, supported versions, response timeline) — executed by `npx @mcptoolshop/shipcheck security-docs` (A1: present + reporting contact, not an empty stub) (2026-10-11)
-- [x] `[all]` README includes threat model paragraph (data touched, data NOT touched, permissions required) — executed by `npx @mcptoolshop/shipcheck security-docs` (A2: trust/threat-model section present + non-empty; *quality* is not machine-checkable) (2026-10-11)
+- [x] `[all]` SECURITY.md exists (report email, supported versions, response timeline) — executed by `npx @mcptoolshop/shipcheck security-docs` (A1: present + reporting contact, not an empty stub) (2026-10-14, re-run: passed; SECURITY.md supports 0.2.x)
+- [x] `[all]` README includes threat model paragraph (data touched, data NOT touched, permissions required) — executed by `npx @mcptoolshop/shipcheck security-docs` (A2: trust/threat-model section present + non-empty; *quality* is not machine-checkable) (2026-10-14, re-run: passed)
 - [ ] `[all]` SKIP: `shipcheck secrets` exited 0 as a skip ("no publishable packages found"). It scans npm tarballs, and this repo is Python. Ticking the box would record a scan that did not run. The identity scan of a git archive is the scan this release runs before every push.
 - [x] `[all]` No telemetry by default — state it explicitly even if obvious (2026-10-11, README and SECURITY.md)
 
@@ -35,34 +35,34 @@
 
 ## C. Operator Docs
 
-- [x] `[all]` README is current: what it does, install, usage, supported platforms + runtime versions (2026-10-11, Python 3.12)
-- [x] `[all]` CHANGELOG.md (Keep a Changelog format) (2026-10-11)
-- [x] `[all]` LICENSE file present and repo states support status (2026-10-11, MIT; SECURITY.md supports 0.1.x as a prototype)
-- [x] `[cli]` `--help` output accurate for all commands and flags (2026-10-11, README examples checked against `role-set --help` and each subcommand)
+- [x] `[all]` README is current: what it does, install, usage, supported platforms + runtime versions (2026-10-14, Python 3.12; rewritten for the two role packs, the T10 generator and the commands as they are)
+- [x] `[all]` CHANGELOG.md (Keep a Changelog format) (2026-10-14, [0.2.0] grouped Added / Changed / Fixed, new [Unreleased] heading)
+- [x] `[all]` LICENSE file present and repo states support status (2026-10-14, MIT; SECURITY.md supports 0.2.x as a prototype)
+- [x] `[cli]` `--help` output accurate for all commands and flags (2026-10-14, the README command table and examples checked against `role-set --help` and each subcommand; the generator has no subcommand and the README says so)
 - [ ] `[cli|mcp|desktop]` SKIP: no log-level flag. Run records go to `drafts.jsonl`, `refusals.jsonl`, and `batch-report.json`. There is no silent / normal / verbose / debug switch.
 - [ ] `[mcp]` SKIP: not an MCP server.
 - [ ] `[complex]` SKIP: the operator handbook is the Starlight handbook under `site/`, not a root `HANDBOOK.md`.
 
 ## D. Shipping Hygiene
 
-- [x] `[all]` `verify` script exists (test + build + smoke in one command) (2026-10-11, `scripts/verify.ps1` and `scripts/verify.sh`: `uv sync --frozen`, pytest, `plan`, `puzzle-check`. No model.)
-- [x] `[all]` Version in manifest matches git tag — executed by `npx @mcptoolshop/shipcheck manifest` (D2: manifest version not behind the newest released tag; `--expect <ver>` for a strict release-time match) (2026-10-11, version 0.1.0, no release tag yet)
+- [x] `[all]` `verify` script exists (test + build + smoke in one command) (2026-10-11, `scripts/verify.ps1` and `scripts/verify.sh`: `uv sync --frozen`, pytest, `plan`, `puzzle-check`. No model. 2026-10-14: its pytest call does not exclude the `sweep` marker, so it is slower than CI's job; noted, not changed in this release)
+- [x] `[all]` Version in manifest matches git tag — executed by `npx @mcptoolshop/shipcheck manifest` (D2: manifest version not behind the newest released tag; `--expect <ver>` for a strict release-time match) (2026-10-14, version 0.2.0; `shipcheck manifest --expect 0.2.0` passed; newest tag v0.1.0, v0.2.0 is the Publisher's after merge)
 - [ ] `[all]` SKIP: dependency scanning is not configured. CI runs pytest, atlas check, `plan`, and `puzzle-check`. It has no scanner shipcheck recognises, and this release does not add one. `shipcheck ci` is the check.
 - [ ] `[all]` SKIP: `shipcheck deps` exited 0 as a skip. It found no npm lockfile at the repo root, so it did not audit `uv.lock`, and Dependabot alerting was not checked from this environment. Ticking the box would record a pass the gate did not make.
 - [ ] `[all]` SKIP: no auto-PR update bot. The org rule restricts that bot. The vulnerability outcome is the `deps` line above.
 - [ ] `[npm]` SKIP: not an npm package.
 - [ ] `[npm]` SKIP: not an npm package.
-- [x] `[npm]` `engines.node` set · `[pypi]` `python_requires` set — executed by `npx @mcptoolshop/shipcheck manifest` (D6, checked per publishable package) (2026-10-11, `requires-python = ">=3.12,<3.13"`)
-- [x] `[npm]` Lockfile committed · `[pypi]` Clean wheel + sdist build — lockfile executed by `npx @mcptoolshop/shipcheck manifest` (D7); the pypi wheel/sdist build is not yet executed (2026-10-11, `uv.lock` is committed. `uv build` produced a wheel and an sdist locally. This release does not publish to PyPI.)
+- [x] `[npm]` `engines.node` set · `[pypi]` `python_requires` set — executed by `npx @mcptoolshop/shipcheck manifest` (D6, checked per publishable package) (2026-10-14, `requires-python = ">=3.12,<3.13"`)
+- [x] `[npm]` Lockfile committed · `[pypi]` Clean wheel + sdist build — lockfile executed by `npx @mcptoolshop/shipcheck manifest` (D7); the pypi wheel/sdist build is not yet executed (2026-10-14, `uv.lock` is committed; its only change is the root package's version, 0.1.0 to 0.2.0. role-set is not on PyPI, and this release does not publish to PyPI.)
 - [ ] `[vsix]` SKIP: not a VS Code extension.
 - [ ] `[desktop]` SKIP: not a desktop app.
 
 ## E. Identity (soft gate — does not block ship)
 
-- [ ] `[all]` Logo in README header (the README points at the brand URL; that file is in brand pull request 102 and is not on `main` yet, so the URL does not return 200)
-- [ ] `[all]` Translations (polyglot-mcp, 8 languages) (the Publisher runs these; this seat does not)
-- [x] `[org]` Landing page (@mcptoolshop/site-theme) (2026-10-11, `site` build wrote `dist/index.html`, `dist/handbook/index.html`, and `dist/pagefind/pagefind.js`)
-- [ ] `[all]` GitHub repo metadata: description, homepage, topics (the Publisher runs `gh repo edit`; this seat does not)
+- [x] `[all]` Logo in README header (2026-10-14, the brand URL returns 200; brand pull request 102 merged 2026-10-11)
+- [ ] `[all]` Translations (polyglot-mcp, 8 languages) (open until the Publisher runs polyglot on the final 0.2.0 README and commits `README.*.md` to this branch; the Publisher ticks this line in that commit)
+- [x] `[org]` Landing page (@mcptoolshop/site-theme) (2026-10-14, `site` build wrote `dist/index.html`, `dist/handbook/index.html`, and `dist/pagefind/pagefind.js`; nine handbook pages, two new)
+- [x] `[all]` GitHub repo metadata: description, homepage, topics (2026-10-14, `gh repo view` shows a description, the Pages homepage and three topics; refreshed strings for 0.2.0 are proposed to the Publisher, who runs `gh repo edit`)
 
 ---
 

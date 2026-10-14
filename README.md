@@ -13,87 +13,78 @@
   <a href="https://mcp-tool-shop-org.github.io/role-set/"><img src="https://img.shields.io/badge/Landing_Page-live-blue" alt="Landing Page"></a>
 </p>
 
-**Prototype, developed in the open.** Advisory and experimental: interfaces and data shapes change without notice.
+**Prototype, developed in the open.** Advisory and experimental: interfaces and data shapes change without notice. Nothing role-set writes is training data until a person checks it. Every item goes through R&D's key-check and a second read before it nears a training set.
 
-role-set plans role-shaping items, writes the parts a writer should write, and records which gates each item passed. It is a generator, not a judge. What a good verifier is lives in the role pack, which humans write. Nothing this program writes is in a training set. Every item goes through R&D's key-check and a second read before it nears one.
+role-set plans role-shaping items, writes the parts a writer should write, and records which gates each item passed. It also builds kind B puzzles in code and proves them before a model sees them. It is a generator, not a judge. What a good role-holder is lives in a role pack, which people write.
 
-The writer and the critic are reached only at `http://127.0.0.1` with an explicit port. Anything else is refused before a byte is sent. role-set never rents a machine and never touches a pod. When a run uses a pod, offrig is what rents it, and role-set only sees the loopback tunnel.
+The writer and the critic are reached only at `http://127.0.0.1` with an explicit port. Anything else is refused before a byte is sent. role-set never rents a machine and never touches a pod. When a run uses a pod, offrig rents it, and role-set only sees the loopback tunnel.
 
-The design is [docs/role-set-design.md](docs/role-set-design.md), kept in line with the program. The run notes are in [docs/runs/](docs/runs/).
+The designs are [docs/role-set-design.md](docs/role-set-design.md) and [docs/generator-design.md](docs/generator-design.md), kept in line with the program. The run notes are in [docs/runs/](docs/runs/).
 
 ## Install
 
-Python 3.12, managed by uv. One runtime dependency: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si), pinned to an aspire-si commit. The gates are imported, not copied.
+Python 3.12, managed by uv. One runtime dependency: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, pinned to aspire-si commit `388a6bc`. The gates are imported, not copied.
 
 ```text
 uv sync --frozen
 ```
 
+## The role packs
+
+A role pack is the text people wrote for one role. role-set serves it in slices and adds nothing to it. Its hash is on every accepted receipt.
+
+- **The verifier** (`roles/verifier`). `pack sync` copies it from a local aspire-si clone at a commit: the lessons, the 18 traits, the kind table, the amendments and the rules. `pack verify` checks the copy against its manifest. A fresh clone holds only the source list, the exclude list and `defects.jsonl`, the catalog of defect classes the reviews found. Sync fills the rest.
+- **The Advocate** (`roles/advocate`). A pack a person wrote in this repository, with no model text in it. It is a **draft** on pull request #56, waiting for the Director's approval, and it is not on `main` yet. Batch 1 has three traits: `failed-gate-first`, `exact-figures` and `faithful-relay`. No Advocate item is built until the Director approves the pack.
+
+## The T10 generator
+
+Kind B puzzles used to be written freehand and then checked. Now code builds the puzzle and proves it, and a model only words it. The generator is the `role_set.generate` package. T10, the lesson on strict size words ("exactly", "at least", "at most"), is the part that changed in 0.2.0. A T12 recipe (which edition was in force on a date) is also built. T11 is not.
+
+**Proven by construction.** The builder samples a hidden solution, adds clues that are true in it until the answer is fixed, and deletes every clue the answer does not need. The solver checks the model. Then the builder runs R&D's four T10 readings: "exactly" read as "at least", "exactly" read as "at most", "at least" read as "exactly", and "at most" read as "exactly". A puzzle is kept only when one of those readings, applied to the trait clue alone, changes the answer. A puzzle that passes on some other count clue is the defect class `trait_not_tested`, and it is refused.
+
+**The cell map.** Each pack, question and seed maps to a structural cell: the entity count `n` (3 to 5), the count word `op`, `k` (1 to n−1), and `ifs`, the number of `if` clues (0 to 2). Set questions use all three count words. Claim questions use "exactly" only, because "at least" and "at most" cannot change a claim's verdict. The usable cells are probed once and committed in `t10_cells.json`.
+
+**The claim axis `if_shape`.** A claim cell also names the shape of its `if` clues. There are seven shapes: `none` for no `if`; `pos` or `neg` for one `if`, by the polarity of its consequent; and `chain`, `shared_consequent`, `shared_antecedent` or `disjoint` for two. A build whose reduced puzzle loses its shape retries inside the same seed.
+
+**The allocator.** For one question and one value count, a file of 20 seeds is assigned once, before anything is built, by a min-cost flow. Each pack's 20 seeds take 20 different cells. A cell with no `if` clue is used at most twice in a file (the zero-if cap). Other visits favour cells that gave more distinct skeletons on the tuning seeds. Those weights are kept apart for two-value and three-value packs.
+
+**The variety floors.** In every stratum (set and claim, two and three values): at least 75% distinct canonical skeletons, no skeleton more than 3 times, and no skeleton twice in one pack's file. The floors are judged on locked seeds. On the locked seeds 101 to 120, three-value claims reach 118 of 120 distinct, with a top repeat of 2.
+
+**The committed record.** `t10_record.json` holds 1,280 builds (seeds 1–20, 61–80, 81–100 and 101–120, every pack, both questions), each with its cell, `if_shape`, tries and canonical skeleton. It carries a sha256 over the generator source, the cell table, the capacity table and the pack data. A test holds that file list closed under role-set's own imports. The normal CI test job checks the hash and the floors from the record in minutes. The exhaustive rebuild of every puzzle runs as the `sweep` job, on `workflow_dispatch` only, and fails on any difference from the record.
+
+**The capacity gate and the headroom.** `scripts/t10_usable_cells.py --check` reports supply, demand and headroom for each stratum, and fails with the numbers when a file cannot be placed. With `if_shape`, three-value packs have 61 usable claim cells between them, against 27 before. No pack needs a zero-`if` visit, and a test places twelve three-value packs (the six real ones and six clones) with no repeat inside a file.
+
 ## Commands
 
-`role-set --help` lists the commands. Each line below is a command that exists today.
+`role-set --help` lists the commands. Each line below is a command that exists today. The flags are in each command's `--help`.
 
-`plan` fixes every slot for a batch from a seed. It does not call a model. The same seed reproduces the plan.
+| Command | What it does |
+|---|---|
+| `plan` | Fixes every slot for a batch from a seed. No model call. The same seed writes the same plan. |
+| `cost` | Estimates pod hours and dollars for a plan before anything is launched (`two-card` or `frontier`). It is an estimate. |
+| `pack sync` / `pack verify` | Copies the verifier pack from a local aspire-si clone at a commit, and checks the copy against its manifest. |
+| `harvest` | Copies licence-checked excerpts from pinned repos into a local pool. The clone directory is not recorded. |
+| `write` | The runner. `--mock` runs it with no model and no spend. A real run needs a loopback `--endpoint` and a `--model` from `writers.json`. |
+| `readout` | Reports one run per lesson and kind, passing or failing, from the directory that holds `batch-report.json`. |
+| `critic-control` | Measures the critic on reviewed items. Needs a grant and a heartbeat file. `--trait-leg` and `--answer-leg` run those legs. |
+| `ingest` / `store` | Records receipts into the store, with the firewall at the door. `store status` reports counts. `store void` appends a void. |
+| `pilot-auto` | The paid launcher: waits for the loopback lane, writes, and can relaunch after a lost-call stop. |
+| `puzzle-check` | Runs the kind B solver over data files and their `.models.jsonl` sidecars, and refuses a repeated fact skeleton. |
 
 ```text
 uv run role-set plan --lessons T02,T03 --seed 0 --out plan.json
-```
-
-`cost` estimates pod hours and dollars for that plan before anything is launched. The figure is an estimate. The profiles are `two-card` and `frontier`.
-
-```text
-uv run role-set cost --plan plan.json --profile two-card
-```
-
-`pack sync` copies the role pack from a local aspire-si clone at a commit. `pack verify` checks that copy against its manifest. The clone path is not recorded. A fresh clone of this repo is not a synced pack: `roles/verifier` holds the exclude list and the source list, and sync fills the rest.
-
-```text
-uv run role-set pack sync --repo <aspire-si clone> --commit <sha>
-uv run role-set pack verify --pack roles/verifier
-```
-
-`harvest` copies licence-checked excerpts into a local pool. The clone directory is not recorded.
-
-```text
-uv run role-set harvest --allow-list allow.json --clones <clone directory>
-```
-
-`write` is the runner. `--mock` runs the whole pipeline with no model and no spend, and it does not ask for a grant. Mock output is marked, it is not data, and it is written under `<out>/mock/`. A run that calls a model needs `--endpoint` and `--model`, and the endpoint must be loopback. Loading the critic, or a local rehearsal writer, also needs `--grant` and `--heartbeat`. `--no-critic` is a dry run: items pass without the second reader, and the pod writer then does not use the local GPU.
-
-```text
 uv run role-set write --plan plan.json --pack roles/verifier --out out --mock
-```
-
-`readout` reports one run per lesson and kind, including a run that accepted nothing. It reads the directory that holds `batch-report.json`. A finished `write` leaves that file. `readout` is the command that turns it into the report.
-
-```text
 uv run role-set readout --run out/mock
-```
-
-`critic-control` measures the critic on reviewed items. It needs a grant and a heartbeat file. `--trait-leg` and `--answer-leg` run those two measurements.
-
-```text
-uv run role-set critic-control --items reviewed.jsonl --grant <grant> --heartbeat <heartbeat file>
-```
-
-`ingest` records receipts into the store. The firewall runs at the door. `store status` reports the file. `store void` appends a void for a round. Readers skip a voided round. It does not delete rows.
-
-```text
-uv run role-set ingest --receipts <receipts directory> --store store.sqlite --repo <aspire-si clone> --commit <sha>
-uv run role-set store status --store store.sqlite
-```
-
-`pilot-auto` is the paid launcher: one paste, then it waits for the loopback lane, writes, and can relaunch after a lost-call stop. The tests never call it against a live endpoint. CI uses `write --mock`.
-
-```text
-uv run role-set pilot-auto <port> <grant> <HH:MM UTC> <work directory>
-```
-
-`puzzle-check` runs the kind B solver over a data file and the `.models.jsonl` sidecar beside it. Give it every data file in the directory at once: a puzzle whose fact skeleton repeats an earlier one, with names, line order and direction set aside, is refused, naming the first.
-
-```text
 uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 ```
+
+The generator has no `role-set` command yet. Its three scripts make the committed tables and the record:
+
+| Script | What it does |
+|---|---|
+| `scripts/t10_usable_cells.py` | Probes every cell and writes `t10_cells.json`. `--check` runs the capacity gate on the committed table and does not probe. |
+| `scripts/t10_cell_capacity.py` | Counts distinct skeletons per cell on the tuning seeds 1, 21 and 41, by stratum, into `t10_capacity.json`. |
+| `scripts/t10_variety_record.py` | Rebuilds every recorded puzzle into `t10_record.json`. `--check` verifies the committed record and prints the locked-seed figures. |
 
 ## Gates
 
@@ -105,50 +96,42 @@ Five kinds:
 - **D.** Two turns. Verdict and evidence checks refuse. The trait check is advisory.
 - **E.** A written quiz, or a verdict quiz. A written E has no verdict check. A verdict-type E checks verdict and evidence.
 
-Verdict and evidence checks refuse. Trait, answer, and flaw checks are recorded and do not refuse, until their controls pass. The trait leg measured 40.3% overall against an 85% bar, and the worst trait 12.5% against 70%. The answer leg measured 62.7% against a 90% bar. The 2026-10-11 flaw control had 9 of 24. Gating trait or answer on those numbers would refuse items already known to be good.
+Verdict and evidence checks refuse. Trait, answer and flaw checks are recorded and do not refuse, until their controls pass. The trait leg measured 40.3% overall against an 85% bar, and the worst trait 12.5% against 70%. The answer leg measured 62.7% against a 90% bar. The 2026-10-11 flaw control had 9 of 24.
 
-The B solver covers finite assignment puzzles written in its closed set of rule forms: at most 6 entities, 3 attributes, and 200,000 assignments. It does not check the thinking against the model. A verdict-keyed B item over free-text material is outside the solver. `puzzle-check` counts that item as outside, never as passed.
+The B solver covers finite assignment puzzles in its closed set of rule forms: at most 6 entities, 3 attributes and 200,000 assignments. It does not check the thinking against the model. A verdict-keyed B item over free-text material is outside the solver, and `puzzle-check` counts it as outside, never as passed.
 
-The store's firewall refuses held-out, sealed, and interview material at ingest, and it refuses DEV material during a stage. There is no read path for held-out, sealed, or interview material. The store, ingest, and the firewall are built. Steering is designed and has never run.
+The store's firewall refuses held-out, sealed and interview material at ingest, and DEV material during a stage. There is no read path for that material. Steering is designed and has never run.
 
 ## What a run keeps
 
-Every accepted receipt carries the plan hash and the pack hash. When the run used exemplars, the receipt also carries the exemplar commit and the exclude-file hash. When it used the stuck rule, the receipt carries that rule's hash. A run that accepts nothing has no receipts. Every writer call is kept in `drafts.jsonl`, accepted or refused. A finished write leaves `batch-report.json`, and `readout` reports that directory.
+Every accepted receipt carries the plan hash and the pack hash. When the run used exemplars, it also carries the exemplar commit and the exclude-file hash. When it used the stuck rule, it carries that rule's hash. A generated puzzle's receipt carries its seed, tries, readings, difficulty metrics, and the skeleton, pack and solver hashes. Every writer call is kept in `drafts.jsonl`, accepted or refused.
 
 ## Models
 
-The writer pin is Qwen3-235B-A22B-Instruct-2507, the AWQ build, Apache-2.0. `writers.json` serves it as `qwen3-235b-instruct-2507` at revision `96548f657d772187f16e9f04bc50aec78a9f9cdd`.
+The writer pin is Qwen3-235B-A22B-Instruct-2507, the AWQ build, Apache-2.0, served as `qwen3-235b-instruct-2507` at revision `96548f657d772187f16e9f04bc50aec78a9f9cdd`. The critic pin is `gemma4:31b`, digest `6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7`, Q4_K_M, Apache-2.0, at `http://127.0.0.1:11434`. `writers.json` also lists a rehearsal-only writer and a comparison critic. A name not in the file is refused, and so is a name containing `cloud`.
 
-The critic pin is `gemma4:31b`, digest `6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7`, quant Q4_K_M, Apache-2.0. Its endpoint in `writers.json` is `http://127.0.0.1:11434`.
-
-`writers.json` also lists a rehearsal-only writer, `qwen3:8b`, and a comparison critic, `granite4.1:30b` (IBM Granite 4.1, Apache-2.0). `write` refuses the comparison critic as the run's critic. A name that is not in the file is refused. A name containing `cloud` is refused.
-
-The local GPU is used for the critic, and for a rehearsal writer, and only inside a grant. Those paths require `--grant` and a heartbeat file whose modified time is under 60 seconds. `critic-control` requires both on every run. The heartbeat file is not opened. When a run loaded the critic, it is unloaded on the way out, including when the run stops with an error. `--mock` loads nothing.
+The local GPU is used for the critic and a rehearsal writer, only inside a grant: `--grant` and a heartbeat file modified under 60 seconds ago. The heartbeat file is not opened. A critic the run loaded is unloaded on the way out, including on an error. `--mock` loads nothing.
 
 ## Pilots
 
-Three paid pilots are recorded in [docs/runs/](docs/runs/). These are the only cost figures this README states. No generator output from them is in a training set.
-
-- **Pilot 1, 2026-10-11, $3.52.** None of the 104 accepted rows is data. R&D held the 43 C and D rows as mis-assembled before any content review. The note is [docs/runs/2026-10-11-235b-pilot.md](docs/runs/2026-10-11-235b-pilot.md).
-- **Pilot 2, 2026-10-11, $3.61.** R&D's key-check of the 49 candidates: 15 passed as written, 15 more needed a mechanical fix, and 19 failed. The note is [docs/runs/2026-10-11-pilot-2.md](docs/runs/2026-10-11-pilot-2.md).
-- **Pilot 3, 2026-10-11, $2.80.** It wrote nothing. The writer's engine hung after startup. The note is [docs/runs/2026-10-11-pilot-3.md](docs/runs/2026-10-11-pilot-3.md).
+Three paid pilots are recorded in [docs/runs/](docs/runs/), all on 2026-10-11: $3.52, $3.61 and $2.80. These are the only cost figures this README states. No row from them is in a training set. In pilot 2, R&D's key-check of 49 candidates passed 15 as written, 15 more after a mechanical fix, and failed 19. Pilot 3 wrote nothing.
 
 ## Threat model
 
 role-set is a local generator. It is not a server. It does not listen, and it does not collect telemetry.
 
-A run touches the plan, the role pack, and the output directory you name. `ingest` and `store` also touch the store file you name. `write`, `pilot-auto`, and `critic-control` touch a loopback endpoint when they are not `--mock`. `--mock` sends nothing.
+A run touches the plan, the role pack and the output directory you name. `ingest` and `store` also touch the store file you name. `write`, `pilot-auto` and `critic-control` touch a loopback endpoint when they are not `--mock`. `--mock` sends nothing. The generator and its scripts read and write files inside the repository and call no model.
 
-A run does not touch a cloud model service, a pod, a rental account, or a rental API key. It does not read sealed rows, held-out sets, or interview sittings. `ingest` does read the twelve public interview questions from the aspire-si clone you name, at the commit you name, and only so it can refuse a row that repeats them. Those questions are not stored. `store status` returns counts, not rows. Report a vulnerability through the contact in [SECURITY.md](SECURITY.md).
+A run does not touch a cloud model service, a pod, a rental account or a rental API key. It does not read sealed rows, held-out sets or interview sittings. `ingest` reads the twelve public interview questions from the aspire-si clone you name, at the commit you name, only to refuse a row that repeats them. They are not stored. `store status` returns counts, not rows. Report a vulnerability through the contact in [SECURITY.md](SECURITY.md).
 
 ## Tests
 
 ```text
 uv sync --frozen
-uv run pytest
+uv run pytest -m "not sweep"
 ```
 
-Line coverage has a floor of 90, in `pyproject.toml` and in CI, and the run fails under it. The coverage badge above shows the current figure. CI also runs `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the same local checks in one command.
+Line coverage has a floor of 90, in `pyproject.toml` and `codecov.yml`, and the run fails under it. It measures about 97. The coverage badge above shows the current figure. CI also runs atlas check, `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the local checks in one command.
 
 The handbook is published with the [landing page](https://mcp-tool-shop-org.github.io/role-set/). This README stands on its own.
 

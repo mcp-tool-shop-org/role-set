@@ -40,3 +40,20 @@
 | D. Shipping hygiene | 6/10 | Verify script, lockfile, `requires-python`, coverage floor. No dependency scanner. `shipcheck deps` did not audit `uv.lock` |
 | E. Identity (soft) | 5/10 | Landing page and handbook are in this PR. Translations and `gh repo edit` are the Publisher's. The logo URL waits on the brand PR |
 | **Overall** | **31/50** | Gate E is not done. This is a prototype release, not a 1.0 |
+
+## Post-treatment assessment (0.2.0, 2026-10-14)
+
+Re-treatment for the T10 generator. Scores from `npx @mcptoolshop/shipcheck audit` and the executed gates on the `release/0.2.0` branch, before the Publisher's translation commit.
+
+Audit: 15 checked, 23 skipped with a reason, 1 unchecked (translations), pass rate 94%, exit 1. Sections A–D: every line checked or `SKIP:`. Executed gates: `security-docs` passed, `manifest --expect 0.2.0` passed, `ci` failed on `dependency-scan` (no scanner, unchanged and recorded as a skip), `front-door` skipped (site-theme front-door not installed). Tests: 432 passed with the `sweep` marker deselected, line coverage 97.19% against the floor of 90.
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| A. Security | 8/10 | SECURITY.md supports 0.2.x, the threat model covers the generator, the identity scan is `RESULT CLEAN`. `shipcheck secrets` still skips a Python repo |
+| B. Error handling | 4/10 | Unchanged: `REFUSED:` lines and per-command exit codes. No structured error object, no `--debug` |
+| C. Operator docs | 9/10 | README, CHANGELOG [0.2.0], and nine handbook pages, two new (the generator end to end, the role packs). No log-level flag |
+| D. Shipping hygiene | 6/10 | Version 0.2.0 in `pyproject.toml`, `__version__` and `uv.lock`; coverage floor 90 at 97%; the record gate in CI. Still no dependency scanner, and `scripts/verify` runs the sweep |
+| E. Identity (soft) | 8/10 | Logo URL returns 200, landing page and handbook build with search, repo metadata in place. Translations wait on the Publisher's polyglot run |
+| **Overall** | **35/50** | Up from 31. A prototype release, 0.x by the version rule, not a 1.0 |
+
+When the Publisher's translation commit lands and ticks its line, the audit exits 0 and E reads 10/10 (overall 37/50).
