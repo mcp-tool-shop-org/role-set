@@ -1,26 +1,34 @@
-"""T10's structural cells.
+"""T10's structural cells, shared across packs of one value-count.
 
 A cell is (how many entities, which count word, k, how many if clues). The usable cells are the ones that build, recorded
 in t10_cells.json by scripts/t10_usable_cells.py. Set cells keep all three count words. Claim cells are exactly only.
-Seeds 1-20 of one pack and question each take a different cell. Each pack starts one file further around that cycle, so
-the files sit apart instead of one seed apart.
 
-The builder refuses a finished puzzle only while it is still inside one seed's tries, and only when the reduced puzzle
-did not keep its cell's if count. Nothing here throws a finished puzzle away because its skeleton has been seen.
+Packs with the same number of values draw on one skeleton space, so one assignment covers the whole stratum for a file
+of 20 seeds. A pack's 20 seeds take 20 different cells. A cell with no if clue is used only when a pack has fewer than
+20 if-cells, and at most twice in a file, except a three-value claim, where the cap is 3. The other visits spread over
+if-cells, more of them on cells that produced more distinct skeletons on the tuning seeds (t10_capacity.json). The next
+file rotates that assignment.
+
+The capacity check reads the table. It does not run inside a build, and a finished puzzle is never discarded because its
+skeleton has been seen. The builder still retries inside one seed when the reduced puzzle loses its if count.
 """
 
 from __future__ import annotations
 
+import heapq
 import json
 import math
+from collections import deque
 from pathlib import Path
 
 _DATA = Path(__file__).with_name("t10_cells.json")
+_CAPACITY = Path(__file__).with_name("t10_capacity.json")
 _CELLS: dict | None = None
-# One file is 20 seeds. The next pack starts this many places further along the cycle.
+_CAP: dict | None = None
+_PLANS: dict = {}
+# One file is 20 seeds. The next file of the same packs is the next 20.
 FILE = 20
-
-
+_INF = 10**18
 def load_cells() -> dict:
     """The committed list: pack, question, then the cells that built within MAX_TRIES."""
 
@@ -28,6 +36,52 @@ def load_cells() -> dict:
     if _CELLS is None:
         _CELLS = json.loads(_DATA.read_text(encoding="utf-8"))
     return _CELLS
+
+
+def load_capacity() -> dict:
+    """Distinct skeletons per cell on the tuning seeds. Missing means the weights are even."""
+
+    global _CAP
+    if _CAP is None:
+        if _CAPACITY.exists():
+            _CAP = json.loads(_CAPACITY.read_text(encoding="utf-8"))
+        else:
+            _CAP = {"cells": {}}
+    return _CAP
+
+
+def cell_id(cell: dict) -> tuple:
+    return (cell["n"], cell["op"], cell["k"], cell["ifs"])
+
+
+def cell_key(cell: dict) -> str:
+    n, op, k, ifs = cell_id(cell)
+    return f"{n}|{op}|{k}|{ifs}"
+
+
+def zero_if_cap(kind: str, question: str) -> int:
+    """Visits one zero-if cell may take in one file. Three-value claims are the exception R&D set on 2026-10-14."""
+
+    if kind == "three" and question == "claim":
+        return 3
+    return 2
+
+
+def _value_counts() -> dict[str, int]:
+    from role_set.generate.recipes import PACKS
+
+    return {name: len(pack["values"]) for name, pack in PACKS.items()}
+
+
+def _unique(cells: list[dict]) -> list[dict]:
+    out = []
+    seen = set()
+    for cell in cells:
+        cid = cell_id(cell)
+        if cid not in seen:
+            seen.add(cid)
+            out.append(cell)
+    return out
 
 
 def _by_size_and_word(cells: list[dict]) -> list[dict]:
@@ -44,8 +98,7 @@ def _by_size_and_word(cells: list[dict]) -> list[dict]:
 
 
 def _spread(cells: list[dict]) -> list[dict]:
-    """Deal if-counts in turn, and inside each if-count deal the count word and the size in turn. A stride then keeps
-    both mixes in every file, including the locked seeds, instead of walking one block of the enumeration."""
+    """Deal if-counts in turn, and inside each if-count deal the count word and the size in turn."""
 
     buckets = {ifs: [] for ifs in (2, 1, 0)}
     for cell in cells:
@@ -66,7 +119,7 @@ def _spread(cells: list[dict]) -> list[dict]:
 
 
 def _stride(length: int) -> int:
-    """A step coprime to the list, near a third of its length, so successive seeds jump rather than take a block."""
+    """A step coprime to the list, near a third of its length."""
 
     target = max(1, length // 3)
     for step in range(target, length):
@@ -75,17 +128,330 @@ def _stride(length: int) -> int:
     return 1
 
 
+def _max_placed(packs: list[str], cells_of: dict[str, list[dict]], zero_cap: int, per_pack: int = FILE) -> int:
+    """How many of the per-pack cells can be placed without passing the zero-if cap."""
+
+    lists: dict[str, dict[tuple, dict]] = {}
+    union: list[dict] = []
+    seen: set[tuple] = set()
+    for pack in packs:
+        lists[pack] = {}
+        for cell in cells_of[pack]:
+            cid = cell_id(cell)
+            lists[pack][cid] = cell
+            if cid not in seen:
+                seen.add(cid)
+                union.append(cell)
+    if not packs or not union:
+        return 0
+    n_packs = len(packs)
+    n_cells = len(union)
+    source = 0
+    pack0 = 1
+    cell0 = pack0 + n_packs
+    sink = cell0 + n_cells
+    graph: list[dict[int, int]] = [dict() for _ in range(sink + 1)]
+
+    def add(u: int, v: int, cap: int) -> None:
+        graph[u][v] = graph[u].get(v, 0) + cap
+        graph[v].setdefault(u, 0)
+
+    c_index = {cell_id(cell): i for i, cell in enumerate(union)}
+    for i, pack in enumerate(packs):
+        add(source, pack0 + i, per_pack)
+        for cid in lists[pack]:
+            add(pack0 + i, cell0 + c_index[cid], 1)
+    for cell in union:
+        cap = zero_cap if cell["ifs"] == 0 else n_packs
+        add(cell0 + c_index[cell_id(cell)], sink, cap)
+    flow = 0
+    needed = per_pack * n_packs
+    while flow < needed:
+        parent = [-1] * len(graph)
+        parent[source] = source
+        queue = deque([source])
+        while queue and parent[sink] < 0:
+            u = queue.popleft()
+            for v, cap in graph[u].items():
+                if cap > 0 and parent[v] < 0:
+                    parent[v] = u
+                    queue.append(v)
+        if parent[sink] < 0:
+            break
+        v = sink
+        while v != source:
+            u = parent[v]
+            graph[u][v] -= 1
+            graph[v][u] = graph[v].get(u, 0) + 1
+            v = u
+        flow += 1
+    return flow
+
+
+def _marginal(weight: int, k: int, zero: bool, rot: int) -> int:
+    """Cost of the k-th visit. A cell with more skeletons stays cheaper for longer. A zero-if visit costs more than any
+    if visit, so those cells are used only when a pack has no if cell left."""
+
+    load = (1000 * k + weight - 1) // weight
+    if zero:
+        load += 1_000_000
+    return load * 100 + rot
+
+
+def assign_cells(packs: list[str], cells_of: dict[str, list[dict]], zero_cap: int, weights: dict[tuple, int],
+                 file_index: int, per_pack: int = FILE) -> dict[str, list[dict]]:
+    """One file's cells. `weights` maps a cell id to how many distinct skeletons it yielded."""
+
+    lists: dict[str, dict[tuple, dict]] = {}
+    union: list[dict] = []
+    seen: set[tuple] = set()
+    for pack in packs:
+        lists[pack] = {}
+        for cell in cells_of[pack]:
+            cid = cell_id(cell)
+            lists[pack][cid] = cell
+            if cid not in seen:
+                seen.add(cid)
+                union.append(cell)
+    needed = per_pack * len(packs)
+    if _max_placed(packs, cells_of, zero_cap, per_pack) < needed:
+        raise ValueError(f"no cell assignment places {needed} builds under a zero-if cap of {zero_cap}")
+    order = _spread(union)
+    index = {cell_id(cell): i for i, cell in enumerate(order)}
+    stride = _stride(len(order))
+    n_packs = len(packs)
+    n_cells = len(order)
+    caps = []
+    for cell in order:
+        caps.append(zero_cap if cell["ifs"] == 0 else n_packs)
+    source = 0
+    pack0 = 1
+    cell0 = pack0 + n_packs
+    slot0 = cell0 + n_cells
+    n_slots = sum(caps)
+    sink = slot0 + n_slots
+    graph: list[list[list]] = [[] for _ in range(sink + 1)]
+
+    def add(u: int, v: int, cap: int, cost: int) -> None:
+        graph[u].append([v, cap, cost, len(graph[v]), cap])
+        graph[v].append([u, 0, -cost, len(graph[u]) - 1, 0])
+
+    for i, pack in enumerate(packs):
+        add(source, pack0 + i, per_pack, 0)
+        pack_cost = (i + file_index) % 17
+        for cid in lists[pack]:
+            add(pack0 + i, cell0 + index[cid], 1, pack_cost)
+    slot = slot0
+    for i, cell in enumerate(order):
+        weight = max(1, weights.get(cell_id(cell), 1))
+        rot = (i * stride + file_index * stride) % 97
+        for k in range(1, caps[i] + 1):
+            add(cell0 + i, slot, 1, _marginal(weight, k, cell["ifs"] == 0, rot))
+            add(slot, sink, 1, 0)
+            slot += 1
+    potential = [0] * len(graph)
+    flow = 0
+    while flow < needed:
+        dist = [_INF] * len(graph)
+        dist[source] = 0
+        parent_v = [-1] * len(graph)
+        parent_e = [-1] * len(graph)
+        heap = [(0, source)]
+        while heap:
+            d, u = heapq.heappop(heap)
+            if d != dist[u]:
+                continue
+            for ei, edge in enumerate(graph[u]):
+                v, cap, cost = edge[0], edge[1], edge[2]
+                if cap <= 0:
+                    continue
+                nd = d + cost + potential[u] - potential[v]
+                if nd < dist[v]:
+                    dist[v] = nd
+                    parent_v[v] = u
+                    parent_e[v] = ei
+                    heapq.heappush(heap, (nd, v))
+        if dist[sink] >= _INF:
+            break
+        for v in range(len(graph)):
+            if dist[v] < _INF:
+                potential[v] += dist[v]
+        v = sink
+        while v != source:
+            u = parent_v[v]
+            edge = graph[u][parent_e[v]]
+            edge[1] -= 1
+            graph[v][edge[3]][1] += 1
+            v = u
+        flow += 1
+    if flow < needed:
+        raise ValueError(f"no cell assignment places {needed} builds under a zero-if cap of {zero_cap}")
+    chosen: dict[str, list[dict]] = {pack: [] for pack in packs}
+    for i, pack in enumerate(packs):
+        for edge in graph[pack0 + i]:
+            v, residual, _cost, _rev, original = edge
+            if cell0 <= v < slot0 and original > residual:
+                chosen[pack].append(lists[pack][cell_id(order[v - cell0])])
+        # Spread order, then a coprime walk. Adjacent seeds take cells far apart in that
+        # order. The pack index and the file shift where the walk starts.
+        chosen[pack].sort(key=lambda cell: (index[cell_id(cell)], cell_id(cell)))
+        n = len(chosen[pack])
+        step = _stride(n)
+        start = (i + file_index * step) % n
+        chosen[pack] = [chosen[pack][(start + slot * step) % n] for slot in range(n)]
+    return chosen
+
+
+def _packs_of(table: dict, nvalues: int, value_counts: dict[str, int]) -> list[str]:
+    return [pack for pack in table["packs"] if value_counts[pack] == nvalues]
+
+
+def assignment(question: str, nvalues: int, file_index: int) -> dict[str, list[dict]]:
+    """The file's cells for every pack with this many values. Computed once, then reused."""
+
+    key = (question, nvalues, file_index)
+    if key not in _PLANS:
+        table = load_cells()
+        counts = _value_counts()
+        packs = _packs_of(table, nvalues, counts)
+        cells_of = {pack: table["cells"][pack][question] for pack in packs}
+        data = load_capacity().get("cells", {}).get(question, {})
+        weights = {}
+        for pack in packs:
+            for cell in cells_of[pack]:
+                found = data.get(cell_key(cell))
+                if found and found.get("builds"):
+                    weights[cell_id(cell)] = max(1, int(found["distinct"]))
+        kind = "three" if nvalues == 3 else "two"
+        _PLANS[key] = assign_cells(packs, cells_of, zero_if_cap(kind, question), weights, file_index)
+    return _PLANS[key]
+
+
 def cell_for(pack: str, question: str, seed: int) -> dict:
-    """The cell for this pack, question and seed. Seeds 1-20 land on 20 different cells when at least 20 are usable."""
+    """The cell for this pack, question and seed. One file's seeds land on different cells."""
+
+    if seed < 1:
+        raise ValueError(f"T10 seed is 1 or more, not {seed}")
+    nvalues = _value_counts()[pack]
+    plan = assignment(question, nvalues, (seed - 1) // FILE)
+    return plan[pack][(seed - 1) % FILE]
+
+
+def placed_builds(question: str, nvalues: int, zero_cap: int) -> tuple[int, int]:
+    """How many builds the stratum can place at this zero-if cap, and how many a file needs."""
 
     table = load_cells()
-    cells = _spread(table["cells"][pack][question])
-    if len(cells) < 20:
-        raise ValueError(f"{pack} {question} has {len(cells)} usable cells; a file of 20 seeds needs 20 different cells")
-    order = table["packs"]
-    step = _stride(len(cells))
-    start = (order.index(pack) * FILE * step) % len(cells)
-    return cells[(start + (seed - 1) * step) % len(cells)]
+    packs = _packs_of(table, nvalues, _value_counts())
+    cells_of = {pack: table["cells"][pack][question] for pack in packs}
+    return _max_placed(packs, cells_of, zero_cap), FILE * len(packs)
+
+
+def _headroom(packs: list[str], cells_of: dict[str, list[dict]], zero_cap: int, candidates: list[dict]) -> int | None:
+    """How many more packs fit when each new one lists `candidates`.
+
+    None means those cells include a whole file of if-cells, so the zero-if cap never runs out: an if cell's visits grow
+    with the number of packs."""
+
+    cells = _unique(candidates)
+    if len(cells) < FILE or not packs:
+        return 0
+    if sum(1 for cell in cells if cell["ifs"] != 0) >= FILE:
+        return None
+
+    def fits(extras: int) -> bool:
+        names = list(packs) + [f"extra-{i}" for i in range(extras)]
+        lists = dict(cells_of)
+        for i in range(extras):
+            lists[f"extra-{i}"] = cells
+        return _max_placed(names, lists, zero_cap) >= FILE * len(names)
+
+    if not fits(1):
+        return 0
+    zero_cells = 0
+    seen: set[tuple] = set()
+    for pack in packs:
+        for cell in cells_of[pack]:
+            cid = cell_id(cell)
+            if cid not in seen and cell["ifs"] == 0:
+                seen.add(cid)
+                zero_cells += 1
+    limit = max(1, zero_cells * zero_cap)
+    lo, hi = 1, 1
+    while hi < limit and fits(hi):
+        lo = hi
+        hi = min(limit, hi * 2)
+    if not fits(hi):
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if fits(mid):
+                lo = mid
+            else:
+                hi = mid - 1
+    return lo
+
+
+def capacity_report(table: dict | None = None, value_counts: dict[str, int] | None = None) -> list[dict]:
+    """Supply, demand and headroom for each stratum. `ok` is false when the file cannot be placed.
+
+    The next step named on a failure is if_shape for claim cells. This checks the table. It is not called from a build."""
+
+    table = load_cells() if table is None else table
+    counts = _value_counts() if value_counts is None else value_counts
+    rows = []
+    for question in ("set", "claim"):
+        for kind, nvalues in (("two", 2), ("three", 3)):
+            packs = _packs_of(table, nvalues, counts)
+            cells_of = {pack: table["cells"][pack][question] for pack in packs}
+            cap = zero_if_cap(kind, question)
+            union: list[dict] = []
+            seen: set[tuple] = set()
+            detail = []
+            for pack in packs:
+                cells = _unique(cells_of[pack])
+                ifs = sum(1 for cell in cells if cell["ifs"] != 0)
+                demand = max(0, FILE - ifs)
+                detail.append({"pack": pack, "if_cells": ifs, "zero_if_demand": demand})
+                for cell in cells:
+                    cid = cell_id(cell)
+                    if cid not in seen:
+                        seen.add(cid)
+                        union.append(cell)
+            zero_cells = sum(1 for cell in union if cell["ifs"] == 0)
+            supply = zero_cells * cap
+            demand = sum(row["zero_if_demand"] for row in detail)
+            needed = FILE * len(packs)
+            placed = _max_placed(packs, cells_of, cap) if packs else 0
+            ok = placed >= needed
+            shared: list[dict] = []
+            if packs:
+                common: set[tuple] | None = None
+                sample = {cell_id(cell): cell for cell in union}
+                for pack in packs:
+                    ids = {cell_id(cell) for cell in cells_of[pack]}
+                    common = ids if common is None else common & ids
+                shared = [sample[cid] for cid in sorted(common)]
+            row = {
+                "question": question,
+                "kind": kind,
+                "zero_if_cap": cap,
+                "zero_if_cells": zero_cells,
+                "supply": supply,
+                "demand": demand,
+                "placed": placed,
+                "needed": needed,
+                "headroom_shared": _headroom(packs, cells_of, cap, shared) if ok else 0,
+                "headroom_any": _headroom(packs, cells_of, cap, union) if ok else 0,
+                "packs": detail,
+                "ok": ok,
+            }
+            if not ok:
+                row["reason"] = (
+                    f"{question} {kind}: placed {placed} of {needed}. "
+                    f"Zero-if supply is {supply} ({zero_cells} cells × {cap}), demand is {demand}. "
+                    f"Next step is if_shape for claim cells."
+                )
+            rows.append(row)
+    return rows
 
 
 def canonical_skeleton(model: dict) -> str:
