@@ -1,0 +1,276 @@
+{
+  "regenerate": "uv run python -m role_set.advocate.variety",
+  "files": [
+    "src/role_set/advocate/ledger.py",
+    "src/role_set/advocate/table.py",
+    "src/role_set/advocate/plan.py"
+  ],
+  "sha256": "9f130fd3479cfdad1ba9e1aae5f4ee4ff189e917300119de5cf5f85929589a2f",
+  "seed": 0,
+  "slots": [
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "identity_scan||B011||true|false|false|false|none|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "ci_run||B005||false|true|false|false|true|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "seat_handback|local baseline:fail:baseline|B004,B006|decision threshold|false|false|true|true|false|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "seat_handback|coverage floor:fail:proposed|B006|printed cost|false|false|true|false|true|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "reviewer_verdict||B008|printed cost|false|true|true|false|true|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "reviewer_verdict||B005,B010||false|false|false|true|true|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "device_grant|local baseline:fail:baseline|B010,B011|decision threshold|false|false|false|true|false|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "release_record|coverage floor:fail:proposed,local baseline:fail:baseline|B006,B012,B005|grant id|false|false|false|true|true|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "release_record|coverage floor:fail:proposed,local baseline:fail:baseline|B007,B005|decision threshold|false|true|true|false|true|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "paid_run_plan|local baseline:fail:baseline|B008,B009|grant id|false|false|false|false|true|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "reviewer_verdict|unit check:pass:proposed||grant id|true|false|true|false|true|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "reviewer_verdict|unit check:pass:proposed|B012|decision threshold|false|false|true|true|false|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "ci_run|unit check:pass:proposed|B007,B012|decision threshold|false|false|false|false|none|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,local baseline:fail:baseline|B008|grant id|false|false|true|false|false|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "identity_scan|unit check:pass:proposed|B004|decision threshold|false|false|false|false|none|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "device_grant|local baseline:fail:baseline|B008|grant id|false|false|true|false|false|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "security_export|coverage floor:fail:proposed,patch coverage:fail:proposed|B008,B009||false|false|false|true|false|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,local baseline:fail:baseline|B010,B011|decision threshold|false|false|false|true|false|2"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "identity_scan||B009||false|false|true|false|false|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,patch coverage:fail:proposed|B004||false|false|false|false|none|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "ci_run||||false|false|false|false|none|1"
+    },
+    {
+      "trait": "failed-gate-first",
+      "skeleton": "identity_scan|unit check:pass:proposed|B005,B010|grant id|false|false|false|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "device_grant|coverage floor:fail:proposed|||false|false|false|false|none|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,local baseline:fail:baseline|B010|grant id|true|false|false|false|none|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "security_export|coverage floor:fail:proposed,patch coverage:fail:proposed|B009|printed cost|false|true|true|false|true|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "release_record|coverage floor:fail:proposed,patch coverage:fail:proposed|B010,B005||false|false|true|false|false|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "reviewer_verdict|unit check:pass:proposed|B010|decision threshold|false|false|true|false|none|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "security_export|coverage floor:fail:proposed,local baseline:fail:baseline|B011|decision threshold|false|false|true|false|none|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "seat_handback|coverage floor:fail:proposed|B008|printed cost|false|true|true|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "release_record|coverage floor:fail:proposed,local baseline:fail:baseline|B008,B009,B005|grant id|false|false|false|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "paid_run_plan|local baseline:fail:baseline|B007|decision threshold|false|true|true|false|true|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,patch coverage:fail:proposed|B004,B006|printed cost|false|false|false|true|true|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "ci_run|unit check:pass:proposed|B008,B009|decision threshold|false|false|false|true|false|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,patch coverage:fail:proposed|B005,B010|printed cost|false|false|false|false|true|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "ci_run|unit check:pass:proposed|B009|grant id|true|false|false|false|none|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "security_export|coverage floor:fail:proposed,local baseline:fail:baseline|B004|grant id|false|true|false|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "ci_run||B006,B012|printed cost|false|false|true|true|false|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "identity_scan|unit check:pass:proposed|B004,B006|grant id|false|false|false|true|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "paid_run_plan|local baseline:fail:baseline|B005|decision threshold|false|false|false|false|none|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "device_grant|local baseline:fail:baseline|B010|grant id|true|false|false|false|none|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "device_grant|coverage floor:fail:proposed|B006,B012|printed cost|false|false|false|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "ci_run|unit check:pass:proposed|B007|grant id|false|false|true|false|true|2"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,patch coverage:fail:proposed|B006||false|true|false|false|true|1"
+    },
+    {
+      "trait": "exact-figures",
+      "skeleton": "seat_handback|local baseline:fail:baseline|B004|grant id|true|false|true|false|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "security_export|coverage floor:fail:proposed,patch coverage:fail:proposed|B007,B012||false|false|false|false|none|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "identity_scan|unit check:pass:proposed|B006|decision threshold|false|true|false|false|true|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "reviewer_verdict||B006|printed cost|false|false|true|false|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "frozen_analysis|coverage floor:fail:proposed,local baseline:fail:baseline||decision threshold|false|false|true|false|true|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "ci_run||B012|printed cost|false|false|true|false|none|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "security_export|coverage floor:fail:proposed,patch coverage:fail:proposed|B007|printed cost|false|false|true|false|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "reviewer_verdict||B010,B011||false|false|false|false|none|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "paid_run_plan|coverage floor:fail:proposed|B009||false|false|true|false|false|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "device_grant|coverage floor:fail:proposed|B005||false|true|false|false|true|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "paid_run_plan|local baseline:fail:baseline|B006,B012|grant id|false|false|false|true|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "identity_scan||B007,B012|printed cost|true|false|true|false|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "device_grant|coverage floor:fail:proposed|B012|printed cost|false|false|true|false|none|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "device_grant|local baseline:fail:baseline||decision threshold|false|false|false|false|none|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "release_record|coverage floor:fail:proposed,patch coverage:fail:proposed|B012,B005||false|false|true|true|false|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "seat_handback|coverage floor:fail:proposed|B005,B010||false|false|false|true|false|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "paid_run_plan|coverage floor:fail:proposed|B007,B012|printed cost|true|false|true|false|true|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "release_record|coverage floor:fail:proposed,patch coverage:fail:proposed||printed cost|true|false|true|false|true|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "seat_handback|coverage floor:fail:proposed|B010,B011||false|false|false|false|none|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "seat_handback|local baseline:fail:baseline|B011|decision threshold|false|false|true|false|none|1"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "release_record|coverage floor:fail:proposed,local baseline:fail:baseline|B005|decision threshold|false|false|true|false|true|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "security_export|coverage floor:fail:proposed,local baseline:fail:baseline|B004,B006|decision threshold|false|false|true|true|false|2"
+    },
+    {
+      "trait": "faithful-relay",
+      "skeleton": "paid_run_plan|coverage floor:fail:proposed|B011||true|false|false|false|none|2"
+    }
+  ]
+}

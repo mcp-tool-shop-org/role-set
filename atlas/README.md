@@ -1,16 +1,20 @@
 # role-set: how it works
 
-Mapped at 2026-10-14 from commit 169a51e by Atlas 1.24.0.
+Mapped at 2026-10-14 from commit ffb9546 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (78 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-14 (787ccf8)
+## What changed since 2026-10-14 (169a51e)
 
-Nothing structural changed since 2026-10-14; 2 files changed content.
+- src/role_set/advocate/variety_record.json is now written by src/role_set/advocate/variety.py.
+- README.md is now also read by roles/advocate/pack.json and tests/test_advocate.py.
+- roles/advocate/ is now read by src/role_set/advocate/variety.py.
+- And 4 more new writers and readers of places.
+- 12 files added and 3 changed content, across 4 parts.
 
 ## What comes in
 
@@ -21,7 +25,7 @@ Nothing structural changed since 2026-10-14; 2 files changed content.
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (33 files).
+2. That reaches src (42 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -64,6 +68,7 @@ No two parts export a helper that looks alike.
 
 ## Generated, never hand-edited
 
+- **src/role_set/advocate/variety_record.json** has a block written by src/role_set/advocate/variety.py.
 - **src/role_set/generate/t10_capacity.json** is written by scripts/t10_cell_capacity.py.
 - **src/role_set/generate/t10_cells.json** has a block written by scripts/t10_usable_cells.py.
 - **src/role_set/generate/t10_record.json** is written by scripts/t10_variety_record.py.
@@ -81,9 +86,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 write and 4 reads use paths built at run time and are not named here.
-- 5 writes and 27 reads go to a path their caller passes, not to this repository.
-- 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
-- 9 reads go to the directory the command is run in, not to this repository.
+- 5 writes and 29 reads go to a path their caller passes, not to this repository.
+- 8 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
+- 10 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.

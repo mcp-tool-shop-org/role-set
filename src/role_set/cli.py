@@ -48,7 +48,31 @@ VERIFIER_SIDES = {
 }
 
 
+def _plan_advocate(args: argparse.Namespace) -> int:
+    from role_set.advocate.plan import PlanError as AdvocatePlanError
+    from role_set.advocate.plan import plan_batch
+
+    names = [name.strip() for name in args.lessons.split(",") if name.strip()]
+    pack = Path(args.pack) if args.pack else Path("roles/advocate")
+    try:
+        slots = plan_batch(pack, names, seed=args.seed)
+    except (AdvocatePlanError, PackError) as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
+    out = {
+        "role": "advocate",
+        "seed": args.seed,
+        "pack_sha256": slots[0].pack_sha256,
+        "slots": [slot.as_dict() for slot in slots],
+    }
+    Path(args.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
+    print(f"wrote {len(slots)} slots to {args.out}")
+    return 0
+
+
 def _plan(args: argparse.Namespace) -> int:
+    if args.role == "advocate":
+        return _plan_advocate(args)
     lessons = {}
     for name in args.lessons.split(","):
         name = name.strip()
@@ -258,6 +282,7 @@ def build_parser() -> argparse.ArgumentParser:
     a = sub.add_parser("plan", help="fix every slot for a batch; no model call")
     a.add_argument("--role", default="verifier")
     a.add_argument("--lessons", required=True, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--pack", default=None, help="advocate pack directory; default roles/advocate")
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
     a.set_defaults(func=_plan)

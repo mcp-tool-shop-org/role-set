@@ -23,24 +23,54 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 2,
+      "added": 12,
+      "changed": 3,
       "moved": 0,
-      "parts": 2,
+      "parts": 4,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "src/role_set/advocate/variety_record.json is now written by src/role_set/advocate/variety.py.",
+        "subjects": [
+          "src/role_set/advocate/variety_record.json",
+          "src/role_set/advocate/variety.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "README.md is now also read by roles/advocate/pack.json and tests/test_advocate.py.",
+        "subjects": [
+          "README.md",
+          "roles/advocate/pack.json",
+          "tests/test_advocate.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "roles/advocate/ is now read by src/role_set/advocate/variety.py.",
+        "subjects": [
+          "roles/advocate/",
+          "src/role_set/advocate/variety.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 4 more new writers and readers of places.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-14; 2 files changed content.",
+        "sentence": "12 files added and 3 changed content, across 4 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "787ccf8b114a4e5617378adce32488d1eae84b69",
-      "generatedAt": "2026-10-14T21:45:35.832Z"
+      "commit": "169a51e48d86bdf4e971689ba8c1f54b469872d0",
+      "generatedAt": "2026-10-14T22:15:32.415Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -95,9 +125,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "169a51e48d86bdf4e971689ba8c1f54b469872d0",
+  "commit": "ffb9546ea1ad492e6da9ef1a82191a3fac30d299",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (78 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -112,12 +142,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 31
+          "files": 32
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 33
+          "files": 42
         }
       ],
       "runs": [
@@ -180,7 +210,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 27
+          "files": 31
         }
       ],
       "runs": [
@@ -199,6 +229,13 @@
   "edges": [],
   "engine": "1.24.0",
   "generated": [
+    {
+      "block": true,
+      "place": "src/role_set/advocate/variety_record.json",
+      "writers": [
+        "src/role_set/advocate/variety.py"
+      ]
+    },
     {
       "place": "src/role_set/generate/t10_capacity.json",
       "writers": [
@@ -219,12 +256,12 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T22:15:32.415Z",
+  "generatedAt": "2026-10-14T23:40:27.400Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
-    "5 writes and 27 reads go to a path their caller passes, not to this repository.",
-    "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
-    "9 reads go to the directory the command is run in, not to this repository.",
+    "5 writes and 29 reads go to a path their caller passes, not to this repository.",
+    "8 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
+    "10 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -253,10 +290,10 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 37,
+  "testFiles": 38,
   "testedBy": {
     "scripts": 0,
-    "src": 30
+    "src": 31
   },
   "unnamedWrites": 1,
   "unread": [],
@@ -270,5 +307,5 @@
     }
   ],
   "untestedNote": [],
-  "written": 3
+  "written": 4
 }
