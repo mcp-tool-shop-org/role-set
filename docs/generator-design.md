@@ -292,22 +292,27 @@ Every bound is a `Floor` field (the maintainer's "configurable wins" rule). R&D'
 ## T10 variety (as built, role-set#53, 2026-10-14)
 
 **The cell map.**
-- Each (pack, question, seed) maps to a structural cell: entity count n (3-5), count word (exactly, at least, at most), k (1 to n-1), and a target of 0-2 `if` clues.
+- Each (pack, question, seed) maps to a structural cell: entity count n (3-5), a count word, k (1 to n-1), and a target of 0-2 `if` clues. Set cells use exactly, at least, and at most. Claim cells use exactly only.
 - The usable cells are probed once and committed as `src/role_set/generate/t10_cells.json`, by `scripts/t10_usable_cells.py`.
 - Seeds index the table so that one pack's 20 seeds land in 20 different cells, and each pack is offset so packs spread over different cells.
 - A build whose reduced puzzle loses its cell's `if` target retries inside that seed. Finished builds are never discarded for repeating a skeleton.
 
 **What carries the variety.** The cell map does. Deletion now runs in tiers (`is`, then `is_not`, then `if`, with the count clue last), but on the locked seeds the share of puzzles keeping an `if` didn't rise. So it isn't credited.
 
-**The boundary on claim items (R&D).**
-- When an at-least or at-most clue directly decides a single entity, the true count must equal k.
-- So on claim items, reading the size word as "exactly" gives the key's answer. Claim items can't catch that misreading.
-- Set items carry the check: 16 of 38 set inequalities on the locked seeds have the hidden count off k.
+**What each question tests (2026-10-14).**
 
-**Known defect, fixed separately (`trait_not_tested`, from #48).**
-- In all 9 three-value claim items with an at-least or at-most trait, the shortcut check passed on a second "exactly" count clue, and the trait's own misreading gave the key's answer.
-- Those items still test "exactly". Their count word is a cell label only.
-- The cause is that `_finish` accepts a build when any registered reading differs. It should require the trait clue's own reading to differ.
-- The follow-up gives T10 one count clue, makes claims "exactly" only, and records why a claim can't test "at least" or "at most".
+A claim asks whether one named entity has a value. The answer is supported, unsupported, or cannot tell, and that answer is true of every assignment that still fits.
 
-**Open gap.** Two-value claim packs (lamps, doors) have no usable at-least or at-most claim cell. The follow-up above explains why that's structural.
+Every assignment that fits "exactly k" also fits "at least k". The same inclusion runs from "exactly k" into "at most k". Reading the wider word as "exactly k" keeps a subset of the assignments the real clue allows. The claim's answer stays true of that subset, so it does not change. An empty subset is "no assignment fits", and that does not count as a different answer. A cannot-tell key cannot carry the trait either: adding a clue only removes assignments, so if the answer is cannot tell with the trait, it was already cannot tell without it, and reduction drops the trait. The same subset covers any claim about one assignment, including a claim about two entities or about a count.
+
+A set question asks which groups could have the value. The answer is those groups. Reading "at least k" or "at most k" as "exactly k" drops groups of other sizes, so the set changes. Set items test all three size words.
+
+An "exactly" claim can change. Reading it as "at least k" or "at most k" lets more assignments through, and the verdict can move.
+
+Two values do not open a way around this. An "exactly" clue there fixes both counts, so it makes an "at least" or "at most" trait redundant. That is why those claim cells never built.
+
+Claim cells therefore use "exactly" only. Set cells keep all three size words. The four readings stay the ones registered on 2026-10-11. An off-by-one reading, "at least k" taken as "at least k−1", would change the lesson so the generator could build it, and it is not used.
+
+The builder accepts a puzzle only when one of those readings, applied to the trait clue alone, changes the answer. The puzzle has that one count clue. The receipt still stores `prove`'s reading of every count clue. The selector rests the item on a reading of the trait clue's operator.
+
+On #53's locked seeds this had not held. Nine three-value claim items, and one set item, passed on a second "exactly" count clue while the trait's own reading gave the key's answer. Those claim inequalities also had the hidden count equal to k. The draw was not pinned to k. Claims no longer use those cells.

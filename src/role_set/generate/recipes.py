@@ -3,17 +3,18 @@ deciding path, and the shortcut readings that must answer differently.
 
 Slice 1, first recipe: T10 (takes statements literally). The trait clue is a count ("exactly / at least / at most k of
 them are v"), and the readings are R&D's four size loosenings. A puzzle is accepted only when the count survives the
-reduction and at least one applicable reading gives a different answer.
+reduction and the trait clue's own size reading, applied to that clue alone, gives a different answer.
 """
 
 from __future__ import annotations
 
+import copy
 import random
 from dataclasses import dataclass
 
 from role_set.generate.build import (MAX_TRIES, BuildError, Built, Shape, _key, _mask, assignments, candidates, check_model,
                                      deletion_order, metrics, reduce, truth)
-from role_set.generate.shortcuts import REGISTRY, prove
+from role_set.generate.shortcuts import REGISTRY, answer, differs, prove
 from role_set.generate.t10_variety import cell_for
 from role_set.puzzle import PuzzleError
 
@@ -89,14 +90,14 @@ def _addition_order(others: list[list], rng: random.Random, if_target: int) -> l
 
 def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES,
               cell: dict | None = None) -> Built:
-    """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and at least one size
-    reading that answers differently. `question` is "set" (which could be ...?) or "claim".
+    """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and the trait clue's
+    own size reading answers differently. `question` is "set" (which could be ...?) or "claim".
 
     The cell fixes how many entities, the count word, k, and how many if clues the reduced puzzle must keep. `n` stays in
     the signature for callers that pass it; the cell is what assigns the entity count. Pass `cell` only to probe one
-    cell. The hidden solution is drawn from the assignments where that count clue is true, and not from the ones where
-    the true count is exactly k: an at-least or at-most puzzle whose count is always exactly k would teach the misreading
-    T10 exists to train out."""
+    cell. A claim cell is "exactly": "at least" and "at most" keep a claim's verdict. The hidden solution is drawn from
+    the assignments where that count clue is true, and not from the ones where the true count is exactly k: an at-least
+    or at-most puzzle whose count is always exactly k would teach the misreading T10 exists to train out."""
 
     if question not in T10_QUESTIONS:
         raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
@@ -107,6 +108,8 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     last = "no attempt"
     attr = pack["attribute"]
     op, k, if_target, size = spec["op"], spec["k"], spec["ifs"], spec["n"]
+    if question == "claim" and op != "=":
+        raise BuildError(f"T10 ({pack_name}): a claim tests exactly; at least and at most do not change its verdict")
     for attempt in range(1, tries + 1):
         shape = t10_shape(pack, size, rng, question)
         sols = assignments(shape)
@@ -120,7 +123,8 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
             continue
         hidden = rng.choice(satisfying)  # the count is true, and a larger or smaller count may be too
         true_pool = [c for c in pool if bits[_key(c)] >> hidden & 1]
-        others = _addition_order([c for c in true_pool if c is not trait], rng, if_target)
+        # The trait is the only count clue. A second one can pass the shortcut check without the trait's own reading.
+        others = _addition_order([c for c in true_pool if c is not trait and c[0] != "count"], rng, if_target)
         if shape.structure == "underdetermined_with_explicit_set":
             kept = _open_set(shape, sols, bits, trait, others, rng, if_target)
             if kept is None:
@@ -168,18 +172,52 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     raise BuildError(f"T10 ({pack_name}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")
 
 
+def _trait_reading_differs(model: dict, structure: str, trait: list) -> bool:
+    """A registered reading whose operator is the trait's, rewritten on the trait clue alone, changes the answer.
+
+    `prove` still rewrites every count clue of that operator and is what the receipt stores. This check is the one the
+    build has to pass: another count clue's misreading is not the trait (class trait_not_tested)."""
+
+    op = trait[3]
+    key = None
+    for name, spec in REGISTRY.items():
+        if spec.get("rewrite") != "count_op" or spec.get("from") != op:
+            continue
+        lazy_model = copy.deepcopy(model)
+        hit = False
+        for fact in lazy_model["facts"]:
+            rule = fact["rule"]
+            if rule == trait:
+                fact["rule"] = [*rule[:3], spec["to"], rule[4]]
+                hit = True
+                break
+        if not hit:
+            continue
+        if key is None:
+            key = answer(model, structure)
+        try:
+            lazy = answer(lazy_model, structure)
+        except PuzzleError as exc:
+            lazy = {"kind": "none", "value": str(exc)}
+        if differs(key, lazy):
+            return True
+    return False
+
+
 def _finish(shape: Shape, kept: list[list], trait: list, hidden: int, seed: int, attempt: int) -> Built | str:
     """The solver's own checks on the reduced model, then the shortcut proof; a refusal comes back as its reason."""
 
     model = shape.model(kept)
     try:
-        answer = check_model(model, shape.structure)
+        solved = check_model(model, shape.structure)
     except PuzzleError as e:
         return str(e)
     proofs = prove(model, shape.structure, list(T10.shortcuts))
     if not any(p["differs"] for p in proofs.values()):
         return "no size loosening changed the answer"
-    return Built(model=model, answer=answer, hidden=hidden, trait_clue=trait, shortcuts=proofs, metrics=metrics(model),
+    if not _trait_reading_differs(model, shape.structure, trait):
+        return "the trait clue's own size word did not change the answer"
+    return Built(model=model, answer=solved, hidden=hidden, trait_clue=trait, shortcuts=proofs, metrics=metrics(model),
                  seed=seed, tries=attempt)
 
 

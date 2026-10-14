@@ -31,6 +31,19 @@ def test_a_real_t12_pool_where_newest_dominates_still_fills_a_file():
     assert select(pool) == picks  # the same receipts give the same file
 
 
+def test_a_count_item_rests_on_its_trait_operator():
+    # A second count clue can differ without testing the trait. The item rests on the trait's own size word.
+    missed = rec(FLOOR_EQ, EQ_FLOOR)
+    missed["trait_clue"] = ["count", "heat", "hot", ">=", 2]
+    held = rec(EQ_FLOOR)
+    held["trait_clue"] = ["count", "heat", "hot", ">=", 1]
+    wide = Floor(size=2, min_distinct=1, max_share=1, loosening_max_share=1)
+    picks = select([missed, held], wide)
+    assert [p.rests_on for p in picks] == [EQ_FLOOR, EQ_FLOOR]
+    assert any("trait clue" in m for m in check_file([(missed, FLOOR_EQ)], wide))
+    assert check_file([(held, EQ_FLOOR)], Floor(size=1, min_distinct=1, max_share=1, loosening_max_share=1)) == []
+
+
 def test_each_item_rests_on_a_reading_that_differs_on_it():
     pool = [rec(NEWEST, same=[HIGHEST]), rec(NEWEST, HIGHEST), rec(BOUNDARY), rec(HIGHEST), rec(BOUNDARY, NEWEST),
             rec(NEWEST)]

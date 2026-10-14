@@ -1,8 +1,9 @@
 """T10's structural cells.
 
 A cell is (how many entities, which count word, k, how many if clues). The usable cells are the ones that build, recorded
-in t10_cells.json by scripts/t10_usable_cells.py. Seeds 1-20 of one pack and question each take a different cell. Each
-pack starts one file further around that cycle, so the files sit apart instead of one seed apart.
+in t10_cells.json by scripts/t10_usable_cells.py. Set cells keep all three count words. Claim cells are exactly only.
+Seeds 1-20 of one pack and question each take a different cell. Each pack starts one file further around that cycle, so
+the files sit apart instead of one seed apart.
 
 The builder refuses a finished puzzle only while it is still inside one seed's tries, and only when the reduced puzzle
 did not keep its cell's if count. Nothing here throws a finished puzzle away because its skeleton has been seen.

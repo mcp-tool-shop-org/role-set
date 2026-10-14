@@ -1,6 +1,7 @@
 """Which T10 cells build from the probe seed with tries to spare.
 
-A cell is n in {3, 4, 5}, a count word (exactly, at least, at most), k in 1..n-1, and an if count in {0, 1, 2}.
+A cell is n in {3, 4, 5}, a count word, k in 1..n-1, and an if count in {0, 1, 2}. Set cells try exactly, at least, and
+at most. Claim cells are exactly only: at least and at most do not change a claim's verdict, so the builder refuses them.
 The probe seed is 0, which is neither a tuning seed nor a locked seed. A cell is recorded only when that seed builds it
 in at most MAX_TRIES // 10 attempts. A cell that spends most of the budget on the probe then misses on a later seed:
 cups claim, seed 13, n=5 at least 2 with two if clues, took 72 probe tries and did not build in 400. The list is the
