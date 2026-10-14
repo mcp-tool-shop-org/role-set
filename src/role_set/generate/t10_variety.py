@@ -41,6 +41,8 @@ RECORD_SEEDS = (
 REGENERATE_RECORD_CMD = "uv run python scripts/t10_variety_record.py"
 RECORD_HASH_FILES = (
     "src/role_set/assemble.py",
+    "src/role_set/critic.py",
+    "src/role_set/gates.py",
     "src/role_set/plan.py",
     "src/role_set/puzzle.py",
     "src/role_set/puzzle_check.py",

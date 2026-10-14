@@ -431,7 +431,7 @@ def test_the_record_hash_list_is_closed_under_role_set_imports():
                 mods = [node.module]
                 for alias in node.names:
                     cand = f"{node.module}.{alias.name}"
-                    if (root / "src" / (*cand.split("."),)).with_suffix(".py").exists():
+                    if root.joinpath("src", *cand.split(".")).with_suffix(".py").exists():
                         mods.append(cand)
             for mod in mods:
                 parts = mod.split(".")
@@ -472,7 +472,9 @@ def test_the_variety_record_script_checks_the_committed_record():
     )
     assert done.returncode == 0, done.stdout + done.stderr
     assert "set two: 40/40 top 1" in done.stdout
-    assert "set three: 120/120 top 1" in done.stdout
+    assert "set three: 118/120 top 2" in done.stdout
+    assert "claim two: 40/40 top 1" in done.stdout
+    assert "claim three: 118/120 top 2" in done.stdout
 
 
 @pytest.mark.sweep
