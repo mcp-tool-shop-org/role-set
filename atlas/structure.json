@@ -102,6 +102,26 @@
       "externals": 0,
       "files": [
         {
+          "hash": "c28b9a0e2d5d14d86330353ed0d125438a4e43dfd207fa8f5d6cc2bc29544cee",
+          "path": "roles/advocate/README.md"
+        },
+        {
+          "hash": "eecad47d6cf8fb8783eb1347f7190060753aba14c6aa7ec1bf2bcc9328932591",
+          "path": "roles/advocate/behaviours.jsonl"
+        },
+        {
+          "hash": "953173685e610f18f558935eddb9f1aacb36f0fa01ab9776a3cbbb140c823bf0",
+          "path": "roles/advocate/exemplar-exclude.json"
+        },
+        {
+          "hash": "3c0aca4b563c81b75e0073a59a5634cd41c87696df22ad732dcc65aa762d92de",
+          "path": "roles/advocate/pack.json"
+        },
+        {
+          "hash": "a0338d1df3d0e746177d75ad223f08fca71c4c6b6de20515c4ebf56cb7054c59",
+          "path": "roles/advocate/sources.json"
+        },
+        {
           "hash": "7f235c64c1b7b3422ff321a04e065b9dfaa7484775d752eb4eaee10c74a02b2e",
           "path": "roles/verifier/README.md"
         },
@@ -149,7 +169,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "0b8798c5a7baf4145336137325abb20941108944e1084b9e5563c86321183a69",
+          "hash": "56c053fde790e569b45c50591ec85728c7374bd68dd701344eb39c08b4411abd",
           "path": "CHANGELOG.md"
         },
         {
@@ -157,23 +177,23 @@
           "path": "LICENSE"
         },
         {
-          "hash": "649caecb872379f040d811dcf1e9f8c90b1759cb001363e4bfab927147bdf78d",
+          "hash": "d537e7de972d16a07ab44f5081b579c91c0bf1b58874358f14f38664c859bf48",
           "path": "README.es.md"
         },
         {
-          "hash": "4d4f379becd8da286631aabebd0bf8f85bf4834ade634eb6e2b02001feddab62",
+          "hash": "abd0a7ff42b0fa9145be5543ad60172183a3e5dbcf123ce4aa7537f94ecc34d8",
           "path": "README.fr.md"
         },
         {
-          "hash": "2fccd8cb4ad9a3ffe7f88d57570bb382edf8933459105c95229c488e723288fd",
+          "hash": "8aeee0a951d0aafe2eac36681425342c357357e5d991d6b54e1029ce72aac97a",
           "path": "README.hi.md"
         },
         {
-          "hash": "f4ba31d19a2db0aca18a6f0b35ce55995359001a26357d08eb96113aae2f0831",
+          "hash": "c2a199d818e1923b0fb27781b8e7517d905d47681c46be8732b7da1fab03d93c",
           "path": "README.it.md"
         },
         {
-          "hash": "13270559796cc2b4138b2bd3ff3b2a7030522c0e19679cdb21bad0836232a15e",
+          "hash": "9601325087657ecb1e6ec4c65e16efc4c930f0f379a31cc438a47907cf15856c",
           "path": "README.ja.md"
         },
         {
@@ -181,11 +201,11 @@
           "path": "README.md"
         },
         {
-          "hash": "98f9807f4bf1794d892e996e310f2b731ad985ffc8608cad241b96262187cf3e",
+          "hash": "7a79eb2cab88be82dca3090ae8f365e7f24ff60b643eb0ee5a72cae5984f7bc4",
           "path": "README.pt-BR.md"
         },
         {
-          "hash": "a95dd0c6cfc3d3255abfbdc731364a28a3fb735dffba8a07ea26291697725497",
+          "hash": "d9b377f4c2ee39cce25a49f5fed13f620944fbe37eae20d1f29ce574405a13fa",
           "path": "README.zh.md"
         },
         {
@@ -197,7 +217,7 @@
           "path": "SECURITY.md"
         },
         {
-          "hash": "3271e60ce29e353106f300d70a327647d75d32a94b349d53517aa557ee437a82",
+          "hash": "55e88ef8e15898c0fa57c2a9b958c87485b63cf5b47ccfcf2b62c73a107bfd76",
           "path": "SHIP_GATE.md"
         },
         {
@@ -213,7 +233,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "b918cff38a595a8a5b3c449401ac9a7e1aac8288c570e756e1aa189a2febefc3",
+          "hash": "081a7e66a157ab0b64116278398aa23f535aa9fced62b2e0df1eddb03516efb2",
           "path": "writers.json"
         }
       ],
@@ -488,6 +508,1646 @@
           "path": "src/role_set/__init__.py"
         },
         {
+          "hash": "e2724a92ec7e3c821899fe1e397be031abb009f4ce811326b5d4ff6e10b5a038",
+          "noStatements": true,
+          "path": "src/role_set/advocate/__init__.py"
+        },
+        {
+          "exports": [
+            "allowed_numbers",
+            "check_a",
+            "check_action",
+            "check_length",
+            "check_order",
+            "check_scope",
+            "check_scoped",
+            "check_swap",
+            "check_trace",
+            "copied_run",
+            "length_limit",
+            "number_set",
+            "numbers",
+            "plant_exact",
+            "sections",
+            "stray_numbers"
+          ],
+          "hash": "1b3547eaa7c27a7f91d3b814e39b5a9c058c62b6d9085997e7455c5ec735537d",
+          "importsFiles": [
+            "src/role_set/advocate/ledger.py",
+            "src/role_set/advocate/table.py"
+          ],
+          "path": "src/role_set/advocate/checks.py"
+        },
+        {
+          "exports": [
+            "brief_only_probe",
+            "expected_shuffle_match",
+            "shuffled_label_rate",
+            "writer_split"
+          ],
+          "failurePaths": [
+            {
+              "in": "brief_only_probe",
+              "kind": "raise",
+              "line": 104
+            },
+            {
+              "in": "brief_only_probe",
+              "kind": "raise",
+              "line": 108
+            }
+          ],
+          "hash": "c110b254f7abddf98f3b3a0e97cd70571e62f302186987a03d08a78e9db691ee",
+          "path": "src/role_set/advocate/controls.py"
+        },
+        {
+          "exports": [
+            "critic_prompt",
+            "flagged",
+            "recovered",
+            "require_different_family"
+          ],
+          "failurePaths": [
+            {
+              "in": "require_different_family",
+              "kind": "raise",
+              "line": 24
+            }
+          ],
+          "hash": "035c74328b9994b9a999fa7e46525bd129e06c30ffc06747644b83a21ec30793",
+          "importsFiles": [
+            "src/role_set/advocate/kinds.py",
+            "src/role_set/advocate/table.py"
+          ],
+          "path": "src/role_set/advocate/critic.py"
+        },
+        {
+          "exports": [
+            "negative_prompt",
+            "quiz_pair",
+            "writer_prompt"
+          ],
+          "hash": "ae26ea9779d6392505ad685d4d58b6bc8a313f0f7331041f36ed68881e15372f",
+          "importsFiles": [
+            "src/role_set/advocate/ledger.py"
+          ],
+          "path": "src/role_set/advocate/kinds.py"
+        },
+        {
+          "exports": [
+            "allowed_shapes",
+            "apply_release_rule",
+            "assert_shape",
+            "bank",
+            "check_line",
+            "note_for",
+            "plant",
+            "points_from",
+            "relay_action",
+            "render",
+            "render_brief",
+            "render_message",
+            "render_relay",
+            "render_two_turn",
+            "scan_text",
+            "skeleton"
+          ],
+          "failurePaths": [
+            {
+              "in": "__post_init__",
+              "kind": "raise",
+              "line": 236
+            },
+            {
+              "in": "__post_init__",
+              "kind": "raise",
+              "line": 239
+            },
+            {
+              "in": "__post_init__",
+              "kind": "raise",
+              "line": 242
+            },
+            {
+              "in": "__post_init__",
+              "kind": "raise",
+              "line": 244
+            },
+            {
+              "in": "__post_init__",
+              "kind": "raise",
+              "line": 246
+            },
+            {
+              "in": "assert_shape",
+              "kind": "raise",
+              "line": 267
+            },
+            {
+              "in": "scan_text",
+              "kind": "raise",
+              "line": 274
+            },
+            {
+              "in": "scan_text",
+              "kind": "raise",
+              "line": 277
+            },
+            {
+              "in": "bank",
+              "kind": "raise",
+              "line": 463
+            },
+            {
+              "in": "bank",
+              "kind": "raise",
+              "line": 466
+            },
+            {
+              "in": "bank",
+              "kind": "raise",
+              "line": 488
+            },
+            {
+              "in": "plant",
+              "kind": "raise",
+              "line": 659
+            },
+            {
+              "in": "plant",
+              "kind": "raise",
+              "line": 666
+            },
+            {
+              "in": "plant",
+              "kind": "raise",
+              "line": 691
+            },
+            {
+              "in": "plant",
+              "kind": "raise",
+              "line": 694
+            }
+          ],
+          "hash": "ecf0a98fa78289771442b1d1caa9d7ee0f90782ca5f0ff07bc5c4ee9baa445e2",
+          "importsFiles": [
+            "src/role_set/advocate/table.py"
+          ],
+          "path": "src/role_set/advocate/ledger.py"
+        },
+        {
+          "entry": "run_pilot",
+          "entryRule": 4,
+          "exports": [
+            "run_pilot",
+            "write_read_packet"
+          ],
+          "failurePaths": [
+            {
+              "in": "_guard_pinned_models",
+              "kind": "raise",
+              "line": 91
+            },
+            {
+              "in": "_critic_payload",
+              "kind": "except",
+              "line": 113
+            },
+            {
+              "in": "run_pilot",
+              "kind": "raise",
+              "line": 404
+            },
+            {
+              "in": "run_pilot",
+              "kind": "except",
+              "line": 407
+            },
+            {
+              "in": "run_pilot",
+              "kind": "raise",
+              "line": 408
+            }
+          ],
+          "hash": "0adeeda9f7f531498516ac081a1f2c8d2d43902d8d88d88a27c5b1769561493d",
+          "importsFiles": [
+            "src/role_set/advocate/checks.py",
+            "src/role_set/advocate/controls.py",
+            "src/role_set/advocate/critic.py",
+            "src/role_set/advocate/kinds.py",
+            "src/role_set/advocate/ledger.py",
+            "src/role_set/advocate/table.py",
+            "src/role_set/guards.py",
+            "src/role_set/transport.py",
+            "src/role_set/write.py"
+          ],
+          "path": "src/role_set/advocate/pilot.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 64,
+                  "name": "ollama_chat",
+                  "target": {
+                    "file": "src/role_set/transport.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_complete_live"
+            },
+            {
+              "calls": [
+                {
+                  "line": 84,
+                  "name": "allowed_writers",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  }
+                },
+                {
+                  "line": 85,
+                  "name": "allowed_critics",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  }
+                },
+                {
+                  "line": 88,
+                  "name": "require_model_allowed",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "branch": "not expected",
+                  "line": 91,
+                  "name": "GuardError",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "line": 92,
+                  "name": "require_ollama_digest",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_guard_pinned_models"
+            },
+            {
+              "calls": [
+                {
+                  "line": 123,
+                  "name": "unload",
+                  "target": {
+                    "file": "src/role_set/transport.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_unload_live"
+            },
+            {
+              "calls": [
+                {
+                  "line": 157,
+                  "name": "splitlines",
+                  "target": null
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_parsed_record"
+            },
+            {
+              "calls": [
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_over_cap"
+            },
+            {
+              "calls": [
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_verdict_from_parsed"
+            },
+            {
+              "calls": [
+                {
+                  "line": 157,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_parsed_record"
+                },
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_brief_from_record"
+            },
+            {
+              "calls": [
+                {
+                  "line": 283,
+                  "name": "splitlines",
+                  "target": null
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_relay_from_lines"
+            },
+            {
+              "calls": [
+                {
+                  "line": 283,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_relay_from_lines"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_relay_from_prompt"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 283,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_relay_from_lines"
+                },
+                {
+                  "line": 157,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_parsed_record"
+                },
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_mock_draft"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "slot.kind == \"A\" and role == \"positive\"",
+                  "line": 316,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\" and role == \"positive\"",
+                  "line": 316,
+                  "name": "check_a",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 318,
+                  "name": "plant",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 320,
+                  "name": "plant_exact",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 321,
+                  "name": "check_order",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 322,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 322,
+                  "name": "check_length",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                },
+                {
+                  "line": 324,
+                  "name": "render_relay",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 325,
+                  "name": "check_scoped",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_results"
+            },
+            {
+              "calls": [
+                {
+                  "line": 348,
+                  "name": "splitlines",
+                  "target": null
+                },
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_diff_item"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "kind_b",
+                  "line": 283,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_relay_from_lines"
+                },
+                {
+                  "line": 157,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_parsed_record"
+                },
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                },
+                {
+                  "line": 348,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_diff_item"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_mock_critic"
+            },
+            {
+              "calls": [
+                {
+                  "line": 402,
+                  "name": "require_grant",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "branch": "heartbeat is None",
+                  "line": 404,
+                  "name": "GuardError",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "line": 405,
+                  "name": "require_heartbeat",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "line": 84,
+                  "name": "allowed_writers",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  },
+                  "via": "_guard_pinned_models"
+                },
+                {
+                  "line": 85,
+                  "name": "allowed_critics",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  },
+                  "via": "_guard_pinned_models"
+                },
+                {
+                  "line": 88,
+                  "name": "require_model_allowed",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  },
+                  "via": "_guard_pinned_models"
+                },
+                {
+                  "branch": "not expected",
+                  "line": 91,
+                  "name": "GuardError",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  },
+                  "via": "_guard_pinned_models"
+                },
+                {
+                  "line": 92,
+                  "name": "require_ollama_digest",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  },
+                  "via": "_guard_pinned_models"
+                },
+                {
+                  "line": 426,
+                  "name": "negative_prompt",
+                  "target": {
+                    "file": "src/role_set/advocate/kinds.py"
+                  }
+                },
+                {
+                  "line": 428,
+                  "name": "writer_prompt",
+                  "target": {
+                    "file": "src/role_set/advocate/kinds.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 283,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_relay_from_lines"
+                },
+                {
+                  "line": 157,
+                  "name": "splitlines",
+                  "target": null,
+                  "via": "_parsed_record"
+                },
+                {
+                  "line": 214,
+                  "name": "numbers",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_over_cap"
+                },
+                {
+                  "branch": "slot.kind == \"A\" and role == \"positive\"",
+                  "line": 316,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\" and role == \"positive\"",
+                  "line": 316,
+                  "name": "check_a",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 318,
+                  "name": "plant",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 320,
+                  "name": "plant_exact",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 321,
+                  "name": "check_order",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 322,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "branch": "slot.kind == \"A\"",
+                  "line": 322,
+                  "name": "check_length",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "line": 324,
+                  "name": "render_relay",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "line": 325,
+                  "name": "check_scoped",
+                  "target": {
+                    "file": "src/role_set/advocate/checks.py"
+                  },
+                  "via": "_results"
+                },
+                {
+                  "line": 455,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 455,
+                  "name": "critic_prompt",
+                  "target": {
+                    "file": "src/role_set/advocate/critic.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "run_pilot",
+              "truncated": true
+            },
+            {
+              "calls": [
+                {
+                  "line": 548,
+                  "name": "mkdir",
+                  "target": null
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "write_read_packet"
+            }
+          ]
+        },
+        {
+          "entry": "plan_pilot",
+          "entryRule": 4,
+          "exports": [
+            "ledger_dict",
+            "plan_batch",
+            "plan_pilot"
+          ],
+          "failurePaths": [
+            {
+              "in": "_plant_for",
+              "kind": "except",
+              "line": 117
+            },
+            {
+              "in": "_plant_for",
+              "kind": "raise",
+              "line": 120
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 155
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 158
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 161
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 163
+            },
+            {
+              "in": "plan_batch",
+              "kind": "except",
+              "line": 167
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 168
+            },
+            {
+              "in": "plan_batch",
+              "kind": "except",
+              "line": 185
+            },
+            {
+              "in": "plan_batch",
+              "kind": "raise",
+              "line": 186
+            },
+            {
+              "in": "plan_pilot",
+              "kind": "raise",
+              "line": 427
+            },
+            {
+              "in": "plan_pilot",
+              "kind": "raise",
+              "line": 429
+            },
+            {
+              "in": "plan_pilot",
+              "kind": "raise",
+              "line": 432
+            },
+            {
+              "in": "plan_pilot",
+              "kind": "except",
+              "line": 442
+            },
+            {
+              "in": "plan_pilot",
+              "kind": "raise",
+              "line": 443
+            }
+          ],
+          "hash": "f49a8f9f6b4dcf8d762c85d40e76880e4733b9a7f9006df1567318044d0f6a59",
+          "importsFiles": [
+            "src/role_set/advocate/kinds.py",
+            "src/role_set/advocate/ledger.py",
+            "src/role_set/advocate/table.py",
+            "src/role_set/pack.py"
+          ],
+          "path": "src/role_set/advocate/plan.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 112,
+                  "name": "PLANTS",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 116,
+                  "name": "plant",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 120,
+                  "name": "PlantError",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_plant_for"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 125,
+                  "name": "decide",
+                  "target": {
+                    "file": "src/role_set/advocate/table.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 112,
+                  "name": "PLANTS",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 116,
+                  "name": "plant",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 120,
+                  "name": "PlantError",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"C\"",
+                  "line": 127,
+                  "name": "decide",
+                  "target": {
+                    "file": "src/role_set/advocate/table.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 129,
+                  "name": "points_from",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 129,
+                  "name": "relay_action",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"D\"",
+                  "line": 131,
+                  "name": "render_two_turn",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 133,
+                  "name": "quiz_pair",
+                  "target": {
+                    "file": "src/role_set/advocate/kinds.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_key_for"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "kind in (\"A\", \"C\")",
+                  "line": 139,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind in (\"A\", \"C\")",
+                  "line": 139,
+                  "name": "render_brief",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 141,
+                  "name": "render_relay",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"D\"",
+                  "line": 144,
+                  "name": "render_two_turn",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_surface"
+            },
+            {
+              "calls": [
+                {
+                  "line": 153,
+                  "name": "verify",
+                  "target": {
+                    "file": "src/role_set/pack.py"
+                  }
+                },
+                {
+                  "line": 164,
+                  "name": "allowed_shapes",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 166,
+                  "name": "bank",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 125,
+                  "name": "decide",
+                  "target": {
+                    "file": "src/role_set/advocate/table.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 112,
+                  "name": "PLANTS",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 116,
+                  "name": "plant",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"A\"",
+                  "line": 120,
+                  "name": "PlantError",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_plant_for"
+                },
+                {
+                  "branch": "kind == \"C\"",
+                  "line": 127,
+                  "name": "decide",
+                  "target": {
+                    "file": "src/role_set/advocate/table.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 129,
+                  "name": "points_from",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 129,
+                  "name": "relay_action",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "branch": "kind == \"D\"",
+                  "line": 131,
+                  "name": "render_two_turn",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "line": 133,
+                  "name": "quiz_pair",
+                  "target": {
+                    "file": "src/role_set/advocate/kinds.py"
+                  },
+                  "via": "_key_for"
+                },
+                {
+                  "branch": "kind in (\"A\", \"C\")",
+                  "line": 139,
+                  "name": "render",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_surface"
+                },
+                {
+                  "branch": "kind in (\"A\", \"C\")",
+                  "line": 139,
+                  "name": "render_brief",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_surface"
+                },
+                {
+                  "branch": "kind == \"B\"",
+                  "line": 141,
+                  "name": "render_relay",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_surface"
+                },
+                {
+                  "branch": "kind == \"D\"",
+                  "line": 144,
+                  "name": "render_two_turn",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_surface"
+                },
+                {
+                  "line": 183,
+                  "name": "scan_text",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 184,
+                  "name": "assert_shape",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 193,
+                  "name": "skeleton",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "plan_batch"
+            },
+            {
+              "calls": [
+                {
+                  "line": 226,
+                  "name": "Ledger",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 226,
+                  "name": "apply_release_rule",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_pilot_ledger"
+            },
+            {
+              "calls": [
+                {
+                  "line": 232,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 226,
+                  "name": "Ledger",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_ledger"
+                },
+                {
+                  "line": 226,
+                  "name": "apply_release_rule",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_ledger"
+                },
+                {
+                  "line": 250,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 265,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 274,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 282,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 292,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 308,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 315,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 344,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 351,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 369,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 372,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 376,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 377,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 383,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 387,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 394,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 397,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 405,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 409,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 415,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 416,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_pilot_rows"
+            },
+            {
+              "calls": [
+                {
+                  "line": 425,
+                  "name": "verify",
+                  "target": {
+                    "file": "src/role_set/pack.py"
+                  }
+                },
+                {
+                  "line": 428,
+                  "name": "PHRASES",
+                  "passed": true,
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  }
+                },
+                {
+                  "line": 232,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 226,
+                  "name": "Ledger",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_ledger"
+                },
+                {
+                  "line": 226,
+                  "name": "apply_release_rule",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_ledger"
+                },
+                {
+                  "line": 250,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 265,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 274,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 282,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 292,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 308,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 315,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 344,
+                  "name": "Check",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 351,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 369,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 372,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 376,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 377,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 383,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 387,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 394,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 397,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 405,
+                  "name": "Point",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                },
+                {
+                  "line": 409,
+                  "name": "Figure",
+                  "target": {
+                    "file": "src/role_set/advocate/ledger.py"
+                  },
+                  "via": "_pilot_rows"
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "plan_pilot",
+              "truncated": true
+            }
+          ]
+        },
+        {
+          "exports": [
+            "decide",
+            "holding_tripwires",
+            "proposed_failures"
+          ],
+          "hash": "5b4a59e1cf19252942cc343696cf71e811aa9ab34a60d0a1a63e0fa6c8848e09",
+          "path": "src/role_set/advocate/table.py"
+        },
+        {
+          "exports": [
+            "check_record_hash",
+            "floor_report",
+            "floors_hold",
+            "load_record",
+            "main",
+            "planned_rows",
+            "record_sha256",
+            "repo_root",
+            "skeletons_by_trait"
+          ],
+          "failurePaths": [
+            {
+              "in": "check_record_hash",
+              "kind": "raise",
+              "line": 73
+            },
+            {
+              "in": "check_record_hash",
+              "kind": "raise",
+              "line": 76
+            }
+          ],
+          "hash": "db2d5b41198c7b4de5486e3d8e1b70a0834a202fc7e2d2144c0eeab06cc5de83",
+          "importsFiles": [
+            "src/role_set/advocate/plan.py"
+          ],
+          "path": "src/role_set/advocate/variety.py"
+        },
+        {
+          "hash": "62fd6d9e00be037650ba4a1c2ae3a2e58b5a8b9d742ec0394d025731e970a895",
+          "path": "src/role_set/advocate/variety_record.json"
+        },
+        {
           "exports": [
             "assemble",
             "bare",
@@ -710,67 +2370,77 @@
           ],
           "failurePaths": [
             {
+              "in": "_plan_advocate",
+              "kind": "except",
+              "line": 65
+            },
+            {
               "in": "_plan",
               "kind": "except",
-              "line": 61
+              "line": 94
             },
             {
               "in": "_cost",
               "kind": "except",
-              "line": 77
+              "line": 110
             },
             {
               "in": "_closed_form_arg",
               "kind": "except",
-              "line": 108
+              "line": 141
             },
             {
               "in": "_closed_form_arg",
               "kind": "raise",
-              "line": 109
+              "line": 142
             },
             {
               "in": "_closed_form_arg",
               "kind": "raise",
-              "line": 111
+              "line": 144
             },
             {
               "in": "_write",
               "kind": "except",
-              "line": 130
+              "line": 163
             },
             {
               "in": "_pack_sync",
               "kind": "except",
-              "line": 140
+              "line": 173
             },
             {
               "in": "_pack_verify",
               "kind": "except",
-              "line": 150
+              "line": 183
             },
             {
               "in": "_ingest",
               "kind": "except",
-              "line": 161
+              "line": 194
             },
             {
               "in": "_critic_control",
               "kind": "raise",
-              "line": 190
+              "line": 223
             },
             {
               "in": "_critic_control",
               "kind": "raise",
-              "line": 193
+              "line": 226
             },
             {
               "in": "_critic_control",
               "kind": "except",
-              "line": 195
+              "line": 228
+            },
+            {
+              "in": "_advocate_pilot",
+              "kind": "except",
+              "line": 469
             }
           ],
-          "hash": "ebd369b2395af8912c78457afe2c3f70cb828d60e7a60a7c4be7c389c5276384",
+          "hash": "9475960d620bf5486b42a658d38bc5ad0f36d5a5e49077cf4acb0241e633c3b9",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/autostart.py",
@@ -789,10 +2459,14 @@
             "src/role_set/trait_steps.py",
             "src/role_set/write.py",
             "src/role_set/transport.py",
-            "src/role_set/plan.py"
+            "src/role_set/plan.py",
+            "src/role_set/advocate/plan.py",
+            "src/role_set/advocate/pilot.py"
           ],
           "importsFiles": [
             "src/role_set/__init__.py",
+            "src/role_set/advocate/pilot.py",
+            "src/role_set/advocate/plan.py",
             "src/role_set/autostart.py",
             "src/role_set/cost.py",
             "src/role_set/critic_control.py",
@@ -816,14 +2490,54 @@
             {
               "calls": [
                 {
-                  "line": 60,
+                  "line": 58,
+                  "name": "plan_pilot",
+                  "target": {
+                    "file": "src/role_set/advocate/plan.py"
+                  }
+                },
+                {
+                  "line": 64,
+                  "name": "plan_batch",
+                  "target": {
+                    "file": "src/role_set/advocate/plan.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_plan_advocate"
+            },
+            {
+              "calls": [
+                {
+                  "branch": "args.role == \"advocate\"",
+                  "line": 58,
+                  "name": "plan_pilot",
+                  "target": {
+                    "file": "src/role_set/advocate/plan.py"
+                  },
+                  "via": "_plan_advocate"
+                },
+                {
+                  "branch": "args.role == \"advocate\"",
+                  "line": 64,
+                  "name": "plan_batch",
+                  "target": {
+                    "file": "src/role_set/advocate/plan.py"
+                  },
+                  "via": "_plan_advocate"
+                },
+                {
+                  "line": 93,
                   "name": "plan_batch",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 64,
+                  "line": 97,
                   "name": "check_plan",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -838,7 +2552,7 @@
             {
               "calls": [
                 {
-                  "line": 76,
+                  "line": 109,
                   "name": "estimate",
                   "target": {
                     "file": "src/role_set/cost.py"
@@ -853,21 +2567,21 @@
             {
               "calls": [
                 {
-                  "line": 89,
+                  "line": 122,
                   "name": "find",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 90,
+                  "line": 123,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 91,
+                  "line": 124,
                   "name": "readout",
                   "target": {
                     "file": "src/role_set/readout.py"
@@ -882,14 +2596,14 @@
             {
               "calls": [
                 {
-                  "line": 116,
+                  "line": 149,
                   "name": "WriteConfig",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 129,
+                  "line": 162,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -904,7 +2618,7 @@
             {
               "calls": [
                 {
-                  "line": 139,
+                  "line": 172,
                   "name": "sync",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -919,7 +2633,7 @@
             {
               "calls": [
                 {
-                  "line": 149,
+                  "line": 182,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -934,14 +2648,14 @@
             {
               "calls": [
                 {
-                  "line": 159,
+                  "line": 192,
                   "name": "interview_questions",
                   "target": {
                     "file": "src/role_set/ingest.py"
                   }
                 },
                 {
-                  "line": 160,
+                  "line": 193,
                   "name": "ingest",
                   "target": {
                     "file": "src/role_set/ingest.py"
@@ -956,14 +2670,14 @@
             {
               "calls": [
                 {
-                  "line": 169,
+                  "line": 202,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 170,
+                  "line": 203,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -978,21 +2692,21 @@
             {
               "calls": [
                 {
-                  "line": 175,
+                  "line": 208,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 176,
+                  "line": 209,
                   "name": "void_round",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 177,
+                  "line": 210,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -1007,28 +2721,28 @@
             {
               "calls": [
                 {
-                  "line": 185,
+                  "line": 218,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 186,
+                  "line": 219,
                   "name": "require_grant",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 187,
+                  "line": 220,
                   "name": "require_heartbeat",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 188,
+                  "line": 221,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -1036,14 +2750,14 @@
                 },
                 {
                   "branch": "\"cloud\" in args.critic_model.lower()",
-                  "line": 190,
+                  "line": 223,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 191,
+                  "line": 224,
                   "name": "allowed_critics",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -1051,21 +2765,21 @@
                 },
                 {
                   "branch": "args.critic_model not in critics",
-                  "line": 193,
+                  "line": 226,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 194,
+                  "line": 227,
                   "name": "require_ollama_digest",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 198,
+                  "line": 231,
                   "name": "load_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1073,7 +2787,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 213,
+                  "line": 246,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -1081,7 +2795,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 213,
+                  "line": 246,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -1089,7 +2803,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 214,
+                  "line": 247,
                   "name": "trait_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1097,7 +2811,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 214,
+                  "line": 247,
                   "name": "TRAIT_STEPS",
                   "passed": true,
                   "target": {
@@ -1106,7 +2820,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 217,
+                  "line": 250,
                   "name": "answer_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1114,35 +2828,35 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 219,
+                  "line": 252,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
                   }
                 },
                 {
-                  "line": 232,
+                  "line": 265,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 233,
+                  "line": 266,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 236,
+                  "line": 269,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 238,
+                  "line": 271,
                   "name": "unload",
                   "target": {
                     "file": "src/role_set/transport.py"
@@ -1157,7 +2871,7 @@
             {
               "calls": [
                 {
-                  "line": 248,
+                  "line": 281,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -1172,7 +2886,7 @@
             {
               "calls": [
                 {
-                  "line": 267,
+                  "line": 302,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -1188,28 +2902,28 @@
             {
               "calls": [
                 {
-                  "line": 383,
+                  "line": 429,
                   "name": "stamp",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 384,
+                  "line": 430,
                   "name": "check_file",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 384,
+                  "line": 430,
                   "name": "refuse_repeats",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 388,
+                  "line": 434,
                   "name": "render",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1224,7 +2938,44 @@
             {
               "calls": [
                 {
-                  "line": 393,
+                  "branch": "args.report and not args.mock and not args.grant",
+                  "line": 453,
+                  "name": "write_read_packet",
+                  "target": {
+                    "file": "src/role_set/advocate/pilot.py"
+                  }
+                },
+                {
+                  "line": 461,
+                  "name": "plan_pilot",
+                  "target": {
+                    "file": "src/role_set/advocate/plan.py"
+                  }
+                },
+                {
+                  "line": 462,
+                  "name": "run_pilot",
+                  "target": {
+                    "file": "src/role_set/advocate/pilot.py"
+                  }
+                },
+                {
+                  "line": 474,
+                  "name": "write_read_packet",
+                  "target": {
+                    "file": "src/role_set/advocate/pilot.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_advocate_pilot"
+            },
+            {
+              "calls": [
+                {
+                  "line": 487,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1239,7 +2990,7 @@
             {
               "calls": [
                 {
-                  "line": 267,
+                  "line": 302,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -2277,71 +4028,76 @@
             {
               "in": "git_show",
               "kind": "raise",
-              "line": 57
+              "line": 60
             },
             {
               "in": "git_show",
               "kind": "raise",
-              "line": 66
+              "line": 69
             },
             {
               "in": "section",
               "kind": "raise",
-              "line": 75
+              "line": 78
             },
             {
               "in": "split_traits",
               "kind": "raise",
-              "line": 91
+              "line": 94
             },
             {
               "in": "amendments",
               "kind": "raise",
-              "line": 98
+              "line": 101
             },
             {
               "in": "build_files",
               "kind": "raise",
-              "line": 123
+              "line": 126
             },
             {
               "in": "build_files",
               "kind": "raise",
-              "line": 125
+              "line": 128
             },
             {
               "in": "sync",
               "kind": "raise",
-              "line": 141
+              "line": 144
             },
             {
               "in": "sync",
               "kind": "raise",
-              "line": 143
+              "line": 146
+            },
+            {
+              "in": "sync",
+              "kind": "raise",
+              "line": 148
             },
             {
               "in": "load_manifest",
               "kind": "except",
-              "line": 160
+              "line": 165
             },
             {
               "in": "load_manifest",
               "kind": "raise",
-              "line": 161
+              "line": 166
             },
             {
               "in": "verify",
               "kind": "raise",
-              "line": 173
+              "line": 178
             }
           ],
-          "hash": "1b9474a2ae8e8c987ce6498ece4f8466b9d6c76496831773a550da868187dd7b",
+          "hash": "a396fe30e942668171f7af8f3c9693ea251870797cd2885a84270c288673da1d",
           "path": "src/role_set/pack.py",
           "sequences": [
             {
               "calls": [
                 {
-                  "line": 147,
+                  "line": 152,
                   "name": "mkdir",
                   "target": null
                 }
@@ -3566,20 +5322,20 @@
             {
               "in": "ollama_chat",
               "kind": "except",
-              "line": 133
+              "line": 136
             },
             {
               "in": "ollama_chat",
               "kind": "raise",
-              "line": 134
+              "line": 137
             },
             {
               "in": "unload",
               "kind": "except",
-              "line": 151
+              "line": 154
             }
           ],
-          "hash": "28500bdde8bbdc75eb0a6ae148f18864a5052625fc29d8d04fed02ecfa1916f8",
+          "hash": "7edbef65d1e35f51ffc882bc20b62b474962d8f9b79e4d0c92072df55d74d0fb",
           "importsFiles": [
             "src/role_set/guards.py"
           ],
@@ -3618,7 +5374,7 @@
             {
               "calls": [
                 {
-                  "line": 120,
+                  "line": 121,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -3633,7 +5389,7 @@
             {
               "calls": [
                 {
-                  "line": 148,
+                  "line": 151,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -4247,11 +6003,11 @@
       "origin": "mixed",
       "outsidePlaces": [
         {
-          "reads": 27,
+          "reads": 30,
           "where": [
             "caller"
           ],
-          "writes": 5
+          "writes": 6
         },
         {
           "reads": 0,
@@ -4259,7 +6015,7 @@
             "caller",
             "cwd:plan.json"
           ],
-          "writes": 3
+          "writes": 5
         },
         {
           "reads": 0,
@@ -4300,7 +6056,7 @@
           "writes": 0
         },
         {
-          "reads": 2,
+          "reads": 3,
           "where": [
             "cwd:roles/"
           ],
@@ -4321,20 +6077,20 @@
           "writes": 0
         },
         {
-          "reads": 2,
+          "reads": 3,
           "where": [
             "cwd:writers.json"
           ],
           "writes": 0
         }
       ],
-      "outsideReads": 40,
-      "outsideWrites": 12,
+      "outsideReads": 45,
+      "outsideWrites": 15,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 30,
+      "testedBy": 31,
       "unresolvedSites": 0
     },
     {
@@ -4375,6 +6131,73 @@
         {
           "hash": "e12ba706af9d34fa84f69ee915936798f2743cd80682fef7e608027ca2f6333d",
           "path": "tests/fixtures/t12_round3_must_refuse.json"
+        },
+        {
+          "exports": [
+            "led",
+            "slots",
+            "test_a_crossing_plant_flips_the_flag_the_table_reads",
+            "test_a_live_pilot_refuses_a_cloud_tag_an_unlisted_name_and_a_bad_digest_before_any_model_call",
+            "test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort",
+            "test_a_note_line_number_is_not_a_stray_when_the_brief_leaves_it_out",
+            "test_advocate_pilot_commands",
+            "test_advocate_plan_through_the_cli",
+            "test_cannot_tell_names_the_gap_and_a_missing_pilot_is_pilot_first",
+            "test_checks_refuse_a_broken_brief",
+            "test_each_plant_fails_the_positive_trace_and_only_that_item",
+            "test_kind_b_drops_out_of_scope_and_escalates_a_tripwire",
+            "test_kind_d_stands_or_updates_and_kind_c_swaps_order",
+            "test_no_kind_b_pilot_point_is_verbatim_in_the_procedure_or_the_critic_prompt",
+            "test_numbers_keep_a_unit_suffix_and_ignore_identifiers",
+            "test_plan_wraps_ledger_and_scan_failures",
+            "test_prompt_completeness_over_the_twenty_six_pilot_texts",
+            "test_release_rule_and_the_baseline_that_justifies_a_pod",
+            "test_sync_refuses_the_advocate_and_verify_reads_the_in_repo_pack",
+            "test_the_advocate_record_hash_list_is_closed_under_imports",
+            "test_the_brief_only_probe_holds_out_a_slot_and_names_the_null",
+            "test_the_critic_hides_the_key_and_the_controls_sit_at_chance",
+            "test_the_live_path_returns_text_from_a_loopback_server_with_think_false",
+            "test_the_pilot_table_and_the_mock_run_cover_every_required_case",
+            "test_the_plan_assigns_sixty_six_slots_and_the_prompts_do_not_ask_for_a_brief",
+            "test_the_record_gate_refuses_a_shape_an_address_and_a_name",
+            "test_the_table_matches_in_order_and_baseline_failures_do_not_count",
+            "test_the_writer_table_and_the_critic_table_are_the_same_text",
+            "test_variety_floors_match_the_committed_record",
+            "test_variety_record_refuses_a_mismatch"
+          ],
+          "hash": "446c296e7e77802aa71fb963fa58769759bcc5029fde83b40c0c50b9b16bdf55",
+          "importOrder": [
+            "src/role_set/advocate/checks.py",
+            "src/role_set/advocate/controls.py",
+            "src/role_set/advocate/critic.py",
+            "src/role_set/advocate/kinds.py",
+            "src/role_set/advocate/ledger.py",
+            "src/role_set/advocate/pilot.py",
+            "src/role_set/advocate/plan.py",
+            "src/role_set/advocate/table.py",
+            "src/role_set/advocate/__init__.py",
+            "src/role_set/advocate/variety.py",
+            "src/role_set/cli.py",
+            "src/role_set/defects.py",
+            "src/role_set/pack.py"
+          ],
+          "importsFiles": [
+            "src/role_set/advocate/__init__.py",
+            "src/role_set/advocate/checks.py",
+            "src/role_set/advocate/controls.py",
+            "src/role_set/advocate/critic.py",
+            "src/role_set/advocate/kinds.py",
+            "src/role_set/advocate/ledger.py",
+            "src/role_set/advocate/pilot.py",
+            "src/role_set/advocate/plan.py",
+            "src/role_set/advocate/table.py",
+            "src/role_set/advocate/variety.py",
+            "src/role_set/cli.py",
+            "src/role_set/defects.py",
+            "src/role_set/pack.py"
+          ],
+          "path": "tests/test_advocate.py",
+          "testFramework": "pytest"
         },
         {
           "exports": [
@@ -5289,16 +7112,16 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 31
+          "files": 32
         },
         {
           "boundary": "src",
           "depth": 1,
           "enters": {
-            "file": "src/role_set/assemble.py",
-            "from": "tests/test_assemble.py"
+            "file": "src/role_set/advocate/checks.py",
+            "from": "tests/test_advocate.py"
           },
-          "files": 33
+          "files": 43
         }
       ],
       "readers": [],
@@ -5340,7 +7163,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 31,
+          "files": 32,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -5348,7 +7171,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 31,
+          "files": 32,
           "job": "sweep",
           "runner": "pytest",
           "step": "Sweep"
@@ -5566,7 +7389,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 27
+          "files": 35
         }
       ],
       "readers": [],
@@ -5609,8 +7432,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa",
-    "tracked": 133
+    "commit": "444eb997c0836a6fa6d90587bcc47193888b30b6",
+    "tracked": 150
   },
   "landings": [
     {
@@ -5643,9 +7466,31 @@
           "by": "pyproject.toml",
           "call": "configuration",
           "confidence": "config"
+        },
+        {
+          "by": "roles/advocate/pack.json",
+          "call": "literal",
+          "confidence": "text"
+        },
+        {
+          "by": "tests/test_advocate.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
         }
       ],
       "target": "README.md",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "roles/advocate",
       "writers": []
     },
     {
@@ -5788,6 +7633,70 @@
       ],
       "target": "src/role_set",
       "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/advocate/kinds.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/advocate/ledger.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/advocate/plan.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/advocate/table.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "read_text",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/advocate/variety_record.json",
+      "writers": [
+        {
+          "by": "src/role_set/advocate/variety.py",
+          "confidence": "ast",
+          "stamps": true,
+          "unless": [
+            "main"
+          ]
+        }
+      ]
     },
     {
       "readers": [
@@ -5955,6 +7864,17 @@
     {
       "readers": [
         {
+          "by": "src/role_set/advocate/variety.py",
+          "call": "literal",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/pack.py",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
           "by": "src/role_set/generate/t10_variety.py",
           "call": "literal",
           "confidence": "ast"
@@ -6066,11 +7986,22 @@
       ],
       "target": "tests/fixtures/t12_round3_must_refuse.json",
       "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "src/role_set/advocate/pilot.py",
+          "call": "literal",
+          "confidence": "weak"
+        }
+      ],
+      "target": "writers.json",
+      "writers": []
     }
   ],
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 37,
+  "testFiles": 38,
   "unassigned": []
 }

@@ -1,0 +1,50 @@
+{
+  "_note": "Batch 1 allow-list. The generator may write a synthetic record in one of these shapes. No real record, repository, commit, or path is a source.",
+  "records": [
+    {
+      "id": "seat_handback",
+      "shape": "a seat's hand-back on a PR",
+      "carries": ["head SHA", "checks", "figures", "stopping here"]
+    },
+    {
+      "id": "reviewer_verdict",
+      "shape": "a reviewer's verdict",
+      "carries": ["pass, or fail with the required changes"]
+    },
+    {
+      "id": "ci_run",
+      "shape": "a CI run with a coverage report and a patch-coverage check",
+      "carries": ["coverage report", "patch-coverage check"]
+    },
+    {
+      "id": "identity_scan",
+      "shape": "an identity-scan result",
+      "carries": ["CLEAN, or HIT n with kinds"]
+    },
+    {
+      "id": "device_grant",
+      "shape": "a device-grant log",
+      "carries": ["grant id", "peak memory", "wall time", "exit codes", "the card state after"]
+    },
+    {
+      "id": "paid_run_plan",
+      "shape": "a paid-run plan with its printed cost",
+      "carries": ["printed cost"]
+    },
+    {
+      "id": "frozen_analysis",
+      "shape": "a frozen analysis's output",
+      "carries": ["each hypothesis holds, fails, or is inconclusive"]
+    },
+    {
+      "id": "security_export",
+      "shape": "a security export",
+      "carries": ["secret or code-scanning counts by type"]
+    },
+    {
+      "id": "release_record",
+      "shape": "a release record",
+      "carries": ["tag", "artifacts", "provenance", "the published-file check"]
+    }
+  ]
+}

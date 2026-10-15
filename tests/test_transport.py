@@ -72,6 +72,7 @@ def test_ollama_chat_and_unload():
 
     c = ollama_chat("http://127.0.0.1:11434", "gemma4:31b", [{"role": "user", "content": "x"}], post=post)
     assert seen["url"] == "http://127.0.0.1:11434/api/chat" and seen["body"]["options"]["temperature"] == 0.0
+    assert "num_predict" not in seen["body"]["options"]
     assert seen["body"]["keep_alive"] == "30m" and seen["body"]["think"] is False
     assert c.text == "VERDICT: supported" and c.prompt_tokens == 50 and c.finish_reason == "stop"
     with pytest.raises(TransportError, match="no message content"):

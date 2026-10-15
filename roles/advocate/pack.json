@@ -1,0 +1,11 @@
+{
+ "role": "advocate",
+ "commit": "in-repo",
+ "files": {
+  "README.md": "c28b9a0e2d5d14d86330353ed0d125438a4e43dfd207fa8f5d6cc2bc29544cee",
+  "behaviours.jsonl": "eecad47d6cf8fb8783eb1347f7190060753aba14c6aa7ec1bf2bcc9328932591",
+  "exemplar-exclude.json": "953173685e610f18f558935eddb9f1aacb36f0fa01ab9776a3cbbb140c823bf0",
+  "sources.json": "a0338d1df3d0e746177d75ad223f08fca71c4c6b6de20515c4ebf56cb7054c59"
+ },
+ "pack_sha256": "975cf5e11318c5d59d4fcc72fce160f5ec88555e1ec2a7c5dad705d2632e950b"
+}

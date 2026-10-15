@@ -48,7 +48,40 @@ VERIFIER_SIDES = {
 }
 
 
+def _plan_advocate(args: argparse.Namespace) -> int:
+    from role_set.advocate.plan import PlanError as AdvocatePlanError
+    from role_set.advocate.plan import plan_batch, plan_pilot
+
+    pack = Path(args.pack) if args.pack else Path("roles/advocate")
+    try:
+        if args.pilot:
+            slots = plan_pilot(pack, seed=args.seed)
+        else:
+            names = [name.strip() for name in args.lessons.split(",") if name.strip()]
+            if not names:
+                print("REFUSED: name at least one advocate trait", file=sys.stderr)
+                return 2
+            slots = plan_batch(pack, names, seed=args.seed)
+    except (AdvocatePlanError, PackError) as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
+    out = {
+        "role": "advocate",
+        "seed": args.seed,
+        "pack_sha256": slots[0].pack_sha256,
+        "slots": [slot.as_dict() for slot in slots],
+    }
+    Path(args.out).write_text(json.dumps(out, indent=1) + "\n", encoding="utf-8")
+    print(f"wrote {len(slots)} slots to {args.out}")
+    return 0
+
+
 def _plan(args: argparse.Namespace) -> int:
+    if args.role == "advocate":
+        return _plan_advocate(args)
+    if not args.lessons.strip():
+        print("REFUSED: --lessons is required", file=sys.stderr)
+        return 2
     lessons = {}
     for name in args.lessons.split(","):
         name = name.strip()
@@ -257,7 +290,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("plan", help="fix every slot for a batch; no model call")
     a.add_argument("--role", default="verifier")
-    a.add_argument("--lessons", required=True, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--lessons", default="", help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--pilot", action="store_true", help="the advocate's sixteen-slot pilot table")
+    a.add_argument("--pack", default=None, help="advocate pack directory; default roles/advocate")
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
     a.set_defaults(func=_plan)
@@ -359,6 +394,19 @@ def build_parser() -> argparse.ArgumentParser:
                                                     "(default: roles/verifier/defects.jsonl)")
     ro.set_defaults(func=_readout)
 
+    ap = sub.add_parser("pilot", help="the advocate pilot; --mock loads nothing")
+    ap.add_argument("--role", default="advocate")
+    ap.add_argument("--pack", default=None, help="advocate pack directory; default roles/advocate")
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out", default="pilot.json")
+    ap.add_argument("--mock", action="store_true", help="fake writer and critic; load nothing")
+    ap.add_argument("--grant", default=None, help="the Publisher's grant id; required for a live run")
+    ap.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file; required for a live run")
+    ap.add_argument("--report", default=None, help="write read.md from the run record in this directory; loads nothing")
+    ap.add_argument("--preflight", action="store_true",
+                    help="measure each pinned model's VRAM at its num_ctx, one at a time; write nothing")
+    ap.set_defaults(func=_advocate_pilot)
+
     pa = sub.add_parser("pilot-auto", help="one paste for a paid pilot: wait for the lane, write, relaunch after a lost-call stop")
     pa.add_argument("port", type=int, help="the lane's port on the loopback")
     pa.add_argument("grant", help="the critic's 5090 grant")
@@ -387,6 +435,80 @@ def _puzzle_check(args) -> int:
     else:
         print("\n".join(puzzle_check.render(r) for r in reports))
     return 0 if all(r["ok"] for r in reports) else 1
+
+
+def _advocate_pilot(args: argparse.Namespace) -> int:
+    """Run the sixteen slots. `--mock` does not load a model and does not need a grant."""
+
+    if args.role != "advocate":
+        print("REFUSED: the pilot runner is the advocate's", file=sys.stderr)
+        return 2
+    from role_set.advocate.pilot import PilotError, items_from_journal, preflight, run_pilot, write_read_packet
+    from role_set.advocate.plan import PlanError as AdvocatePlanError
+    from role_set.advocate.plan import plan_pilot
+
+    pack = Path(args.pack) if args.pack else Path("roles/advocate")
+    if args.preflight:
+        if not args.grant or not args.heartbeat:
+            print("REFUSED: preflight needs --grant and --heartbeat", file=sys.stderr)
+            return 2
+        try:
+            slots = plan_pilot(pack, seed=args.seed)
+            measured = preflight(slots, grant=args.grant, heartbeat=Path(args.heartbeat))
+        except (PilotError, AdvocatePlanError, PackError) as exc:
+            print(f"REFUSED: {exc}", file=sys.stderr)
+            return 2
+        for row in measured["rows"]:
+            print(f"{row['model']} num_ctx {row['num_ctx']} size_vram {row['size_vram']}")
+        if measured["refused"]:
+            print(
+                f"REFUSED: a measured size_vram is above the grant cap minus 1 GiB ({measured['cap_bytes']})",
+                file=sys.stderr,
+            )
+            return 2
+        return 0
+
+    if args.report and not args.mock and not args.grant:
+        run_dir = Path(args.report)
+        jsonl = run_dir / "pilot.jsonl"
+        record_path = run_dir / "pilot.json"
+        if jsonl.is_file() and jsonl.stat().st_size > 0:
+            data = {"items": items_from_journal(jsonl)}
+        elif record_path.is_file():
+            data = json.loads(record_path.read_text(encoding="utf-8"))
+        else:
+            print(f"REFUSED: {record_path} is not a run record", file=sys.stderr)
+            return 2
+        path = write_read_packet(data, run_dir)
+        print(f"wrote {path.name} ({len(data.get('items') or [])} texts)")
+        return 0
+
+    run_dir = Path(args.report) if args.report else Path(args.out).parent
+    try:
+        slots = plan_pilot(pack, seed=args.seed)
+        result = run_pilot(
+            slots,
+            mock=args.mock,
+            seed=args.seed,
+            grant=args.grant,
+            heartbeat=Path(args.heartbeat) if args.heartbeat else None,
+            journal=run_dir / "pilot.jsonl",
+        )
+    except (PilotError, AdvocatePlanError, PackError) as exc:
+        print(f"REFUSED: {exc}", file=sys.stderr)
+        return 2
+    Path(args.out).write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    if args.report:
+        write_read_packet(result, Path(args.report))
+    counts = result["critic_counts"]
+    probe = result["controls"]["probe"]
+    print(
+        f"pilot {len(result['items'])} texts; "
+        f"recovered {counts['positives_recovered']} of {counts['positives']}; "
+        f"flagged {counts['negatives_flagged']} of {counts['negatives']}; "
+        f"{probe['message']}"
+    )
+    return 0
 
 
 def _pilot_auto(args) -> int:

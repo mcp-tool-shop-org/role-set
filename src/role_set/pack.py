@@ -1,9 +1,12 @@
-"""The role pack: the text the humans wrote, fetched from aspire-si at a pinned commit.
+"""The role pack: the text the humans wrote.
 
-role-set adds nothing to the pack. `sync` reads each source file at one commit with
-`git show`, splits the trait lessons into one file per trait, and writes a manifest
-with a sha256 per file and one hash for the whole pack, which every item records.
-The pre-interview is never read: a source path that names it is refused.
+The verifier pack is fetched from aspire-si at a pinned commit. role-set adds nothing
+to it. `sync` reads each source file at one commit with `git show`, splits the trait
+lessons into one file per trait, and writes a manifest with a sha256 per file and one
+hash for the whole pack, which every item records. The pre-interview is never read.
+
+The advocate pack is the exception. A person committed it in the repo. `sync` refuses
+that role, and `verify` checks the four files against the manifest already beside them.
 """
 
 from __future__ import annotations
@@ -137,6 +140,8 @@ def pack_hash(files: dict[str, str]) -> tuple[dict[str, str], str]:
 def sync(repo: Path, commit: str, out: Path, *, role: str = "verifier") -> PackManifest:
     """Fetch, split, write, and record. Writes nothing until every file is built."""
 
+    if role == "advocate":
+        raise PackError("REFUSED: no sources known for role 'advocate'; the advocate pack is in-repo")
     if role != "verifier":
         raise PackError(f"REFUSED: no sources known for role {role!r}")
     if not re.fullmatch(r"[0-9a-f]{7,40}", commit):

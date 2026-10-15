@@ -18,6 +18,21 @@
       "licence": "Apache-2.0",
       "rehearsal_only": true,
       "checked_by": "the Publisher, 2026-10-10 (digest 500a1f06…)"
+    },
+    {
+      "served_as": "llama3.1:8b",
+      "digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+      "quant": "Q4_K_M",
+      "licence": "Llama 3.1 Community License",
+      "checked_by": "digest pinned 2026-10-15 for the advocate pilot; the Publisher checks the licence before first use",
+      "note": "Not for training items: Llama 3.1 Community License 1.b.i requires a distributed model trained on its outputs to be named 'Llama…' and to display 'Built with Llama'. Verified by R&D from meta-llama/llama-models models/llama3_1/LICENSE, 2026-10-15."
+    },
+    {
+      "served_as": "granite3.3:8b",
+      "digest": "fd429f23b90980ed1bef53b990894e7b0199331f6ae90c5650240a7d5b70f1f7",
+      "quant": "Q4_K_M",
+      "licence": "Apache-2.0",
+      "checked_by": "the Publisher, 2026-10-15 (digest fd429f23…, bundled Apache-2.0; card ibm-granite/granite-3.3-8b-instruct@51dd4bc, apache-2.0)"
     }
   ],
   "critics": [
