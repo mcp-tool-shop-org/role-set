@@ -6,6 +6,16 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **The T11 recipe** (#52). Claims decided only by reading across lines. Find side: the key is unsupported, R&D's `T11.consistent_so_supported` reading (only the lines that name the claim's subject) says supported, and no single line refutes the claim. Confirm side: the key is supported, with a recorded contrast, a one-slot change to one clue that refutes the claim; confirm items rest on their contrast in the selector, so lookups can't fill the floor. No count clues, since a count is T10's trait (`D020 sibling_trait_item`). `t11_refusal` refuses round 3's count-decided T11-B-03 and B-05; batch 6's B-01 and B-02 pass.
+- **File receipts** (R&D on #51). `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under.
+
+### Changed
+
+- **The newest-edition floor is a share** (R&D on #51): `min_newest_share = 0.2`, rounded up, in place of `min_newest`.
+- **The T10 record's hash** moves with the T11 edits to shared generator modules. All 1,280 recorded T10 builds are unchanged.
+
 ## [0.2.0] - 2026-10-14
 
 Prototype. Interfaces and data shapes can change without notice. Nothing this
