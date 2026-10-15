@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12,<3.13"
 license = "MIT"
 dependencies = [
-    "aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si@388a6bcbd54cf4811b7053bd32734158c7d71a10#subdirectory=packages/aspire-si-gates",
+    "aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si@2e7d0381d0162ed4f9c36cf1cb17d4e481f1a615#subdirectory=packages/aspire-si-gates",
 ]
 
 [project.scripts]

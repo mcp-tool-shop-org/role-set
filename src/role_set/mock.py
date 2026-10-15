@@ -258,8 +258,8 @@ def mock_gates(closed_form=None):
     m = types.SimpleNamespace()
     m.DataError = ValueError
     m.check_item = lambda row: None
-    m.check_against = lambda row, accepted: []
-    m.check_batch = lambda rows: None
+    m.check_against = lambda row, accepted, models=None: []
+    m.check_batch = lambda rows, models=None, **kw: None
     m.role_words_in_prompt = lambda row: []
     m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})

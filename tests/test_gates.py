@@ -2,7 +2,7 @@ import types
 
 import pytest
 
-from role_set.gates import GatesUnavailable, load_gates
+from role_set.gates import GatesUnavailable, ModelsMissing, load_gates
 
 
 DEFAULTS = {"carry": "paraphrase", "share": 0.5, "distractor_max": 0.8, "distractor_margin": 0.15, "span": 8,
@@ -20,8 +20,8 @@ def _fake_module():
     m = types.SimpleNamespace()
     m.calls = []
     m.check_item = lambda row, closed_form=None: m.calls.append(("item", row["id"], (closed_form or {}).get("carry")))
-    m.check_against = lambda row, accepted: m.calls.append(("against", row["id"], len(accepted))) or []
-    m.check_batch = lambda rows, closed_form=None: m.calls.append(("batch", len(rows), (closed_form or {}).get("carry")))
+    m.check_against = lambda row, accepted, models=None: m.calls.append(("against", row["id"], len(accepted), models)) or []
+    m.check_batch = lambda rows, closed_form=None, models=None: m.calls.append(("batch", len(rows), (closed_form or {}).get("carry")))
     m.role_words_in_prompt = lambda row: ("verifier",) if "verifier" in row.get("user", "") else ()
     m.DataError = ValueError
     m.answer_format = types.SimpleNamespace(parse_answer=lambda reply: {"verdict": reply.split()[-1]})
@@ -38,10 +38,10 @@ def test_load_gates_wraps_the_package():
     g = load_gates(importer=lambda name: fake)
     assert (g.version, g.sha256[:4]) == ("1.4.0", "abab")
     g.check_item({"id": "T02-A-01"})
-    assert g.check_against({"id": "T02-A-02"}, [{}, {}]) == []
-    g.check_batch([{}, {}, {}])
+    assert g.check_against({"id": "T02-A-02"}, [{}, {}], models={}) == []
+    g.check_batch([{}, {}, {}], models={})
     # The package's default closed-form settings reach every check.
-    assert fake.calls == [("item", "T02-A-01", "paraphrase"), ("against", "T02-A-02", 2), ("batch", 3, "paraphrase")]
+    assert fake.calls == [("item", "T02-A-01", "paraphrase"), ("against", "T02-A-02", 2, {}), ("batch", 3, "paraphrase")]
     assert g.parse_answer("VERDICT: supported")["verdict"] == "supported"
     assert g.role_words_in_prompt({"user": "as a verifier"}) == ["verifier"]
     assert g.error_type() is ValueError
@@ -68,7 +68,7 @@ def test_closed_form_settings_are_resolved_through_the_gates_and_reach_every_che
     g = load_gates(importer=lambda name: fake, closed_form={"carry": "either"})
     assert g.closed_form == {**DEFAULTS, "carry": "either"} and g.closed_form_carry == "either"
     g.check_item({"id": "T02-E-05"})
-    g.check_batch([{}])
+    g.check_batch([{}], models={})
     assert fake.calls == [("item", "T02-E-05", "either"), ("batch", 1, "either")]
     with pytest.raises(GatesUnavailable, match="closed-form settings the gates reject"):
         load_gates(importer=lambda name: _fake_module(), closed_form={"carry": "loose"})
@@ -80,7 +80,7 @@ def test_a_stand_in_without_settings_calls_the_checks_as_before():
     fake = _fake_module()
     g = Gates(module=fake, version="t", sha256="t")
     g.check_item({"id": "T02-A-01"})
-    g.check_batch([{}])
+    g.check_batch([{}], models={})
     assert g.closed_form_carry is None and fake.calls == [("item", "T02-A-01", None), ("batch", 1, None)]
 
 
@@ -91,3 +91,21 @@ def test_trait_words_come_from_the_gates_constants():
     assert g.trait_words("T02") == ["to the source", "goes to the source"] and g.trait_words("T99") == []
     bare = _fake_module()
     assert load_gates(importer=lambda name: bare).trait_words("T02") == []
+
+
+def test_puzzles_reach_the_gates_with_their_models():
+    # R&D (2026-10-15): check_against signs puzzles by the sidecar model; without one it falls back to the regex
+    # signature. The wrapper passes the map through, and a kind B row missing from it stops the check.
+    fake = _fake_module()
+    g = load_gates(importer=lambda name: fake)
+    puzzle, prior = {"id": "T11-B-01", "kind": "B"}, {"id": "T11-B-02", "kind": "B"}
+    models = {"T11-B-01": {"entities": ["x"]}, "T11-B-02": {"entities": ["y"]}}
+    assert g.check_against(puzzle, [prior], models=models) == []
+    assert fake.calls[-1] == ("against", "T11-B-01", 1, models)
+    with pytest.raises(ModelsMissing, match="T11-B-02"):
+        g.check_against(puzzle, [prior], models={"T11-B-01": {}})
+    with pytest.raises(ModelsMissing, match="T11-B-01"):
+        g.check_batch([puzzle, {"id": "T11-A-01", "kind": "A"}], models={})
+    with pytest.raises(TypeError):
+        g.check_against(puzzle, [prior])  # models has no default: a caller can't forget it
+

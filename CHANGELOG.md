@@ -16,6 +16,8 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **Gates pinned to aspire-si-gates 1.7.1** (aspire-si#116, 2e7d038), from 1.4.0. It brings TRACE_REUSED, distractor_margin 0.20, and `check_against(..., models=)` signing puzzles through the shared `puzzle_sig`.
+- **Puzzles reach the gates with their models** (R&D, 2026-10-15). The runner keeps each accepted kind B row's sidecar model and passes `models=` to `check_against` and `check_batch`. A kind B row with no model raises `ModelsMissing` instead of being signed by the regex fallback, and tests prove both.
 - **The newest-edition floor is a share** (R&D on #51): `min_newest_share = 0.2`, rounded up, in place of `min_newest`.
 - **The T10 record's hash** moves with the T11 edits to shared generator modules. All 1,280 recorded T10 builds are unchanged.
 
