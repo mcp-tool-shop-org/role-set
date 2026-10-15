@@ -24,37 +24,38 @@
   "changes": {
     "fileCounts": {
       "added": 3,
-      "changed": 26,
+      "changed": 6,
       "moved": 0,
-      "parts": 7,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "tests/fixtures/t11_batch6_must_pass.json is now read by tests/test_generate_t11.py.",
+        "sentence": "src/role_set/generate/t11_catalogue.json is now written by scripts/t11_catalogue.py.",
         "subjects": [
-          "tests/fixtures/t11_batch6_must_pass.json",
-          "tests/test_generate_t11.py"
+          "src/role_set/generate/t11_catalogue.json",
+          "scripts/t11_catalogue.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "tests/fixtures/t11_round3_must_refuse.json is now read by tests/test_generate_t11.py.",
+        "sentence": "src/role_set/generate/t11_catalogue.json is now read by scripts/t11_catalogue.py and src/role_set/generate/recipes.py.",
         "subjects": [
-          "tests/fixtures/t11_round3_must_refuse.json",
-          "tests/test_generate_t11.py"
+          "src/role_set/generate/t11_catalogue.json",
+          "scripts/t11_catalogue.py",
+          "src/role_set/generate/recipes.py"
         ]
       },
       {
         "kind": "counts",
-        "sentence": "3 files added and 26 changed content, across 7 parts.",
+        "sentence": "3 files added and 6 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa",
-      "generatedAt": "2026-10-14T23:12:53.166Z"
+      "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e",
+      "generatedAt": "2026-10-15T21:54:30.068Z"
     },
     "unchanged": false
   },
@@ -77,7 +78,7 @@
     {
       "a": "src/role_set/generate/recipes.py",
       "b": "tests/test_generate.py",
-      "either": 8,
+      "either": 9,
       "partLabels": [
         "src",
         "tests"
@@ -126,9 +127,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e",
+  "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (69 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (71 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -248,9 +249,16 @@
       "writers": [
         "scripts/t10_variety_record.py"
       ]
+    },
+    {
+      "block": true,
+      "place": "src/role_set/generate/t11_catalogue.json",
+      "writers": [
+        "scripts/t11_catalogue.py"
+      ]
     }
   ],
-  "generatedAt": "2026-10-15T21:54:30.068Z",
+  "generatedAt": "2026-10-15T22:41:11.090Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 28 reads go to a path their caller passes, not to this repository.",
@@ -301,5 +309,5 @@
     }
   ],
   "untestedNote": [],
-  "written": 3
+  "written": 4
 }

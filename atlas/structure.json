@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "de1c9f1da10d37df06d3ddd4c9b6706ce14d0049c2787d48eed2ddbf54388831",
+          "hash": "5c8ce97906e4eb72a598e98125af5f9d0dd9ae855613c0d8f0aaf6c0988a476e",
           "path": "docs/generator-design.md"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "061aab99602096a741b7a738cb708a16f454e21ad20a497ed3b6598ff71a4cb7",
+          "hash": "10745920057120fbae0853388cde08f4a26ba27f2b9cf381dcb2df716c7a4c79",
           "path": "CHANGELOG.md"
         },
         {
@@ -343,6 +343,44 @@
             "src/role_set/puzzle.py"
           ],
           "path": "scripts/t10_variety_record.py"
+        },
+        {
+          "exports": [
+            "build_table",
+            "enumerate_side",
+            "main"
+          ],
+          "failurePaths": [
+            {
+              "in": "enumerate_side",
+              "kind": "except",
+              "line": 78
+            }
+          ],
+          "hash": "8173173bec73ce337ce16b19c3971e4e19fba29c70748522ae463f0a8c09bf80",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/shortcuts.py",
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "path": "scripts/t11_catalogue.py"
+        },
+        {
+          "exports": [
+            "floor_line",
+            "main"
+          ],
+          "hash": "ede33bb0e9e4f5b260a198d1e1ed76dbfc7335c0f1d4046dbf1666e1ff6cd128",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/generate/select.py",
+            "src/role_set/generate/t10_variety.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "path": "scripts/variety_sweep.py"
         },
         {
           "hash": "c8ce139f99e2d5d5a068f80d1ffa999bb1e5e558030d73059992e2606fb3797e",
@@ -1616,7 +1654,9 @@
             "build_t12",
             "t10_shape",
             "t11_contrast",
+            "t11_pool",
             "t11_refusal",
+            "t11_row",
             "t12_calendar"
           ],
           "failurePaths": [
@@ -1646,37 +1686,37 @@
               "line": 256
             },
             {
-              "in": "build_t11",
+              "in": "_t11_from_row",
               "kind": "raise",
-              "line": 398
+              "line": 475
+            },
+            {
+              "in": "_t11_from_row",
+              "kind": "raise",
+              "line": 487
             },
             {
               "in": "build_t11",
+              "kind": "raise",
+              "line": 498
+            },
+            {
+              "in": "build_t12",
+              "kind": "raise",
+              "line": 585
+            },
+            {
+              "in": "build_t12",
               "kind": "except",
-              "line": 441
-            },
-            {
-              "in": "build_t11",
-              "kind": "raise",
-              "line": 456
+              "line": 613
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 542
-            },
-            {
-              "in": "build_t12",
-              "kind": "except",
-              "line": 570
-            },
-            {
-              "in": "build_t12",
-              "kind": "raise",
-              "line": 579
+              "line": 622
             }
           ],
-          "hash": "0410f684b8749192d878e3c9a7a3e0381a4f63edeb1ffa7c1b5f9d885a8d4311",
+          "hash": "56d1e7a0ef8b02ea6da2f3d802371693cac64be20ee8117aa9dc3bb0c260d9ff",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1722,35 +1762,35 @@
             {
               "in": "_lesson",
               "kind": "raise",
-              "line": 111
+              "line": 115
             },
             {
               "in": "check_file",
               "kind": "raise",
-              "line": 120
+              "line": 124
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 161
+              "line": 168
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 171
+              "line": 178
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 177
+              "line": 184
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 215
+              "line": 225
             }
           ],
-          "hash": "37d1a271eb8cb4b539bb763e05e9d94bc0d683a2cd2816b6d39812add4291f87",
+          "hash": "60d96d59550b8fd11cc5194680dc286e00f77f77c48114803c3adaaeb1bf5376",
           "importsFiles": [
             "src/role_set/generate/shortcuts.py"
           ],
@@ -1799,7 +1839,7 @@
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
-          "hash": "0aed0694cb09ffea2f547ece9c5b76b457857e6f9ce9dcd2294774e608e6e079",
+          "hash": "e7be03bd05722da723a187d3a00d3130779d207687a2933ac5ffdad084c79f91",
           "path": "src/role_set/generate/t10_record.json"
         },
         {
@@ -1853,6 +1893,10 @@
             "src/role_set/generate/recipes.py"
           ],
           "path": "src/role_set/generate/t10_variety.py"
+        },
+        {
+          "hash": "fbce613c0d03b54644bf08f74d2b490c8891348fbac9194b3f00b9a646ed8693",
+          "path": "src/role_set/generate/t11_catalogue.json"
         },
         {
           "entry": "heartbeat_age_s",
@@ -4645,24 +4689,34 @@
         },
         {
           "exports": [
+            "test_a_contrast_only_on_the_subjects_own_lines_is_refused",
+            "test_a_file_never_repeats_a_skeleton_within_a_stratum",
             "test_a_t11_file_mixes_the_falsifier_reading_and_contrasts",
             "test_a_t11_puzzle_is_proven_and_its_wording_round_trips",
             "test_a_t11_side_is_named",
+            "test_an_off_subject_contrast_moves_the_verdict_off_supported",
             "test_batch_6_find_side_items_pass_and_the_reading_differs",
             "test_each_t11_refusal",
+            "test_every_catalogue_row_builds_and_proves",
             "test_one_slot_changes",
             "test_round_3_count_decided_items_are_refused",
+            "test_the_committed_catalogue_is_current",
             "test_the_newest_floor_is_a_share",
-            "test_the_same_seed_rebuilds_the_same_t11_puzzle"
+            "test_the_same_seed_rebuilds_the_same_t11_puzzle",
+            "test_the_variety_floor_holds_on_the_sweep"
           ],
-          "hash": "8fdff6965773483147259cf0f3912a6ef3e66d30beccc18488bf7982efd06ebc",
+          "hash": "8945145079e1f2b3586659fe2c769b144edb67afd305056e028f363b10a56a18",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/render.py",
             "src/role_set/generate/select.py",
             "src/role_set/generate/shortcuts.py",
-            "src/role_set/puzzle.py"
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "names": [
+            "scripts/t11_catalogue.py"
           ],
           "path": "tests/test_generate_t11.py",
           "testFramework": "pytest"
@@ -5664,8 +5718,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e",
-    "tracked": 136
+    "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
+    "tracked": 139
   },
   "landings": [
     {
@@ -6006,6 +6060,28 @@
       ],
       "target": "src/role_set/generate/t10_variety.py",
       "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/t11_catalogue.py",
+          "call": "read_text",
+          "confidence": "ast"
+        },
+        {
+          "by": "src/role_set/generate/recipes.py",
+          "call": "read_text",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/generate/t11_catalogue.json",
+      "writers": [
+        {
+          "by": "scripts/t11_catalogue.py",
+          "confidence": "ast",
+          "stamps": true
+        }
+      ]
     },
     {
       "readers": [
