@@ -1,4 +1,4 @@
-"""Measure T10 builds on seeds 1-20 and locked seeds 61-80 and 81-100 across every pack and question.
+"""Measure T10 builds on seeds 1-20 and locked seeds 61-80, 81-100, and 101-120 across every pack and question.
 
 Writes src/role_set/generate/t10_record.json with the sha256 over the generator source, t10_cells.json,
 t10_capacity.json and pack data, plus per-build records (built, cell, if_shape, tries, canonical_skeleton).

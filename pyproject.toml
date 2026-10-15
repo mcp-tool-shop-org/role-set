@@ -35,7 +35,7 @@ default-groups = ["dev"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "--cov=role_set --cov-report=term-missing --cov-fail-under=90"
+addopts = "-m 'not sweep' --cov=role_set --cov-report=term-missing --cov-fail-under=90"
 markers = [
     "sweep: exhaustive T10 builds, run in CI without coverage",
 ]

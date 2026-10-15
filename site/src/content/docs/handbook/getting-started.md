@@ -65,7 +65,7 @@ That is the suite CI's `test` job runs. Line coverage has a floor of 90, set in 
 
 CI also runs atlas check, `plan` on lessons `T02,T03` and `puzzle-check` on `tests/fixtures/puzzle-check/sample.jsonl`. No step loads a model.
 
-`scripts/verify.ps1` (and `scripts/verify.sh`) runs a local set in one command: sync, pytest, one plan, one puzzle-check. Its pytest call does not pass `-m "not sweep"`, so it also runs the sweep and takes much longer than CI's job.
+`scripts/verify.ps1` (and `scripts/verify.sh`) runs a local set in one command: sync, pytest, one plan, one puzzle-check. Its pytest call follows the `addopts` in `pyproject.toml`, which skip the sweep, so it runs the same suite as CI's `test` job.
 
 ## Try the generator
 

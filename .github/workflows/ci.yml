@@ -4,14 +4,14 @@
 #   Atlas is pinned to 1.24.0. The coverage floor in pyproject.toml is 90.
 #   Codecov project and patch targets are 90% with a 1% threshold.
 # ANDON_AUTHORITY: 2. pytest --cov-fail-under (including the committed variety
-#   record check), the workflow_dispatch sweep job, the identity scan and atlas
+#   record check), the workflow_dispatch sweep job, and the atlas
 #   check are required gates. A red step fails the job.
 #   The Codecov upload uses fail_ci_if_error: false so a private repo's upload
 #   cannot block the gate.
 # NAMED_COMPENSATORS: 2. This workflow checks out the repo and runs tests. It
 #   does not publish, deploy, or write outside the runner. Undo is to close the
 #   pull request. Owner: the author of the pull request. The Publisher merges.
-# DECOMPOSE_BY_SECRETS: 2. One push-triggered workflow: test, scan, map check.
+# DECOMPOSE_BY_SECRETS: 2. One push-triggered workflow: test and the atlas check.
 # UNCERTAINTY_GATED_HUMANS: 2. A failing check stops the merge. R&D reviews the
 #   pull request. The Publisher merges.
 # EXTERNAL_VERIFIER: n/a. No specialised claim is decided here.
