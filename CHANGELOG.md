@@ -12,6 +12,7 @@ All notable changes to role-set are documented here. The format is based on
 - **The selector keeps a file's skeletons distinct** (`Floor.distinct_skeletons`, on by default; R&D's floor on #52). One T10 file of the 18 probed changes: doors/set swaps an item that repeated another's skeleton.
 - **`scripts/variety_sweep.py`** reports skeleton variety per recipe against the floor: T11 per side, T10 from its record, T12 per span count.
 - **File receipts** (R&D on #51). `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under.
+- **Defect classes D041 and D042** (R&D on aspire-si#114): `gate_tokenizer_mismatch`, a gate that claims shared machinery but tokenizes differently, and `provenance_conflated`, wording learned from the dataset treated as model-originated. Both are handled by aspire-si-gates 1.7.0's `check_not_from_traces`.
 
 ### Changed
 
