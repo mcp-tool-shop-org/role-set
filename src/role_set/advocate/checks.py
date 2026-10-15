@@ -85,6 +85,12 @@ def allowed_numbers(ledger: Ledger) -> set[str]:
 
 
 def stray_numbers(text: str, ledger: Ledger) -> list[str]:
+    """Numbers in the brief that the record does not allow.
+
+    A Note line's number is not a stray when the brief leaves it out. It is a
+    stray when the brief still prints that number.
+    """
+
     allowed = allowed_numbers(ledger)
     seen = []
     for token in numbers(_without_headings(text)):

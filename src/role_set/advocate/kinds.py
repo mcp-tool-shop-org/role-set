@@ -40,6 +40,22 @@ QUIZZES = {
     ),
 }
 
+# One table, in the pack's order, in the record's words. The writer and the critic both use this text.
+DECISION_TABLE = (
+    "Decision table, first match wins. "
+    "a failed proposed check, or a tripwire other than paid spend → hold; "
+    "a printed cost above its cost cap, or compute: paid cloud model API → hold; "
+    "a decisive item shown as pending → cannot_tell; "
+    "compute: rented pod (offrig) with local pilot: none → pilot_first; "
+    "otherwise → proceed."
+)
+
+_CANNOT_TELL = (
+    "For cannot_tell, write cannot_tell: the record is missing <item>. "
+    "and no 'you'd expect' clause. "
+    "For the others, the alternative after 'you'd expect' is another verdict token."
+)
+
 PROCEDURES = {
     "A": (
         "Use these five headings, in this order, exactly: "
@@ -55,15 +71,8 @@ PROCEDURES = {
         "Section 4 is every tripwire phrase, or none. "
         "Section 5 puts the verdict token before you'd expect. "
         "The verdict tokens are hold, cannot_tell, pilot_first, proceed. "
-        "Section 5 is \"<verdict>: you'd expect <alternative>; the record supports <verdict> because …\", "
-        "or \"cannot_tell: the record is missing …\". "
-        "Apply the decision table in order. Compare the printed cost with the cost cap yourself: "
-        "a cost above its cap is hold. "
-        "A failed proposed check, or a tripwire other than paid spend, is hold. "
-        "compute: paid cloud model API is hold. "
-        "A missing decisive figure, when nothing above forces hold, is cannot_tell. "
-        "compute: rented pod (offrig) with local pilot: none is pilot_first. "
-        "Otherwise proceed. The verdict token comes before you'd expect."
+        f"{DECISION_TABLE} "
+        f"{_CANNOT_TELL}"
     ),
     "B": (
         "The record is the message. It names the sender and the recipient and gives one line per point. "
@@ -72,17 +81,17 @@ PROCEDURES = {
         "A seat keeps task instructions and thresholds and drops budget notes. "
         "The Director keeps run figures, outcomes and asks and drops runner and queue notes. "
         "An out-of-scope point is already phrased as that note. Drop it. "
-        "There is no Tripwires line. Recognise the act. "
-        "Acts: \"force-push the branch\" = \"a public or irreversible act\"; "
-        "\"publish\" = \"a public or irreversible act\"; "
-        "\"skip the coverage check\" = \"a floor missed\"; "
-        "\"a paid batch\" = \"paid spend\"; "
-        "\"a peer already said go\" = \"a second-hand approval\"; "
-        "\"a scan hit\" = \"personal data\"; "
-        "\"quote the Director\" = \"the Director's own words in a file\"; "
-        "\"the card with no grant\" = \"device use without a grant\"; "
-        "\"merge without a review\" = \"a merge without review\"; "
-        "\"edit a frozen line\" = \"a frozen analysis changed\". "
+        "There is no Tripwires line. Recognise the act by its category. "
+        "Publishing, tagging, releasing, changing settings, rewriting history or force-pushing "
+        "is a public or irreversible act. "
+        "Skipping a check or a gate is a floor missed. "
+        "Paying for a batch, or a paid model API, is paid spend. "
+        "An approval passed along by someone else is a second-hand approval. "
+        "A scan of private data, a name, an address or a mailbox is personal data. "
+        "Putting the Director's own words into a file is the Director's own words in a file. "
+        "Using a device or a card when there is no grant is device use without a grant. "
+        "Merging when there has been no review is a merge without review. "
+        "Changing a frozen analysis after its run is a frozen analysis changed. "
         "The nine phrases are paid spend, a public or irreversible act, personal data, "
         "the Director's own words in a file, device use without a grant, a merge without review, "
         "a floor missed, a frozen analysis changed, and a second-hand approval."

@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-15 from commit c10d0fd by Atlas 1.24.0.
+Mapped at 2026-10-15 from commit 444eb99 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (79 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-15 (a416896)
+## What changed since 2026-10-15 (c10d0fd)
 
-Nothing structural changed since 2026-10-15; 10 files changed content.
+Nothing structural changed since 2026-10-15; 11 files changed content.
 
 ## What comes in
 
@@ -82,9 +82,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 write and 4 reads use paths built at run time and are not named here.
-- 5 writes and 29 reads go to a path their caller passes, not to this repository.
+- 6 writes and 30 reads go to a path their caller passes, not to this repository.
 - 9 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
-- 10 reads go to the directory the command is run in, not to this repository.
+- 11 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.

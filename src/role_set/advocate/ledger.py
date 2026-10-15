@@ -532,7 +532,8 @@ def render(ledger: Ledger) -> str:
         return render_message(ledger)
     lines = [TITLES.get(ledger.shape, ledger.shape)]
     for figure in ledger.figures:
-        lines.append(figure.text)
+        # An immaterial figure is a Note line, so the record matches the "no Note lines" rule.
+        lines.append(figure.text if figure.material else f"Note: {figure.text}")
     for check in _failed_checks(ledger):
         lines.append(check_line(check))
     for check in ledger.checks:

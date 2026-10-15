@@ -18,6 +18,13 @@
       "licence": "Apache-2.0",
       "rehearsal_only": true,
       "checked_by": "the Publisher, 2026-10-10 (digest 500a1f06…)"
+    },
+    {
+      "served_as": "llama3.1:8b",
+      "digest": "46e0c10c039e019119339687c3c1757cc81b9da49709a3b3924863ba87ca666e",
+      "quant": "Q4_K_M",
+      "licence": "Llama 3.1 Community License",
+      "checked_by": "digest pinned 2026-10-15 for the advocate pilot; the Publisher checks the licence before first use"
     }
   ],
   "critics": [

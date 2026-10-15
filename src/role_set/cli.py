@@ -402,6 +402,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--mock", action="store_true", help="fake writer and critic; load nothing")
     ap.add_argument("--grant", default=None, help="the Publisher's grant id; required for a live run")
     ap.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file; required for a live run")
+    ap.add_argument("--report", default=None, help="write read.md from the run record in this directory; loads nothing")
     ap.set_defaults(func=_advocate_pilot)
 
     pa = sub.add_parser("pilot-auto", help="one paste for a paid pilot: wait for the lane, write, relaunch after a lost-call stop")
@@ -440,7 +441,18 @@ def _advocate_pilot(args: argparse.Namespace) -> int:
     if args.role != "advocate":
         print("REFUSED: the pilot runner is the advocate's", file=sys.stderr)
         return 2
-    from role_set.advocate.pilot import PilotError, run_pilot
+    from role_set.advocate.pilot import PilotError, run_pilot, write_read_packet
+
+    if args.report and not args.mock and not args.grant:
+        run_dir = Path(args.report)
+        record_path = run_dir / "pilot.json"
+        if not record_path.is_file():
+            print(f"REFUSED: {record_path} is not a run record", file=sys.stderr)
+            return 2
+        data = json.loads(record_path.read_text(encoding="utf-8"))
+        path = write_read_packet(data, run_dir)
+        print(f"wrote {path.name} ({len(data.get('items') or [])} texts)")
+        return 0
     from role_set.advocate.plan import PlanError as AdvocatePlanError
     from role_set.advocate.plan import plan_pilot
 
@@ -458,6 +470,8 @@ def _advocate_pilot(args: argparse.Namespace) -> int:
         print(f"REFUSED: {exc}", file=sys.stderr)
         return 2
     Path(args.out).write_text(json.dumps(result, indent=1) + "\n", encoding="utf-8")
+    if args.report:
+        write_read_packet(result, Path(args.report))
     counts = result["critic_counts"]
     probe = result["controls"]["probe"]
     print(

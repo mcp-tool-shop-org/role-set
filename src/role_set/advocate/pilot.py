@@ -30,7 +30,13 @@ from role_set.advocate.critic import critic_prompt, flagged, recovered
 from role_set.advocate.kinds import negative_prompt, writer_prompt
 from role_set.advocate.ledger import _REASONS, plant, render, render_relay
 from role_set.advocate.table import decide
-from role_set.guards import GuardError, require_grant, require_heartbeat
+from role_set.guards import (
+    GuardError,
+    require_grant,
+    require_heartbeat,
+    require_model_allowed,
+    require_ollama_digest,
+)
 
 ENDPOINT = "http://127.0.0.1:11434"
 WRITERS = {"writer-a": "qwen3:8b", "writer-b": "llama3.1:8b"}
@@ -46,14 +52,69 @@ class PilotError(RuntimeError):
     """The pilot cannot start. Nothing was loaded."""
 
 
-def _complete_live(model: str, prompt: str, seed: int, temperature: float) -> str:
+def _complete_live(
+    model: str,
+    prompt: str,
+    seed: int,
+    temperature: float,
+    format: str | None = None,
+) -> str:
     from role_set.transport import ollama_chat
 
     reply = ollama_chat(
         ENDPOINT, model, [{"role": "user", "content": prompt}],
-        temperature=temperature, seed=seed,
+        temperature=temperature, seed=seed, think=False, format=format,
     )
     return reply.text
+
+
+def _default_writers() -> Path:
+    cwd = Path("writers.json")
+    if cwd.is_file():
+        return cwd
+    return Path(__file__).resolve().parents[3] / "writers.json"
+
+
+def _guard_pinned_models(writers_file: Path | None, opener) -> None:
+    """Both writers and the critic, before any model is loaded."""
+
+    from role_set.write import allowed_critics, allowed_writers
+
+    path = writers_file if writers_file is not None else _default_writers()
+    listed = allowed_writers(path)
+    listed.update(allowed_critics(path))
+    allowed = sorted(listed)
+    for name in (WRITERS["writer-a"], WRITERS["writer-b"], CRITIC_MODEL):
+        require_model_allowed(name, allowed)
+        expected = listed.get(name, {}).get("digest")
+        if not expected:
+            raise GuardError(f"REFUSED: {name} has no digest pin")
+        require_ollama_digest(ENDPOINT, name, expected, opener=opener)
+
+
+def _strip_fence(text: str) -> str:
+    stripped = text.strip()
+    if not (stripped.startswith("```") and stripped.endswith("```") and len(stripped) >= 6):
+        return stripped
+    body = stripped[3:-3]
+    if body.lower().startswith("json"):
+        body = body[4:]
+    return body.strip()
+
+
+def _critic_payload(raw: str) -> dict:
+    """JSON from the critic. A fence is stripped. An empty reply is a refusal."""
+
+    text = _strip_fence(raw or "")
+    if not text:
+        return {"faithful": False, "diff_item": "empty critic reply"}
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return {"faithful": False, "diff_item": "not json"}
+    if not isinstance(payload, dict):
+        return {"faithful": False, "diff_item": "not json"}
+    return payload
 
 
 def _unload_live(model: str) -> None:
@@ -68,8 +129,18 @@ def _ledger_text(prompt: str) -> str:
     return prompt.split("Ledger.\n", 1)[1].strip()
 
 
-def _act_map(prompt: str) -> list[tuple[str, str]]:
-    return re.findall(r'"([^"]+)" = "([^"]+)"', prompt)
+# Category stems, not the pilot's point strings. A line matches when a stem is a word in it.
+_CATEGORY_STEMS = (
+    ("a public or irreversible act", ("force-push", "publish", "tag", "release", "rewriting", "settings")),
+    ("a floor missed", ("skip",)),
+    ("paid spend", ("paid",)),
+    ("a second-hand approval", ("peer", "second-hand")),
+    ("personal data", ("scan", "mailbox", "identity")),
+    ("the Director's own words in a file", ("quote",)),
+    ("device use without a grant", ("card",)),
+    ("a merge without review", ("merge",)),
+    ("a frozen analysis changed", ("frozen",)),
+)
 
 
 def _act_in(line: str, act: str) -> bool:
@@ -115,6 +186,8 @@ def _parsed_record(record: str) -> dict:
             "Local baseline:", "Release approved:", "Provenance:", "Published file:",
             "Head:", "Grant:", "Card after:", "Stopping", "From ",
         )):
+            continue
+        elif line.lower().startswith("note:"):
             continue
         elif line.lower().startswith(("runner ", "retries ", "queue ")):
             continue
@@ -192,16 +265,28 @@ def _brief_from_record(record: str) -> str:
     return "\n\n".join(blocks)
 
 
-def _relay_from_lines(record: str, prompt: str) -> str:
+def _phrases_for(line: str) -> list[str]:
+    """The category phrases a point line names. The phrase itself counts too."""
+
+    found = []
+    folded = line.lower()
+    for phrase, stems in _CATEGORY_STEMS:
+        if phrase.lower() in folded or any(_act_in(line, stem) for stem in stems):
+            found.append(phrase)
+    return found
+
+
+def _relay_from_lines(record: str, _prompt: str) -> str:
+    """Match the record's lines to category stems. The prompt is not parsed for quoted acts."""
     kept = []
     phrases = []
     for line in record.splitlines():
         line = line.strip()
-        if not line or line.startswith("From ") or _is_note_line(line):
+        if not line or line.startswith("From ") or _is_note_line(line) or line.lower().startswith("note:"):
             continue
         kept.append(line)
-        for act, phrase in _act_map(prompt):
-            if _act_in(line, act) and phrase not in phrases:
+        for phrase in _phrases_for(line):
+            if phrase not in phrases:
                 phrases.append(phrase)
     if phrases:
         return "escalate: " + ". ".join(phrases) + "."
@@ -261,8 +346,9 @@ def _diff_item(record: str, prose: str, parsed: dict) -> str:
         if phrase.lower() not in prose.lower():
             return phrase
     for line in record.splitlines():
-        if line.lower().startswith(("runner ", "retries ")) and line in prose:
-            return line
+        stripped = line.strip()
+        if stripped.lower().startswith("note:") and stripped in prose:
+            return stripped
     found = list(_VERDICT.finditer(prose))
     verdict = _verdict_from_parsed(parsed)
     if not found or found[0].group(1) != verdict:
@@ -306,6 +392,8 @@ def run_pilot(
     now=time.time,
     complete=None,
     unload_fn=None,
+    writers_file: Path | None = None,
+    digest_opener=None,
 ) -> dict:
     """Write every text, check it, and ask the critic. Unload on the way out."""
 
@@ -315,6 +403,7 @@ def run_pilot(
             if heartbeat is None:
                 raise GuardError("REFUSED: the pilot on the 5090 needs --heartbeat <watchdog heartbeat file>")
             require_heartbeat(heartbeat, now())
+            _guard_pinned_models(writers_file, digest_opener)
         except GuardError as exc:
             raise PilotError(str(exc)) from exc
         complete = complete or _complete_live
@@ -366,12 +455,15 @@ def run_pilot(
                     payload = _mock_critic(critic_prompt(render(slot.ledger), prose, slot.kind))
                 else:
                     loaded.append(CRITIC_MODEL)
-                    raw = complete(CRITIC_MODEL, critic_prompt(render(slot.ledger), prose, slot.kind), seed, 0.0)
+                    raw = complete(
+                        CRITIC_MODEL,
+                        critic_prompt(render(slot.ledger), prose, slot.kind),
+                        seed,
+                        0.0,
+                        format="json",
+                    )
                     _unload_all()
-                    try:
-                        payload = json.loads(raw)
-                    except json.JSONDecodeError:
-                        payload = {"faithful": False, "diff_item": "not json"}
+                    payload = _critic_payload(raw)
                 hidden_key = None
                 changed = None
                 if role == "negative":
@@ -400,6 +492,27 @@ def run_pilot(
         probe_items = [(item["prose"], item["role"] == "positive") for item in items]
         keys = [item["key"] for item in positives]
         probe = brief_only_probe(probe_items, [item["slot"] for item in items])
+        kind_a = [item for item in items if item["kind"] == "A"]
+        if len(kind_a) >= 2:
+            probe_a = brief_only_probe(
+                [(item["prose"], item["role"] == "positive") for item in kind_a],
+                [item["slot"] for item in kind_a],
+            )
+            probe["kind_a"] = {
+                "accuracy": probe_a["accuracy"],
+                "null_mean": probe_a["null_mean"],
+                "null_p95": probe_a["null_p95"],
+                "n": probe_a["n"],
+            }
+            probe["message"] = (
+                f"brief-only probe accuracy {probe['accuracy']:.2f} beside a 200-permutation null "
+                f"(mean {probe['null_mean']:.2f}, 95th percentile {probe['null_p95']:.2f}). "
+                f"On the {probe_a['n']} kind A texts, accuracy {probe_a['accuracy']:.2f} "
+                f"beside a 200-permutation null "
+                f"(mean {probe_a['null_mean']:.2f}, 95th percentile {probe_a['null_p95']:.2f}). "
+                f"On {probe['n']} texts this is a smoke test of the machinery, not a verdict. "
+                "Kind B has no negatives."
+            )
         return {
             "mock": mock,
             "seed": seed,
@@ -427,3 +540,75 @@ def run_pilot(
         }
     finally:
         _unload_all()
+
+
+def write_read_packet(record: dict, directory: Path) -> Path:
+    """One Markdown file, one section per text, in slot order. The live read uses this too."""
+
+    directory.mkdir(parents=True, exist_ok=True)
+    parts = ["# Pilot read", ""]
+    items = sorted(
+        record.get("items") or [],
+        key=lambda item: (item.get("slot", ""), 0 if item.get("role") == "positive" else 1),
+    )
+    for item in items:
+        changed = item.get("verdict_changed")
+        if changed is True:
+            changed_text = "yes"
+        elif changed is False:
+            changed_text = "no"
+        else:
+            changed_text = "not a negative"
+        plant = item.get("plant") or "none"
+        check_lines = []
+        for row in item.get("checks") or []:
+            mark = "pass" if row.get("passed") else "fail"
+            reason = f" ({row['reason']})" if row.get("reason") else ""
+            check_lines.append(f"- {row.get('name')}: {mark}{reason}")
+        if not check_lines:
+            check_lines.append("- none")
+        attempt_lines = []
+        for row in item.get("attempts") or []:
+            mark = "pass" if row.get("passed") else "fail"
+            attempt_lines.append(
+                f"- attempt {row.get('attempt')}, family {row.get('family')}, seed {row.get('seed')}: {mark}"
+            )
+        if not attempt_lines:
+            attempt_lines.append("- none")
+        critic = json.dumps(item.get("critic"), indent=2, ensure_ascii=False)
+        parts.extend([
+            f"## {item.get('slot')} {item.get('role')}",
+            "",
+            "### Record",
+            "",
+            item.get("record") or "",
+            "",
+            "### Prose",
+            "",
+            item.get("prose") or "",
+            "",
+            "### Key or planted class",
+            "",
+            f"Key: {item.get('key')}",
+            f"Planted class: {plant}",
+            f"Verdict changed: {changed_text}",
+            "",
+            "### Checks",
+            "",
+            "\n".join(check_lines),
+            "",
+            "### Attempts and family",
+            "",
+            f"Family: {item.get('family')}",
+            "\n".join(attempt_lines),
+            "",
+            "### Critic",
+            "",
+            "```json",
+            critic,
+            "```",
+            "",
+        ])
+    path = directory / "read.md"
+    path.write_text("\n".join(parts), encoding="utf-8", newline="\n")
+    return path

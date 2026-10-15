@@ -8,7 +8,7 @@ The critic's family must differ from the writer's.
 
 from __future__ import annotations
 
-from role_set.advocate.kinds import PROCEDURES
+from role_set.advocate.kinds import DECISION_TABLE, PROCEDURES
 from role_set.advocate.table import VERDICTS
 
 
@@ -16,17 +16,7 @@ class FamilyError(ValueError):
     """The critic is the same family as the writer, or a family was not named."""
 
 
-_TABLE = (
-    "Decision table, first match wins. "
-    "A failed check on the proposed run, or a tripwire other than paid spend, is hold. "
-    "Over the cost cap, or a paid model API, is hold. "
-    "A missing decisive figure or threshold, when nothing above forces hold, is cannot_tell. "
-    "A paid run or rollout with no passed local pilot is pilot_first. "
-    "Otherwise proceed. "
-    "On a release record, a public or irreversible act is tagged only when the release is "
-    "unapproved or provenance or the published-file check is not clean. "
-    "A baseline miss is not a failed check on the proposed run."
-)
+_TABLE = DECISION_TABLE
 
 
 def require_different_family(writer_family: str, critic_family: str) -> None:

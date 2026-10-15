@@ -19,6 +19,7 @@ from role_set.advocate.checks import (
     number_set,
     plant_exact,
     sections,
+    stray_numbers,
 )
 from role_set.advocate.controls import (
     brief_only_probe,
@@ -28,7 +29,7 @@ from role_set.advocate.controls import (
 )
 from role_set.advocate.critic import critic_prompt, flagged, recovered, require_different_family
 from role_set.advocate.critic import FamilyError
-from role_set.advocate.kinds import LESSONS, writer_prompt, negative_prompt
+from role_set.advocate.kinds import DECISION_TABLE, LESSONS, PROCEDURES, negative_prompt, writer_prompt
 from role_set.advocate.ledger import (
     PHRASES,
     TRIPWIRES,
@@ -636,6 +637,8 @@ def test_the_pilot_table_and_the_mock_run_cover_every_required_case():
     probe = result["controls"]["probe"]
     assert probe["n"] == 26 and "smoke test" in probe["message"]
     assert "200-permutation null" in probe["message"] and "95th percentile" in probe["message"]
+    assert probe["kind_a"]["n"] == 20 and "kind A" in probe["message"]
+    assert "Kind B has no negatives" in probe["message"]
     by_id = {(item["slot"], item["role"]): item for item in result["items"]}
     retry = by_id[("pilot-04", "positive")]
     assert [item["passed"] for item in retry["attempts"]] == [False, True]
@@ -666,6 +669,39 @@ def test_the_pilot_table_and_the_mock_run_cover_every_required_case():
     assert "coverage floor" in review_bad["prose"]
 
 
+class _Tags:
+    def __init__(self, payload):
+        self.payload = payload
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        return False
+
+    def read(self):
+        return json.dumps(self.payload).encode("utf-8")
+
+
+def _pinned_opener(digests: dict | None = None):
+    """A fake /api/tags. The default digests are the pins in writers.json."""
+
+    if digests is None:
+        data = json.loads((PACK.parents[1] / "writers.json").read_text(encoding="utf-8"))
+        models = [
+            {"name": row["served_as"], "digest": row["digest"]}
+            for row in data["writers"] + data["critics"]
+            if row.get("digest")
+        ]
+    else:
+        models = [{"name": name, "digest": digest} for name, digest in digests.items()]
+
+    def open_(url, timeout=30):
+        return _Tags({"models": models})
+
+    return open_
+
+
 def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Path, monkeypatch):
     called = []
     monkeypatch.setattr("role_set.transport.ollama_chat", lambda *a, **k: called.append("chat"))
@@ -686,34 +722,36 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
 
     unloaded = []
 
-    def explode(model, prompt, seed, temperature):
+    def explode(model, prompt, seed, temperature, format=None):
         raise RuntimeError("stop before a model")
 
     with pytest.raises(RuntimeError, match="stop"):
         run_pilot(
             slots[:1], mock=False, grant="g-a1b2c3d4", heartbeat=beat,
-            complete=explode, unload_fn=unloaded.append,
+            complete=explode, unload_fn=unloaded.append, digest_opener=_pinned_opener(),
         )
     assert unloaded == ["qwen3:8b"]
 
     slot = slots[12]
 
-    def complete(model, prompt, seed, temperature):
+    def complete(model, prompt, seed, temperature, format=None):
         if "gemma4" in model:
+            assert format == "json"
             return '{"action": "relay", "faithful": true, "diff_item": ""}'
+        assert format is None
         body, _source, _action = render_relay(slot.ledger)
         return body
 
     fresh = []
     result = run_pilot(
         [slot, slot], mock=False, grant="g-a1b2c3d4", heartbeat=beat,
-        complete=complete, unload_fn=fresh.append,
+        complete=complete, unload_fn=fresh.append, digest_opener=_pinned_opener(),
     )
     assert fresh == ["qwen3:8b", "gemma4:31b", "qwen3:8b", "gemma4:31b"]
     assert result["grant"] == "g-a1b2c3d4" and result["unloaded"] is True
     assert result["critic_counts"]["positives_recovered"] == 2
 
-    def bad_json(model, prompt, seed, temperature):
+    def bad_json(model, prompt, seed, temperature, format=None):
         if "gemma4" in model:
             return "not json"
         body, _source, _action = render_relay(slot.ledger)
@@ -721,7 +759,7 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
 
     broken = run_pilot(
         [slot, slot], mock=False, grant="g-a1b2c3d4", heartbeat=beat,
-        complete=bad_json, unload_fn=lambda _model: None,
+        complete=bad_json, unload_fn=lambda _model: None, digest_opener=_pinned_opener(),
     )
     assert broken["items"][0]["critic"]["faithful"] is False
 
@@ -778,14 +816,18 @@ def test_prompt_completeness_over_the_twenty_six_pilot_texts():
 
 
 def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monkeypatch):
-    """The real transport, against a fake Ollama on loopback. No model is loaded."""
+    """The real transport, against a fake Ollama on loopback. No model is loaded.
+
+    The writer is asked with thinking off. The critic is asked the same way, plus JSON,
+    and a fenced reply parses while an empty reply is recorded as a refusal.
+    """
 
     import threading
     from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-    from role_set.advocate.pilot import _complete_live
+    from role_set.advocate.pilot import _complete_live, _critic_payload
 
-    seen = {}
+    seen = []
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
@@ -793,11 +835,17 @@ def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monk
         def do_POST(self):
             length = int(self.headers.get("Content-Length", "0") or "0")
             raw = self.rfile.read(length) if length else b""
-            seen["body"] = json.loads(raw.decode("utf-8"))
-            seen["path"] = self.path
+            body = json.loads(raw.decode("utf-8"))
+            seen.append({"path": self.path, "body": body})
+            if body["model"] == "gemma4:31b" and sum(1 for item in seen if item["body"]["model"] == "gemma4:31b") == 1:
+                content = '```json\n{"faithful": true, "diff_item": ""}\n```'
+            elif body["model"] == "gemma4:31b":
+                content = "  \n"
+            else:
+                content = "the brief is text"
             payload = json.dumps({
-                "model": "qwen3:8b",
-                "message": {"role": "assistant", "content": "the brief is text"},
+                "model": body["model"],
+                "message": {"role": "assistant", "content": content},
                 "done": True,
                 "done_reason": "stop",
             }).encode("utf-8")
@@ -817,13 +865,115 @@ def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monk
     monkeypatch.setattr("role_set.advocate.pilot.ENDPOINT", f"http://127.0.0.1:{port}")
     try:
         text = _complete_live("qwen3:8b", "Say the line.", 0, 0.2)
+        fenced = _complete_live("gemma4:31b", "Judge.", 0, 0.0, format="json")
+        empty = _complete_live("gemma4:31b", "Judge again.", 1, 0.0, format="json")
     finally:
         server.shutdown()
         server.server_close()
     assert text == "the brief is text"
-    assert seen["path"] == "/api/chat"
-    assert seen["body"]["think"] is False
-    assert seen["body"]["model"] == "qwen3:8b"
+    assert seen[0]["path"] == "/api/chat"
+    assert seen[0]["body"]["think"] is False
+    assert "format" not in seen[0]["body"]
+    assert seen[0]["body"]["model"] == "qwen3:8b"
+    assert seen[1]["body"]["model"] == "gemma4:31b"
+    assert seen[1]["body"]["think"] is False and seen[1]["body"]["format"] == "json"
+    assert seen[2]["body"]["think"] is False and seen[2]["body"]["format"] == "json"
+    assert _critic_payload(fenced) == {"faithful": True, "diff_item": ""}
+    assert _critic_payload(empty) == {"faithful": False, "diff_item": "empty critic reply"}
+    assert _critic_payload("```json\n{\"verdict\": \"hold\"}\n```")["verdict"] == "hold"
+
+
+def test_a_live_pilot_refuses_a_cloud_tag_an_unlisted_name_and_a_bad_digest_before_any_model_call(tmp_path, monkeypatch):
+    """Three refusals, each before any model call."""
+
+    called = []
+
+    def spy(model, prompt, seed, temperature, format=None):
+        called.append(model)
+        raise AssertionError("a model call")
+
+    beat = tmp_path / "beat"
+    beat.write_text("x", encoding="utf-8")
+    slots = plan_pilot(PACK, seed=0)[:1]
+    common = dict(mock=False, grant="g-a1b2c3d4", heartbeat=beat, complete=spy, unload_fn=lambda _model: None)
+
+    monkeypatch.setattr("role_set.advocate.pilot.CRITIC_MODEL", "gemma4:31b-cloud")
+    with pytest.raises(PilotError, match="cloud"):
+        run_pilot(slots, digest_opener=_pinned_opener(), **common)
+    assert called == []
+
+    monkeypatch.setattr("role_set.advocate.pilot.CRITIC_MODEL", "gemma4:31b")
+    monkeypatch.setattr(
+        "role_set.advocate.pilot.WRITERS",
+        {"writer-a": "qwen3:8b", "writer-b": "not-in-the-list:8b"},
+    )
+    with pytest.raises(PilotError, match="not on the licence-checked"):
+        run_pilot(slots, digest_opener=_pinned_opener(), **common)
+    assert called == []
+
+    monkeypatch.setattr(
+        "role_set.advocate.pilot.WRITERS",
+        {"writer-a": "qwen3:8b", "writer-b": "llama3.1:8b"},
+    )
+    data = json.loads((PACK.parents[1] / "writers.json").read_text(encoding="utf-8"))
+    digests = {
+        row["served_as"]: row["digest"]
+        for row in data["writers"] + data["critics"]
+        if row.get("digest")
+    }
+    digests["llama3.1:8b"] = "0" * 64
+    with pytest.raises(PilotError, match="differs from the pinned"):
+        run_pilot(slots, digest_opener=_pinned_opener(digests), **common)
+    assert called == []
+
+
+def test_no_kind_b_pilot_point_is_verbatim_in_the_procedure_or_the_critic_prompt():
+    """The procedure and the critic's rules name categories. They do not quote a slot's point."""
+
+    slots = plan_pilot(PACK, seed=0)
+    rules = critic_prompt("RECORD", "PROSE", "B").split("RECORD:", 1)[0]
+    points = [
+        point.text
+        for slot in slots if slot.kind == "B"
+        for point in points_from(slot.ledger)
+    ]
+    assert len(points) >= 9
+    for text in points:
+        assert text not in PROCEDURES["B"], text
+        assert text not in rules, text
+    assert "force-pushing" in PROCEDURES["B"]
+    assert "a public or irreversible act" in PROCEDURES["B"]
+    assert "Skipping a check or a gate is a floor missed." in PROCEDURES["B"]
+
+
+def test_the_writer_table_and_the_critic_table_are_the_same_text():
+    slots = plan_pilot(PACK, seed=0)
+    writer = writer_prompt(slots[0].trait, "A", slots[0].ledger)
+    critic = critic_prompt(render(slots[0].ledger), "prose", "A")
+    assert DECISION_TABLE in PROCEDURES["A"]
+    assert DECISION_TABLE in writer and DECISION_TABLE in critic
+    assert writer[writer.index(DECISION_TABLE):writer.index(DECISION_TABLE) + len(DECISION_TABLE)] == (
+        critic[critic.index(DECISION_TABLE):critic.index(DECISION_TABLE) + len(DECISION_TABLE)]
+    )
+    assert "cannot_tell: the record is missing <item>." in writer
+    assert "Note: runner ubuntu-latest" in writer
+    relay = writer_prompt(slots[15].trait, "B", slots[15].ledger)
+    assert "force-pushing" in relay
+    assert "force-push the branch" not in PROCEDURES["B"]
+
+
+def test_a_note_line_number_is_not_a_stray_when_the_brief_leaves_it_out():
+    ledger = led(figures=(
+        Figure("coverage 0.71", True, "0.71", "", "coverage"),
+        Figure("retries 0", False, "0", "", "retries"),
+    ))
+    record = render(ledger)
+    brief = render_brief(ledger)
+    assert "Note: retries 0" in record
+    assert "Note:" not in brief
+    assert "0" not in stray_numbers(brief, ledger)
+    assert stray_numbers(brief + "\nseen 0", ledger) == ["0"]
+    assert all(item.passed for item in check_a(record, brief, ledger))
 
 
 def test_advocate_pilot_commands(tmp_path: Path, capsys):
@@ -849,3 +999,14 @@ def test_advocate_pilot_commands(tmp_path: Path, capsys):
         "pilot", "--role", "advocate", "--pack", str(PACK), "--out", str(tmp_path / "live.json"),
     ]) == 2
     assert "REFUSED" in capsys.readouterr().err
+
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    (run_dir / "pilot.json").write_text(run_out.read_text(encoding="utf-8"), encoding="utf-8")
+    assert main(["pilot", "--role", "advocate", "--report", str(run_dir)]) == 0
+    packet = (run_dir / "read.md").read_text(encoding="utf-8")
+    assert packet.count("\n## ") == 26
+    assert "## pilot-01 positive" in packet and "## pilot-01 negative" in packet
+    assert "Note: runner ubuntu-latest" in packet
+    assert "### Critic" in packet and "### Checks" in packet
+    assert main(["pilot", "--role", "advocate", "--report", str(tmp_path / "missing")]) == 2

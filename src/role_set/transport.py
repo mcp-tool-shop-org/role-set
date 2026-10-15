@@ -111,6 +111,7 @@ def ollama_chat(
     num_ctx: int = 16384,
     keep_alive: str | int = "30m",
     think: bool = False,
+    format: str | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     post=post_with_retries,
     clock=time.monotonic,
@@ -126,6 +127,8 @@ def ollama_chat(
         "keep_alive": keep_alive,
         "options": {"temperature": temperature, "seed": seed, "num_ctx": num_ctx},
     }
+    if format is not None:
+        body["format"] = format
     t0 = clock()
     out = post(url, body, timeout_s=timeout_s)
     try:
