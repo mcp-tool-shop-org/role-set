@@ -486,7 +486,8 @@ def _t11_from_row(pack_name: str, side: str, seed: int, row: dict | None = None)
         if contrast is None:
             raise BuildError(f"{where} has no off-subject contrast")
     return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
-                 seed=seed, tries=1, notes=[f"t11 catalogue row {row['skeleton_sha256']}"], contrast=contrast)
+                 seed=seed, tries=1, notes=[f"t11 catalogue row {row['skeleton_sha256']}"], contrast=contrast,
+                 file_index=(seed - 1) // T11_FILE)
 
 
 def build_t11(pack_name: str, seed: int, side: str) -> Built:
