@@ -109,6 +109,7 @@ def ollama_chat(
     temperature: float = 0.0,
     seed: int = 0,
     num_ctx: int = 16384,
+    num_predict: int | None = None,
     keep_alive: str | int = "30m",
     think: bool = False,
     format: str | None = None,
@@ -119,13 +120,16 @@ def ollama_chat(
     """One chat against the local Ollama's /api/chat (the critic). A cloud tag is refused by the model guard upstream."""
 
     url = require_local_endpoint(endpoint).rstrip("/") + "/api/chat"
+    options: dict = {"temperature": temperature, "seed": seed, "num_ctx": num_ctx}
+    if num_predict is not None:
+        options["num_predict"] = num_predict
     body = {
         "model": model,
         "messages": messages,
         "stream": False,
         "think": think,
         "keep_alive": keep_alive,
-        "options": {"temperature": temperature, "seed": seed, "num_ctx": num_ctx},
+        "options": options,
     }
     if format is not None:
         body["format"] = format

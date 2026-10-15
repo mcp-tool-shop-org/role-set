@@ -32,7 +32,7 @@
       "digest": "fd429f23b90980ed1bef53b990894e7b0199331f6ae90c5650240a7d5b70f1f7",
       "quant": "Q4_K_M",
       "licence": "Apache-2.0",
-      "checked_by": "R&D, 2026-10-15: the Ollama build's bundled licence and the HF model card"
+      "checked_by": "the Publisher, 2026-10-15 (digest fd429f23…, bundled Apache-2.0; card ibm-granite/granite-3.3-8b-instruct@51dd4bc, apache-2.0)"
     }
   ],
   "critics": [

@@ -14,6 +14,7 @@ All notable changes to role-set are documented here. The format is based on
 - The Advocate's second fix-up. A record prints the studio lines its shape carries, and a failed check carries its evidence on that line. A relay record is the message, with out-of-scope points phrased as the notes the recipient drops. The live path returns the completion's text. A prompt-completeness test holds every pilot text to the items its reference output needs. No model is loaded.
 - The Advocate's third fix-up. A live pilot checks the writer and critic pins in `writers.json` before any model call. The critic asks for JSON with thinking off, and a fenced or empty reply is still a payload. Immaterial figures print as `Note:` lines. Kind B names acts by category. The writer and the critic share one decision table. `pilot --report` writes the human read from a run record. No model is loaded.
 - The Advocate's second writer is `granite3.3:8b`. `llama3.1:8b` stays listed, with a note that it is not for training items. No model is loaded.
+- The Advocate's fourth fix-up. The pilot sizes `num_ctx` from the longest prompt, caps `num_predict`, and refuses a truncated reply. It appends `pilot.jsonl` as it goes, and `pilot --report` can read that file alone. `pilot --preflight` measures each model's VRAM at that context. No model is loaded.
 
 ## [0.2.0] - 2026-10-14
 

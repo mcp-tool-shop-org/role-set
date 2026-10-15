@@ -53,7 +53,21 @@ from role_set.advocate.ledger import (
     render_two_turn,
     scan_text,
 )
-from role_set.advocate.pilot import CRITIC_MODEL, PilotError, WRITERS, run_pilot
+from role_set.advocate.pilot import (
+    CRITIC_MODEL,
+    GRANT_VRAM_CAP_BYTES,
+    PREFLIGHT_MARGIN_BYTES,
+    PilotError,
+    Truncation,
+    WRITERS,
+    context_budget,
+    estimate_tokens,
+    pilot_prompts,
+    preflight,
+    run_pilot,
+    writer_output_text,
+    critic_output_text,
+)
 from role_set.advocate.plan import FAMILIES, PlanError, plan_batch, plan_pilot
 from role_set.advocate.table import PAID_SPEND, VERDICTS, decide
 from role_set.advocate import variety
@@ -722,7 +736,7 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
 
     unloaded = []
 
-    def explode(model, prompt, seed, temperature, format=None):
+    def explode(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
         raise RuntimeError("stop before a model")
 
     with pytest.raises(RuntimeError, match="stop"):
@@ -734,7 +748,7 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
 
     slot = slots[12]
 
-    def complete(model, prompt, seed, temperature, format=None):
+    def complete(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
         if "gemma4" in model:
             assert format == "json"
             return '{"action": "relay", "faithful": true, "diff_item": ""}'
@@ -751,7 +765,7 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
     assert result["grant"] == "g-a1b2c3d4" and result["unloaded"] is True
     assert result["critic_counts"]["positives_recovered"] == 2
 
-    def bad_json(model, prompt, seed, temperature, format=None):
+    def bad_json(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
         if "gemma4" in model:
             return "not json"
         body, _source, _action = render_relay(slot.ledger)
@@ -848,6 +862,8 @@ def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monk
                 "message": {"role": "assistant", "content": content},
                 "done": True,
                 "done_reason": "stop",
+                "prompt_eval_count": 4,
+                "eval_count": 2,
             }).encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -864,9 +880,9 @@ def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monk
     worker.start()
     monkeypatch.setattr("role_set.advocate.pilot.ENDPOINT", f"http://127.0.0.1:{port}")
     try:
-        text = _complete_live("qwen3:8b", "Say the line.", 0, 0.2)
-        fenced = _complete_live("gemma4:31b", "Judge.", 0, 0.0, format="json")
-        empty = _complete_live("gemma4:31b", "Judge again.", 1, 0.0, format="json")
+        text = _complete_live("qwen3:8b", "Say the line.", 0, 0.2, num_ctx=2048, num_predict=512)
+        fenced = _complete_live("gemma4:31b", "Judge.", 0, 0.0, format="json", num_ctx=2048, num_predict=256)
+        empty = _complete_live("gemma4:31b", "Judge again.", 1, 0.0, format="json", num_ctx=2048, num_predict=256)
     finally:
         server.shutdown()
         server.server_close()
@@ -875,6 +891,10 @@ def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monk
     assert seen[0]["body"]["think"] is False
     assert "format" not in seen[0]["body"]
     assert seen[0]["body"]["model"] == "qwen3:8b"
+    assert seen[0]["body"]["options"]["num_ctx"] == 2048
+    assert seen[0]["body"]["options"]["num_predict"] == 512
+    assert seen[1]["body"]["options"]["num_ctx"] == 2048
+    assert seen[1]["body"]["options"]["num_predict"] == 256
     assert seen[1]["body"]["model"] == "gemma4:31b"
     assert seen[1]["body"]["think"] is False and seen[1]["body"]["format"] == "json"
     assert seen[2]["body"]["think"] is False and seen[2]["body"]["format"] == "json"
@@ -888,7 +908,7 @@ def test_a_live_pilot_refuses_a_cloud_tag_an_unlisted_name_and_a_bad_digest_befo
 
     called = []
 
-    def spy(model, prompt, seed, temperature, format=None):
+    def spy(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
         called.append(model)
         raise AssertionError("a model call")
 
@@ -1031,3 +1051,319 @@ def test_advocate_pilot_commands(tmp_path: Path, capsys):
     assert "Note: runner ubuntu-latest" in packet
     assert "### Critic" in packet and "### Checks" in packet
     assert main(["pilot", "--role", "advocate", "--report", str(tmp_path / "missing")]) == 2
+
+
+def test_every_pilot_prompt_plus_its_output_budget_fits_num_ctx():
+    """The sized window holds every pilot prompt plus its output budget, at 3 characters per token."""
+
+    slots = plan_pilot(PACK, seed=0)
+    budget = context_budget(slots)
+    writers, critics = pilot_prompts(slots)
+    assert len(writers) == 26 and len(critics) == 26
+    brief = writer_output_text()
+    reply = critic_output_text()
+    assert len(brief.split()) == 130
+    assert json.loads(reply)["faithful"] is False
+    assert budget["writer"]["num_predict"] == 512 and budget["critic"]["num_predict"] == 256
+    assert budget["writer"]["output_tokens"] == estimate_tokens(brief)
+    assert budget["critic"]["output_tokens"] == estimate_tokens(reply)
+    for side, prompts in (("writer", writers), ("critic", critics)):
+        window = budget[side]
+        assert window["num_ctx"] >= 2048
+        assert window["num_ctx"] & (window["num_ctx"] - 1) == 0
+        assert window["longest_prompt_tokens"] == max(estimate_tokens(prompt) for prompt in prompts)
+        for prompt in prompts:
+            estimated = estimate_tokens(prompt)
+            assert estimated + window["output_tokens"] <= window["num_ctx"]
+            assert estimated + window["num_predict"] <= window["num_ctx"]
+    recorded = run_pilot(slots, mock=True, seed=0)
+    assert recorded["context"] == budget
+
+
+def test_a_full_window_or_a_length_stop_is_recorded_as_a_truncation(tmp_path, monkeypatch):
+    """A prompt that does not fit is refused before the call. A full window or a length stop is not a draft."""
+
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from role_set.advocate.pilot import _complete_live
+
+    seen = []
+    mode = {"kind": "length"}
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length) if length else b""
+            body = json.loads(raw.decode("utf-8"))
+            seen.append(body)
+            num_ctx = body.get("options", {}).get("num_ctx", 2048)
+            content = "NOT A DRAFT"
+            counts = True
+            if mode["kind"] == "length":
+                done_reason = "length"
+                prompt_eval = 3
+                eval_count = 2
+            elif mode["kind"] == "missing":
+                done_reason = "stop"
+                prompt_eval = None
+                eval_count = None
+                counts = False
+            elif mode["kind"] == "critic" and body.get("format") != "json":
+                done_reason = "stop"
+                prompt_eval = 4
+                eval_count = 2
+                content = mode["body"]
+            elif mode["kind"] == "critic":
+                done_reason = "length"
+                prompt_eval = 3
+                eval_count = 2
+            else:
+                done_reason = "stop"
+                prompt_eval = num_ctx
+                eval_count = 0
+            payload_body = {
+                "model": body.get("model", ""),
+                "message": {"role": "assistant", "content": content},
+                "done": True,
+                "done_reason": done_reason,
+            }
+            if counts:
+                payload_body["prompt_eval_count"] = prompt_eval
+                payload_body["eval_count"] = eval_count
+            payload = json.dumps(payload_body).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):  # noqa: A003 - BaseHTTPRequestHandler's name
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    monkeypatch.setattr("role_set.advocate.pilot.ENDPOINT", f"http://127.0.0.1:{port}")
+    beat = tmp_path / "beat"
+    beat.write_text("x", encoding="utf-8")
+    slots = plan_pilot(PACK, seed=0)[:1]
+
+    def _events(path: Path) -> list[dict]:
+        return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+    try:
+        with pytest.raises(Truncation, match="truncation:"):
+            _complete_live("qwen3:8b", "x" * (2048 * 3), 0, 0.2, num_ctx=2048, num_predict=512)
+        assert seen == []
+
+        journal = tmp_path / "length" / "pilot.jsonl"
+        with pytest.raises(PilotError, match="truncation"):
+            run_pilot(
+                slots, mock=False, grant="g-a1b2c3d4", heartbeat=beat,
+                unload_fn=lambda _model: None, digest_opener=_pinned_opener(), journal=journal,
+            )
+        raw = journal.read_text(encoding="utf-8")
+        assert "NOT A DRAFT" not in raw
+        stopped = [row for row in _events(journal) if row["event"] == "truncation"]
+        assert len(stopped) == 1 and stopped[0]["done_reason"] == "length"
+        assert all(row["event"] != "critic" for row in _events(journal))
+
+        mode["kind"] = "window"
+        seen.clear()
+        window = tmp_path / "window" / "pilot.jsonl"
+        with pytest.raises(PilotError, match="reaches"):
+            run_pilot(
+                slots, mock=False, grant="g-a1b2c3d4", heartbeat=beat,
+                unload_fn=lambda _model: None, digest_opener=_pinned_opener(), journal=window,
+            )
+        raw = window.read_text(encoding="utf-8")
+        assert "NOT A DRAFT" not in raw
+        stopped = [row for row in _events(window) if row["event"] == "truncation"]
+        assert len(stopped) == 1 and stopped[0]["done_reason"] == "stop"
+        assert "reaches" in stopped[0]["reason"]
+        assert seen and seen[0]["options"]["num_ctx"] == stopped[0]["prompt_eval_count"]
+
+        mode["kind"] = "missing"
+        with pytest.raises(Truncation, match="missing"):
+            _complete_live("qwen3:8b", "hi", 0, 0.2, num_ctx=2048, num_predict=512)
+
+        kind_b = next(item for item in plan_pilot(PACK, seed=0) if item.kind == "B")
+        relay, _source, _action = render_relay(kind_b.ledger)
+        mode["kind"] = "critic"
+        mode["body"] = relay
+        critic_journal = tmp_path / "critic" / "pilot.jsonl"
+        with pytest.raises(PilotError, match="truncation"):
+            run_pilot(
+                [kind_b], mock=False, grant="g-a1b2c3d4", heartbeat=beat,
+                unload_fn=lambda _model: None, digest_opener=_pinned_opener(), journal=critic_journal,
+            )
+        raw = critic_journal.read_text(encoding="utf-8")
+        assert "NOT A DRAFT" not in raw and relay in raw
+        stopped = [row for row in _events(critic_journal) if row["event"] == "truncation"]
+        assert len(stopped) == 1 and stopped[0]["model"] == CRITIC_MODEL
+        assert all(row["event"] != "critic" for row in _events(critic_journal))
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
+def test_a_stop_before_the_critic_leaves_a_readable_journal(tmp_path):
+    """Drafts are on disk before the critic loads. A stopped run is still a read."""
+
+    slots = plan_pilot(PACK, seed=0)
+    slot = next(item for item in slots if item.kind == "B")
+    body, _source, _action = render_relay(slot.ledger)
+    beat = tmp_path / "beat"
+    beat.write_text("x", encoding="utf-8")
+    run_dir = tmp_path / "run"
+    journal = run_dir / "pilot.jsonl"
+
+    def complete(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
+        if format == "json":
+            raise RuntimeError("stop while the critic loads")
+        return body
+
+    with pytest.raises(RuntimeError, match="critic"):
+        run_pilot(
+            [slot], mock=False, grant="g-a1b2c3d4", heartbeat=beat,
+            complete=complete, unload_fn=lambda _model: None, digest_opener=_pinned_opener(),
+            journal=journal,
+        )
+    lines = [json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines() if line.strip()]
+    writer = next(row for row in lines if row["event"] == "writer")
+    assert writer["ledger"] and writer["prose"] == body
+    assert writer["attempts"] and writer["attempts"][0]["prose"] == body
+    assert all(row["event"] != "critic" for row in lines)
+    assert not (run_dir / "pilot.json").exists()
+    assert main(["pilot", "--role", "advocate", "--report", str(run_dir)]) == 0
+    packet = (run_dir / "read.md").read_text(encoding="utf-8")
+    assert f"## {slot.id} positive" in packet
+    assert body in packet[packet.index("### Prose"):]
+
+
+def test_preflight_prints_three_sizes_and_refuses_over_the_cap(tmp_path, monkeypatch, capsys):
+    """Three measurements, one model at a time. Over the cap minus 1 GiB is a refusal, after the unload."""
+
+    slots = plan_pilot(PACK, seed=0)
+    budget = context_budget(slots)
+    beat = tmp_path / "beat"
+    beat.write_text("x", encoding="utf-8")
+    limit = GRANT_VRAM_CAP_BYTES - PREFLIGHT_MARGIN_BYTES
+
+    def measure(sizes: dict):
+        calls = []
+        resident = []
+
+        def complete(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
+            assert prompt == "x" and "Ledger." not in prompt
+            assert num_predict == 1 and not resident
+            expected = budget["critic"]["num_ctx"] if model == CRITIC_MODEL else budget["writer"]["num_ctx"]
+            assert num_ctx == expected
+            resident.append(model)
+            calls.append(("complete", model))
+
+        def unload(model):
+            calls.append(("unload", model))
+            resident.remove(model)
+
+        def ps():
+            calls.append(("ps", tuple(resident)))
+            assert resident
+            return [{"name": resident[0], "size_vram": sizes[resident[0]]}]
+
+        report = preflight(
+            slots, grant="g-preflight", heartbeat=beat,
+            complete=complete, unload_fn=unload, ps_fn=ps, digest_opener=_pinned_opener(),
+        )
+        return report, calls
+
+    names = (WRITERS["writer-a"], WRITERS["writer-b"], CRITIC_MODEL)
+    report, calls = measure({name: limit for name in names})
+    assert report["refused"] is False and len(report["rows"]) == 3
+    assert [row["model"] for row in report["rows"]] == list(names)
+    assert [step[0] for step in calls] == ["complete", "ps", "unload"] * 3
+    assert calls[-1] == ("unload", CRITIC_MODEL)
+
+    over = {name: 1000 for name in names}
+    over[CRITIC_MODEL] = limit + 1
+    report, calls = measure(over)
+    assert report["refused"] is True and len(report["rows"]) == 3
+    assert calls[-1] == ("unload", CRITIC_MODEL)
+
+    unloaded = []
+
+    def missing_complete(model, prompt, seed, temperature, format=None, num_ctx=None, num_predict=None):
+        return "x"
+
+    def missing_unload(model):
+        unloaded.append(model)
+
+    def missing_ps():
+        return [{"name": WRITERS["writer-a"]}]
+
+    with pytest.raises(PilotError, match="no size_vram"):
+        preflight(
+            slots, grant="g-preflight", heartbeat=beat,
+            complete=missing_complete, unload_fn=missing_unload, ps_fn=missing_ps,
+            digest_opener=_pinned_opener(),
+        )
+    assert unloaded == [WRITERS["writer-a"]]
+
+    absent = []
+
+    def absent_unload(model):
+        absent.append(model)
+
+    with pytest.raises(PilotError, match="no size_vram"):
+        preflight(
+            slots, grant="g-preflight", heartbeat=beat,
+            complete=missing_complete, unload_fn=absent_unload, ps_fn=lambda: [],
+            digest_opener=_pinned_opener(),
+        )
+    assert absent == [WRITERS["writer-a"]]
+    with pytest.raises(PilotError, match="heartbeat"):
+        preflight(slots, grant="g-preflight", heartbeat=None, digest_opener=_pinned_opener())
+
+    state = {"refused": False}
+
+    def fake_preflight(planned, **kwargs):
+        critic_size = limit + 1 if state["refused"] else 10
+        return {
+            "rows": [
+                {"model": "qwen3:8b", "num_ctx": budget["writer"]["num_ctx"], "size_vram": 10},
+                {"model": "granite3.3:8b", "num_ctx": budget["writer"]["num_ctx"], "size_vram": 11},
+                {"model": "gemma4:31b", "num_ctx": budget["critic"]["num_ctx"], "size_vram": critic_size},
+            ],
+            "cap_bytes": limit,
+            "refused": state["refused"],
+        }
+
+    monkeypatch.setattr("role_set.advocate.pilot.preflight", fake_preflight)
+    out_path = tmp_path / "should-not.json"
+    report_dir = tmp_path / "report"
+    ok = main([
+        "pilot", "--role", "advocate", "--preflight", "--grant", "g-preflight",
+        "--heartbeat", str(beat), "--pack", str(PACK), "--out", str(out_path),
+        "--report", str(report_dir),
+    ])
+    ok_out = capsys.readouterr().out
+    assert ok == 0 and "qwen3:8b" in ok_out and "gemma4:31b" in ok_out
+    assert not out_path.exists() and not report_dir.exists()
+    state["refused"] = True
+    rc = main([
+        "pilot", "--role", "advocate", "--preflight", "--grant", "g-preflight",
+        "--heartbeat", str(beat), "--pack", str(PACK), "--out", str(out_path),
+        "--report", str(report_dir),
+    ])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "qwen3:8b" in captured.out and "granite3.3:8b" in captured.out and "gemma4:31b" in captured.out
+    assert "size_vram" in captured.out and "REFUSED" in captured.err
+    assert not out_path.exists()
+    assert not report_dir.exists()
+    assert main(["pilot", "--role", "advocate", "--preflight"]) == 2
+    assert "REFUSED" in capsys.readouterr().err

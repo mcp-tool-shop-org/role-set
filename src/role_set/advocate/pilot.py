@@ -2,12 +2,14 @@
 
 A live run refuses without a grant and a fresh heartbeat, the way `write` does.
 Models are loaded one at a time and unloaded at the end and on any abort.
+Each call passes a num_ctx sized from the prompts. The run appends pilot.jsonl as it goes.
 This module's tests take the mock path. They do not call a model.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -44,12 +46,142 @@ CRITIC_MODEL = "gemma4:31b"
 MAX_ATTEMPTS = 5
 RETRY_SLOT = "pilot-04"
 RESET_SLOT = "pilot-10"
+# Three characters per token is the brief's conservative estimate.
+CHARS_PER_TOKEN = 3
+MIN_NUM_CTX = 2048
+WRITER_NUM_PREDICT = 512
+CRITIC_NUM_PREDICT = 256
+# The Publisher's grant cap is 24 GiB until a preflight measurement changes the next grant.
+GRANT_VRAM_CAP_BYTES = 24 * 1024**3
+PREFLIGHT_MARGIN_BYTES = 1 * 1024**3
+_PREFLIGHT_PROMPT = "x"
 _REFUSAL = "REFUSAL draft with no sections."
 _VERDICT = re.compile(r"\b(hold|cannot_tell|pilot_first|proceed)\b")
 
 
 class PilotError(RuntimeError):
-    """The pilot cannot start. Nothing was loaded."""
+    """The pilot cannot start, or a call was cut off. A cut-off is not a draft."""
+
+
+class Truncation(PilotError):
+    """Ollama would have cut the prompt or the reply. The run stops, and the text is not a draft."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        done_reason: str | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
+    ):
+        super().__init__(message)
+        self.done_reason = done_reason
+        self.prompt_tokens = prompt_tokens
+        self.completion_tokens = completion_tokens
+
+
+def estimate_tokens(text: str) -> int:
+    """Ceiling of len / 3. The brief's estimate, not a tokenizer."""
+
+    return (len(text) + CHARS_PER_TOKEN - 1) // CHARS_PER_TOKEN
+
+
+def _pow2_at_least(n: int) -> int:
+    size = MIN_NUM_CTX
+    while size < n:
+        size *= 2
+    return size
+
+
+def writer_output_text() -> str:
+    """A brief of 130 words. The writer's output budget when the window is sized."""
+
+    return " ".join(["figure"] * 130)
+
+
+def critic_output_text() -> str:
+    """One critic JSON reply. The critic's output budget when the window is sized."""
+
+    return '{"verdict": "cannot_tell", "faithful": false, "diff_item": "the first wrong item"}'
+
+
+def _texts(slots):
+    for slot in slots:
+        roles = ("positive", "negative") if slot.kind == "A" else ("positive",)
+        for role in roles:
+            prompt = (
+                negative_prompt(slot.trait, slot.ledger, slot.plant)
+                if role == "negative"
+                else writer_prompt(slot.trait, slot.kind, slot.ledger)
+            )
+            yield slot, role, prompt
+
+
+def pilot_prompts(slots) -> tuple[list[str], list[str]]:
+    """Every writer prompt, and every critic prompt with a 130-word stand-in for the prose.
+
+    The live prose is not known when the window is sized. A real prompt that does not
+    fit is refused before the call.
+    """
+
+    prose = writer_output_text()
+    writers = []
+    critics = []
+    for slot, _role, prompt in _texts(slots):
+        writers.append(prompt)
+        critics.append(critic_prompt(render(slot.ledger), prose, slot.kind))
+    return writers, critics
+
+
+def context_budget(slots) -> dict:
+    """num_ctx and num_predict for the writers and the critic, from the rendered prompts."""
+
+    writers, critics = pilot_prompts(slots)
+    writer_out = estimate_tokens(writer_output_text())
+    critic_out = estimate_tokens(critic_output_text())
+    longest_w = max(estimate_tokens(prompt) for prompt in writers)
+    longest_c = max(estimate_tokens(prompt) for prompt in critics)
+    return {
+        "writer": {
+            "num_ctx": _pow2_at_least(longest_w + max(writer_out, WRITER_NUM_PREDICT)),
+            "num_predict": WRITER_NUM_PREDICT,
+            "longest_prompt_tokens": longest_w,
+            "output_tokens": writer_out,
+        },
+        "critic": {
+            "num_ctx": _pow2_at_least(longest_c + max(critic_out, CRITIC_NUM_PREDICT)),
+            "num_predict": CRITIC_NUM_PREDICT,
+            "longest_prompt_tokens": longest_c,
+            "output_tokens": critic_out,
+        },
+    }
+
+
+def _refuse_if_truncated(reply, num_ctx: int) -> None:
+    """done_reason first, then a full window. A length stop is not reported as a full window."""
+
+    if reply.finish_reason != "stop":
+        raise Truncation(
+            f"truncation: done_reason {reply.finish_reason!r} is not stop",
+            done_reason=reply.finish_reason,
+            prompt_tokens=reply.prompt_tokens,
+            completion_tokens=reply.completion_tokens,
+        )
+    if reply.prompt_tokens is None or reply.completion_tokens is None:
+        raise Truncation(
+            "truncation: missing prompt_eval_count or eval_count",
+            done_reason=reply.finish_reason,
+            prompt_tokens=reply.prompt_tokens,
+            completion_tokens=reply.completion_tokens,
+        )
+    used = reply.prompt_tokens + reply.completion_tokens
+    if used >= num_ctx:
+        raise Truncation(
+            f"truncation: prompt_eval_count {reply.prompt_tokens} plus eval_count {reply.completion_tokens} reaches num_ctx {num_ctx}",
+            done_reason=reply.finish_reason,
+            prompt_tokens=reply.prompt_tokens,
+            completion_tokens=reply.completion_tokens,
+        )
 
 
 def _complete_live(
@@ -58,13 +190,23 @@ def _complete_live(
     seed: int,
     temperature: float,
     format: str | None = None,
+    *,
+    num_ctx: int,
+    num_predict: int,
 ) -> str:
     from role_set.transport import ollama_chat
 
+    estimated = estimate_tokens(prompt)
+    if estimated + num_predict > num_ctx:
+        raise Truncation(
+            f"truncation: estimated {estimated} plus num_predict {num_predict} exceeds num_ctx {num_ctx}"
+        )
     reply = ollama_chat(
         ENDPOINT, model, [{"role": "user", "content": prompt}],
-        temperature=temperature, seed=seed, think=False, format=format,
+        temperature=temperature, seed=seed, num_ctx=num_ctx, num_predict=num_predict,
+        think=False, format=format,
     )
+    _refuse_if_truncated(reply, num_ctx)
     return reply.text
 
 
@@ -382,6 +524,162 @@ def _as_checks(results) -> list[dict]:
     return [{"name": item.name, "passed": item.passed, "reason": item.reason} for item in results]
 
 
+def _failures(results) -> list[dict]:
+    return [{"name": item.name, "reason": item.reason} for item in results if not item.passed]
+
+
+class _Journal:
+    """Append-only pilot.jsonl. Each line is flushed, so a stop keeps what was already written."""
+
+    def __init__(self, path: Path | None):
+        self.path = path
+        self._fh = None
+        if path is None:
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._fh = path.open("w", encoding="utf-8", newline="\n")
+
+    def write(self, event: dict) -> None:
+        if self._fh is None:
+            return
+        self._fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        self._fh.flush()
+        os.fsync(self._fh.fileno())
+
+    def close(self) -> None:
+        if self._fh is None:
+            return
+        self._fh.close()
+        self._fh = None
+
+
+def items_from_journal(path: Path) -> list[dict]:
+    """Texts from pilot.jsonl. A context line and a truncation are not drafts."""
+
+    items: dict[tuple, dict] = {}
+    order: list[tuple] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        event = json.loads(line)
+        kind = event.get("event")
+        if kind in ("context", "truncation"):
+            continue
+        key = (event.get("slot"), event.get("role"))
+        if kind == "writer":
+            if key not in items:
+                order.append(key)
+            items[key] = {
+                "slot": event.get("slot"),
+                "role": event.get("role"),
+                "kind": event.get("kind"),
+                "family": event.get("family"),
+                "key": event.get("key"),
+                "plant": event.get("plant"),
+                "hidden_key": event.get("hidden_key"),
+                "verdict_changed": event.get("verdict_changed"),
+                "status": event.get("status"),
+                "attempts": event.get("attempts") or [],
+                "checks": event.get("checks") or [],
+                "record": event.get("ledger") or "",
+                "prompt": event.get("prompt") or "",
+                "prose": event.get("prose") or "",
+                "critic_prompt": event.get("critic_prompt") or "",
+                "critic": None,
+            }
+        elif kind == "critic" and key in items:
+            items[key]["critic"] = event.get("critic")
+    return [items[key] for key in order]
+
+
+def _truncation_event(slot, role: str, model: str, exc: Truncation) -> dict:
+    return {
+        "event": "truncation",
+        "slot": slot.id,
+        "role": role,
+        "model": model,
+        "reason": str(exc),
+        "done_reason": exc.done_reason,
+        "prompt_eval_count": exc.prompt_tokens,
+        "eval_count": exc.completion_tokens,
+    }
+
+
+def _ps_models() -> list[dict]:
+    import urllib.request
+
+    url = ENDPOINT.rstrip("/") + "/api/ps"
+    with urllib.request.urlopen(url, timeout=30) as resp:
+        payload = json.loads(resp.read().decode("utf-8"))
+    return list(payload.get("models") or [])
+
+
+def _ps_row(models: list[dict], name: str) -> dict | None:
+    for row in models:
+        label = row.get("name") or row.get("model") or ""
+        if label == name:
+            return row
+    return None
+
+
+def preflight(
+    slots,
+    *,
+    grant: str | None,
+    heartbeat: Path | None,
+    now=time.time,
+    complete=None,
+    unload_fn=None,
+    ps_fn=None,
+    writers_file: Path | None = None,
+    digest_opener=None,
+) -> dict:
+    """Measure each model once, at its num_ctx, on a one-token prompt. Write nothing.
+
+    One model at a time. The caller prints the sizes and refuses when any size_vram
+    is above the grant cap minus 1 GiB.
+    """
+
+    try:
+        require_grant(grant, uses_card=True)
+        if heartbeat is None:
+            raise GuardError("REFUSED: preflight on the 5090 needs --heartbeat <watchdog heartbeat file>")
+        require_heartbeat(heartbeat, now())
+        _guard_pinned_models(writers_file, digest_opener)
+    except GuardError as exc:
+        raise PilotError(str(exc)) from exc
+    budget = context_budget(slots)
+    complete = complete or _complete_live
+    unload_fn = unload_fn or _unload_live
+    ps_fn = ps_fn or _ps_models
+    sequence = (
+        (WRITERS["writer-a"], budget["writer"]["num_ctx"]),
+        (WRITERS["writer-b"], budget["writer"]["num_ctx"]),
+        (CRITIC_MODEL, budget["critic"]["num_ctx"]),
+    )
+    rows = []
+    current = None
+    try:
+        for name, num_ctx in sequence:
+            current = name
+            complete(name, _PREFLIGHT_PROMPT, 0, 0.0, num_ctx=num_ctx, num_predict=1)
+            row = _ps_row(ps_fn(), name)
+            if row is None or row.get("size_vram") is None:
+                raise PilotError(f"REFUSED: {name} has no size_vram in /api/ps")
+            rows.append({"model": name, "num_ctx": num_ctx, "size_vram": row["size_vram"]})
+            unload_fn(name)
+            current = None
+    finally:
+        if current is not None:
+            unload_fn(current)
+    limit = GRANT_VRAM_CAP_BYTES - PREFLIGHT_MARGIN_BYTES
+    return {
+        "rows": rows,
+        "cap_bytes": limit,
+        "refused": any(row["size_vram"] > limit for row in rows),
+    }
+
+
 def run_pilot(
     slots,
     *,
@@ -394,8 +692,13 @@ def run_pilot(
     unload_fn=None,
     writers_file: Path | None = None,
     digest_opener=None,
+    journal: Path | None = None,
 ) -> dict:
-    """Write every text, check it, and ask the critic. Unload on the way out."""
+    """Write every text, check it, and ask the critic. Unload on the way out.
+
+    When journal is set, pilot.jsonl is appended and flushed after the writer attempts
+    and again after the critic replies. The returned items are read back from that file.
+    """
 
     if not mock:
         try:
@@ -409,6 +712,7 @@ def run_pilot(
         complete = complete or _complete_live
         unload_fn = unload_fn or _unload_live
     loaded: list[str] = []
+    log = _Journal(journal)
 
     def _unload_all() -> None:
         if unload_fn is None:
@@ -418,19 +722,20 @@ def run_pilot(
         loaded.clear()
 
     try:
+        budget = context_budget(slots)
+        log.write({"event": "context", "writer": budget["writer"], "critic": budget["critic"]})
         items = []
-        for slot in slots:
-            roles = ("positive", "negative") if slot.kind == "A" else ("positive",)
-            for role in roles:
-                prompt = (
-                    negative_prompt(slot.trait, slot.ledger, slot.plant)
-                    if role == "negative"
-                    else writer_prompt(slot.trait, slot.kind, slot.ledger)
-                )
-                attempts = []
-                results = []
-                prose = ""
-                status = "reset"
+        for slot, role, prompt in _texts(slots):
+            attempts = []
+            results = []
+            prose = ""
+            status = "reset"
+            hidden_key = None
+            changed = None
+            if role == "negative":
+                hidden_key = decide(plant(slot.ledger, slot.plant).hidden)
+                changed = hidden_key != slot.key
+            try:
                 for attempt in range(1, MAX_ATTEMPTS + 1):
                     draft_seed = seed + attempt
                     if mock:
@@ -438,7 +743,15 @@ def run_pilot(
                     else:
                         model = WRITERS[slot.family]
                         loaded.append(model)
-                        prose = complete(model, prompt, draft_seed, 0.2)
+                        try:
+                            prose = complete(
+                                model, prompt, draft_seed, 0.2,
+                                num_ctx=budget["writer"]["num_ctx"],
+                                num_predict=budget["writer"]["num_predict"],
+                            )
+                        except Truncation as exc:
+                            log.write(_truncation_event(slot, role, model, exc))
+                            raise
                         _unload_all()
                     results = _results(slot, role, prose)
                     passed = all(item.passed for item in results)
@@ -447,29 +760,15 @@ def run_pilot(
                         "seed": draft_seed,
                         "family": slot.family,
                         "passed": passed,
+                        "prose": prose,
+                        "failures": _failures(results),
                     })
                     if passed:
                         status = "pass"
                         break
-                if mock:
-                    payload = _mock_critic(critic_prompt(render(slot.ledger), prose, slot.kind))
-                else:
-                    loaded.append(CRITIC_MODEL)
-                    raw = complete(
-                        CRITIC_MODEL,
-                        critic_prompt(render(slot.ledger), prose, slot.kind),
-                        seed,
-                        0.0,
-                        format="json",
-                    )
-                    _unload_all()
-                    payload = _critic_payload(raw)
-                hidden_key = None
-                changed = None
-                if role == "negative":
-                    hidden_key = decide(plant(slot.ledger, slot.plant).hidden)
-                    changed = hidden_key != slot.key
-                items.append({
+            finally:
+                log.write({
+                    "event": "writer",
                     "slot": slot.id,
                     "role": role,
                     "kind": slot.kind,
@@ -479,14 +778,60 @@ def run_pilot(
                     "hidden_key": hidden_key,
                     "verdict_changed": changed,
                     "status": status,
-                    "attempts": attempts,
-                    "checks": _as_checks(results),
-                    "record": render(slot.ledger),
+                    "ledger": render(slot.ledger),
                     "prompt": prompt,
                     "prose": prose,
                     "critic_prompt": critic_prompt(render(slot.ledger), prose, slot.kind),
-                    "critic": payload,
+                    "attempts": attempts,
+                    "checks": _as_checks(results),
                 })
+            payload = None
+            try:
+                asked = critic_prompt(render(slot.ledger), prose, slot.kind)
+                if mock:
+                    payload = _mock_critic(asked)
+                else:
+                    loaded.append(CRITIC_MODEL)
+                    try:
+                        raw = complete(
+                            CRITIC_MODEL, asked, seed, 0.0, format="json",
+                            num_ctx=budget["critic"]["num_ctx"],
+                            num_predict=budget["critic"]["num_predict"],
+                        )
+                    except Truncation as exc:
+                        log.write(_truncation_event(slot, role, CRITIC_MODEL, exc))
+                        raise
+                    _unload_all()
+                    payload = _critic_payload(raw)
+            finally:
+                if payload is not None:
+                    log.write({
+                        "event": "critic",
+                        "slot": slot.id,
+                        "role": role,
+                        "critic": payload,
+                    })
+            items.append({
+                "slot": slot.id,
+                "role": role,
+                "kind": slot.kind,
+                "family": slot.family,
+                "key": slot.key,
+                "plant": slot.plant,
+                "hidden_key": hidden_key,
+                "verdict_changed": changed,
+                "status": status,
+                "attempts": attempts,
+                "checks": _as_checks(results),
+                "record": render(slot.ledger),
+                "prompt": prompt,
+                "prose": prose,
+                "critic_prompt": critic_prompt(render(slot.ledger), prose, slot.kind),
+                "critic": payload,
+            })
+        log.close()
+        if journal is not None:
+            items = items_from_journal(journal)
         positives = [item for item in items if item["role"] == "positive"]
         negatives = [item for item in items if item["role"] == "negative"]
         probe_items = [(item["prose"], item["role"] == "positive") for item in items]
@@ -518,6 +863,7 @@ def run_pilot(
             "seed": seed,
             "grant": grant if not mock else None,
             "pack_sha256": slots[0].pack_sha256,
+            "context": budget,
             "items": items,
             "critic_counts": {
                 "positives_recovered": sum(1 for item in positives if recovered(item["critic"], item["key"])),
@@ -540,6 +886,7 @@ def run_pilot(
         }
     finally:
         _unload_all()
+        log.close()
 
 
 def write_read_packet(record: dict, directory: Path) -> Path:

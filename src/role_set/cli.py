@@ -403,6 +403,8 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--grant", default=None, help="the Publisher's grant id; required for a live run")
     ap.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file; required for a live run")
     ap.add_argument("--report", default=None, help="write read.md from the run record in this directory; loads nothing")
+    ap.add_argument("--preflight", action="store_true",
+                    help="measure each pinned model's VRAM at its num_ctx, one at a time; write nothing")
     ap.set_defaults(func=_advocate_pilot)
 
     pa = sub.add_parser("pilot-auto", help="one paste for a paid pilot: wait for the lane, write, relaunch after a lost-call stop")
@@ -441,22 +443,47 @@ def _advocate_pilot(args: argparse.Namespace) -> int:
     if args.role != "advocate":
         print("REFUSED: the pilot runner is the advocate's", file=sys.stderr)
         return 2
-    from role_set.advocate.pilot import PilotError, run_pilot, write_read_packet
-
-    if args.report and not args.mock and not args.grant:
-        run_dir = Path(args.report)
-        record_path = run_dir / "pilot.json"
-        if not record_path.is_file():
-            print(f"REFUSED: {record_path} is not a run record", file=sys.stderr)
-            return 2
-        data = json.loads(record_path.read_text(encoding="utf-8"))
-        path = write_read_packet(data, run_dir)
-        print(f"wrote {path.name} ({len(data.get('items') or [])} texts)")
-        return 0
+    from role_set.advocate.pilot import PilotError, items_from_journal, preflight, run_pilot, write_read_packet
     from role_set.advocate.plan import PlanError as AdvocatePlanError
     from role_set.advocate.plan import plan_pilot
 
     pack = Path(args.pack) if args.pack else Path("roles/advocate")
+    if args.preflight:
+        if not args.grant or not args.heartbeat:
+            print("REFUSED: preflight needs --grant and --heartbeat", file=sys.stderr)
+            return 2
+        try:
+            slots = plan_pilot(pack, seed=args.seed)
+            measured = preflight(slots, grant=args.grant, heartbeat=Path(args.heartbeat))
+        except (PilotError, AdvocatePlanError, PackError) as exc:
+            print(f"REFUSED: {exc}", file=sys.stderr)
+            return 2
+        for row in measured["rows"]:
+            print(f"{row['model']} num_ctx {row['num_ctx']} size_vram {row['size_vram']}")
+        if measured["refused"]:
+            print(
+                f"REFUSED: a measured size_vram is above the grant cap minus 1 GiB ({measured['cap_bytes']})",
+                file=sys.stderr,
+            )
+            return 2
+        return 0
+
+    if args.report and not args.mock and not args.grant:
+        run_dir = Path(args.report)
+        jsonl = run_dir / "pilot.jsonl"
+        record_path = run_dir / "pilot.json"
+        if jsonl.is_file() and jsonl.stat().st_size > 0:
+            data = {"items": items_from_journal(jsonl)}
+        elif record_path.is_file():
+            data = json.loads(record_path.read_text(encoding="utf-8"))
+        else:
+            print(f"REFUSED: {record_path} is not a run record", file=sys.stderr)
+            return 2
+        path = write_read_packet(data, run_dir)
+        print(f"wrote {path.name} ({len(data.get('items') or [])} texts)")
+        return 0
+
+    run_dir = Path(args.report) if args.report else Path(args.out).parent
     try:
         slots = plan_pilot(pack, seed=args.seed)
         result = run_pilot(
@@ -465,6 +492,7 @@ def _advocate_pilot(args: argparse.Namespace) -> int:
             seed=args.seed,
             grant=args.grant,
             heartbeat=Path(args.heartbeat) if args.heartbeat else None,
+            journal=run_dir / "pilot.jsonl",
         )
     except (PilotError, AdvocatePlanError, PackError) as exc:
         print(f"REFUSED: {exc}", file=sys.stderr)
