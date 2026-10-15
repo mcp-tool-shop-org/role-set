@@ -382,17 +382,29 @@ The floors are unchanged: at least 75% distinct canonical skeletons in a stratum
    ```
 5. Run `uv run pytest -m "not sweep"` and the `workflow_dispatch` `sweep` job in CI.
 
-## T11 recipe (slice 1, as built)
+## T11 recipe (as built, role-set#52)
 
-T11 is "what a mistake costs": look for the falsifier before calling a claim supported. Its questions are claims, built on `is`, `is_not`, `in`, `not_in` and `if` over one unordered state attribute.
+T11 is "what a mistake costs": look for the falsifier before calling a claim supported. Its questions are claims over one unordered state attribute, built on `is`, `is_not`, `in`, `not_in` and `if`. An `if` can have an `is` or `is_not` antecedent.
 
 **The reading.** `T11.consistent_so_supported` is the reading R&D approved on 2026-10-11. It keeps only the facts that name an entity the claim names, and calls the claim supported when an assignment fits them with the claim true.
 
-**The sides.** `build_t11(pack, seed, side)` builds either side.
-- *Find:* the key is unsupported, the reading says supported, and no single line refutes the claim on its own. The falsifier sits across lines, for example "the pine door isn't shut", then "if the pine door is open, the yew door is not open", then "if the yew door is shut, the elm door is shut", against "the elm door is open".
-- *Confirm:* the key is supported, and no single line supports it on its own. The builder searches for a contrast: a one-slot change to one clue (an entity, a value, a value pair or the form word, in either clause of an `if`) that leaves an assignment and refutes the claim in every one. The receipt records it as `{line, form, from, to}`.
-- Every clue that decides the claim by itself is dropped before the chain is built.
+**The sides** (`t11_refusal` holds both):
+- *Find:* the key is unsupported, the reading says supported, and no single line refutes the claim on its own. The falsifier sits across lines.
+- *Confirm:* the key is supported, and no single line supports it on its own. The contrast is a one-slot change to one line that does not name the claim's subject, into a line that doesn't either. It must move the verdict off supported. Q3 was amended by R&D on #52, because a flip to unsupported can't exist there: after the change, only a subject line can exclude the claim's value, and since every fact is needed, that line would also have to derive the value. The receipt records `{line, form, from, to, contrast_names_subject: false, contrast_verdict}`.
 
-**No count clue.** A count is T10's trait. An item a count decides tests T10's literal size word, not the search across lines. Round 3's T11-B-03 and B-05 were count-decided, and B-05 repeated T10-B-01's skeleton. `t11_refusal` refuses both: they are the must-refuse fixtures, and batch 6's B-01 and B-02 are the must-pass fixtures.
+**No count clue.** A count is T10's trait (`D020 sibling_trait_item`). Round 3's T11-B-03 and B-05 are refused by `t11_refusal` as must-refuse fixtures. Batch 6's B-01 and B-02 are the must-pass fixtures.
 
-**In the selector.** A confirm item has no reading that differs, because the subject-only reading agrees with a supported key. It rests on its contrast, named `T11.contrast.<form>`, so lookups can't fill the floor (the per-file floor, confirmed by R&D). A file of 5 therefore holds at most 2 find items under the single reading, and its other items rest on contrasts of at least two forms.
+**Variety at generation: the skeleton catalogue.** R&D's floor, per side over the 60-build sweep, is at least 45 distinct skeletons, none on more than 3 builds, and none shared within a file.
+- `scripts/t11_catalogue.py` enumerates every set of 2 or 3 clues over three entities (e1, e2 and the subject s), for 2 and 3 values.
+- It keeps the items that pass the solver's own checks (`check_model`, `t11_refusal`, a differing reading on the find side, an off-subject contrast on the confirm side), one item per `puzzle_check.skeleton`.
+- It writes `t11_catalogue.json`: every 2-fact skeleton, then 3-fact ones in hash order, capped at 480 per value count and side (52 for two values).
+- `t11_row` assigns rows. Packs with the same value count share a table, and within a file of 20 seeds every pack and seed takes a different row. The next file draws a fresh order.
+- `build_t11` instantiates the row with 3 to 5 of the pack's names, the values permuted, and the lines shuffled, then proves it again.
+- A test fails when the committed catalogue is stale, and another fails below the floor.
+
+**In the selector.** A confirm item has no reading that differs, so it rests on its contrast, named `T11.contrast.<form>`. A file of 5 therefore holds at most 2 find items, an unsupported share of 40%, which R&D accepted. `Floor.distinct_skeletons`, on by default, keeps two items of one file off the same skeleton, for every lesson.
+
+**Measured** (`scripts/variety_sweep.py`):
+- T11 find and confirm: 60 of 60 distinct on the sweep, and 160 of 160 over all eight packs, top 1.
+- T10 (record, seeds 1–20): 159 of 160 per question.
+- T12 at 3 spans: 39 of 80, top 7, below the floor and a follow-up of its own. At 4 spans: 66 of 80, top 4.

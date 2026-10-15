@@ -320,12 +320,18 @@ def _decider(shape: Shape, sols: list[dict], hidden: int):
 # ---- T11: what a mistake costs; look for the falsifier before calling a claim supported (claim-keyed) --------------
 # R&D, 2026-10-11. The lazy reading is "consistent, so supported" on the lines that name the claim's subject.
 # - Find side: the key is unsupported, the lazy reading says supported, and no single line refutes the claim alone.
-# - Confirm side: the key is supported, proved by a recorded contrast: a one-clue change that flips it to unsupported.
+# - Confirm side: the key is supported, proved by a recorded contrast: a one-slot change to a line that doesn't name the
+#   claim's subject, into one that doesn't, moves the verdict off supported (R&D's Q3 as amended on role-set#52; a flip
+#   to unsupported is impossible there, since only subject lines can exclude the claim's value).
 # No count clue: a count is T10's trait, and an item it decides tests T10 (round 3's T11-B-03 and B-05, the second a
 # repeat of T10-B-01's skeleton).
+# Both sides draw on a catalogue of proven skeletons (scripts/t11_catalogue.py), so a file's seeds take distinct
+# skeletons where the puzzle is made (R&D's variety floor on role-set#52).
 T11 = Recipe("T11", "", tuple(n for n, s in REGISTRY.items() if s["lesson"] == "T11"),
              ("is", "is_not", "in", "not_in", "if"))
 T11_SIDES = ("find", "confirm")
+T11_SIDES_BUILT = T11_SIDES  # the sides the catalogue covers
+T11_FILE = 20  # seeds per file; within a file, each pack and seed of a value-count stratum takes its own skeleton
 
 
 def t11_refusal(model: dict, side: str) -> str | None:
@@ -372,88 +378,125 @@ def _one_slot(a: list, b: list) -> bool:
     return len(la) == len(lb) and sum(x != y for x, y in zip(la, lb)) == 1
 
 
+def t11_pool(shape: Shape) -> list[list]:
+    """T11's clues over a shape: the builder's forms, with `if` antecedents in `is` or `is_not`."""
+
+    pool = candidates(shape, T11.forms)
+    simple = [r for r in pool if r[0] in ("is", "is_not")]
+    return pool + [["if", p, q] for p in simple for q in simple if p[0] == "is_not" and p[1] != q[1]]
+
+
 def t11_contrast(shape: Shape, sols: list[dict], kept: list[list], pool: list[list], bits: dict, claim_true: list[bool],
                  rng: random.Random) -> dict | None:
-    """A one-slot change to one kept clue that leaves an assignment and makes the claim false in every one: the contrast
-    a confirm-side item is proved by and counts under in the selector (R&D, 2026-10-11 and the per-file floor)."""
+    """The contrast a confirm item is proved by and counts under in the selector: a one-slot change to one kept clue
+    that doesn't name the claim's subject, into a clue that doesn't either, which leaves an assignment and moves the
+    verdict off supported. `contrast_verdict` records where it moves (R&D's Q3 as amended on role-set#52). None when no
+    such change exists."""
+
+    from role_set.generate.shortcuts import names_in
 
     n = len(sols)
+    ents = set(shape.entities)
+    subject = names_in(shape.claim, ents)
     found = []
     for i, fact in enumerate(kept):
+        if names_in(fact, ents) & subject:
+            continue
         rest = _mask(kept[:i] + kept[i + 1:], bits, n)
         for c in pool:
-            if not _one_slot(fact, c):
+            if not _one_slot(fact, c) or names_in(c, ents) & subject:
                 continue
             mask = rest & bits[_key(c)]
-            if mask and not any(claim_true[j] for j in range(n) if mask >> j & 1):
-                found.append({"line": i + 2, "form": fact[0], "from": fact, "to": c})
+            truths = {claim_true[j] for j in range(n) if mask >> j & 1}
+            if truths and truths != {True}:
+                found.append({"line": i + 2, "form": fact[0], "from": fact, "to": c, "contrast_names_subject": False,
+                              "contrast_verdict": "unsupported" if truths == {False} else "cannot_tell"})
     return rng.choice(found) if found else None
 
 
-def build_t11(pack_name: str, seed: int, side: str, n: int = 4, tries: int = MAX_TRIES) -> Built:
-    """One T11 puzzle: a claim decided only by reading across lines. `side` is "find" (the claim is refuted, and the
-    lines naming its subject alone would pass it) or "confirm" (the claim holds, with a recorded contrast)."""
+_T11_CAT: dict | None = None
 
-    if side not in T11_SIDES:
-        raise BuildError(f"T11 side is one of {', '.join(T11_SIDES)}")
+
+def _t11_catalogue() -> dict:
+    global _T11_CAT
+    if _T11_CAT is None:
+        import json
+        from pathlib import Path
+
+        _T11_CAT = json.loads(Path(__file__).with_name("t11_catalogue.json").read_text(encoding="utf-8"))
+    return _T11_CAT
+
+
+def t11_row(pack_name: str, side: str, seed: int) -> dict:
+    """The catalogue row a T11 seed builds on. Packs with the same value count share one table, and in each file of
+    T11_FILE seeds every pack and seed takes a different row; the next file draws a fresh order."""
+
+    nv = len(PACKS[pack_name]["values"])
+    rows = _t11_catalogue()["sides"][side][str(nv)]
+    stratum = sorted(p for p in PACKS if len(PACKS[p]["values"]) == nv)
+    file_index, offset = divmod(seed - 1, T11_FILE)
+    order = list(range(len(rows)))
+    random.Random(f"T11:{side}:{nv}:file{file_index}").shuffle(order)
+    return rows[order[(stratum.index(pack_name) * T11_FILE + offset) % len(rows)]]
+
+
+def _t11_from_row(pack_name: str, side: str, seed: int, row: dict | None = None) -> Built:
+    """Instantiate a catalogue row with the pack's names and values, in a shuffled line order, and prove it again."""
+
     from role_set.generate.build import _norm
     from role_set.puzzle import holds
 
     pack = PACKS[pack_name]
-    rng = random.Random(f"T11:{pack_name}:{side}:{n}:{seed}")
-    last = "no attempt"
-    for attempt in range(1, tries + 1):
-        names = tuple(rng.sample(pack["names"], n))
-        attr = pack["attribute"]
-        claim = ["is", names[0], attr, rng.choice(pack["values"])]
-        shape = Shape(names, {attr: {"values": list(pack["values"]), "distinct": False}}, claim=claim,
-                      structure="falsifier_first")
-        sols = assignments(shape)
-        m = _norm(shape)
-        claim_true = [holds(m, s, claim) for s in sols]
-        hiddens = [i for i, t in enumerate(claim_true) if t == (side == "confirm")]
-        hidden = rng.choice(hiddens)
-        pool = candidates(shape, T11.forms)
+    cat = _t11_catalogue()
+    row = row or t11_row(pack_name, side, seed)
+    rng = random.Random(f"T11:{pack_name}:{side}:{seed}")
+    names = rng.sample(pack["names"], rng.choice((3, 4, 5)))
+    ents = dict(zip(cat["head"]["names"], names[:3]))
+    vals = dict(zip(cat["head"]["values"][str(len(pack["values"]))], rng.sample(pack["values"], len(pack["values"]))))
+    attr = pack["attribute"]
+
+    def place(r):
+        if isinstance(r, list) and r and r[0] == "if":
+            return ["if", place(r[1]), place(r[2])]
+        out = [r[0], ents[r[1]], attr]
+        if isinstance(r[3], list):  # a value pair, written in the pack's value order as the clue pool writes it
+            return out + [sorted((vals[v] for v in r[3]), key=pack["values"].index)]
+        return out + [vals[r[3]]]
+
+    facts = [place(r) for r in row["facts"]]
+    rng.shuffle(facts)
+    claim = place(cat["head"]["claim"])
+    shape = Shape(tuple(names), {attr: {"values": list(pack["values"]), "distinct": False}}, claim=claim,
+                  structure="falsifier_first")
+    model = shape.model(facts)
+    where = f"T11 ({pack_name}, {side}, seed {seed}): catalogue row {row['skeleton_sha256']}"
+    why = t11_refusal(model, side)
+    if why:
+        raise BuildError(f"{where} refused: {why}")
+    answer = check_model(model, shape.structure)
+    proofs = prove(model, shape.structure, list(T11.shortcuts))
+    sols = assignments(shape)
+    m = _norm(shape)
+    hidden = next(i for i, s in enumerate(sols) if all(holds(m, s, f) for f in facts))
+    contrast = None
+    if side == "confirm":
+        pool = t11_pool(shape)
         bits = {_key(c): truth(shape, sols, c) for c in pool}
-        decided = _decider(shape, sols, hidden)
-        # A clue that settles the claim by itself is a lookup, never part of a T11 chain.
-        others = [c for c in pool if bits[_key(c)] >> hidden & 1 and not decided(bits[_key(c)])]
-        rng.shuffle(others)
-        chosen: list[list] = []
-        for c in others:
-            if chosen and decided(_mask(chosen, bits, len(sols))):
-                break
-            if c[0] == "if" and sum(1 for x in chosen if x[0] == "if") >= MAX_IF:
-                continue
-            if _mask(chosen + [c], bits, len(sols)) != _mask(chosen, bits, len(sols)):
-                chosen.append(c)
-        if not chosen or not decided(_mask(chosen, bits, len(sols))):
-            last = "the clues never settled the claim"
-            continue
-        kept = reduce(shape, sols, chosen, bits, decided, rng)
-        model = shape.model(kept)
-        why = t11_refusal(model, side)
-        if why:
-            last = why
-            continue
-        try:
-            answer = check_model(model, shape.structure)
-        except PuzzleError as e:
-            last = str(e)
-            continue
-        contrast = None
-        if side == "confirm":
-            contrast = t11_contrast(shape, sols, kept, pool, bits, claim_true, rng)
-            if contrast is None:
-                last = "no one-slot change to a clue flips the claim"
-                continue
-        proofs = prove(model, shape.structure, list(T11.shortcuts))
-        if side == "find" and not any(p["differs"] for p in proofs.values()):
-            last = "the subject-only reading gave the key"
-            continue
-        return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
-                     seed=seed, tries=attempt, contrast=contrast)
-    raise BuildError(f"T11 ({pack_name}, {side}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")
+        contrast = t11_contrast(shape, sols, facts, pool, bits, [holds(m, s, claim) for s in sols], rng)
+        if contrast is None:
+            raise BuildError(f"{where} has no off-subject contrast")
+    return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
+                 seed=seed, tries=1, notes=[f"t11 catalogue row {row['skeleton_sha256']}"], contrast=contrast)
+
+
+def build_t11(pack_name: str, seed: int, side: str) -> Built:
+    """One T11 puzzle: a claim decided only by reading across lines. `side` is "find" (the claim is refuted, and the
+    lines naming its subject alone would pass it) or "confirm" (the claim holds, with a recorded contrast). The seed
+    picks a catalogue row (`t11_row`), so a file's seeds take distinct skeletons by construction."""
+
+    if side not in T11_SIDES:
+        raise BuildError(f"T11 side is one of {', '.join(T11_SIDES)}")
+    return _t11_from_row(pack_name, side, seed)
 
 
 # ---- T12: which edition was in force on a date (R&D's shape 1, solved on `contains`) -------------------------------

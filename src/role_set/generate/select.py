@@ -18,6 +18,9 @@ A T11 confirm-side item has no reading that differs (the subject-only reading ag
 the contrast that proves it, named `T11.contrast.<form of the changed line>`, so lookups can't fill the floor (R&D,
 2026-10-11).
 
+`distinct_skeletons` (on by default) keeps two items of one file off the same fact skeleton, the batch cap's rule applied
+at selection (R&D's variety floor on role-set#52).
+
 `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under (R&D on role-set#51).
 
 `count` sets what a reading's share counts. "rests_on" (the default) counts each item once, under the reading it rests on;
@@ -54,6 +57,7 @@ class Floor:
     count: str = "rests_on"
     position_max_share: float = 0.5
     min_newest_share: float = 0.2
+    distinct_skeletons: bool = True  # no two items in a file share a fact skeleton (R&D's variety floor on #52)
 
     def cap(self, share: float) -> int:
         return int(share * self.size + 1e-9)
@@ -150,6 +154,9 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
         if positions.count("newest") < floor.min_newest:
             problems.append(f"the answer is the newest edition on {positions.count('newest')} items; the floor is "
                             f"{floor.min_newest}")
+    skeletons = [r.get("skeleton_sha256") for r, _ in file if r.get("skeleton_sha256")]
+    if floor.distinct_skeletons and len(set(skeletons)) < len(skeletons):
+        problems.append(f"{len(skeletons) - len(set(skeletons))} item(s) repeat another item's fact skeleton")
     return problems
 
 
@@ -185,6 +192,9 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
         if any(tally.get(n, 0) >= cap for n in counted):
             return False
         if dated and pos[i] and sum(pos[p.index] == pos[i] for p in chosen) >= pcap:
+            return False
+        sk = pool[i].get("skeleton_sha256")
+        if floor.distinct_skeletons and sk and any(pool[p.index].get("skeleton_sha256") == sk for p in chosen):
             return False
         return not loosens_eq(name) or sum(loosens_eq(p.rests_on) for p in chosen) < lcap
 

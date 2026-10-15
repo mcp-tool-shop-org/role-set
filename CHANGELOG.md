@@ -8,13 +8,16 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
-- **The T11 recipe** (#52). Claims decided only by reading across lines. Find side: the key is unsupported, R&D's `T11.consistent_so_supported` reading (only the lines that name the claim's subject) says supported, and no single line refutes the claim. Confirm side: the key is supported, with a recorded contrast, a one-slot change to one clue that refutes the claim; confirm items rest on their contrast in the selector, so lookups can't fill the floor. No count clues, since a count is T10's trait (`D020 sibling_trait_item`). `t11_refusal` refuses round 3's count-decided T11-B-03 and B-05; batch 6's B-01 and B-02 pass.
+- **The T11 recipe** (#52). Claims decided only by reading across lines, built from a catalogue of proven skeletons (`scripts/t11_catalogue.py`, `t11_catalogue.json`), so every pack and seed of a file takes its own skeleton: 60 of 60 distinct per side on the sweep, against R&D's floor of 45 with none on more than 3. Find side: the key is unsupported, R&D's `T11.consistent_so_supported` reading (only the lines that name the claim's subject) says supported, and no single line refutes it. Confirm side: the key is supported, with a contrast on a line that doesn't name the subject that moves the verdict off supported (`contrast_verdict`; Q3 as amended by R&D on #52). No count clues, since a count is T10's trait (`D020 sibling_trait_item`); round 3's T11-B-03 and B-05 are refused.
+- **The selector keeps a file's skeletons distinct** (`Floor.distinct_skeletons`, on by default; R&D's floor on #52). One T10 file of the 18 probed changes: doors/set swaps an item that repeated another's skeleton.
+- **`scripts/variety_sweep.py`** reports skeleton variety per recipe against the floor: T11 per side, T10 from its record, T12 per span count.
 - **File receipts** (R&D on #51). `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under.
 
 ### Changed
 
 - **The newest-edition floor is a share** (R&D on #51): `min_newest_share = 0.2`, rounded up, in place of `min_newest`.
 - **The T10 record's hash** moves with the T11 edits to shared generator modules. All 1,280 recorded T10 builds are unchanged.
+
 
 ## [0.2.0] - 2026-10-14
 

@@ -7,10 +7,11 @@ from pathlib import Path
 import pytest
 
 from role_set.generate.build import BuildError, receipt
-from role_set.generate.recipes import PACKS, T11_SIDES, _one_slot, build_t11, t11_refusal
+from role_set.generate.recipes import (PACKS, T11_FILE, T11_SIDES, T11_SIDES_BUILT, _one_slot, build_t11, t11_contrast,
+                                      t11_pool, t11_refusal)
 from role_set.generate.render import render_puzzle
 from role_set.generate.select import Floor, check_file, file_receipt, rests, select
-from role_set.generate.shortcuts import prove, subject_reading
+from role_set.generate.shortcuts import names_in, prove, subject_reading
 from role_set.puzzle import Table, check_puzzle, parse_model
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -39,11 +40,17 @@ def test_a_t11_puzzle_is_proven_and_its_wording_round_trips(pack, side, seed):
         assert b.answer == "unsupported" and b.shortcuts[READING]["differs"] and b.contrast is None
     else:
         assert b.answer == "supported" and not b.shortcuts[READING]["differs"]
-        # The contrast is real: swap the line and the claim is refuted, with an assignment left.
+        # The contrast is real: swap the line and the verdict moves off supported, to what the receipt records.
         c = b.contrast
         swapped = {**b.model, "facts": [{**f, "rule": c["to"] if f["line"] == c["line"] else f["rule"]} for f in b.model["facts"]]}
         assert c["from"] == next(f["rule"] for f in b.model["facts"] if f["line"] == c["line"])
-        assert _one_slot(c["from"], c["to"]) and _verdict(swapped) == "unsupported"
+        assert _one_slot(c["from"], c["to"]) and _verdict(swapped) == c["contrast_verdict"]
+        assert c["contrast_verdict"] in ("cannot_tell", "unsupported")
+        # Q3 (R&D on #52, as amended): the change is on a line that doesn't name the claim's subject, into one that doesn't.
+        ents = set(b.model["entities"])
+        subject = names_in(b.model["claim"], ents)
+        assert not names_in(c["from"], ents) & subject and not names_in(c["to"], ents) & subject
+        assert c["contrast_names_subject"] is False
 
 
 def test_the_same_seed_rebuilds_the_same_t11_puzzle():
@@ -117,3 +124,78 @@ def test_a_t11_file_mixes_the_falsifier_reading_and_contrasts():
 def test_the_newest_floor_is_a_share():
     assert Floor().min_newest == 1 and Floor(size=10).min_newest == 2 and Floor(size=4).min_newest == 1
     assert Floor(min_newest_share=0).min_newest == 0
+
+
+# ---- variety: the skeleton catalogue (R&D's floor on #52) ----------------------------------------------------------
+SWEEP_PACKS = ("lamps", "cups", "doors")  # the acceptance sweep: 3 packs x seeds 1-20 = 60 builds a side
+
+
+def test_the_committed_catalogue_is_current():
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    got = subprocess.run([sys.executable, str(root / "scripts" / "t11_catalogue.py"), "--check"], capture_output=True,
+                         text=True, timeout=300)
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+@pytest.mark.parametrize("side", T11_SIDES_BUILT)
+def test_every_catalogue_row_builds_and_proves(side):
+    from role_set.generate.recipes import _t11_catalogue, _t11_from_row
+    from role_set.puzzle_check import skeleton
+
+    for nv, rows in _t11_catalogue()["sides"][side].items():
+        assert len({r["skeleton_sha256"] for r in rows}) == len(rows)
+        pack = next(p for p in sorted(PACKS) if len(PACKS[p]["values"]) == int(nv))
+        keys = {skeleton(_t11_from_row(pack, side, i + 1, row).model) for i, row in enumerate(rows)}
+        assert len(keys) == len(rows), (side, nv)  # instantiating keeps each row's skeleton
+
+
+@pytest.mark.parametrize("side", T11_SIDES_BUILT)
+def test_the_variety_floor_holds_on_the_sweep(side):
+    from collections import Counter
+
+    from role_set.puzzle_check import skeleton
+
+    builds = [build_t11(p, s, side) for p in SWEEP_PACKS for s in range(1, 21)]
+    tally = Counter(skeleton(b.model) for b in builds)
+    assert len(tally) >= 45 and max(tally.values()) <= 3, (len(tally), max(tally.values()))
+
+
+def test_a_file_never_repeats_a_skeleton_within_a_stratum():
+    from role_set.puzzle_check import skeleton
+
+    for nv in (2, 3):
+        stratum = [p for p in sorted(PACKS) if len(PACKS[p]["values"]) == nv]
+        keys = [skeleton(build_t11(p, s, "find").model) for p in stratum for s in range(1, T11_FILE + 1)]
+        assert len(set(keys)) == len(keys), nv
+
+
+def _contrast_case(kept):
+    from role_set.generate.build import Shape, _key, _norm, assignments, truth
+    from role_set.puzzle import holds
+
+    names = ("the green cup", "the blue cup", "the grey cup")
+    claim = ["is", "the green cup", "heat", "warm"]
+    shape = Shape(names, {"heat": {"values": ["hot", "warm", "cold"], "distinct": False}}, claim=claim,
+                  structure="falsifier_first")
+    sols = assignments(shape)
+    pool = t11_pool(shape)
+    bits = {_key(c): truth(shape, sols, c) for c in pool}
+    m = _norm(shape)
+    return t11_contrast(shape, sols, kept, pool, bits, [holds(m, x, claim) for x in sols], random.Random(0))
+
+
+def test_a_contrast_only_on_the_subjects_own_lines_is_refused():
+    # Q3: every line names the green cup, so any flip would be on the subject's own lines: a lookup in disguise.
+    assert _contrast_case([["in", "the green cup", "heat", ["hot", "warm"]], ["is_not", "the green cup", "heat", "hot"]]) is None
+
+
+def test_an_off_subject_contrast_moves_the_verdict_off_supported():
+    # The blue cup's stated heat is the only line without the green cup; changing it leaves the green cup's heat open.
+    got = _contrast_case([["if", ["is", "the blue cup", "heat", "hot"], ["is", "the green cup", "heat", "warm"]],
+                          ["is", "the blue cup", "heat", "hot"]])
+    assert got["line"] == 3 and got["contrast_verdict"] == "cannot_tell" and got["contrast_names_subject"] is False
+    assert got["to"][1] == "the blue cup"
+
