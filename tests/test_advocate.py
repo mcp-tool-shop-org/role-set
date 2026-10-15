@@ -53,7 +53,7 @@ from role_set.advocate.ledger import (
     render_two_turn,
     scan_text,
 )
-from role_set.advocate.pilot import PilotError, run_pilot
+from role_set.advocate.pilot import CRITIC_MODEL, PilotError, WRITERS, run_pilot
 from role_set.advocate.plan import FAMILIES, PlanError, plan_batch, plan_pilot
 from role_set.advocate.table import PAID_SPEND, VERDICTS, decide
 from role_set.advocate import variety
@@ -913,7 +913,7 @@ def test_a_live_pilot_refuses_a_cloud_tag_an_unlisted_name_and_a_bad_digest_befo
 
     monkeypatch.setattr(
         "role_set.advocate.pilot.WRITERS",
-        {"writer-a": "qwen3:8b", "writer-b": "llama3.1:8b"},
+        {"writer-a": "qwen3:8b", "writer-b": "granite3.3:8b"},
     )
     data = json.loads((PACK.parents[1] / "writers.json").read_text(encoding="utf-8"))
     digests = {
@@ -921,10 +921,31 @@ def test_a_live_pilot_refuses_a_cloud_tag_an_unlisted_name_and_a_bad_digest_befo
         for row in data["writers"] + data["critics"]
         if row.get("digest")
     }
-    digests["llama3.1:8b"] = "0" * 64
+    digests["granite3.3:8b"] = "0" * 64
     with pytest.raises(PilotError, match="differs from the pinned"):
         run_pilot(slots, digest_opener=_pinned_opener(digests), **common)
     assert called == []
+
+
+_MODEL_FAMILY = {
+    "qwen3:8b": "qwen3",
+    "granite3.3:8b": "granite",
+    "gemma4:31b": "gemma4",
+}
+
+
+def test_the_three_pilot_models_are_three_different_families():
+    """The pilot's two writers and the critic are three families. A later swap cannot collapse them."""
+
+    data = json.loads((PACK.parents[1] / "writers.json").read_text(encoding="utf-8"))
+    listed = {row["served_as"] for row in data["writers"] + data["critics"]}
+    models = (WRITERS["writer-a"], WRITERS["writer-b"], CRITIC_MODEL)
+    families = []
+    for name in models:
+        assert name in listed
+        families.append(_MODEL_FAMILY[name])
+    assert families == ["qwen3", "granite", "gemma4"]
+    assert len(set(families)) == len(models)
 
 
 def test_no_kind_b_pilot_point_is_verbatim_in_the_procedure_or_the_critic_prompt():

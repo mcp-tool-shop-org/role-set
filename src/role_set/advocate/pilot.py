@@ -39,7 +39,7 @@ from role_set.guards import (
 )
 
 ENDPOINT = "http://127.0.0.1:11434"
-WRITERS = {"writer-a": "qwen3:8b", "writer-b": "llama3.1:8b"}
+WRITERS = {"writer-a": "qwen3:8b", "writer-b": "granite3.3:8b"}
 CRITIC_MODEL = "gemma4:31b"
 MAX_ATTEMPTS = 5
 RETRY_SLOT = "pilot-04"
