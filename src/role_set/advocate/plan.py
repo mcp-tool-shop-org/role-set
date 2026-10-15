@@ -383,7 +383,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
         "seat_handback",
         (
             Point("aborted dry run at $0.00", up, "cost", True),
-            Point("the head is a3f1c9b2", up, "figure", True),
+            Point("the head is b7e4d2a1", up, "figure", True),
         ),
         figures=(
             Figure("aborted dry run at $0.00", True, "0.00", "$", "aborted"),

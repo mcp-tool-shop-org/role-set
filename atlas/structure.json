@@ -1222,7 +1222,7 @@
               "line": 445
             }
           ],
-          "hash": "19a3c17a0aecded75cec4f459d04f9135c9a40cdffeb01375c05bac7469ff4dc",
+          "hash": "086aca79d316a684a3463a33f56d1cbd9beb387287c6c1809ac61fe844131656",
           "importsFiles": [
             "src/role_set/advocate/kinds.py",
             "src/role_set/advocate/ledger.py",
@@ -1993,7 +1993,7 @@
           "path": "src/role_set/advocate/variety.py"
         },
         {
-          "hash": "251a61afdaa4922d40be302f8f01d575764c53993d7367dfcdaf881e45f36f1e",
+          "hash": "cbc620f8da7382a93e844cd4acb4cceb59b34b7a4467377991d8bcd8a2fef380",
           "path": "src/role_set/advocate/variety_record.json"
         },
         {
@@ -7260,7 +7260,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "3141e2d1110e29e3e8629ccba461b63ff0059288",
+    "commit": "a416896f93f52e1c83c4d29085d37de0753e8a27",
     "tracked": 150
   },
   "landings": [

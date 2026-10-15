@@ -23,40 +23,24 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 1,
-      "changed": 11,
+      "added": 0,
+      "changed": 2,
       "moved": 0,
-      "parts": 3,
+      "parts": 1,
       "removed": 0
     },
     "items": [
       {
-        "kind": "landing",
-        "sentence": "src/role_set/advocate/kinds.py is now read by src/role_set/advocate/variety.py.",
-        "subjects": [
-          "src/role_set/advocate/kinds.py",
-          "src/role_set/advocate/variety.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/pack.py is now read by src/role_set/advocate/variety.py.",
-        "subjects": [
-          "src/role_set/pack.py",
-          "src/role_set/advocate/variety.py"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "1 file added and 11 changed content, across 3 parts.",
+        "sentence": "Nothing structural changed since 2026-10-15; 2 files changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "4ac2ec2888741cfd5b2438520f22d002127e2e8a",
-      "generatedAt": "2026-10-14T23:46:00.711Z"
+      "commit": "3141e2d1110e29e3e8629ccba461b63ff0059288",
+      "generatedAt": "2026-10-15T01:22:07.587Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
@@ -111,7 +95,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 5,
-  "commit": "3141e2d1110e29e3e8629ccba461b63ff0059288",
+  "commit": "a416896f93f52e1c83c4d29085d37de0753e8a27",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (79 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -242,7 +226,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-15T01:22:07.587Z",
+  "generatedAt": "2026-10-15T01:31:16.855Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 29 reads go to a path their caller passes, not to this repository.",
