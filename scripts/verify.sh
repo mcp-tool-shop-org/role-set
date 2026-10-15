@@ -5,7 +5,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 uv sync --frozen
-uv run pytest --cov-report=term-missing
+# pytest follows pyproject addopts, including -m "not sweep".
+uv run pytest
 
 plan="$(mktemp)"
 trap 'rm -f "$plan"' EXIT

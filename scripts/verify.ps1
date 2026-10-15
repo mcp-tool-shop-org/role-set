@@ -6,7 +6,8 @@ Set-Location (Join-Path $PSScriptRoot "..")
 uv sync --frozen
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-uv run pytest --cov-report=term-missing
+# pytest follows pyproject addopts, including -m "not sweep".
+uv run pytest
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $plan = Join-Path ([System.IO.Path]::GetTempPath()) "role-set-verify-plan.json"
