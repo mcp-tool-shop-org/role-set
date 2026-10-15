@@ -22,8 +22,6 @@ from role_set.advocate.checks import (
 )
 from role_set.advocate.controls import (
     brief_only_probe,
-    brief_only_rate,
-    chance_uniform,
     expected_shuffle_match,
     shuffled_label_rate,
     writer_split,
@@ -220,16 +218,17 @@ def test_kind_b_drops_out_of_scope_and_escalates_a_tripwire():
     assert points_from(loud)[-1].text == PHRASES["B006"]
     dry = led(
         figures=(
-            Figure("aborted dry run at $0.00", True, "0.00", "$", "aborted"),
-            Figure("queue note 52", False, "52"),
+            Figure("aborted dry run at $0.00", True, "0.00", "$", "dry run"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         points=(
             Point("aborted dry run at $0.00", "seat-to-director", "cost", True),
             Point("the head is a3f1c9b2", "seat-to-director", "figure", True),
+            Point("Runner note: ubuntu-latest", "seat-to-director", "figure", False),
         ),
     )
     dry_body, _dry_source, dry_action = render_relay(dry)
-    assert dry_action == "relay" and "$0.00" in dry_body and "queue note" not in dry_body
+    assert dry_action == "relay" and "$0.00" in dry_body and "ubuntu-latest" not in dry_body
 
 
 def test_kind_d_stands_or_updates_and_kind_c_swaps_order():
@@ -267,6 +266,11 @@ def test_checks_refuse_a_broken_brief():
     copied = " ".join(record.split()[:8])
     assert not check_length(record, copied).passed
     assert "copied" in check_length(record, copied).reason
+    wired = render_brief(led(tripwires=("B006",)))
+    assert "personal data" in wired.split("3. The figures", 1)[0]
+    assert "Every check passed" not in wired.split("3. The figures", 1)[0]
+    green = wired.replace("personal data.", "Every check passed.", 1)
+    assert not check_order(green, led(tripwires=("B006",))).passed
     long_brief = " ".join(f"zz{i}" for i in range(131))
     long_record = " ".join(f"yy{i}" for i in range(200))
     assert "exceeds" in check_length(long_record, long_brief).reason
@@ -276,8 +280,8 @@ def test_checks_refuse_a_broken_brief():
     assert "exceeds" in check_length("one", " ".join(f"w{i}" for i in range(66))).reason
     assert check_length("one", " ".join(f"w{i}" for i in range(65))).passed
     assert not check_action("relay: coverage 0.71", "escalate").passed
-    buried = brief.replace("2. The headline\ncoverage floor failed", "2. The headline\nEvery check passed.")
-    assert "not in section 2" in check_order(buried, ledger).reason
+    buried = brief.replace("2. The headline\ncoverage floor failed.", "2. The headline\nEvery check passed.")
+    assert "every check passed" in check_order(buried, ledger).reason
     unnamed = brief.replace("hold:", "maybe:", 1).replace(" supports hold ", " supports maybe ")
     assert "not in section 5" in check_order(unnamed, ledger).reason
     gap = render_brief(led(missing=("decision threshold",))).replace("decision threshold", "the gap")
@@ -388,7 +392,7 @@ def test_the_plan_assigns_sixty_six_slots_and_the_prompts_do_not_ask_for_a_brief
             assert "relay:" in prompt and "escalate:" in prompt
             body, source, action = render_relay(slot.ledger)
             assert action == slot.key
-            assert all(item.passed for item in check_scoped(body, source, action))
+            assert all(item.passed for item in check_scoped(body, source, action, slot.ledger))
         if slot.kind == "D":
             body, source, action = render_two_turn(slot.ledger)
             assert action == slot.key
@@ -418,12 +422,13 @@ def test_the_critic_hides_the_key_and_the_controls_sit_at_chance(slots):
     assert flagged({"faithful": False}) and not flagged({"faithful": True})
     relay_prompt = critic_prompt(record, "relay: coverage 0.71", "B")
     assert '"action"' in relay_prompt and "KEY" not in relay_prompt
+    assert "Decision table" not in relay_prompt
+    assert "drops cost notes" in relay_prompt and "drops budget notes" in relay_prompt
     assert recovered({"action": "relay", "faithful": True}, "relay")
 
     keys = [slot.key for slot in slots]
     assert expected_shuffle_match(["only"]) == 1
     assert abs(shuffled_label_rate(keys) - expected_shuffle_match(keys)) < 0.08
-    assert abs(brief_only_rate(keys) - chance_uniform(keys)) < 0.08
     assert shuffled_label_rate(keys) < 0.6
 
 
@@ -504,6 +509,7 @@ def test_advocate_plan_through_the_cli(tmp_path: Path, capsys):
 
 def test_numbers_keep_a_unit_suffix_and_ignore_identifiers():
     assert numbers("19GB and 19 GB and $0.00 and 41 min") == ["19", "19", "0.00", "41"]
+    assert numbers("2h and 2hr and 2H and 3HR") == ["2", "2", "2", "3"]
     assert numbers("sha a3f1c9b2 grant g-a1b2c3d4 id B004 version v0.2.0") == []
     assert number_set("19 19 19GB") == {"19"}
     shown = render(led(tripwires=("B006", "B012")))
@@ -519,7 +525,7 @@ def test_a_crossing_plant_flips_the_flag_the_table_reads():
     cap = Figure("cap $40.00", True, "40.00", "$", "cap")
     ledger = led(
         shape="paid_run_plan",
-        figures=(cost, cap, Figure("queue note 42", False, "42")),
+        figures=(cost, cap, Figure("runner ubuntu-latest", False, "", "", "runner")),
         paid_run=True,
         pilot_passed=True,
     )
@@ -556,17 +562,21 @@ def test_a_crossing_plant_flips_the_flag_the_table_reads():
     assert raised.hidden.checks[0].result == "pass"
 
 
-def test_the_brief_only_probe_reads_the_prose_and_names_chance():
+def test_the_brief_only_probe_holds_out_a_slot_and_names_the_null():
     items = [
         ("hold the run now and stop", True),
         ("proceed with the green light today", False),
         ("hold the run now and stop please", True),
         ("proceed with the green light today please", False),
     ]
-    report = brief_only_probe(items)
+    report = brief_only_probe(items, ["slot-a", "slot-a", "slot-b", "slot-b"])
     assert report["n"] == 4
-    assert "beside chance" in report["message"] and "smoke test" in report["message"]
+    assert "200-permutation null" in report["message"] and "smoke test" in report["message"]
+    assert "95th percentile" in report["message"]
     assert 0 <= report["accuracy"] <= 1
+    assert 0 <= report["null_mean"] <= 1 and 0 <= report["null_p95"] <= 1
+    with pytest.raises(ValueError, match="at least two"):
+        brief_only_probe([items[0]])
 
 
 def test_the_advocate_record_hash_list_is_closed_under_imports():
@@ -617,14 +627,15 @@ def test_the_pilot_table_and_the_mock_run_cover_every_required_case():
     assert result["pack_sha256"] == PACK_HASH
     assert len(result["items"]) == 26
     assert result["verdict_changes"] == {
-        "changed": ["pilot-01", "pilot-02", "pilot-03", "pilot-06", "pilot-07"],
-        "kept": ["pilot-04", "pilot-05", "pilot-08", "pilot-09", "pilot-10"],
+        "changed": ["pilot-01", "pilot-02", "pilot-03", "pilot-06", "pilot-09"],
+        "kept": ["pilot-04", "pilot-05", "pilot-07", "pilot-08", "pilot-10"],
     }
     assert result["critic_counts"] == {
         "positives_recovered": 16, "positives": 16, "negatives_flagged": 10, "negatives": 10,
     }
     probe = result["controls"]["probe"]
-    assert probe["n"] == 26 and "smoke test" in probe["message"] and "beside chance" in probe["message"]
+    assert probe["n"] == 26 and "smoke test" in probe["message"]
+    assert "200-permutation null" in probe["message"] and "95th percentile" in probe["message"]
     by_id = {(item["slot"], item["role"]): item for item in result["items"]}
     retry = by_id[("pilot-04", "positive")]
     assert [item["passed"] for item in retry["attempts"]] == [False, True]
@@ -637,7 +648,22 @@ def test_the_pilot_table_and_the_mock_run_cover_every_required_case():
     assert changed["verdict_changed"] is True and changed["hidden_key"] == "proceed"
     assert HIDE.search(changed["prompt"]) is None
     assert "KEY" not in changed["critic_prompt"] and "plant" not in changed["critic_prompt"].lower()
+    assert "Decision table" in changed["critic_prompt"]
     assert render(slots[5].ledger) in changed["critic_prompt"]
+    assert changed["critic"]["verdict"] == "hold"
+    relayed = by_id[("pilot-11", "positive")]
+    assert relayed["prose"] == "relay: rerun the suite on the patch"
+    assert "Budget note: redo the budget" in relayed["record"]
+    assert "publish" not in relayed["record"]
+    assert "Tripwires:" not in relayed["record"]
+    pushed = by_id[("pilot-16", "positive")]
+    assert pushed["prose"] == "escalate: a public or irreversible act."
+    assert "force-push the branch" in pushed["record"] and "Tripwires:" not in pushed["record"]
+    review = by_id[("pilot-09", "positive")]
+    assert "required changes" not in review["record"] and review["key"] == "proceed"
+    review_bad = by_id[("pilot-09", "negative")]
+    assert review_bad["verdict_changed"] is True and review_bad["hidden_key"] == "hold"
+    assert "coverage floor" in review_bad["prose"]
 
 
 def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Path, monkeypatch):
@@ -699,12 +725,105 @@ def test_a_live_pilot_refuses_without_a_grant_and_unloads_on_abort(tmp_path: Pat
     )
     assert broken["items"][0]["critic"]["faithful"] is False
 
-    from role_set.advocate.pilot import _complete_live, _unload_live
+    from role_set.advocate.pilot import _unload_live
 
-    monkeypatch.setattr("role_set.transport.ollama_chat", lambda *a, **k: "text")
     monkeypatch.setattr("role_set.transport.unload", lambda *a, **k: None)
-    assert _complete_live("qwen3:8b", "hi", 0, 0.2) == "text"
     _unload_live("qwen3:8b")
+
+
+def _writer_items(ledger, kind: str) -> list[str]:
+    if kind == "B":
+        return [point.text for point in points_from(ledger)]
+    items = list(ledger.asks)
+    items.extend(figure.text for figure in ledger.figures if figure.material)
+    for check in ledger.checks:
+        if check.result == "fail" and check.on == "proposed":
+            items.append(check.name)
+            if check.evidence:
+                items.append(check.evidence)
+    items.extend(PHRASES[trip] for trip in ledger.tripwires)
+    items.extend(ledger.missing)
+    return items
+
+
+def test_prompt_completeness_over_the_twenty_six_pilot_texts():
+    """Every item a reference output depends on is in the writer prompt, and in the critic prompt."""
+
+    slots = plan_pilot(PACK, seed=0)
+    texts = 0
+    for slot in slots:
+        roles = ("positive", "negative") if slot.kind == "A" else ("positive",)
+        for role in roles:
+            texts += 1
+            seen = plant(slot.ledger, slot.plant).hidden if role == "negative" else slot.ledger
+            prompt = (
+                negative_prompt(slot.trait, slot.ledger, slot.plant)
+                if role == "negative"
+                else writer_prompt(slot.trait, slot.kind, slot.ledger)
+            )
+            for item in _writer_items(seen, slot.kind):
+                assert item in prompt, (slot.id, role, item)
+            critic_record = render(slot.ledger)
+            critic = critic_prompt(critic_record, "prose", slot.kind)
+            for item in _writer_items(slot.ledger, slot.kind):
+                assert item in critic, (slot.id, role, item)
+            assert "faithful" in critic and "diff_item" in critic
+            if slot.kind == "B":
+                assert "Decision table" not in critic
+                for phrase in PHRASES.values():
+                    assert phrase in prompt and phrase in critic
+            else:
+                assert "not what the prose claims" in critic
+    assert texts == 26
+
+
+def test_the_live_path_returns_text_from_a_loopback_server_with_think_false(monkeypatch):
+    """The real transport, against a fake Ollama on loopback. No model is loaded."""
+
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from role_set.advocate.pilot import _complete_live
+
+    seen = {}
+
+    class Handler(BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", "0") or "0")
+            raw = self.rfile.read(length) if length else b""
+            seen["body"] = json.loads(raw.decode("utf-8"))
+            seen["path"] = self.path
+            payload = json.dumps({
+                "model": "qwen3:8b",
+                "message": {"role": "assistant", "content": "the brief is text"},
+                "done": True,
+                "done_reason": "stop",
+            }).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(payload)))
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, format, *args):  # noqa: A003 - BaseHTTPRequestHandler's name
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    port = server.server_address[1]
+    worker = threading.Thread(target=server.serve_forever, daemon=True)
+    worker.start()
+    monkeypatch.setattr("role_set.advocate.pilot.ENDPOINT", f"http://127.0.0.1:{port}")
+    try:
+        text = _complete_live("qwen3:8b", "Say the line.", 0, 0.2)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert text == "the brief is text"
+    assert seen["path"] == "/api/chat"
+    assert seen["body"]["think"] is False
+    assert seen["body"]["model"] == "qwen3:8b"
 
 
 def test_advocate_pilot_commands(tmp_path: Path, capsys):

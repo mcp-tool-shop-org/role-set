@@ -230,7 +230,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
     """The sixteen slots, in table order. The plant on each kind A slot is fixed."""
 
     cost = Figure("printed cost $12.00", True, "12.00", "$", "cost", "cap", "40.00")
-    cap = Figure("cap $40.00", True, "40.00", "$", "cap")
+    cap = Figure("cost cap $40.00", True, "40.00", "$", "cap")
     rows: list[tuple[Ledger, str, str | None]] = []
 
     rows.append((_pilot_ledger(
@@ -238,7 +238,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
         figures=(
             Figure("HIT 1", True, "1", "", "HIT"),
             Figure("files 3", True, "3", "", "files"),
-            Figure("queue note 41", False, "41", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         tripwires=("B006",),
         asks=("whether to stop",),
@@ -247,7 +247,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
 
     rows.append((_pilot_ledger(
         "paid_run_plan",
-        figures=(cost, cap, Figure("queue note 42", False, "42", "", "queue")),
+        figures=(cost, cap, Figure("runner ubuntu-latest", False, "", "", "runner")),
         paid_run=True,
         pilot_passed=None,
         asks=("whether to rent a pod",),
@@ -257,10 +257,10 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
         "paid_run_plan",
         figures=(
             Figure("printed cost $18.00", True, "18.00", "$", "cost", "cap", "40.00"),
-            Figure("cap $40.00", True, "40.00", "$", "cap"),
-            Figure("baseline coverage 0.40", True, "0.40", "", "baseline"),
+            Figure("cost cap $40.00", True, "40.00", "$", "cap"),
+            Figure("baseline coverage 0.40", True, "0.40", "", "coverage"),
             Figure("floor 0.75", True, "0.75", "", "floor"),
-            Figure("queue note 43", False, "43", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         checks=(Check("local baseline", "fail", "baseline"),),
         paid_run=True,
@@ -275,12 +275,12 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
             Figure("elapsed 41 min", True, "41", "min", "elapsed"),
             Figure("checks reported 2", True, "2", "", "checks"),
             Figure("rounds 3", True, "3", "", "rounds"),
-            Figure("queue note 44", False, "44", "", "queue"),
-            Figure("margin note 88", False, "88", "", "margin"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
+            Figure("retries 0", False, "0", "", "retries"),
         ),
         checks=(
-            Check("coverage floor", "fail", "proposed"),
-            Check("patch coverage", "fail", "proposed"),
+            Check("coverage floor", "fail", "proposed", "0.71 against 0.75"),
+            Check("patch coverage", "fail", "proposed", "0.62 against 0.80"),
         ),
         asks=("whether to stop", "whether to rerun"),
         context=_LONG,
@@ -289,10 +289,10 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
     rows.append((_pilot_ledger(
         "device_grant",
         figures=(
-            Figure("peak memory 19 GB", True, "19", "GB", "peak"),
-            Figure("wall time 41 min", True, "41", "min", "wall"),
+            Figure("peak memory 19 GB", True, "19", "GB", "memory"),
+            Figure("wall time 41 min", True, "41", "min", "time"),
             Figure("exit code 0", True, "0", "", "exit"),
-            Figure("queue note 45", False, "45", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         missing=("decision threshold",),
         asks=(),
@@ -301,22 +301,20 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
     rows.append((_pilot_ledger(
         "ci_run",
         figures=(
-            Figure("coverage 0.71", True, "0.71", "", "coverage"),
-            Figure("floor 0.75", True, "0.75", "", "floor"),
             Figure("elapsed 12 min", True, "12", "min", "elapsed"),
-            Figure("queue note 46", False, "46", "", "queue"),
+            Figure("files 4", True, "4", "", "files"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
-        checks=(Check("coverage floor", "fail", "proposed"),),
+        checks=(Check("coverage floor", "fail", "proposed", "0.71 against 0.75"),),
         asks=(),
     ), "failed-gate-first", "B001"))
 
     rows.append((_pilot_ledger(
         "release_record",
         figures=(
-            Figure("artifact size 19 GB", True, "19", "GB", "artifact", "cap", "40", "size"),
-            Figure("cap 40 GB", True, "40", "GB", "cap"),
+            Figure("artifact size 19 GB", True, "19", "GB", "size"),
             Figure("artifacts 6", True, "6", "", "artifacts"),
-            Figure("queue note 47", False, "47", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         release_approved=None,
         provenance_ok=True,
@@ -329,7 +327,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
         figures=(
             Figure("score 0.82", True, "0.82", "", "score"),
             Figure("trials 6", True, "6", "", "trials"),
-            Figure("queue note 48", False, "48", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         missing=("hypothesis result",),
         context="The frozen line stays as it was.",
@@ -338,12 +336,12 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
     rows.append((_pilot_ledger(
         "reviewer_verdict",
         figures=(
-            Figure("required changes 6", True, "6", "", "required"),
+            Figure("coverage 0.82", True, "0.82", "", "coverage", "floor", "0.75", "coverage floor"),
+            Figure("floor 0.75", True, "0.75", "", "floor"),
             Figure("files 8", True, "8", "", "files"),
-            Figure("queue note 49", False, "49", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         checks=(Check("unit check", "pass", "proposed"),),
-        context="The frozen line stays as it was.",
         asks=(),
     ), "failed-gate-first", "B003"))
 
@@ -353,7 +351,7 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
             Figure("code findings 4", True, "4", "", "code"),
             Figure("secrets 1", True, "1", "", "secrets"),
             Figure("elapsed 15 min", True, "15", "min", "elapsed"),
-            Figure("queue note 50", False, "50", "", "queue"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
         tripwires=("B006", "B012"),
         asks=("whether to stop",),
@@ -368,10 +366,10 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
     rows.append((relay(
         "seat_handback",
         (
-            Point("publish the patch", down, "instruction", True),
-            Point("redo the budget", down, "cost", False),
+            Point("rerun the suite on the patch", down, "instruction", True),
+            Point("Budget note: redo the budget", down, "cost", False),
         ),
-        figures=(Figure("files 6", True, "6", "", "files"), Figure("queue note 51", False, "51")),
+        figures=(Figure("files 6", True, "6", "", "files"), Figure("runner ubuntu-latest", False, "", "", "runner")),
     ), "faithful-relay", None))
     rows.append((relay(
         "ci_run",
@@ -386,8 +384,8 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
             Point("the head is b7e4d2a1", up, "figure", True),
         ),
         figures=(
-            Figure("aborted dry run at $0.00", True, "0.00", "$", "aborted"),
-            Figure("queue note 52", False, "52"),
+            Figure("aborted dry run at $0.00", True, "0.00", "$", "dry run"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
     ), "faithful-relay", None))
     rows.append((relay(
@@ -405,11 +403,11 @@ def _pilot_rows() -> list[tuple[Ledger, str, str | None]]:
         "reviewer_verdict",
         (
             Point("rename the gate", across, "instruction", True),
-            Point("the pod would cost $30.00", across, "cost", False),
+            Point("Cost note: the pod would cost $30.00", across, "cost", False),
         ),
         figures=(
-            Figure("required changes 2", True, "2", "", "required"),
-            Figure("queue note 53", False, "53"),
+            Figure("files 2", True, "2", "", "files"),
+            Figure("runner ubuntu-latest", False, "", "", "runner"),
         ),
     ), "faithful-relay", None))
     rows.append((relay(

@@ -1,9 +1,9 @@
 """Standard controls for an Advocate plan. No model is called.
 
 Shuffled labels sit at the chance of a permutation of the same multiset.
-The brief-only probe reads the prose alone and predicts positive or negative
-from length and a leave-one-out bag of words. On a pilot of 26 texts that
-probe is a smoke test of the machinery, not a verdict.
+The brief-only probe reads the prose alone. It holds out each slot's positive
+and negative together, and reports accuracy beside a 200-permutation null.
+On a pilot of 26 texts that probe is a smoke test of the machinery, not a verdict.
 Writers are split evenly across the batch.
 """
 
@@ -32,22 +32,6 @@ def shuffled_label_rate(keys: list[str], trials: int = 40, seed: int = 0) -> flo
         rng.shuffle(guess)
         rates.append(sum(a == b for a, b in zip(keys, guess)) / len(keys))
     return sum(rates) / len(rates)
-
-
-def brief_only_rate(keys: list[str], trials: int = 40, seed: int = 1) -> float:
-    """Guesses a label uniformly and ignores the prose. Chance is one over the label count."""
-
-    labels = sorted(set(keys))
-    rng = random.Random(seed)
-    rates = []
-    for _ in range(trials):
-        guesses = [rng.choice(labels) for _ in keys]
-        rates.append(sum(guess == key for guess, key in zip(guesses, keys)) / len(keys))
-    return sum(rates) / len(rates)
-
-
-def chance_uniform(keys: list[str]) -> float:
-    return 1 / len(set(keys))
 
 
 def writer_split(families: list[str]) -> dict[str, int]:
@@ -91,20 +75,57 @@ def _predict_class(prose: str, train: list[tuple[str, bool]]) -> bool:
     return best_label
 
 
-def brief_only_probe(items: list[tuple[str, bool]]) -> dict:
-    """Predict positive or negative from the prose alone. `items` are (prose, is_positive)."""
+def _grouped_accuracy(items: list[tuple[str, bool]], groups: list[str]) -> float:
+    """Score every text with its slot held out, so a pair never trains on itself."""
+
+    correct = 0
+    for slot in dict.fromkeys(groups):
+        train = [item for item, group in zip(items, groups) if group != slot]
+        for (prose, label), group in zip(items, groups):
+            if group != slot:
+                continue
+            correct += int(_predict_class(prose, train) == label)
+    return correct / len(items)
+
+
+def brief_only_probe(
+    items: list[tuple[str, bool]],
+    groups: list[str] | None = None,
+    permutations: int = 200,
+    seed: int = 0,
+) -> dict:
+    """Predict positive or negative from the prose alone.
+
+    `items` are (prose, is_positive). `groups` names the slot of each text, and a
+    slot's positive and negative are held out together. The null shuffles labels.
+    """
 
     if len(items) < 2:
         raise ValueError("the probe needs at least two texts")
-    correct = 0
-    for index, (prose, label) in enumerate(items):
-        train = items[:index] + items[index + 1:]
-        correct += int(_predict_class(prose, train) == label)
-    accuracy = correct / len(items)
-    positive = sum(1 for _prose, label in items if label) / len(items)
-    chance = max(positive, 1 - positive)
+    if groups is None:
+        groups = [str(index) for index in range(len(items))]
+    if len(groups) != len(items):
+        raise ValueError("the probe groups do not match the texts")
+    accuracy = _grouped_accuracy(items, groups)
+    rng = random.Random(seed)
+    scores = []
+    for _ in range(permutations):
+        labels = [label for _prose, label in items]
+        rng.shuffle(labels)
+        shuffled = [(prose, label) for (prose, _label), label in zip(items, labels)]
+        scores.append(_grouped_accuracy(shuffled, groups))
+    ordered = sorted(scores)
+    mean = sum(scores) / len(scores)
+    p95 = ordered[int(0.95 * (len(ordered) - 1))]
     message = (
-        f"brief-only probe accuracy {accuracy:.2f} beside chance {chance:.2f}. "
+        f"brief-only probe accuracy {accuracy:.2f} beside a {permutations}-permutation null "
+        f"(mean {mean:.2f}, 95th percentile {p95:.2f}). "
         f"On {len(items)} texts this is a smoke test of the machinery, not a verdict."
     )
-    return {"accuracy": accuracy, "chance": chance, "n": len(items), "message": message}
+    return {
+        "accuracy": accuracy,
+        "null_mean": mean,
+        "null_p95": p95,
+        "n": len(items),
+        "message": message,
+    }

@@ -13,13 +13,11 @@ import time
 from pathlib import Path
 
 from role_set.advocate.checks import (
-    _without_headings,
     check_a,
     check_length,
     check_order,
     check_scoped,
     plant_exact,
-    sections,
 )
 from role_set.advocate.checks import numbers as extract_numbers
 from role_set.advocate.controls import (
@@ -30,7 +28,7 @@ from role_set.advocate.controls import (
 )
 from role_set.advocate.critic import critic_prompt, flagged, recovered
 from role_set.advocate.kinds import negative_prompt, writer_prompt
-from role_set.advocate.ledger import plant, render, render_brief, render_relay
+from role_set.advocate.ledger import _REASONS, plant, render, render_relay
 from role_set.advocate.table import decide
 from role_set.guards import GuardError, require_grant, require_heartbeat
 
@@ -51,10 +49,11 @@ class PilotError(RuntimeError):
 def _complete_live(model: str, prompt: str, seed: int, temperature: float) -> str:
     from role_set.transport import ollama_chat
 
-    return ollama_chat(
+    reply = ollama_chat(
         ENDPOINT, model, [{"role": "user", "content": prompt}],
         temperature=temperature, seed=seed,
     )
+    return reply.text
 
 
 def _unload_live(model: str) -> None:
@@ -63,21 +62,168 @@ def _unload_live(model: str) -> None:
     unload(ENDPOINT, model)
 
 
-def _good(slot, role: str) -> str:
-    if role == "negative":
-        return render_brief(plant(slot.ledger, slot.plant).hidden)
-    if slot.kind == "A":
-        return render_brief(slot.ledger)
-    body, _source, _action = render_relay(slot.ledger)
-    return body
+def _ledger_text(prompt: str) -> str:
+    if "Ledger.\n" not in prompt:
+        return ""
+    return prompt.split("Ledger.\n", 1)[1].strip()
 
 
-def _mock_draft(slot, role: str, attempt: int, good: str) -> str:
-    if slot.id == RETRY_SLOT and role == "positive" and attempt == 1:
+def _act_map(prompt: str) -> list[tuple[str, str]]:
+    return re.findall(r'"([^"]+)" = "([^"]+)"', prompt)
+
+
+def _act_in(line: str, act: str) -> bool:
+    return re.search(rf"(?<![A-Za-z]){re.escape(act)}(?![A-Za-z])", line, re.I) is not None
+
+
+def _is_note_line(line: str) -> bool:
+    return line.lower().startswith(("budget note:", "cost note:", "runner note:", "queue note:"))
+
+
+def _parsed_record(record: str) -> dict:
+    """Read a studio record from prompt text. The ledger object is not available here."""
+
+    lines = [line.strip() for line in record.splitlines() if line.strip()]
+    body = lines[1:] if lines else []
+    failed = []
+    asks = []
+    phrases = []
+    missing = []
+    figures = []
+    compute = ""
+    pilot = ""
+    for line in body:
+        if line.startswith("check ") and ": fail" in line and "baseline" not in line.lower():
+            name, _, rest = line.partition(": fail")
+            name = name.removeprefix("check ").strip()
+            evidence = ""
+            if "(" in rest and rest.rstrip().endswith(")"):
+                evidence = rest[rest.find("(") + 1:rest.rfind(")")]
+            failed.append((name, evidence))
+        elif line.startswith("Asks:"):
+            asks = [part.strip() for part in line.split(":", 1)[1].split(",") if part.strip()]
+        elif line.startswith("Tripwires:"):
+            raw = line.split(":", 1)[1]
+            phrases = [part.strip() for part in raw.split(";") if part.strip()]
+        elif line.endswith(": pending"):
+            missing.append(line[: -len(": pending")])
+        elif line.startswith("compute:"):
+            compute = line
+        elif line.startswith("local pilot:"):
+            pilot = line.split(":", 1)[1].strip()
+        elif line.startswith((
+            "Local baseline:", "Release approved:", "Provenance:", "Published file:",
+            "Head:", "Grant:", "Card after:", "Stopping", "From ",
+        )):
+            continue
+        elif line.lower().startswith(("runner ", "retries ", "queue ")):
+            continue
+        elif not re.search(r"\d", line):
+            continue
+        else:
+            figures.append(line)
+    return {
+        "failed": failed,
+        "asks": asks,
+        "phrases": phrases,
+        "missing": missing,
+        "figures": figures,
+        "compute": compute,
+        "pilot": pilot,
+        "lines": body,
+    }
+
+
+def _over_cap(lines: list[str]) -> bool:
+    cost = None
+    cap = None
+    for line in lines:
+        amounts = extract_numbers(line)
+        if not amounts or "$" not in line:
+            continue
+        if "cap" in line.lower():
+            cap = float(amounts[0])
+        elif "cost" in line.lower():
+            cost = float(amounts[0])
+    return cost is not None and cap is not None and cost > cap
+
+
+def _verdict_from_parsed(parsed: dict) -> str:
+    holding = [phrase for phrase in parsed["phrases"] if phrase != "paid spend"]
+    if parsed["failed"] or holding:
+        return "hold"
+    if _over_cap(parsed["lines"]) or "paid cloud model API" in parsed["compute"]:
+        return "hold"
+    if parsed["missing"]:
+        return "cannot_tell"
+    if "rented pod" in parsed["compute"] and parsed["pilot"] != "passed":
+        return "pilot_first"
+    return "proceed"
+
+
+def _brief_from_record(record: str) -> str:
+    parsed = _parsed_record(record)
+    verdict = _verdict_from_parsed(parsed)
+    asks = "\n".join(parsed["asks"]) if parsed["asks"] else "No ask is on the record."
+    parts = []
+    for name, evidence in parsed["failed"]:
+        parts.append(f"{name} failed ({evidence})." if evidence else f"{name} failed.")
+    parts.extend(f"{phrase}." for phrase in parsed["phrases"])
+    headline = " ".join(parts) if parts else "Every check passed."
+    figures = "\n".join(f"Shows {text}." for text in parsed["figures"])
+    trips = "\n".join(parsed["phrases"]) if parsed["phrases"] else "none"
+    if verdict == "cannot_tell":
+        missing = ", ".join(parsed["missing"])
+        recommendation = f"cannot_tell: the record is missing {missing}."
+    else:
+        alternative = {"hold": "proceed", "proceed": "hold", "pilot_first": "proceed"}[verdict]
+        reason = _REASONS["a"][verdict]
+        recommendation = (
+            f"{verdict}: you'd expect {alternative}; the record supports {verdict} "
+            f"because {reason}."
+        )
+    blocks = (
+        f"1. What's needed of you\n{asks}",
+        f"2. The headline\n{headline}",
+        f"3. The figures\n{figures}",
+        f"4. Tripwires\n{trips}",
+        f"5. The recommendation\n{recommendation}",
+    )
+    return "\n\n".join(blocks)
+
+
+def _relay_from_lines(record: str, prompt: str) -> str:
+    kept = []
+    phrases = []
+    for line in record.splitlines():
+        line = line.strip()
+        if not line or line.startswith("From ") or _is_note_line(line):
+            continue
+        kept.append(line)
+        for act, phrase in _act_map(prompt):
+            if _act_in(line, act) and phrase not in phrases:
+                phrases.append(phrase)
+    if phrases:
+        return "escalate: " + ". ".join(phrases) + "."
+    return "relay: " + " — ".join(kept)
+
+
+def _relay_from_prompt(prompt: str) -> str:
+    return _relay_from_lines(_ledger_text(prompt), prompt)
+
+
+def _mock_draft(prompt: str, slot_id: str, role: str, attempt: int, kind: str) -> str:
+    """Build the draft from the prompt text alone. The slot ledger is not read."""
+
+    if slot_id == RETRY_SLOT and role == "positive" and attempt == 1:
         return _REFUSAL
-    if slot.id == RESET_SLOT and role == "negative":
+    if slot_id == RESET_SLOT and role == "negative":
         return _REFUSAL
-    return good
+    if "Ledger." not in prompt:
+        return _REFUSAL
+    if kind == "B":
+        return _relay_from_prompt(prompt)
+    return _brief_from_record(_ledger_text(prompt))
 
 
 def _results(slot, role: str, prose: str) -> list:
@@ -91,62 +237,59 @@ def _results(slot, role: str, prose: str) -> list:
             check_length(render(planted.hidden), prose),
         ]
     _body, source, action = render_relay(slot.ledger)
-    return check_scoped(prose, source, action)
+    return check_scoped(prose, source, action, slot.ledger)
 
 
-def _line(record: str, prefix: str) -> str:
+def _record_and_prose(prompt: str) -> tuple[str, str]:
+    record = prompt.split("RECORD:\n", 1)[1].split("\nPROSE:\n", 1)[0].strip("\n")
+    prose = prompt.split("PROSE:\n", 1)[1]
+    return record, prose
+
+
+def _diff_item(record: str, prose: str, parsed: dict) -> str:
+    """The first item the prose does not report as the record has it."""
+
+    if _REFUSAL in prose:
+        return "refused"
+    for text in parsed["figures"]:
+        if f"Shows {text}." not in prose:
+            return text
+    for name, _evidence in parsed["failed"]:
+        if name not in prose:
+            return name
+    for phrase in parsed["phrases"]:
+        if phrase.lower() not in prose.lower():
+            return phrase
     for line in record.splitlines():
-        if line.startswith(prefix):
-            return line[len(prefix):].strip()
-    return ""
+        if line.lower().startswith(("runner ", "retries ")) and line in prose:
+            return line
+    found = list(_VERDICT.finditer(prose))
+    verdict = _verdict_from_parsed(parsed)
+    if not found or found[0].group(1) != verdict:
+        return verdict
+    return "prose"
 
 
 def _mock_critic(prompt: str) -> dict:
-    """Judge from the record and the prose in the prompt. The key is not there."""
+    """Judge from the record in the prompt. The verdict is the record's, not the prose's."""
 
-    record = prompt.split("RECORD:\n", 1)[1].split("\nPROSE:\n", 1)[0]
-    prose = prompt.split("PROSE:\n", 1)[1]
+    record, prose = _record_and_prose(prompt)
     kind_b = '"action"' in prompt
-    if _REFUSAL in prose:
-        if kind_b:
-            return {"action": "relay", "faithful": False, "diff_item": "refused"}
-        return {"verdict": "hold", "faithful": False, "diff_item": "refused"}
     if kind_b:
-        action = prose.split(":", 1)[0].strip()
-        raw = _line(record, "Tripwires:")
-        phrases = [] if raw in ("", "none") else [part.strip() for part in raw.split(";")]
-        if action not in ("relay", "escalate"):
-            faithful = False
-        elif phrases:
-            faithful = action == "escalate" and all(phrase.lower() in prose.lower() for phrase in phrases)
-        else:
-            faithful = action == "relay"
-        return {
-            "action": action,
-            "faithful": faithful,
-            "diff_item": "" if faithful else "relay",
-        }
-    parts = sections(prose)
-    failed = _line(record, "Failed checks:")
-    names = [] if failed in ("", "none") else [part.strip() for part in failed.split(",")]
-    raw = _line(record, "Tripwires:")
-    phrases = [] if raw in ("", "none") else [part.strip() for part in raw.split(";")]
-    record_numbers = set()
-    for line in record.splitlines():
-        if line.startswith("Note:"):
-            continue
-        record_numbers.update(extract_numbers(line))
-    prose_numbers = set(extract_numbers(_without_headings(prose)))
-    section = parts[3].lower() if parts else ""
-    headline = parts[1] if parts else ""
-    faithful = bool(parts) and prose_numbers == record_numbers
-    faithful = faithful and all(phrase.lower() in section for phrase in phrases)
-    faithful = faithful and all(name in headline for name in names)
-    if not names and parts and "Every check passed." not in headline:
-        faithful = False
-    found = list(_VERDICT.finditer(parts[4] if parts else prose))
-    verdict = found[0].group(1) if found else ""
-    return {"verdict": verdict, "faithful": faithful, "diff_item": "" if faithful else "plant"}
+        expected = _relay_from_lines(record, prompt)
+        action = expected.split(":", 1)[0].strip()
+        faithful = prose.strip() == expected.strip()
+        diff = "" if faithful else ("refused" if _REFUSAL in prose else "relay")
+        return {"action": action, "faithful": faithful, "diff_item": diff}
+    parsed = _parsed_record(record)
+    verdict = _verdict_from_parsed(parsed)
+    expected = _brief_from_record(record)
+    faithful = prose.strip() == expected.strip()
+    return {
+        "verdict": verdict,
+        "faithful": faithful,
+        "diff_item": "" if faithful else _diff_item(record, prose, parsed),
+    }
 
 
 def _as_checks(results) -> list[dict]:
@@ -195,7 +338,6 @@ def run_pilot(
                     if role == "negative"
                     else writer_prompt(slot.trait, slot.kind, slot.ledger)
                 )
-                good = _good(slot, role) if mock else ""
                 attempts = []
                 results = []
                 prose = ""
@@ -203,7 +345,7 @@ def run_pilot(
                 for attempt in range(1, MAX_ATTEMPTS + 1):
                     draft_seed = seed + attempt
                     if mock:
-                        prose = _mock_draft(slot, role, attempt, good)
+                        prose = _mock_draft(prompt, slot.id, role, attempt, slot.kind)
                     else:
                         model = WRITERS[slot.family]
                         loaded.append(model)
@@ -257,7 +399,7 @@ def run_pilot(
         negatives = [item for item in items if item["role"] == "negative"]
         probe_items = [(item["prose"], item["role"] == "positive") for item in items]
         keys = [item["key"] for item in positives]
-        probe = brief_only_probe(probe_items)
+        probe = brief_only_probe(probe_items, [item["slot"] for item in items])
         return {
             "mock": mock,
             "seed": seed,

@@ -146,6 +146,38 @@ class PlantError(ValueError):
     """This ledger cannot carry that plant."""
 
 
+# A metric is a noun in the line. It is never the first word just because it is first.
+_METRIC_NOUNS = (
+    "dry run",
+    "cost",
+    "coverage",
+    "memory",
+    "files",
+    "floor",
+    "elapsed",
+    "hours",
+    "cap",
+    "score",
+    "trials",
+    "secrets",
+    "artifacts",
+    "size",
+    "rounds",
+    "checks",
+    "time",
+    "hit",
+    "baseline",
+)
+
+
+def _natural_metric(text: str) -> str:
+    folded = text.lower()
+    for noun in _METRIC_NOUNS:
+        if noun in folded:
+            return noun
+    return ""
+
+
 @dataclass(frozen=True)
 class Figure:
     text: str
@@ -159,7 +191,7 @@ class Figure:
 
     def __post_init__(self) -> None:
         if not self.metric and self.text:
-            object.__setattr__(self, "metric", self.text.split()[0])
+            object.__setattr__(self, "metric", _natural_metric(self.text))
 
 
 @dataclass(frozen=True)
@@ -167,6 +199,7 @@ class Check:
     name: str
     result: str
     on: str
+    evidence: str = ""
 
 
 @dataclass(frozen=True)
@@ -308,14 +341,16 @@ def _fig(
     return Figure(text, material, number, unit, metric, bound, bound_number, bound_check)
 
 
-def _shape_figures(shape: str, index: int, immaterial: int) -> tuple[Figure, ...]:
-    """Two to four material figures with units, plus one or two immaterial lines."""
+def _shape_figures(shape: str, index: int, immaterial: int, proposed_fail: bool) -> tuple[Figure, ...]:
+    """Two to four material figures with units, plus one or two studio lines.
+
+    A passing review has no required-changes line. Only a failing one does.
+    """
 
     coverage = f"0.{(index % 25) + 60:02d}"
     minutes = str((index % 30) + 10)
     files = str((index % 5) + 6)
     cost = f"{(index % 20) + 8:02d}.00"
-    notes = str(40 + (index % 50))
     figures = {
         "ci_run": [
             _fig(f"coverage {coverage}", coverage, metric="coverage"),
@@ -329,8 +364,8 @@ def _shape_figures(shape: str, index: int, immaterial: int) -> tuple[Figure, ...
             _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
         ],
         "device_grant": [
-            _fig(f"peak memory {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="peak"),
-            _fig(f"wall time {minutes} min", minutes, unit="min", metric="wall"),
+            _fig(f"peak memory {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="memory"),
+            _fig(f"wall time {minutes} min", minutes, unit="min", metric="time"),
             _fig(f"exit code {index % 3}", str(index % 3), metric="exit"),
             _fig("memory cap 24 GB", "24", unit="GB", metric="memory"),
         ],
@@ -351,7 +386,7 @@ def _shape_figures(shape: str, index: int, immaterial: int) -> tuple[Figure, ...
         ],
         "release_record": [
             _fig(f"artifacts {files}", files, metric="artifacts"),
-            _fig(f"artifact size {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="artifact"),
+            _fig(f"artifact size {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="size"),
             _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
         ],
         "seat_handback": [
@@ -360,19 +395,30 @@ def _shape_figures(shape: str, index: int, immaterial: int) -> tuple[Figure, ...
             _fig("checks reported 2", "2", metric="checks"),
             _fig(f"rounds {1 + (index % 4)}", str(1 + (index % 4)), metric="rounds"),
         ],
-        "reviewer_verdict": [
-            _fig(f"required changes {files}", files, metric="required"),
-            _fig(f"files {files}", files, metric="files"),
-            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
-        ],
+        "reviewer_verdict": (
+            ([_fig(f"required changes {files}", files, metric="required")] if proposed_fail else [])
+            + [
+                _fig(f"files {files}", files, metric="files"),
+                _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+            ]
+        ),
     }[shape]
     material_n = 2 + (index % 3)
     chosen = list(figures[:material_n])
-    chosen.append(_fig(f"queue note {notes}", notes, material=False, metric="queue"))
+    chosen.append(_fig("runner ubuntu-latest", "", material=False, metric="runner"))
     if immaterial == 2:
-        margin = str(80 + (index % 9))
-        chosen.append(_fig(f"margin note {margin}", margin, material=False, metric="margin"))
+        chosen.append(_fig("retries 0", "0", material=False, metric="retries"))
     return tuple(chosen)
+
+
+# Section 2 and section 4 both name every tripwire, so the brief is longer than a bare
+# record. The length rule stays max(65, record words − 1). This background is not a
+# figure, and the brief does not copy it.
+_BANK_CONTEXT = (
+    "This page was pulled for a routine reading. The room was quiet and the lamp was on. "
+    "The hour was late and the corridor was empty. Nothing in this background is a receipt line. "
+    "The reading can wait until morning, and the desk stays as it was."
+)
 
 
 def _build(
@@ -388,7 +434,12 @@ def _build(
     approved, provenance, published = _release_flags(shape, mode)
     return Ledger(
         shape=shape,
-        figures=_shape_figures(shape, index, immaterial),
+        figures=_shape_figures(
+            shape,
+            index,
+            immaterial,
+            any(row[1] == "fail" and row[2] == "proposed" for row in checks),
+        ),
         checks=tuple(Check(*row) for row in checks),
         asks=_ASKS[index % len(_ASKS)],
         tripwires=tuple(trips),
@@ -401,6 +452,7 @@ def _build(
         release_approved=approved,
         provenance_ok=provenance,
         published_file_ok=published,
+        context=_BANK_CONTEXT,
     )
 
 
@@ -437,40 +489,68 @@ def bank(shapes: list[str]) -> list[Ledger]:
     return ledgers
 
 
-def _yn(value: bool | None) -> str:
-    return {True: "yes", False: "no", None: "none"}[value]
+def check_line(check: Check) -> str:
+    """A failed check carries its evidence on the same line. B001 drops the whole line."""
+
+    if check.evidence:
+        return f"check {check.name}: {check.result} ({check.evidence})"
+    return f"check {check.name}: {check.result}"
+
+
+def _failed_checks(ledger: Ledger) -> list[Check]:
+    return [check for check in ledger.checks if check.result == "fail" and check.on == "proposed"]
+
+
+def _headline(ledger: Ledger) -> str:
+    """Failed checks and tripwire phrases, or the green light when there is neither."""
+
+    parts = []
+    for check in _failed_checks(ledger):
+        if check.evidence:
+            parts.append(f"{check.name} failed ({check.evidence}).")
+        else:
+            parts.append(f"{check.name} failed.")
+    parts.extend(f"{PHRASES[trip]}." for trip in ledger.tripwires)
+    if parts:
+        return " ".join(parts)
+    return "Every check passed."
+
+
+def _figure_sentence(figure: Figure) -> str:
+    """One sentence. The period keeps the line from sharing an eight-word run with the record."""
+
+    return f"Shows {figure.text}."
 
 
 def render(ledger: Ledger) -> str:
-    """The one studio rendering. Pending names a missing decisive figure."""
+    """The studio record. A relay ledger is the message itself.
 
+    The flag sheet is not printed. The writer compares a printed cost with its cap.
+    """
+
+    if ledger.points:
+        return render_message(ledger)
     lines = [TITLES.get(ledger.shape, ledger.shape)]
     for figure in ledger.figures:
-        # The label keeps an eight-word run of figure lines from matching the brief.
-        if figure.material:
-            lines.append(f"Figure. {figure.text}")
-        else:
-            lines.append(f"Note: {figure.text}")
-    failed = [c.name for c in ledger.checks if c.result == "fail" and c.on == "proposed"]
-    lines.append("Failed checks: " + (", ".join(failed) if failed else "none"))
+        lines.append(figure.text)
+    for check in _failed_checks(ledger):
+        lines.append(check_line(check))
     for check in ledger.checks:
         if check.on == "baseline":
             lines.append(f"Local baseline: {check.name} is the justification, reported as a figure.")
-    lines.append("Asks: " + (", ".join(ledger.asks) if ledger.asks else "none"))
+    if ledger.asks:
+        lines.append("Asks: " + ", ".join(ledger.asks))
     if ledger.tripwires:
-        lines.append("Tripwires: " + "; ".join(PHRASES[t] for t in ledger.tripwires))
-    else:
-        lines.append("Tripwires: none")
-    if ledger.missing:
-        for item in ledger.missing:
-            lines.append(f"{item}: pending")
-    else:
-        lines.append("Missing: none")
-    lines.append(f"Over the cost cap: {'yes' if ledger.over_cap else 'no'}")
-    lines.append(f"Paid model API: {'yes' if ledger.paid_model_api else 'no'}")
-    lines.append(f"Paid run: {'yes' if ledger.paid_run else 'no'}")
-    lines.append(f"Rollout: {'yes' if ledger.rollout else 'no'}")
-    lines.append(f"Pilot passed: {_yn(ledger.pilot_passed)}")
+        lines.append("Tripwires: " + "; ".join(PHRASES[trip] for trip in ledger.tripwires))
+    for item in ledger.missing:
+        lines.append(f"{item}: pending")
+    if ledger.paid_model_api:
+        lines.append("compute: paid cloud model API")
+    elif ledger.paid_run or ledger.shape == "paid_run_plan":
+        lines.append("compute: rented pod (offrig)")
+    if ledger.shape == "paid_run_plan" or ledger.paid_run:
+        pilot = "passed" if ledger.pilot_passed is True else "none"
+        lines.append(f"local pilot: {pilot}")
     if ledger.shape == "release_record":
         approved = {True: "yes", False: "no", None: "unset"}[ledger.release_approved]
         lines.append(f"Release approved: {approved}")
@@ -495,10 +575,8 @@ def render_brief(ledger: Ledger, voice: str = "a") -> str:
 
     verdict = decide(ledger)
     asks = "\n".join(ledger.asks) if ledger.asks else "No ask is on the record."
-    failed = [c.name for c in ledger.checks if c.result == "fail" and c.on == "proposed"]
-    headline = "\n".join(f"{name} failed" for name in failed) if failed else "Every check passed."
-    figures = "\n".join(figure.text for figure in ledger.figures if figure.material)
-    trips = "\n".join(PHRASES[t] for t in ledger.tripwires) if ledger.tripwires else "none"
+    figures = "\n".join(_figure_sentence(figure) for figure in ledger.figures if figure.material)
+    trips = "\n".join(PHRASES[trip] for trip in ledger.tripwires) if ledger.tripwires else "none"
     if verdict == "cannot_tell":
         missing = ", ".join(ledger.missing)
         if voice == "a":
@@ -514,7 +592,7 @@ def render_brief(ledger: Ledger, voice: str = "a") -> str:
         )
     parts = (
         f"1. What's needed of you\n{asks}",
-        f"2. The headline\n{headline}",
+        f"2. The headline\n{_headline(ledger)}",
         f"3. The figures\n{figures}",
         f"4. Tripwires\n{trips}",
         f"5. The recommendation\n{recommendation}",
@@ -558,15 +636,16 @@ def _apply_cross(ledger: Ledger, figure: Figure, new: str) -> tuple[Ledger, str]
         return replace(ledger, over_cap=over), "over_cap"
     name = figure.bound_check or "floor"
     below = float(new) < float(figure.bound_number or "0")
+    evidence = f"{new} against {figure.bound_number}"
     checks = list(ledger.checks)
     found = False
     for i, check in enumerate(checks):
         if check.name == name and check.on == "proposed":
-            checks[i] = Check(name, "fail" if below else "pass", "proposed")
+            checks[i] = Check(name, "fail" if below else "pass", "proposed", evidence if below else "")
             found = True
             break
     if not found and below:
-        checks.append(Check(name, "fail", "proposed"))
+        checks.append(Check(name, "fail", "proposed", evidence))
     return replace(ledger, checks=tuple(checks)), name
 
 
@@ -614,15 +693,43 @@ def plant(ledger: Ledger, kind: str) -> Planted:
     raise PlantError(f"unknown plant {kind!r}")
 
 
+_NOTE_KINDS = ("budget note:", "cost note:", "runner note:", "queue note:")
+_FROM = {
+    "director-to-seat": "From the Director to a seat.",
+    "seat-to-director": "From a seat to the Director.",
+    "reviewer-to-builder": "From a reviewer to a builder.",
+}
+
+
+def _is_note(text: str) -> bool:
+    folded = text.lower()
+    return any(folded.startswith(kind) for kind in _NOTE_KINDS)
+
+
+def note_for(text: str, direction: str) -> str:
+    """Phrase an out-of-scope point as the note that direction's recipient drops."""
+
+    if _is_note(text):
+        return text
+    if direction == "reviewer-to-builder":
+        return f"Cost note: {text}"
+    if direction == "seat-to-director":
+        return f"Runner note: {text}"
+    return f"Budget note: {text}"
+
+
 def points_from(ledger: Ledger) -> tuple[Point, ...]:
-    """Material figures are in scope. The first immaterial line is out of scope.
+    """Material figures are in scope. The first immaterial line is a drop-rule note.
 
     A tripwire rides on its own in-scope point. The escalation names that class,
     never a generic paid step. A paid model API is paid spend.
     """
 
     if ledger.points:
-        return ledger.points
+        return tuple(
+            point if point.in_scope else replace(point, text=note_for(point.text, point.direction))
+            for point in ledger.points
+        )
     direction = _DIRECTION_FOR.get(ledger.shape, "director-to-seat")
     points = [
         Point(figure.text, direction, "figure", True)
@@ -631,7 +738,7 @@ def points_from(ledger: Ledger) -> tuple[Point, ...]:
     ]
     immaterial = [figure for figure in ledger.figures if not figure.material]
     if immaterial:
-        points.append(Point(immaterial[0].text, direction, "figure", False))
+        points.append(Point(note_for(immaterial[0].text, direction), direction, "figure", False))
     trips = list(ledger.tripwires)
     if ledger.paid_model_api and "B004" not in trips:
         trips.append("B004")
@@ -647,19 +754,29 @@ def relay_action(points: tuple[Point, ...]) -> str:
     return "relay"
 
 
+def render_message(ledger: Ledger) -> str:
+    """The relay record is the message. One line per point, and no Tripwires line."""
+
+    points = points_from(ledger)
+    direction = points[0].direction if points else _DIRECTION_FOR.get(ledger.shape, "director-to-seat")
+    lines = [_FROM[direction]]
+    lines.extend(point.text for point in points)
+    return "\n".join(lines)
+
+
 def render_relay(ledger: Ledger) -> tuple[str, str, str]:
     points = points_from(ledger)
     action = relay_action(points)
-    source = render(ledger)
+    source = render_message(ledger)
     if action == "escalate":
         phrases = []
         for point in points:
             if point.in_scope and point.tripwire and PHRASES[point.tripwire] not in phrases:
                 phrases.append(PHRASES[point.tripwire])
-        # A period, not the record's semicolon, so the copy ban does not see one pasted line.
+        # A period, not a semicolon, so the copy ban does not see one pasted line.
         body = "escalate: " + ". ".join(phrases) + "."
     else:
-        kept = " ".join(point.text for point in points if point.in_scope)
+        kept = " — ".join(point.text for point in points if point.in_scope)
         body = f"relay: {kept}"
     return body, source, action
 
