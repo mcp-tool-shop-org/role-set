@@ -23,24 +23,40 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 4,
+      "added": 3,
+      "changed": 26,
       "moved": 0,
-      "parts": 2,
+      "parts": 7,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "tests/fixtures/t11_batch6_must_pass.json is now read by tests/test_generate_t11.py.",
+        "subjects": [
+          "tests/fixtures/t11_batch6_must_pass.json",
+          "tests/test_generate_t11.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "tests/fixtures/t11_round3_must_refuse.json is now read by tests/test_generate_t11.py.",
+        "subjects": [
+          "tests/fixtures/t11_round3_must_refuse.json",
+          "tests/test_generate_t11.py"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-14; 4 files changed content.",
+        "sentence": "3 files added and 26 changed content, across 7 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "549a6194a574527875031009187edd9710068052",
-      "generatedAt": "2026-10-14T22:50:16.044Z"
+      "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa",
+      "generatedAt": "2026-10-14T23:12:53.166Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -57,6 +73,21 @@
       ],
       "relation": "b-imports-a",
       "shared": 6
+    },
+    {
+      "a": "src/role_set/generate/recipes.py",
+      "b": "tests/test_generate.py",
+      "either": 8,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 5
     },
     {
       "a": "src/role_set/assemble.py",
@@ -95,9 +126,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa",
+  "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (68 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (69 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -112,7 +143,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 31
+          "files": 32
         },
         {
           "boundary": "src",
@@ -219,10 +250,10 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-14T23:12:53.166Z",
+  "generatedAt": "2026-10-15T21:54:30.068Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
-    "5 writes and 27 reads go to a path their caller passes, not to this repository.",
+    "5 writes and 28 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -253,10 +284,10 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 37,
+  "testFiles": 40,
   "testedBy": {
     "scripts": 0,
-    "src": 30
+    "src": 31
   },
   "unnamedWrites": 1,
   "unread": [],

@@ -97,7 +97,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 4,
+      "qualifyingSourceCommits": 5,
       "rebaseline": null
     },
     {
@@ -128,12 +128,12 @@
           "scripts"
         ]
       },
-      "cohesion": 0.173649,
+      "cohesion": 0.157427,
       "cohesionDropped": false,
       "confidence": "full",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 46,
+      "qualifyingSourceCommits": 47,
       "rebaseline": null
     },
     {
@@ -151,7 +151,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 46,
+      "qualifyingSourceCommits": 47,
       "rebaseline": null
     }
   ],
@@ -164,8 +164,8 @@
         "path": ".gitattributes"
       },
       {
-        "commits": 4,
-        "lines": 109,
+        "commits": 5,
+        "lines": 113,
         "path": ".github/workflows/ci.yml"
       },
       {
@@ -189,8 +189,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 18,
-        "lines": 125,
+        "commits": 19,
+        "lines": 135,
         "path": "CHANGELOG.md"
       },
       {
@@ -199,28 +199,28 @@
         "path": "LICENSE"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 298,
         "path": "README.es.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 298,
         "path": "README.fr.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 296,
         "path": "README.hi.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 304,
         "path": "README.it.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 304,
         "path": "README.ja.md"
       },
       {
@@ -229,18 +229,18 @@
         "path": "README.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 300,
         "path": "README.pt-BR.md"
       },
       {
-        "commits": 3,
-        "lines": 159,
+        "commits": 4,
+        "lines": 302,
         "path": "README.zh.md"
       },
       {
-        "commits": 2,
-        "lines": 59,
+        "commits": 3,
+        "lines": 65,
         "path": "SCORECARD.md"
       },
       {
@@ -260,7 +260,7 @@
       },
       {
         "commits": 25,
-        "lines": 506,
+        "lines": 505,
         "path": "atlas/README.md"
       },
       {
@@ -270,12 +270,12 @@
       },
       {
         "commits": 25,
-        "lines": 1630,
+        "lines": 1616,
         "path": "atlas/page.json"
       },
       {
         "commits": 25,
-        "lines": 3525,
+        "lines": 3634,
         "path": "atlas/statistics.json"
       },
       {
@@ -289,8 +289,8 @@
         "path": "codecov.yml"
       },
       {
-        "commits": 8,
-        "lines": 407,
+        "commits": 9,
+        "lines": 426,
         "path": "docs/generator-design.md"
       },
       {
@@ -319,8 +319,8 @@
         "path": "docs/runs/2026-10-12-pilot-3.md"
       },
       {
-        "commits": 8,
-        "lines": 58,
+        "commits": 9,
+        "lines": 60,
         "path": "pyproject.toml"
       },
       {
@@ -359,18 +359,18 @@
         "path": "scripts/t10_usable_cells.py"
       },
       {
-        "commits": 2,
-        "lines": 222,
+        "commits": 3,
+        "lines": 224,
         "path": "scripts/t10_variety_record.py"
       },
       {
-        "commits": 1,
-        "lines": 17,
+        "commits": 2,
+        "lines": 20,
         "path": "scripts/verify.ps1"
       },
       {
-        "commits": 1,
-        "lines": 13,
+        "commits": 2,
+        "lines": 16,
         "path": "scripts/verify.sh"
       },
       {
@@ -379,13 +379,13 @@
         "path": "site/astro.config.mjs"
       },
       {
-        "commits": 1,
-        "lines": 5669,
+        "commits": 2,
+        "lines": 5675,
         "path": "site/package-lock.json"
       },
       {
-        "commits": 1,
-        "lines": 18,
+        "commits": 2,
+        "lines": 21,
         "path": "site/package.json"
       },
       {
@@ -414,8 +414,8 @@
         "path": "site/src/content/docs/handbook/generator.md"
       },
       {
-        "commits": 3,
-        "lines": 95,
+        "commits": 4,
+        "lines": 97,
         "path": "site/src/content/docs/handbook/getting-started.md"
       },
       {
@@ -529,13 +529,13 @@
         "path": "src/role_set/generate/__init__.py"
       },
       {
-        "commits": 3,
-        "lines": 244,
+        "commits": 4,
+        "lines": 247,
         "path": "src/role_set/generate/build.py"
       },
       {
-        "commits": 7,
-        "lines": 572,
+        "commits": 8,
+        "lines": 711,
         "path": "src/role_set/generate/recipes.py"
       },
       {
@@ -544,13 +544,13 @@
         "path": "src/role_set/generate/render.py"
       },
       {
-        "commits": 2,
-        "lines": 195,
+        "commits": 3,
+        "lines": 252,
         "path": "src/role_set/generate/select.py"
       },
       {
-        "commits": 2,
-        "lines": 182,
+        "commits": 3,
+        "lines": 227,
         "path": "src/role_set/generate/shortcuts.py"
       },
       {
@@ -564,8 +564,8 @@
         "path": "src/role_set/generate/t10_cells.json"
       },
       {
-        "commits": 2,
-        "lines": 27455,
+        "commits": 3,
+        "lines": 27457,
         "path": "src/role_set/generate/t10_record.json"
       },
       {
@@ -690,6 +690,16 @@
       },
       {
         "commits": 1,
+        "lines": 128,
+        "path": "tests/fixtures/t11_batch6_must_pass.json"
+      },
+      {
+        "commits": 1,
+        "lines": 117,
+        "path": "tests/fixtures/t11_round3_must_refuse.json"
+      },
+      {
+        "commits": 1,
         "lines": 401,
         "path": "tests/fixtures/t12_round3_must_refuse.json"
       },
@@ -739,9 +749,14 @@
         "path": "tests/test_gates.py"
       },
       {
-        "commits": 4,
-        "lines": 394,
+        "commits": 5,
+        "lines": 396,
         "path": "tests/test_generate.py"
+      },
+      {
+        "commits": 1,
+        "lines": 119,
+        "path": "tests/test_generate_t11.py"
       },
       {
         "commits": 2,
@@ -814,8 +829,8 @@
         "path": "tests/test_runner.py"
       },
       {
-        "commits": 2,
-        "lines": 142,
+        "commits": 3,
+        "lines": 144,
         "path": "tests/test_select.py"
       },
       {
@@ -859,9 +874,9 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-14T23:12:53.166Z",
+  "generatedAt": "2026-10-15T21:54:30.068Z",
   "generatedFrom": {
-    "commit": "d92dbafdcb3e0bdff591b046f00e1afd02be05aa"
+    "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e"
   },
   "pairs": [
     {
@@ -909,9 +924,16 @@
     {
       "a": "docs/generator-design.md",
       "b": "src/role_set/generate/recipes.py",
-      "either": 8,
-      "shared": 7,
-      "strength": 0.875
+      "either": 9,
+      "shared": 8,
+      "strength": 0.888889
+    },
+    {
+      "a": "docs/generator-design.md",
+      "b": "tests/test_generate.py",
+      "either": 9,
+      "shared": 5,
+      "strength": 0.555556
     },
     {
       "a": "docs/role-set-design.md",
@@ -923,9 +945,9 @@
     {
       "a": "pyproject.toml",
       "b": "uv.lock",
-      "either": 7,
+      "either": 8,
       "shared": 7,
-      "strength": 1
+      "strength": 0.875
     },
     {
       "a": "src/role_set/assemble.py",
@@ -954,6 +976,13 @@
       "either": 5,
       "shared": 5,
       "strength": 1
+    },
+    {
+      "a": "src/role_set/generate/recipes.py",
+      "b": "tests/test_generate.py",
+      "either": 8,
+      "shared": 5,
+      "strength": 0.625
     },
     {
       "a": "src/role_set/prompts.py",
@@ -992,7 +1021,7 @@
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 34.5,
+    "appliedChangesetLimit": 35.25,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
@@ -1001,16 +1030,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-14T18:51:51-04:00",
-    "inScopeFiles": 138,
+    "headDate": "2026-10-15T17:54:22-04:00",
+    "inScopeFiles": 141,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 55,
+    "qualifyingCommits": 60,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-17T22:51:51.000Z",
+    "since": "2026-04-18T21:54:22.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
