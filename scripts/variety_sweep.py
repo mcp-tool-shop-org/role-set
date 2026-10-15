@@ -1,7 +1,8 @@
 """Report fact-skeleton variety per recipe against R&D's floor (role-set#52): at least 75% distinct, no skeleton on more
 than 5% of builds (3 of 60), measured with `puzzle_check.skeleton`.
 
-- T11, per side: the acceptance sweep (lamps, cups and doors, seeds 1-20, 60 builds a side), then all packs. Also the
+- T11, per side: the acceptance sweep (lamps, cups and doors, seeds 1-20, 60 builds a side), then all packs, with the
+  split of contrast_verdict on the confirm side (R&D's Q3 ruling, point 4). Also the
   share of unsupported keys in a file the selector picks from both sides, which R&D asks to keep at 40% or more.
 - T10: from the committed record (t10_record.json), per question, seeds 1-20 of every pack.
 - T12: every pack at 3 and 4 spans, seeds 1-20.
@@ -41,6 +42,11 @@ def main() -> None:
         t11_ok &= ok
         allp = [build_t11(p, s, side) for p in sorted(PACKS) for s in SEEDS]
         lines.append(floor_line(f"T11 {side} (all packs)", [skeleton(b.model) for b in allp])[0])
+        # Where each confirm contrast moves the verdict (R&D's Q3 ruling, point 4); a find item has no contrast.
+        for label, builds in (("sweep", sweep), ("all packs", allp)):
+            split = Counter(b.contrast["contrast_verdict"] for b in builds if b.contrast)
+            shown = ", ".join(f"{v} {split[v]}" for v in ("cannot_tell", "unsupported")) if split else "no contrasts on this side"
+            lines.append(f"T11 {side} contrast_verdict ({label}): {shown}")
     pool = [receipt(build_t11(p, s, side), "T11", PACKS[p], "falsifier_first")
             for p in SWEEP_PACKS for side in T11_SIDES for s in range(1, 6)]
     picks = select(pool)
