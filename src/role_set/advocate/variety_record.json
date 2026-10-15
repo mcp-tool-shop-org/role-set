@@ -1,11 +1,13 @@
 {
   "regenerate": "uv run python -m role_set.advocate.variety",
   "files": [
+    "src/role_set/advocate/kinds.py",
     "src/role_set/advocate/ledger.py",
+    "src/role_set/advocate/plan.py",
     "src/role_set/advocate/table.py",
-    "src/role_set/advocate/plan.py"
+    "src/role_set/pack.py"
   ],
-  "sha256": "9f130fd3479cfdad1ba9e1aae5f4ee4ff189e917300119de5cf5f85929589a2f",
+  "sha256": "7f7168184eb659bd33c1771305e1ee4b8f11df535692e3c5242d7ee0762adabb",
   "seed": 0,
   "slots": [
     {

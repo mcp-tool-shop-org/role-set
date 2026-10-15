@@ -7,7 +7,7 @@ separate ledger: it does not say the writer was told to hide anything.
 
 from __future__ import annotations
 
-from role_set.advocate.ledger import Ledger, plant, render_writer_ledger
+from role_set.advocate.ledger import Ledger, plant, render
 
 LESSONS = {
     "failed-gate-first": (
@@ -42,15 +42,22 @@ QUIZZES = {
 
 PROCEDURES = {
     "A": (
-        "Produce five numbered sections in the fixed order. Apply the decision table in order: "
-        "a failed proposed check or a tripwire other than paid spend, then over the cost cap or "
-        "a paid model API, then a missing decisive figure, then a paid run or rollout with no "
-        "passed local pilot, otherwise the remaining verdict. Put that verdict word in the last "
-        "section before the alternative clause."
+        "Use these five headings, in this order, exactly: "
+        "1. What's needed of you; "
+        "2. The headline; "
+        "3. The figures; "
+        "4. Tripwires; "
+        "5. The recommendation. "
+        "The verdict tokens are hold, cannot_tell, pilot_first, proceed. "
+        "Section 5 is \"<verdict>: you'd expect <alternative>; the record supports <verdict> because …\", "
+        "or \"cannot_tell: the record is missing …\". "
+        "Apply the decision table in order: a failed proposed check or a tripwire other than paid spend, "
+        "then over the cost cap or a paid model API, then a missing decisive figure, then a paid run or "
+        "rollout with no passed local pilot, otherwise proceed. The verdict token comes before you'd expect."
     ),
     "B": (
-        "Carry every in-scope point, drop every out-of-scope point, and answer escalate when an "
-        "in-scope point would cross a tripwire."
+        "Start with relay: or escalate:. Carry every in-scope point, drop every out-of-scope point, "
+        "and escalate when an in-scope point would cross a tripwire. Name that tripwire's class."
     ),
     "C": "Produce two options independently, then show both orders, with one verdict.",
     "D": (
@@ -76,7 +83,7 @@ def writer_prompt(trait: str, kind: str, ledger: Ledger | None = None, quiz_inde
     ]
     if ledger is not None and kind != "E":
         lines.append("Ledger.")
-        lines.append(render_writer_ledger(ledger))
+        lines.append(render(ledger))
     if kind == "E":
         question, _key = QUIZZES[trait][quiz_index]
         lines.append(f"Question. {question}")

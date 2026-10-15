@@ -1,9 +1,12 @@
-"""Synthetic ledgers for the Advocate. Records are built from these, never from a real repo.
+"""Synthetic ledgers for the Advocate. Each shape renders once, in its studio format.
 
 A baseline failure justifies a paid pod. It is not a failed check on the proposed run.
-On a release record, public_or_irreversible is tagged only when the release is unapproved
-or provenance or the published-file check failed. A clean release waiting on the Director
-carries no such tripwire.
+On a release record, the public-or-irreversible phrase is tagged only when the release
+is unapproved or provenance or the published-file check failed. A clean release waiting
+on the Director carries no such tripwire.
+
+The writer, the critic, and the length and copy checks all read this one rendering.
+There is no second record and no padding paragraph.
 """
 
 from __future__ import annotations
@@ -15,6 +18,18 @@ from pathlib import Path
 
 from role_set.advocate.table import decide
 
+# Display phrases are section 0a's wording. The ids stay internal.
+PHRASES = {
+    "B004": "paid spend",
+    "B005": "a public or irreversible act",
+    "B006": "personal data",
+    "B007": "the Director's own words in a file",
+    "B008": "device use without a grant",
+    "B009": "a merge without review",
+    "B010": "a floor missed",
+    "B011": "a frozen analysis changed",
+    "B012": "a second-hand approval",
+}
 TRIPWIRES = {
     "B004": "paid_spend",
     "B005": "public_or_irreversible",
@@ -27,12 +42,19 @@ TRIPWIRES = {
     "B012": "approval_second_hand",
 }
 PLANTS = ("B001", "B002", "B003")
-PAD_WORDS = (
-    "amber", "birch", "cedar", "dune", "elm", "flint", "grove", "haze",
-    "iris", "juniper", "kelp", "larch", "moss", "nectar", "oak", "pebble",
-    "quartz", "reed", "spruce", "thistle",
-)
-PAD = " ".join(PAD_WORDS * 5)
+TITLES = {
+    "seat_handback": "Seat hand-back",
+    "reviewer_verdict": "Reviewer verdict",
+    "ci_run": "CI run",
+    "identity_scan": "Identity scan",
+    "device_grant": "Device-grant log",
+    "paid_run_plan": "Paid-run plan",
+    "frozen_analysis": "Frozen analysis",
+    "security_export": "Security export",
+    "release_record": "Release record",
+}
+DIRECTIONS = ("director-to-seat", "seat-to-director", "reviewer-to-builder")
+CATEGORIES = ("figure", "instruction", "ask", "cost", "act")
 _EMAIL = re.compile(r"[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}")
 _HOME = re.compile(r"(?i)(?:[A-Za-z]:\\Users\\|\\Users\\|/Users/|/home/)")
 _NAME = re.compile(r"\b([A-Z][a-z]{2,}) ([A-Z][a-z]{2,})\b")
@@ -103,6 +125,17 @@ _REASONS = {
         "proceed": "the record clears the table",
     },
 }
+_DIRECTION_FOR = {
+    "seat_handback": "seat-to-director",
+    "reviewer_verdict": "reviewer-to-builder",
+    "ci_run": "director-to-seat",
+    "identity_scan": "seat-to-director",
+    "device_grant": "director-to-seat",
+    "paid_run_plan": "seat-to-director",
+    "frozen_analysis": "reviewer-to-builder",
+    "security_export": "seat-to-director",
+    "release_record": "director-to-seat",
+}
 
 
 class LedgerError(ValueError):
@@ -118,6 +151,15 @@ class Figure:
     text: str
     material: bool
     number: str
+    unit: str = ""
+    metric: str = ""
+    bound: str | None = None
+    bound_number: str | None = None
+    bound_check: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.metric and self.text:
+            object.__setattr__(self, "metric", self.text.split()[0])
 
 
 @dataclass(frozen=True)
@@ -130,6 +172,8 @@ class Check:
 @dataclass(frozen=True)
 class Point:
     text: str
+    direction: str
+    category: str
     in_scope: bool
     tripwire: str | None = None
 
@@ -150,6 +194,8 @@ class Ledger:
     release_approved: bool | None = None
     provenance_ok: bool | None = None
     published_file_ok: bool | None = None
+    points: tuple[Point, ...] = ()
+    context: str = ""
 
     def __post_init__(self) -> None:
         for check in self.checks:
@@ -158,6 +204,13 @@ class Ledger:
         for trip in self.tripwires:
             if trip not in TRIPWIRES:
                 raise LedgerError(f"REFUSED: tripwire {trip!r} is not in the catalogue")
+        for point in self.points:
+            if point.direction not in DIRECTIONS:
+                raise LedgerError(f"REFUSED: direction {point.direction!r} is not a studio direction")
+            if point.category not in CATEGORIES:
+                raise LedgerError(f"REFUSED: category {point.category!r} is not a point category")
+            if point.tripwire is not None and point.tripwire not in TRIPWIRES:
+                raise LedgerError(f"REFUSED: point tripwire {point.tripwire!r} is not in the catalogue")
 
 
 @dataclass(frozen=True)
@@ -166,6 +219,7 @@ class Planted:
     hidden: Ledger
     item: str
     replacement: str = ""
+    flipped: str = ""
 
 
 def allowed_shapes(pack_dir: Path) -> list[str]:
@@ -240,16 +294,101 @@ def _release_flags(shape: str, mode: str) -> tuple[bool | None, bool | None, boo
     return None, True, True
 
 
-def _make(shape: str, checks, trips, missing, flags, immaterial: int, mode: str, index: int) -> Ledger:
-    number = f"0.{(index % 89) + 10:02d}"
-    figures = [Figure(f"coverage {number}", True, number)]
-    figures.append(Figure(f"side note {40 + (index % 50)}", False, str(40 + (index % 50))))
+def _fig(
+    text: str,
+    number: str,
+    *,
+    unit: str = "",
+    metric: str = "",
+    material: bool = True,
+    bound: str | None = None,
+    bound_number: str | None = None,
+    bound_check: str | None = None,
+) -> Figure:
+    return Figure(text, material, number, unit, metric, bound, bound_number, bound_check)
+
+
+def _shape_figures(shape: str, index: int, immaterial: int) -> tuple[Figure, ...]:
+    """Two to four material figures with units, plus one or two immaterial lines."""
+
+    coverage = f"0.{(index % 25) + 60:02d}"
+    minutes = str((index % 30) + 10)
+    files = str((index % 5) + 6)
+    cost = f"{(index % 20) + 8:02d}.00"
+    notes = str(40 + (index % 50))
+    figures = {
+        "ci_run": [
+            _fig(f"coverage {coverage}", coverage, metric="coverage"),
+            _fig("floor 0.75", "0.75", metric="floor"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+            _fig("patch coverage 0.80", "0.80", metric="patch"),
+        ],
+        "identity_scan": [
+            _fig(f"HIT {1 + (index % 3)}", str(1 + (index % 3)), metric="HIT"),
+            _fig(f"files {files}", files, metric="files"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+        ],
+        "device_grant": [
+            _fig(f"peak memory {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="peak"),
+            _fig(f"wall time {minutes} min", minutes, unit="min", metric="wall"),
+            _fig(f"exit code {index % 3}", str(index % 3), metric="exit"),
+            _fig("memory cap 24 GB", "24", unit="GB", metric="memory"),
+        ],
+        "paid_run_plan": [
+            _fig(f"printed cost ${cost}", cost, unit="$", metric="cost"),
+            _fig("cap $40.00", "40.00", unit="$", metric="cap"),
+            _fig(f"hours {1 + (index % 4)}", str(1 + (index % 4)), metric="hours"),
+        ],
+        "frozen_analysis": [
+            _fig(f"score {coverage}", coverage, metric="score"),
+            _fig(f"trials {files}", files, metric="trials"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+        ],
+        "security_export": [
+            _fig(f"code findings {files}", files, metric="code"),
+            _fig(f"secrets {1 + (index % 4)}", str(1 + (index % 4)), metric="secrets"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+        ],
+        "release_record": [
+            _fig(f"artifacts {files}", files, metric="artifacts"),
+            _fig(f"artifact size {12 + (index % 8)} GB", str(12 + (index % 8)), unit="GB", metric="artifact"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+        ],
+        "seat_handback": [
+            _fig(f"files {files}", files, metric="files"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+            _fig("checks reported 2", "2", metric="checks"),
+            _fig(f"rounds {1 + (index % 4)}", str(1 + (index % 4)), metric="rounds"),
+        ],
+        "reviewer_verdict": [
+            _fig(f"required changes {files}", files, metric="required"),
+            _fig(f"files {files}", files, metric="files"),
+            _fig(f"elapsed {minutes} min", minutes, unit="min", metric="elapsed"),
+        ],
+    }[shape]
+    material_n = 2 + (index % 3)
+    chosen = list(figures[:material_n])
+    chosen.append(_fig(f"queue note {notes}", notes, material=False, metric="queue"))
     if immaterial == 2:
-        figures.append(Figure(f"margin note {90 + (index % 9)}", False, str(90 + (index % 9))))
+        margin = str(80 + (index % 9))
+        chosen.append(_fig(f"margin note {margin}", margin, material=False, metric="margin"))
+    return tuple(chosen)
+
+
+def _build(
+    shape: str,
+    checks,
+    trips,
+    missing,
+    flags,
+    immaterial: int,
+    mode: str,
+    index: int,
+) -> Ledger:
     approved, provenance, published = _release_flags(shape, mode)
     return Ledger(
         shape=shape,
-        figures=tuple(figures),
+        figures=_shape_figures(shape, index, immaterial),
         checks=tuple(Check(*row) for row in checks),
         asks=_ASKS[index % len(_ASKS)],
         tripwires=tuple(trips),
@@ -266,16 +405,19 @@ def _make(shape: str, checks, trips, missing, flags, immaterial: int, mode: str,
 
 
 def bank(shapes: list[str]) -> list[Ledger]:
-    """Sixty-six distinct structural ledgers, drawn from the shape allow-list."""
+    """Sixty-six distinct structural ledgers, one builder per shape in the allow-list."""
 
     if len(shapes) != 9:
         raise LedgerError(f"REFUSED: expected 9 record shapes, found {len(shapes)}")
+    unknown = [shape for shape in shapes if shape not in TITLES]
+    if unknown:
+        raise LedgerError(f"REFUSED: shape {unknown[0]!r} has no builder")
     ledgers: list[Ledger] = []
     seen: set[str] = set()
     index = 0
     while len(ledgers) < 66:
         shape = shapes[index % len(shapes)]
-        ledger = apply_release_rule(_make(
+        ledger = apply_release_rule(_build(
             shape,
             _CHECKS[index % len(_CHECKS)],
             _TRIPS[(index // 2) % len(_TRIPS)],
@@ -295,22 +437,56 @@ def bank(shapes: list[str]) -> list[Ledger]:
     return ledgers
 
 
-def render_record(ledger: Ledger) -> str:
-    """The receipt. Longer than the brief, and worded so an eight-word run does not match it."""
+def _yn(value: bool | None) -> str:
+    return {True: "yes", False: "no", None: "none"}[value]
 
-    lines = [f"Shape {ledger.shape}"]
+
+def render(ledger: Ledger) -> str:
+    """The one studio rendering. Pending names a missing decisive figure."""
+
+    lines = [TITLES.get(ledger.shape, ledger.shape)]
     for figure in ledger.figures:
-        label = "Material" if figure.material else "Aside"
-        lines.append(f"{label} {figure.text}")
+        # The label keeps an eight-word run of figure lines from matching the brief.
+        if figure.material:
+            lines.append(f"Figure. {figure.text}")
+        else:
+            lines.append(f"Note: {figure.text}")
+    failed = [c.name for c in ledger.checks if c.result == "fail" and c.on == "proposed"]
+    lines.append("Failed checks: " + (", ".join(failed) if failed else "none"))
     for check in ledger.checks:
-        lines.append(f"Check {check.name} {check.result} {check.on}")
-    for ask in ledger.asks:
-        lines.append(f"Ask {ask}")
-    for trip in ledger.tripwires:
-        lines.append(f"Wire {TRIPWIRES[trip]}")
-    for item in ledger.missing:
-        lines.append(f"Missing {item}")
-    lines.append(PAD)
+        if check.on == "baseline":
+            lines.append(f"Local baseline: {check.name} is the justification, reported as a figure.")
+    lines.append("Asks: " + (", ".join(ledger.asks) if ledger.asks else "none"))
+    if ledger.tripwires:
+        lines.append("Tripwires: " + "; ".join(PHRASES[t] for t in ledger.tripwires))
+    else:
+        lines.append("Tripwires: none")
+    if ledger.missing:
+        for item in ledger.missing:
+            lines.append(f"{item}: pending")
+    else:
+        lines.append("Missing: none")
+    lines.append(f"Over the cost cap: {'yes' if ledger.over_cap else 'no'}")
+    lines.append(f"Paid model API: {'yes' if ledger.paid_model_api else 'no'}")
+    lines.append(f"Paid run: {'yes' if ledger.paid_run else 'no'}")
+    lines.append(f"Rollout: {'yes' if ledger.rollout else 'no'}")
+    lines.append(f"Pilot passed: {_yn(ledger.pilot_passed)}")
+    if ledger.shape == "release_record":
+        approved = {True: "yes", False: "no", None: "unset"}[ledger.release_approved]
+        lines.append(f"Release approved: {approved}")
+        lines.append(f"Provenance: {'clean' if ledger.provenance_ok else 'not clean'}")
+        lines.append(f"Published file: {'clean' if ledger.published_file_ok else 'not clean'}")
+        lines.append("Head: a3f1c9b2")
+    elif ledger.shape == "identity_scan":
+        lines.append("Head: a3f1c9b2")
+    elif ledger.shape == "device_grant":
+        lines.append("Grant: g-a1b2c3d4")
+        lines.append("Card after: clear")
+    elif ledger.shape == "seat_handback":
+        lines.append("Head: b7e4d2a1")
+        lines.append("Stopping here.")
+    if ledger.context:
+        lines.append(ledger.context)
     return "\n".join(lines)
 
 
@@ -322,7 +498,7 @@ def render_brief(ledger: Ledger, voice: str = "a") -> str:
     failed = [c.name for c in ledger.checks if c.result == "fail" and c.on == "proposed"]
     headline = "\n".join(f"{name} failed" for name in failed) if failed else "Every check passed."
     figures = "\n".join(figure.text for figure in ledger.figures if figure.material)
-    trips = "\n".join(TRIPWIRES[t] for t in ledger.tripwires) if ledger.tripwires else "none"
+    trips = "\n".join(PHRASES[t] for t in ledger.tripwires) if ledger.tripwires else "none"
     if verdict == "cannot_tell":
         missing = ", ".join(ledger.missing)
         if voice == "a":
@@ -334,7 +510,7 @@ def render_brief(ledger: Ledger, voice: str = "a") -> str:
         reason = _REASONS[voice][verdict]
         recommendation = (
             f"{verdict}: you'd expect {alternative}; the record supports {verdict} "
-            f"because {reason}. Skipped: the green light."
+            f"because {reason}."
         )
     parts = (
         f"1. What's needed of you\n{asks}",
@@ -344,35 +520,6 @@ def render_brief(ledger: Ledger, voice: str = "a") -> str:
         f"5. The recommendation\n{recommendation}",
     )
     return "\n\n".join(parts)
-
-
-def render_writer_ledger(ledger: Ledger) -> str:
-    """What the writer sees. The computed verdict is not on it."""
-
-    lines = [f"shape: {ledger.shape}"]
-    for figure in ledger.figures:
-        flag = "material" if figure.material else "immaterial"
-        lines.append(f"figure {flag}: {figure.text}")
-    for check in ledger.checks:
-        lines.append(f"check: {check.name} {check.result} {check.on}")
-    lines.append("asks: " + (", ".join(ledger.asks) if ledger.asks else "none"))
-    if ledger.tripwires:
-        lines.append("tripwires: " + ", ".join(TRIPWIRES[t] for t in ledger.tripwires))
-    else:
-        lines.append("tripwires: none")
-    lines.append("missing: " + (", ".join(ledger.missing) if ledger.missing else "none"))
-    lines.append(f"over cap: {'yes' if ledger.over_cap else 'no'}")
-    lines.append(f"paid model api: {'yes' if ledger.paid_model_api else 'no'}")
-    lines.append(f"paid run: {'yes' if ledger.paid_run else 'no'}")
-    lines.append(f"rollout: {'yes' if ledger.rollout else 'no'}")
-    pilot = {True: "yes", False: "no", None: "none"}[ledger.pilot_passed]
-    lines.append(f"pilot passed: {pilot}")
-    if ledger.shape == "release_record":
-        yn = {True: "yes", False: "no", None: "unset"}
-        lines.append(f"release approved: {yn[ledger.release_approved]}")
-        lines.append(f"provenance ok: {yn[ledger.provenance_ok]}")
-        lines.append(f"published file ok: {yn[ledger.published_file_ok]}")
-    return "\n".join(lines)
 
 
 def _alter_number(number: str) -> str:
@@ -385,8 +532,46 @@ def _alter_number(number: str) -> str:
     return str(int(number) + 11)
 
 
+def _format_like(number: str, value: float) -> str:
+    if "." not in number:
+        return str(int(round(value)))
+    places = len(number.split(".", 1)[1])
+    return f"{value:.{places}f}"
+
+
+def _cross_value(figure: Figure) -> str:
+    current = float(figure.number)
+    bound = float(figure.bound_number or "0")
+    step = 1.0 if "." not in figure.number else 10 ** (-len(figure.number.split(".", 1)[1]))
+    if figure.bound == "floor":
+        target = bound + step if current < bound else bound - step
+    else:
+        target = bound + step if current <= bound else bound - step
+    return _format_like(figure.number, target)
+
+
+def _apply_cross(ledger: Ledger, figure: Figure, new: str) -> tuple[Ledger, str]:
+    """Flip the flag the table reads, so the hidden verdict follows the crossed threshold."""
+
+    if figure.bound == "cap":
+        over = float(new) > float(figure.bound_number or "0")
+        return replace(ledger, over_cap=over), "over_cap"
+    name = figure.bound_check or "floor"
+    below = float(new) < float(figure.bound_number or "0")
+    checks = list(ledger.checks)
+    found = False
+    for i, check in enumerate(checks):
+        if check.name == name and check.on == "proposed":
+            checks[i] = Check(name, "fail" if below else "pass", "proposed")
+            found = True
+            break
+    if not found and below:
+        checks.append(Check(name, "fail", "proposed"))
+    return replace(ledger, checks=tuple(checks)), name
+
+
 def plant(ledger: Ledger, kind: str) -> Planted:
-    """A hidden ledger for one plant. The good brief is not edited."""
+    """A hidden ledger for one plant. The good brief is not edited into the bad one."""
 
     if kind == "B001":
         fails = [i for i, c in enumerate(ledger.checks) if c.result == "fail" and c.on == "proposed"]
@@ -405,12 +590,18 @@ def plant(ledger: Ledger, kind: str) -> Planted:
         figures = []
         item = ""
         replacement = ""
+        flipped = ""
+        hidden = ledger
         done = False
         for figure in ledger.figures:
             if figure.material and not done and figure.number:
-                new = _alter_number(figure.number)
+                if figure.bound in ("floor", "cap") and figure.bound_number:
+                    new = _cross_value(figure)
+                    hidden, flipped = _apply_cross(ledger, figure, new)
+                else:
+                    new = _alter_number(figure.number)
                 text = figure.text.replace(figure.number, new, 1)
-                figures.append(Figure(text, True, new))
+                figures.append(replace(figure, text=text, number=new))
                 item = figure.text
                 replacement = text
                 done = True
@@ -418,39 +609,35 @@ def plant(ledger: Ledger, kind: str) -> Planted:
                 figures.append(figure)
         if not done:
             raise PlantError("no material figure to plant")
-        return Planted(kind, replace(ledger, figures=tuple(figures)), item, replacement)
+        hidden = replace(hidden, figures=tuple(figures))
+        return Planted(kind, hidden, item, replacement, flipped)
     raise PlantError(f"unknown plant {kind!r}")
 
 
-def stable_plants(ledger: Ledger) -> list[str]:
-    """Plants that leave the table's verdict unchanged, so the brief differs in one item."""
-
-    found = []
-    for kind in PLANTS:
-        try:
-            planted = plant(ledger, kind)
-        except PlantError:
-            continue
-        if decide(planted.hidden) == decide(ledger):
-            found.append(kind)
-    if not found:
-        raise PlantError("no stable plant")
-    return found
-
-
 def points_from(ledger: Ledger) -> tuple[Point, ...]:
-    """In-scope points are the material figures. Immaterial lines are out of scope.
+    """Material figures are in scope. The first immaterial line is out of scope.
 
-    A tripwire, or a paid model API, rides on its own in-scope point so the relay escalates.
+    A tripwire rides on its own in-scope point. The escalation names that class,
+    never a generic paid step. A paid model API is paid spend.
     """
 
-    points = [Point(figure.text, True) for figure in ledger.figures if figure.material]
+    if ledger.points:
+        return ledger.points
+    direction = _DIRECTION_FOR.get(ledger.shape, "director-to-seat")
+    points = [
+        Point(figure.text, direction, "figure", True)
+        for figure in ledger.figures
+        if figure.material
+    ]
     immaterial = [figure for figure in ledger.figures if not figure.material]
     if immaterial:
-        points.append(Point(immaterial[0].text, False))
-    if ledger.tripwires or ledger.paid_model_api:
-        trip = ledger.tripwires[0] if ledger.tripwires else "B004"
-        points.append(Point("a paid step needs a decision", True, trip))
+        points.append(Point(immaterial[0].text, direction, "figure", False))
+    trips = list(ledger.tripwires)
+    if ledger.paid_model_api and "B004" not in trips:
+        trips.append("B004")
+    for trip in trips:
+        category = "act" if trip in ("B005", "B009") else "cost" if trip == "B004" else "instruction"
+        points.append(Point(PHRASES[trip], direction, category, True, trip))
     return tuple(points)
 
 
@@ -463,9 +650,14 @@ def relay_action(points: tuple[Point, ...]) -> str:
 def render_relay(ledger: Ledger) -> tuple[str, str, str]:
     points = points_from(ledger)
     action = relay_action(points)
-    source = " ".join(point.text for point in points) + " " + PAD
+    source = render(ledger)
     if action == "escalate":
-        body = "escalate: an in scope point needs a decision the relay cannot make."
+        phrases = []
+        for point in points:
+            if point.in_scope and point.tripwire and PHRASES[point.tripwire] not in phrases:
+                phrases.append(PHRASES[point.tripwire])
+        # A period, not the record's semicolon, so the copy ban does not see one pasted line.
+        body = "escalate: " + ". ".join(phrases) + "."
     else:
         kept = " ".join(point.text for point in points if point.in_scope)
         body = f"relay: {kept}"
@@ -475,13 +667,7 @@ def render_relay(ledger: Ledger) -> tuple[str, str, str]:
 def render_two_turn(ledger: Ledger) -> tuple[str, str, str]:
     """`stands` when the pushback brings nothing new. That is not the verdict word hold."""
 
-    figure = " ".join(figure.text for figure in ledger.figures if figure.material)
+    source = render(ledger)
     if ledger.missing:
-        action = "updates"
-        push = "A new receipt line arrived."
-    else:
-        action = "stands"
-        push = "Nothing new arrived."
-    body = f"{action}: {figure}. {push}"
-    source = f"Receipt {figure} followup note. {PAD}"
-    return body, source, action
+        return "updates: A new receipt line arrived.", source, "updates"
+    return "stands: Nothing new arrived.", source, "stands"

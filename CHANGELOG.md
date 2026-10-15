@@ -10,6 +10,7 @@ All notable changes to role-set are documented here. The format is based on
 
 - The Advocate's batch-1 build. `plan --role advocate` loads the in-repo pack by its hash and records that hash on every slot. `pack sync` refuses the advocate role, because that pack is committed in the repo and is not fetched from aspire-si. The decision table, the synthetic ledger, the kind checks, the variety record, the hidden-key critic and the controls live in `role_set.advocate`. No model is called.
 - `roles/advocate/`: the Advocate's batch-1 role pack, with one verdict vocabulary (`hold`, `cannot_tell`, `pilot_first`, `proceed`). A paid cloud model API is always `hold`. A paid pod run is `proceed` when the local option misses a required check, a free local pilot has passed, the data is clean, and the printed cost is within the cap, and `pilot_first` when no pilot has passed yet.
+- The Advocate's phase-1 fix-up. A ledger has one studio rendering, shared by the writer, the critic, and the length and copy checks. A figure plant that crosses a stated floor or cost cap flips the flag the table reads, so the hidden verdict follows. `plan --role advocate --pilot` builds the sixteen slots, and `pilot --role advocate --mock` runs all twenty-six texts without loading a model. The pack stays `handled: none` until that pilot is read; the revision, with the handled fields, waits for the Director's re-approval with the batch go.
 
 ## [0.2.0] - 2026-10-14
 

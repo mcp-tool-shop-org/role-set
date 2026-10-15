@@ -1,8 +1,8 @@
 """Variety floors for the Advocate plan, gated the way T10 is: a committed record and a hash.
 
 The three comparisons are at least 75% distinct skeletons, a top repeat of at most 3,
-and no skeleton twice in one trait's file. The hash covers the ledger, the table and
-the plan. It does not cover this module or the tests.
+and no skeleton twice in one trait's file. The hash is closed over everything the
+planner imports. It does not cover this module or the tests.
 """
 
 from __future__ import annotations
@@ -13,9 +13,11 @@ from collections import Counter
 from pathlib import Path
 
 RECORD_HASH_FILES = (
+    "src/role_set/advocate/kinds.py",
     "src/role_set/advocate/ledger.py",
-    "src/role_set/advocate/table.py",
     "src/role_set/advocate/plan.py",
+    "src/role_set/advocate/table.py",
+    "src/role_set/pack.py",
 )
 REGENERATE = "uv run python -m role_set.advocate.variety"
 _RECORD = Path(__file__).with_name("variety_record.json")

@@ -1,19 +1,18 @@
 # role-set: how it works
 
-Mapped at 2026-10-14 from commit 4ac2ec2 by Atlas 1.24.0.
+Mapped at 2026-10-15 from commit 3141e2d by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (78 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (79 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-14 (ffb9546)
+## What changed since 2026-10-14 (4ac2ec2)
 
-- roles/verifier/ is now also read by site/src/content/docs/handbook/roles.md.
-- src/role_set/critic.py is now read by src/role_set/generate/t10_variety.py.
-- src/role_set/gates.py is now read by src/role_set/generate/t10_variety.py.
-- 2 files added and 36 changed content, across 7 parts.
+- src/role_set/advocate/kinds.py is now read by src/role_set/advocate/variety.py.
+- src/role_set/pack.py is now read by src/role_set/advocate/variety.py.
+- 1 file added and 11 changed content, across 3 parts.
 
 ## What comes in
 
@@ -24,7 +23,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (42 files).
+2. That reaches src (43 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -86,7 +85,7 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 - 1 write and 4 reads use paths built at run time and are not named here.
 - 5 writes and 29 reads go to a path their caller passes, not to this repository.
-- 8 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
+- 9 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
 - 10 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
