@@ -9,9 +9,19 @@ Each chosen item rests on one shortcut reading it proves (a reading that differs
 
 A dated lesson (T12) also floors answer positions, read from each receipt's "position" (earliest, between, newest):
 - no position holds more than `position_max_share` of the file (default 1/2);
-- at least `min_newest` items have the newest edition as their answer (default 1).
+- at least `min_newest_share` of the file, rounded up, has the newest edition as its answer (default 0.2: one of five;
+  R&D on role-set#51).
 The keep filter rejects more newest-edition answers than others, so without this floor "never the newest" was a working
 shortcut (R&D on role-set#50, class filter_induced_shortcut). Receipts without a position skip this floor.
+
+A T11 confirm-side item has no reading that differs (the subject-only reading agrees with a supported key). It rests on
+the contrast that proves it, named `T11.contrast.<form of the changed line>`, so lookups can't fill the floor (R&D,
+2026-10-11).
+
+`distinct_skeletons` (on by default) keeps two items of one file off the same fact skeleton, the batch cap's rule applied
+at selection (R&D's variety floor on role-set#52).
+
+`file_receipt` records each chosen item's rests-on reading with the floor it was chosen under (R&D on role-set#51).
 
 `count` sets what a reading's share counts. "rests_on" (the default) counts each item once, under the reading it rests on;
 "differs" counts an item under every reading that differs on it, which is stricter. The floor is a configurable gate, and
@@ -26,7 +36,8 @@ so the same receipts give the same file.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import asdict, dataclass
 
 from role_set.generate.shortcuts import REGISTRY
 
@@ -45,10 +56,15 @@ class Floor:
     loosening_max_share: float = 0.5
     count: str = "rests_on"
     position_max_share: float = 0.5
-    min_newest: int = 1
+    min_newest_share: float = 0.2
+    distinct_skeletons: bool = True  # no two items in a file share a fact skeleton (R&D's variety floor on #52)
 
     def cap(self, share: float) -> int:
         return int(share * self.size + 1e-9)
+
+    @property
+    def min_newest(self) -> int:
+        return math.ceil(self.min_newest_share * self.size - 1e-9)
 
 
 @dataclass(frozen=True)
@@ -73,12 +89,28 @@ def resting_readings(receipt: dict) -> list[str]:
     return [n for n in options if REGISTRY[n].get("from") == trait[3]]
 
 
+def _contrast(receipt: dict) -> list[str]:
+    contrast = receipt.get("contrast")
+    return [f"T11.contrast.{contrast['form']}"] if contrast else []
+
+
+def rests(receipt: dict) -> list[str]:
+    """What an item may rest on: a reading of its trait clue (`resting_readings`), and a T11 confirm item's contrast."""
+
+    return resting_readings(receipt) + _contrast(receipt)
+
+
+def lesson_of(name: str) -> str:
+    return REGISTRY[name]["lesson"] if name in REGISTRY else name.split(".")[0]
+
+
 def loosens_eq(name: str) -> bool:
-    return REGISTRY[name].get("rewrite") == "count_op" and REGISTRY[name].get("from") == "="
+    spec = REGISTRY.get(name, {})
+    return spec.get("rewrite") == "count_op" and spec.get("from") == "="
 
 
 def _lesson(pool: list[dict]) -> str:
-    lessons = {REGISTRY[n]["lesson"] for r in pool for n in differing(r)}
+    lessons = {lesson_of(n) for r in pool for n in rests(r)}
     if len(lessons) > 1:
         raise SelectError(f"a review file is chosen per lesson; this pool mixes {sorted(lessons)}")
     return lessons.pop() if lessons else ""
@@ -96,11 +128,11 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
     tally: dict[str, int] = {}
     loose = 0
     for r, name in file:
-        if name not in differing(r):
+        if name not in differing(r) + _contrast(r):
             problems.append(f"an item rests on {name!r}, which does not differ from its key")
-        elif name not in resting_readings(r):
+        elif name not in rests(r):
             problems.append(f"an item rests on {name!r}, which does not read its trait clue")
-        for n in ([name] if floor.count == "rests_on" else differing(r)):
+        for n in ([name] if floor.count == "rests_on" else differing(r) + _contrast(r)):
             tally[n] = tally.get(n, 0) + 1
         loose += loosens_eq(name)
     rested = {name for _, name in file}
@@ -122,6 +154,9 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
         if positions.count("newest") < floor.min_newest:
             problems.append(f"the answer is the newest edition on {positions.count('newest')} items; the floor is "
                             f"{floor.min_newest}")
+    skeletons = [r.get("skeleton_sha256") for r, _ in file if r.get("skeleton_sha256")]
+    if floor.distinct_skeletons and len(set(skeletons)) < len(skeletons):
+        problems.append(f"{len(skeletons) - len(set(skeletons))} item(s) repeat another item's fact skeleton")
     return problems
 
 
@@ -132,7 +167,7 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
     if floor.count not in COUNTS:
         raise SelectError(f"floor.count is one of {COUNTS}")
     _lesson(pool)
-    options = [resting_readings(r) for r in pool]
+    options = [rests(r) for r in pool]
     cap, lcap = floor.cap(floor.max_share), floor.cap(floor.loosening_max_share)
     supply: dict[str, int] = {}
     for opts in options:
@@ -157,6 +192,9 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
         if any(tally.get(n, 0) >= cap for n in counted):
             return False
         if dated and pos[i] and sum(pos[p.index] == pos[i] for p in chosen) >= pcap:
+            return False
+        sk = pool[i].get("skeleton_sha256")
+        if floor.distinct_skeletons and sk and any(pool[p.index].get("skeleton_sha256") == sk for p in chosen):
             return False
         return not loosens_eq(name) or sum(loosens_eq(p.rests_on) for p in chosen) < lcap
 
@@ -187,3 +225,14 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
         raise SelectError(f"no file of {floor.size} meets the floor (readings to rest on {dict(sorted(supply.items()))}, "
                           f"count={floor.count!r}); generate more seeds or loosen the floor in config")
     return list(chosen)
+
+
+def file_receipt(pool: list[dict], picks: list[Pick], floor: Floor = Floor()) -> dict:
+    """The record of a chosen file: the floor it was chosen under and, per item, what it rests on, its answer position,
+    and the receipt fields that find it again (R&D on role-set#51)."""
+
+    items = [{"pool_index": p.index, "rests_on": p.rests_on, "recipe": pool[p.index].get("recipe"),
+              "seed": pool[p.index].get("seed"), "skeleton_sha256": pool[p.index].get("skeleton_sha256"),
+              "position": pool[p.index].get("position")} for p in picks]
+    return {"floor": asdict(floor), "items": items,
+            "problems": check_file([(pool[p.index], p.rests_on) for p in picks], floor)}

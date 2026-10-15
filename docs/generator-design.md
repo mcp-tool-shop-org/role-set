@@ -280,7 +280,7 @@ A puzzle is kept only when at least one reading names a different edition.
 
 **Position floor (R&D on role-set#50, class `filter_induced_shortcut`).** The keep filter rejected more newest-edition answers than others: about 12 in 160 builds, against about 46 expected. That made "never the newest" a working shortcut. Three changes answer it:
 - each receipt records `position` (`earliest`, `between`, `newest`; None without a dated question);
-- the selector holds each position to half the file, and asks for at least one newest-edition answer;
+- the selector holds each position to half the file, and asks for at least `min_newest_share` of it (0.2, rounded up: one of five) to have the newest edition as its answer (R&D on role-set#51);
 - the builder takes `position=` to build the answers a batch is short of.
 
 The T12 calendar also asks a span's opening day as well as its closing day, and asks the last span on its opening day more often (0.6 against 0.3). In a pack without numbered names, that is the only way a newest-edition answer has a reading to differ.
@@ -288,6 +288,8 @@ The T12 calendar also asks a span's opening day as well as its closing day, and 
 A pack without numbered names (cards, sheets) has two T12 readings, so it can't fill a file of 5 alone: two per reading caps it at 4. Review files mix packs. `month_alone` fires only after the mid-month boundaries follow-up, which R&D approved on 2026-10-13.
 
 Every bound is a `Floor` field (the maintainer's "configurable wins" rule). R&D's rulings set the defaults.
+
+`file_receipt` records a chosen file: the floor it was chosen under and, for each item, the reading it rests on, its answer position, and its recipe, seed and skeleton hash (R&D on role-set#51, which also accepted `rests_on` as the default count).
 
 ## T10 variety (as built, role-set#53, 2026-10-14)
 
@@ -379,3 +381,30 @@ The floors are unchanged: at least 75% distinct canonical skeletons in a stratum
    uv run python scripts/t10_variety_record.py
    ```
 5. Run `uv run pytest -m "not sweep"` and the `workflow_dispatch` `sweep` job in CI.
+
+## T11 recipe (as built, role-set#52)
+
+T11 is "what a mistake costs": look for the falsifier before calling a claim supported. Its questions are claims over one unordered state attribute, built on `is`, `is_not`, `in`, `not_in` and `if`. An `if` can have an `is` or `is_not` antecedent.
+
+**The reading.** `T11.consistent_so_supported` is the reading R&D approved on 2026-10-11. It keeps only the facts that name an entity the claim names, and calls the claim supported when an assignment fits them with the claim true.
+
+**The sides** (`t11_refusal` holds both):
+- *Find:* the key is unsupported, the reading says supported, and no single line refutes the claim on its own. The falsifier sits across lines.
+- *Confirm:* the key is supported, and no single line supports it on its own. The contrast is a one-slot change to one line that does not name the claim's subject, into a line that doesn't either. It must move the verdict off supported. Q3 was amended by R&D on #52, because a flip to unsupported can't exist there: after the change, only a subject line can exclude the claim's value, and since every fact is needed, that line would also have to derive the value. The receipt records `{line, form, from, to, contrast_names_subject: false, contrast_verdict}`.
+
+**No count clue.** A count is T10's trait (`D020 sibling_trait_item`). Round 3's T11-B-03 and B-05 are refused by `t11_refusal` as must-refuse fixtures. Batch 6's B-01 and B-02 are the must-pass fixtures.
+
+**Variety at generation: the skeleton catalogue.** R&D's floor, per side over the 60-build sweep, is at least 45 distinct skeletons, none on more than 3 builds, and none shared within a file.
+- `scripts/t11_catalogue.py` enumerates every set of 2 or 3 clues over three entities (e1, e2 and the subject s), for 2 and 3 values.
+- It keeps the items that pass the solver's own checks (`check_model`, `t11_refusal`, a differing reading on the find side, an off-subject contrast on the confirm side), one item per `puzzle_check.skeleton`.
+- It writes `t11_catalogue.json`: every 2-fact skeleton, then 3-fact ones in hash order, capped at 480 per value count and side (52 for two values).
+- `t11_row` assigns rows. Packs with the same value count share a table, and within a file of 20 seeds every pack and seed takes a different row. The next file draws a fresh order.
+- `build_t11` instantiates the row with 3 to 5 of the pack's names, the values permuted, and the lines shuffled, then proves it again.
+- A test fails when the committed catalogue is stale, and another fails below the floor.
+
+**In the selector.** A confirm item has no reading that differs, so it rests on its contrast, named `T11.contrast.<form>`. A file of 5 therefore holds at most 2 find items, an unsupported share of 40%, which R&D accepted. `Floor.distinct_skeletons`, on by default, keeps two items of one file off the same skeleton, for every lesson.
+
+**Measured** (`scripts/variety_sweep.py`):
+- T11 find and confirm: 60 of 60 distinct on the sweep, and 160 of 160 over all eight packs, top 1.
+- T10 (record, seeds 1–20): 159 of 160 per question.
+- T12 at 3 spans: 39 of 80, top 7, below the floor and a follow-up of its own. At 4 spans: 66 of 80, top 4.

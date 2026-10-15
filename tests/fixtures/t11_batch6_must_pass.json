@@ -1,0 +1,128 @@
+[
+  {
+    "id": "T11-B-01",
+    "source": "aspire-si bbf1e1d (batch 6, merged as c4224ba)",
+    "side": "find",
+    "structure": "falsifier_first",
+    "answer": "unsupported",
+    "puzzle": "1. The red bill, the blue bill and the green bill are each paid or unpaid.\n2. If the red bill is paid, the blue bill is paid.\n3. The blue bill is unpaid.\nQuestion: Claim: the red bill is paid.",
+    "model": {
+      "entities": [
+        "red",
+        "blue",
+        "green"
+      ],
+      "attributes": {
+        "status": {
+          "values": [
+            "paid",
+            "unpaid"
+          ],
+          "distinct": false
+        }
+      },
+      "facts": [
+        {
+          "line": 2,
+          "rule": [
+            "if",
+            [
+              "is",
+              "red",
+              "status",
+              "paid"
+            ],
+            [
+              "is",
+              "blue",
+              "status",
+              "paid"
+            ]
+          ]
+        },
+        {
+          "line": 3,
+          "rule": [
+            "is",
+            "blue",
+            "status",
+            "unpaid"
+          ]
+        }
+      ],
+      "flavour": [
+        1
+      ],
+      "claim": [
+        "is",
+        "red",
+        "status",
+        "paid"
+      ]
+    }
+  },
+  {
+    "id": "T11-B-02",
+    "source": "aspire-si bbf1e1d (batch 6, merged as c4224ba)",
+    "side": "find",
+    "structure": "falsifier_first",
+    "answer": "unsupported",
+    "puzzle": "1. Exactly one bench holds four sacks, the flax, the hemp, the jute and the coir, and each grade is A, B or C.\n2. The hemp sack is grade A.\n3. If the hemp sack is grade A, the flax sack is grade B.\nQuestion: Claim: the flax sack is grade A.",
+    "model": {
+      "entities": [
+        "flax",
+        "hemp",
+        "jute",
+        "coir"
+      ],
+      "attributes": {
+        "grade": {
+          "values": [
+            "A",
+            "B",
+            "C"
+          ],
+          "distinct": false
+        }
+      },
+      "facts": [
+        {
+          "line": 2,
+          "rule": [
+            "is",
+            "hemp",
+            "grade",
+            "A"
+          ]
+        },
+        {
+          "line": 3,
+          "rule": [
+            "if",
+            [
+              "is",
+              "hemp",
+              "grade",
+              "A"
+            ],
+            [
+              "is",
+              "flax",
+              "grade",
+              "B"
+            ]
+          ]
+        }
+      ],
+      "flavour": [
+        1
+      ],
+      "claim": [
+        "is",
+        "flax",
+        "grade",
+        "A"
+      ]
+    }
+  }
+]
