@@ -408,3 +408,35 @@ T11 is "what a mistake costs": look for the falsifier before calling a claim sup
 - T11 find and confirm: 60 of 60 distinct on the sweep, and 160 of 160 over all eight packs, top 1.
 - T10 (record, seeds 1–20): 159 of 160 per question.
 - T12 at 3 spans: 39 of 80, top 7, below the floor and a follow-up of its own. At 4 spans: 66 of 80, top 4.
+
+## T12 from a skeleton catalogue, with claim questions (as built; the variety follow-up to role-set#52)
+
+**Why.** The clue-by-clue builder settled 3-span puzzles with two clues almost every time (75 of 80 builds) and kept landing on the same few patterns: 39 distinct skeletons of 80, with one on 7 builds, below R&D's floor. The space itself is large. Every minimal 2- or 3-clue set over n editions and n spans gives 132 skeletons at 3 spans and 1,001 at 4.
+
+**The catalogue.** `scripts/t12_catalogue.py` builds it in two steps.
+- It enumerates every set of 2 or 3 clues on T12's forms over editions e0… and spans s0… in start order. It keeps a set when every clue is needed for what it decides:
+  - *ask*: which edition holds the span at a position;
+  - *claim*: whether an edition holds it, supported or unsupported.
+- Each target is kept only if `newest` or `boundary_next` can give another answer there. Both depend only on the clues, so the test is the same in packs with and without numbered names. Each row is then checked once by `check_model` on a real calendar.
+- `t12_catalogue.json` holds one row per skeleton: 132 per form at 3 spans, and 480 (capped) at 4.
+
+**Builds.** `build_t12(pack, seed, n, form=, position=)` builds from the catalogue.
+- `_t12_plan` walks a file's rows in one shuffled order. Each pack and seed of a file of 20 takes the first unused row that suits it: the asked span at `position` if one is given, and for a claim, the verdict its seed aims at. Eight seeds of every twenty aim at unsupported.
+- The build places a calendar, the pack's names and the values, and shuffles the lines. It keeps the build only when a T12 reading names another edition or flips the claim.
+- Rows no seed takes first are fallbacks, so a fallback never repeats another seed's skeleton.
+
+**Claims, on R&D's terms.**
+- The form is "<edition> was in force on <date>", solved by `contains` and keyed supported or unsupported. The date always falls inside a span.
+- Each claim rests on a T12 reading that flips its verdict: a reading's editions decide the claimed one, and several editions with the claimed one among them leave it open.
+- T11's `consistent_so_supported` verdict goes on the receipt as `t11_reading`, a record only, never a reading to rest on (the D020 guard).
+- Claims record position None, and `Floor.min_unsupported_share` (0.4) holds within a file's claims.
+- `puzzle_check.skeleton`'s span key records the form, so a claim and a which-edition question on the same clues are different items.
+
+**Measured** (`scripts/variety_sweep.py`; the combined sweep is issues, cards and sheets, seeds 1–10, both forms, 3 spans):
+
+| Sweep | Builds | Distinct | Top |
+|---|---|---|---|
+| Combined | 60 | 60 | 1 |
+| Each form, 3 and 4 spans, every pack | 80 | 80 | 1 |
+
+Claims are 40% unsupported. `--check` fails when T11 or T12's combined sweep misses the floor. The mid-month boundaries, under which `month_alone` can act, are still to come.

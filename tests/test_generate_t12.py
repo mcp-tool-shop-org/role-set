@@ -114,3 +114,81 @@ def test_answer_position_is_none_without_a_dated_question():
     from role_set.generate.recipes import build_t10
 
     assert answer_position(build_t10("cups", 1, "claim").model) is None
+
+
+# ---- the skeleton catalogue and claim questions (R&D's T12 claim ruling; the variety follow-up to role-set#52) ------
+def test_the_committed_t12_catalogue_is_current():
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    got = subprocess.run([sys.executable, str(root / "scripts" / "t12_catalogue.py"), "--check"], capture_output=True,
+                         text=True, timeout=600)
+    assert got.returncode == 0, got.stdout + got.stderr
+
+
+@pytest.mark.parametrize("pack", sorted(T12_PACKS))
+@pytest.mark.parametrize("n", [3, 4])
+def test_a_t12_claim_is_keyed_and_a_reading_flips_it(pack, n):
+    from role_set.generate.build import receipt
+
+    for seed in (1, 2, 3):
+        b = build_t12(pack, seed, n=n, form="claim")
+        p = T12_PACKS[pack]
+        text = render_puzzle(b.model, p["plural"], random.Random(seed), T12_TEMPLATES, p["singular"])
+        assert text.splitlines()[-1].startswith("Question: Claim: ") and " was in force on " in text.splitlines()[-1]
+        got = check_puzzle({"puzzle": text, "model": b.model, "answer": b.answer, "reply": "x\n" + b.answer}, "constraint_grid")
+        assert got.answer == b.answer in ("supported", "unsupported")
+        assert any(r["differs"] for r in b.shortcuts.values())
+        r = receipt(b, "T12", p, "constraint_grid")
+        assert r["form"] == "claim" and r["position"] is None and r["t11_reading"] in ("supported", "unsupported", "cannot_tell")
+        assert "T11.consistent_so_supported" not in r["shortcuts"]  # a record only, never a reading to rest on
+
+
+def test_the_skeleton_records_the_form():
+    from role_set.puzzle_check import skeleton
+
+    ask = build_t12("issues", 1).model
+    claim = {k: v for k, v in ask.items() if k != "asks"}
+    claim["claim"] = ["contains", ask["entities"][0], ask["asks"]["contains"]]
+    assert skeleton(ask) != skeleton(claim) and '"form": "ask"' in skeleton(ask) and '"form": "claim"' in skeleton(claim)
+
+
+def test_a_reading_answers_a_claim_with_a_verdict():
+    b = build_t12("editions", 4, form="claim")
+    for name, r in b.shortcuts.items():
+        assert r["answer"] in ("supported", "unsupported", "cannot_tell"), name
+
+
+def test_claims_keep_their_unsupported_share_in_a_file():
+    from role_set.generate.build import receipt
+    from role_set.generate.select import Floor, check_file, select
+
+    pool = [receipt(build_t12(p, s, form="claim"), "T12", T12_PACKS[p], "constraint_grid") for p in sorted(T12_PACKS)
+            for s in range(1, 11)]
+    picks = select(pool)
+    claims = [pool[x.index] for x in picks]
+    assert sum(r["answer"] == "unsupported" for r in claims) >= 0.4 * len(claims)
+    supported = [r for r in pool if r["answer"] == "supported"]
+    file = [(r, next(n for n, v in r["shortcuts"].items() if v["differs"])) for r in supported[:5]]
+    assert any("claims are unsupported" in m for m in check_file(file))
+    assert not any("claims are unsupported" in m for m in check_file(file, Floor(min_unsupported_share=0)))
+
+
+def test_the_t12_variety_floor_holds_per_form_and_combined():
+    from collections import Counter
+
+    from role_set.puzzle_check import skeleton
+
+    builds = {f: [build_t12(p, s, n=3, form=f) for p in ("issues", "cards", "sheets") for s in range(1, 11)] for f in ("ask", "claim")}
+    combined = Counter(skeleton(b.model) for bs in builds.values() for b in bs)
+    assert len(combined) >= 45 and max(combined.values()) <= 3
+    assert sum(b.answer == "unsupported" for b in builds["claim"]) >= 0.4 * len(builds["claim"])
+
+
+def test_a_t12_form_is_named():
+    from role_set.generate.build import BuildError
+
+    with pytest.raises(BuildError, match="form"):
+        build_t12("issues", 1, form="value")
+

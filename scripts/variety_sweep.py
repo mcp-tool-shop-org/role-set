@@ -5,10 +5,11 @@ than 5% of builds (3 of 60), measured with `puzzle_check.skeleton`.
   split of contrast_verdict on the confirm side (R&D's Q3 ruling, point 4). Also the
   share of unsupported keys in a file the selector picks from both sides, which R&D asks to keep at 40% or more.
 - T10: from the committed record (t10_record.json), per question, seeds 1-20 of every pack.
-- T12: every pack at 3 and 4 spans, seeds 1-20.
+- T12, per form (which edition, claim) and combined: the sweep (issues, cards and sheets, seeds 1-10, both forms,
+  3 spans; 60 builds) with the claims' unsupported count, then every pack at 3 and 4 spans, seeds 1-20.
 
     uv run python scripts/variety_sweep.py
-    uv run python scripts/variety_sweep.py --check   # exit 1 when T11 misses the floor (T10 and T12 are reported only)
+    uv run python scripts/variety_sweep.py --check   # exit 1 when T11 or T12's combined sweep misses the floor (T10 is reported only)
 """
 
 from __future__ import annotations
@@ -17,12 +18,13 @@ import sys
 from collections import Counter
 
 from role_set.generate.build import receipt
-from role_set.generate.recipes import PACKS, T12_PACKS, T11_SIDES, build_t11, build_t12
+from role_set.generate.recipes import PACKS, T11_SIDES, T12_FORMS, T12_PACKS, build_t11, build_t12
 from role_set.generate.select import select
 from role_set.generate.t10_variety import load_record
 from role_set.puzzle_check import skeleton
 
 SWEEP_PACKS = ("lamps", "cups", "doors")
+T12_SWEEP_PACKS = ("issues", "cards", "sheets")
 SEEDS = range(1, 21)
 
 
@@ -58,12 +60,22 @@ def main() -> None:
         keys = [b["canonical_skeleton"] for b in record["builds"] if b.get("question") == q and b.get("seed") in SEEDS
                 and b.get("built", True)]
         lines.append(floor_line(f"T10 {q} (record, seeds 1-20)", keys)[0] + "  (canonical_skeleton)")
+    # T12 (R&D's claim ruling): per form and combined. The combined sweep is issues, cards and sheets, seeds 1-10, both
+    # forms, at 3 spans (60 builds); the follow-up closes when it meets 45 of 60 with no skeleton on more than 3.
+    sweep = {form: [build_t12(p, s, n=3, form=form) for p in T12_SWEEP_PACKS for s in range(1, 11)] for form in T12_FORMS}
+    for form, builds in sweep.items():
+        lines.append(floor_line(f"T12 {form} (sweep, 3 spans)", [skeleton(b.model) for b in builds])[0])
+    line, t12_ok = floor_line("T12 combined (sweep, 3 spans)", [skeleton(b.model) for bs in sweep.values() for b in bs])
+    lines.append(line)
+    claims = sweep["claim"]
+    lines.append(f"T12 claims (sweep): unsupported {sum(b.answer == 'unsupported' for b in claims)} of {len(claims)}")
     for n in (3, 4):
-        keys = [skeleton(build_t12(p, s, n=n).model) for p in sorted(T12_PACKS) for s in SEEDS]
-        lines.append(floor_line(f"T12 {n} spans", keys)[0])
+        for form in T12_FORMS:
+            keys = [skeleton(build_t12(p, s, n=n, form=form).model) for p in sorted(T12_PACKS) for s in SEEDS]
+            lines.append(floor_line(f"T12 {form} {n} spans (all packs)", keys)[0])
     print("\n".join(lines))
-    if "--check" in sys.argv and not t11_ok:
-        sys.exit("T11 misses R&D's variety floor")
+    if "--check" in sys.argv and not (t11_ok and t12_ok):
+        sys.exit("T11 or T12 misses R&D's variety floor")
 
 
 if __name__ == "__main__":
