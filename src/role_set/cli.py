@@ -203,10 +203,10 @@ def _critic_control(args: argparse.Namespace) -> int:
         listed = proven.load(Path(args.writers))
         machine = proven.load_machine(Path(args.machine) if args.machine else None)
         server = proven.require_server(listed.server, args.llama_server_sha256)
-        if proven.card_needs_grant(machine):
+        if proven.needs_grant(machine):
             require_grant(args.grant, uses_card=True)
             if not args.heartbeat:
-                raise GuardError("REFUSED: a step on the 5090 needs --heartbeat <watchdog heartbeat file>")
+                raise GuardError("REFUSED: a step on the rig needs --heartbeat <watchdog heartbeat file>")
             require_heartbeat(Path(args.heartbeat), time.time())
         endpoint, model, c_pins = resolve_critic(listed, args.critic_model, args.critic_endpoint, args.critic_gguf_sha256,
                                                  allow_comparison=True)
@@ -324,8 +324,8 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--llama-server-sha256", required=True, help="the llama-server binary's sha256, measured by the wave script")
     cc.add_argument("--machine", required=True, help="the wave script's CUDA machine line (JSON)")
     cc.add_argument("--writers", default="writers.json")
-    cc.add_argument("--grant", default=None, help="the Publisher's grant, required when the machine line's card is the 5090")
-    cc.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file, required on the 5090 (mtime only)")
+    cc.add_argument("--grant", default=None, help="the Publisher's grant, required unless the machine line names a Colab VM or a pod")
+    cc.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file, required on the rig (mtime only)")
     cc.add_argument("--out", default="critic-control.json")
     cc.add_argument("--trait-leg", action="store_true", help="run only the trait leg: three calls per reviewed item against R&D's bar")
     cc.add_argument("--answer-leg", action="store_true", help="run the kind-B answer leg: closed answers against the reviewed keys, bar 90%%")
@@ -353,7 +353,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--llama-server-sha256", default=None, help="the llama-server binary's sha256, measured by the wave script")
     w.add_argument("--machine", default=None, help="the wave script's CUDA machine line (JSON)")
     w.add_argument("--partition", default=None, help="production or trial:<name>; on every receipt")
-    w.add_argument("--grant", default=None, help="the Publisher's grant id, required when the machine line's card is the 5090")
+    w.add_argument("--grant", default=None, help="the Publisher's grant id, required unless the machine line names a Colab VM or a pod")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
     w.add_argument("--concurrency", type=int, default=1)
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")

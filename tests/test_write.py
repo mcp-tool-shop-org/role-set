@@ -69,7 +69,8 @@ def _proven_setup(tmp_path: Path, *, card: str = "NVIDIA A100-SXM4-40GB") -> tup
     from test_proven import proven_file
 
     machine = tmp_path / "machine.json"
-    where = {"rig": "robot"} if "5090" in card else {"colab_release_tag": "release-colab_20261015"}
+    where = {"rig": "robot"} if card == "rig" or "5090" in card else {"colab_release_tag": "release-colab_20261015"}
+    card = "NVIDIA A100-SXM4-40GB" if card == "rig" else card
     machine.write_text(json.dumps({"driver": "580.82", "compat": True, "runtime": "13.4", "card": card, **where}), encoding="utf-8")
     return proven_file(tmp_path), machine
 
@@ -147,7 +148,12 @@ def test_a_step_on_the_5090_needs_the_grant_and_a_fresh_heartbeat(pack_dir: Path
     with pytest.raises(WriteRefused, match="heartbeat is"):
         build(WriteConfig(grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 999)
     pins = build(WriteConfig(grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1)[7]
-    assert pins["grant"] == "G-1"
+    assert pins["grant"] == "G-1" and pins["writer_registry_id"] == "openmdw-1.1"
+    # A rig line needs the grant whatever its card string says (fail closed).
+    (tmp_path / "rig").mkdir()
+    _, rig_a100 = _proven_setup(tmp_path / "rig", card="rig")
+    with pytest.raises(WriteRefused, match="--grant"):
+        build(WriteConfig(**{**base, "machine": rig_a100}))
 
 
 def test_write_halts_are_reported_and_cleanup_runs(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):

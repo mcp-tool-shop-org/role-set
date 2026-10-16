@@ -15,7 +15,7 @@ def entry(name: str, family: str, sha: str | None = None, **extra) -> dict:
     return {"served_as": name, "family": family, "repo": f"maker/{name}", "revision": "r1" if sha else None,
             "gguf_file": f"{name}-Q8_0.gguf" if sha else None, "gguf_sha256": sha, "quant": "Q8_0", "licence": "OpenMDW-1.1",
             "proof_url": f"https://huggingface.co/maker/{name}", "proof_clause": "\"any use ... of any outputs\"",
-            "proof_date": "2026-10-16", "checked_by": "R&D, 2026-10-16", **extra}
+            "proof_date": "2026-10-16", "checked_by": "R&D, 2026-10-16", "registry_id": "openmdw-1.1", **extra}
 
 
 def proven_file(tmp_path: Path, *, writers=None, critics=None, server=None) -> Path:
@@ -48,6 +48,8 @@ def test_proof_shape_name_cloud_and_duplicates_are_refused(tmp_path: Path):
         proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_url="http://example.org/card")]))
     with pytest.raises(GuardError, match="YYYY-MM-DD"):
         proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_date="last week")]))
+    with pytest.raises(GuardError, match="registry id"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", registry_id="OpenMDW 1.1")]))
     with pytest.raises(GuardError, match="no served_as"):
         proven.load(proven_file(tmp_path, writers=[entry("", "x")]))
     with pytest.raises(GuardError, match="cloud"):
@@ -68,6 +70,7 @@ def test_an_unpinned_model_and_a_drifted_gguf_are_refused():
         proven.require_pinned(entry("w", "x", SHA_W), "b" * 64)
     pins = proven.require_pinned(entry("w", "x", SHA_W), SHA_W.upper())
     assert pins["gguf_sha256"] == SHA_W and pins["family"] == "x" and pins["proof_url"].startswith("https://")
+    assert pins["registry_id"] == "openmdw-1.1"
 
 
 def test_the_llama_server_binary_is_pinned():
@@ -109,8 +112,13 @@ def test_the_machine_line(tmp_path: Path):
     path.write_text(json.dumps({"driver": "580.82", "compat": True, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB",
                                 "colab_release_tag": "release-colab_20261015-060052_RC00"}), encoding="utf-8")
     line = proven.load_machine(path)
-    assert line["card"].endswith("40GB") and not proven.card_needs_grant(line)
-    assert proven.card_needs_grant({"card": "NVIDIA GeForce RTX 5090"})
+    assert line["card"].endswith("40GB") and not proven.needs_grant(line)
+    # Fail closed (R&D on #70): only a rented host goes without the grant; the rig needs it whatever its card says.
+    assert not proven.needs_grant({"card": "NVIDIA H200 NVL", "pod_id": "abc123"})
+    assert proven.needs_grant({"card": "NVIDIA A100-SXM4-40GB", "rig": "robot"})
+    assert proven.needs_grant({"card": "NVIDIA A100-SXM4-40GB", "rig": "robot", "pod_id": "abc123"})
+    assert proven.needs_grant({"card": "NVIDIA GeForce RTX 5090"})
+    assert proven.needs_grant({"rig": "robot"})  # a rig line with no card string at all
 
 
 def test_the_committed_list_is_proven_and_drops_the_apache_only_entries():
@@ -119,6 +127,9 @@ def test_the_committed_list_is_proven_and_drops_the_apache_only_entries():
     # BUILD-SPEC B6: the Apache-only entries are removed; they are not proven under the rule.
     assert not names & {"qwen3-235b-instruct-2507", "qwen3:8b", "gemma4:31b", "granite4.1:30b"}
     assert {"muse-glimmer-30b", "nemotron-3.5-lightning-30b-a3b"} <= set(listed.critics)
+    assert "nemotron-3.5-bolt-74b-a9b" in listed.writers  # R&D ruled it in, 2026-10-16
+    assert {e["registry_id"] for e in [*listed.writers.values(), *listed.critics.values()]} <= {
+        "openmdw-1.1", "deepseek-r1-0528-card", "muse-glimmer-30b-card"}
     families = {e["family"] for e in listed.critics.values()}
     # Every writer has a critic of another family on the list.
     for w in listed.writers.values():

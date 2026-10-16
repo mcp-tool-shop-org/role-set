@@ -21,10 +21,11 @@ Every entry needs its proof, and the list is refused when it loads if any entry 
 | `proof_clause` | The clause, quoted |
 | `proof_date` | The day it was read, `YYYY-MM-DD` |
 | `checked_by` | Who read it |
+| `registry_id` | Its record in rnd's licence registry (`licences/registry.json`), carried onto every receipt |
 
 | Writers | Critics |
 |---|---|
-| `nemotron-3-ultra-550b-a55b`, `deepseek-r1-0528`, `nemotron-3.5-super-vl-120b-a12b`, `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` | `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` |
+| `nemotron-3-ultra-550b-a55b`, `deepseek-r1-0528`, `nemotron-3.5-super-vl-120b-a12b`, `nemotron-3.5-bolt-74b-a9b`, `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` | `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` |
 
 A critic of the writer's own family is refused, so Muse-Glimmer reads the Nemotron and DeepSeek writers, and Lightning reads Muse-Glimmer.
 
@@ -38,7 +39,7 @@ An entry with `rehearsal_only: true` writes under a `rehearsal/` directory, and 
 
 ## The grant
 
-A step whose machine line names the 5090 runs only inside a grant. `write` and `critic-control` on the 5090 require:
+A step runs only inside a grant unless its machine line names a rented host (`colab_release_tag` or `pod_id`). A line that names the `rig` needs the grant whatever its card says. Off a rented host, `write` and `critic-control` require:
 
 - `--grant`, a grant id for the batch window
 - `--heartbeat`, a file whose modified time is under 60 seconds

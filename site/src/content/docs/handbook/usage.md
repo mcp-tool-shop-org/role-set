@@ -18,7 +18,7 @@ uv run role-set write --plan plan.json --pack roles/verifier --out out \
   --llama-server-sha256 <sha256> --machine machine.json --partition trial:j1-wave1
 ```
 
-The grant and the heartbeat (`--grant`, `--heartbeat`) are required when the machine line's card is the 5090. `--no-critic` skips the second reader. That flag is a dry run. Items can pass it without the check a real batch is supposed to have.
+The grant and the heartbeat (`--grant`, `--heartbeat`) are required unless the machine line names a Colab VM or a pod, and always on the rig. `--no-critic` skips the second reader. That flag is a dry run. Items can pass it without the check a real batch is supposed to have.
 
 The heartbeat file is judged by its modified time. It has to be under 60 seconds old. The file is not opened. `llama-server` has no unload: the wave script that started it stops it.
 

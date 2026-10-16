@@ -66,7 +66,7 @@ Kind B puzzles used to be written freehand and then checked. Now code builds the
 | `harvest` | Copies licence-checked excerpts from pinned repos into a local pool. The clone directory is not recorded. |
 | `write` | The runner. `--mock` runs it with no model and no spend. A real run needs a loopback `--endpoint` and a `--model` from `writers.json`. |
 | `readout` | Reports one run per lesson and kind, passing or failing, from the directory that holds `batch-report.json`. |
-| `critic-control` | Measures a critic on reviewed items, on its llama-server. Needs the critic's GGUF and server hashes and the machine line, plus a grant and a heartbeat file on the 5090. `--trait-leg` and `--answer-leg` run those legs. |
+| `critic-control` | Measures a critic on reviewed items, on its llama-server. Needs the critic's GGUF and server hashes and the machine line, plus a grant and a heartbeat file off a rented host. `--trait-leg` and `--answer-leg` run those legs. |
 | `ingest` / `store` | Records receipts into the store, with the firewall at the door. `store status` reports counts. `store void` appends a void. |
 | `pilot-auto` | The paid launcher: waits for the loopback lane, writes, and can relaunch after a lost-call stop. |
 | `puzzle-check` | Runs the kind B solver over data files and their `.models.jsonl` sidecars, and refuses a repeated fact skeleton. |
@@ -108,13 +108,13 @@ Every accepted receipt carries the plan hash and the pack hash. When the run use
 
 ## Models
 
-`writers.json` is the proven list. A model is on it only when its maker's own documentation allows training on its outputs, and each entry carries that proof: the page's URL, the clause quoted, and the date it was read. An entry without its proof is refused when the list loads. A name not on the list is refused, and so is a name containing `cloud`.
+`writers.json` is the proven list. A model is on it only when its maker's own documentation allows training on its outputs, and each entry carries that proof: the page's URL, the clause quoted, the date it was read, and its `registry_id` in rnd's licence registry (`licences/registry.json`). An entry without its proof is refused when the list loads. A name not on the list is refused, and so is a name containing `cloud`.
 
-The writers are Nemotron 3 Ultra 550B, DeepSeek-R1-0528, Nemotron 3.5 Super 120B, Muse-Glimmer-30B and Nemotron 3.5 Lightning 30B. The critics are Muse-Glimmer-30B and Nemotron 3.5 Lightning. A critic of the writer's own family is refused. The Qwen, Gemma and Granite entries the 2026-10-11 pilots used are gone: their licences are silent on outputs, which isn't proof.
+The writers are Nemotron 3 Ultra 550B, DeepSeek-R1-0528, Nemotron 3.5 Super 120B, Nemotron 3.5 Bolt 74B (NVIDIA's own 24GB quantization-aware build), Muse-Glimmer-30B and Nemotron 3.5 Lightning 30B. The critics are Muse-Glimmer-30B and Nemotron 3.5 Lightning. A critic of the writer's own family is refused. The Qwen, Gemma and Granite entries the 2026-10-11 pilots used are gone: their licences are silent on outputs, which isn't proof.
 
 Models are served by llama.cpp's `llama-server`, built with CUDA 13.4, at Q8_0. A listed model is refused until it's pinned: its repo revision, GGUF file and the file's sha256. The wave script hashes the GGUF and the `llama-server` binary before launch, and the run refuses any drift from the list. Every receipt records the partition (`production` or `trial:<name>`), both models' family, revision and GGUF hash, the server's commit and hash, and the CUDA machine line.
 
-A step on the 5090 runs only inside a grant: `--grant` and a heartbeat file modified under 60 seconds ago. The heartbeat file is not opened. `--mock` loads nothing.
+A step runs only inside a grant unless its machine line names a Colab VM or a pod: `--grant` and a heartbeat file modified under 60 seconds ago. A line that names the rig needs them whatever its card says. The heartbeat file is not opened. `--mock` loads nothing.
 
 ## Pilots
 

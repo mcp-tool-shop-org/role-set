@@ -18,14 +18,16 @@ from pathlib import Path
 
 from role_set.guards import CLOUD_MARKERS, GuardError
 
-PROOF_FIELDS = ("family", "licence", "proof_url", "proof_clause", "proof_date", "checked_by")
+PROOF_FIELDS = ("family", "licence", "proof_url", "proof_clause", "proof_date", "checked_by", "registry_id")
 PIN_FIELDS = ("repo", "revision", "gguf_file", "gguf_sha256")
 SERVER_FIELDS = ("commit", "sha256")
 MACHINE_FIELDS = ("driver", "compat", "runtime", "card")
 PARTITION_RE = re.compile(r"production|trial:[a-z0-9][a-z0-9-]*")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
-CARD_NEEDS_GRANT = ("5090",)  # the rig's card: any step on it runs only inside the Publisher's grant
+# The id of the entry's record in rnd's licence registry (rnd licences/registry.json), where the page text is
+# snapshotted and every quoted clause re-found.
+REGISTRY_ID_RE = re.compile(r"[a-z0-9][a-z0-9.-]*")
 
 
 @dataclass(frozen=True)
@@ -56,6 +58,8 @@ def require_proof(entry: dict, where: str) -> dict:
         raise GuardError(f"REFUSED: {name}'s proof_url must be the maker's live https page")
     if not DATE_RE.fullmatch(_text(entry, "proof_date")):
         raise GuardError(f"REFUSED: {name}'s proof_date must be YYYY-MM-DD, the day the clause was read")
+    if not REGISTRY_ID_RE.fullmatch(_text(entry, "registry_id")):
+        raise GuardError(f"REFUSED: {name}'s registry_id must be an rnd licence registry id, like openmdw-1.1")
     return entry
 
 
@@ -92,7 +96,7 @@ def require_pinned(entry: dict, measured_sha256: str | None) -> dict:
     if got != pinned:
         raise GuardError(f"REFUSED: {name}'s GGUF {got[:12]} differs from the pinned {pinned[:12]}; re-check and re-pin")
     return {"family": entry["family"], "repo": entry["repo"], "revision": entry["revision"], "gguf_file": entry["gguf_file"],
-            "gguf_sha256": pinned, "licence": entry["licence"], "proof_url": entry["proof_url"]}
+            "gguf_sha256": pinned, "licence": entry["licence"], "proof_url": entry["proof_url"], "registry_id": entry["registry_id"]}
 
 
 def require_server(server: dict, measured_sha256: str | None) -> dict:
@@ -144,6 +148,10 @@ def load_machine(path: Path | None) -> dict:
     return line
 
 
-def card_needs_grant(machine: dict) -> bool:
-    card = str(machine.get("card") or "")
-    return any(c in card for c in CARD_NEEDS_GRANT)
+def needs_grant(machine: dict) -> bool:
+    """Fail closed: every step needs the Publisher's grant and a fresh heartbeat unless its machine line names a
+    rented host (a Colab VM or a RunPod pod). A line that names the rig needs them, whatever its card string says."""
+
+    if machine.get("rig"):
+        return True
+    return not (machine.get("colab_release_tag") or machine.get("pod_id"))

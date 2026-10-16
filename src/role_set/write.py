@@ -3,8 +3,8 @@
 Refused before anything is sent: an endpoint off the loopback, a model not on
 the proven list or listed without its proof, weights or a llama-server binary
 that differ from their pins, a critic of the writer's own family, a missing
-partition or machine line, a step on the 5090 without a grant or with a stale
-watchdog heartbeat, a pack that has drifted from its manifest, a missing gates
+partition or machine line, a step off a rented host (Colab or a pod) without a
+grant or with a stale watchdog heartbeat, a pack that has drifted from its manifest, a missing gates
 package. `--mock` runs the whole pipeline with no model; its output is
 marked and is never data.
 """
@@ -193,10 +193,10 @@ def build(cfg: WriteConfig, *, now=time.time):
         machine = proven.load_machine(cfg.machine)
         server = proven.require_server(listed.server, cfg.server_sha256)
         w_pins = proven.require_pinned(entry, cfg.writer_gguf_sha256)
-        if proven.card_needs_grant(machine):
+        if proven.needs_grant(machine):
             require_grant(cfg.grant, uses_card=True)
             if cfg.heartbeat is None:
-                raise GuardError("REFUSED: a step on the 5090 needs --heartbeat <watchdog heartbeat file>")
+                raise GuardError("REFUSED: a step on the rig needs --heartbeat <watchdog heartbeat file>")
             require_heartbeat(cfg.heartbeat, now())
             pins["grant"] = cfg.grant
         critic = None
