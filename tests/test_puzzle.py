@@ -397,6 +397,9 @@ def test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson(tmp_path):
     first = r.run_slot(b_slots[0])
     second = r.run_slot(b_slots[1])
     assert first.accepted and r.lookups == {"T02": 1}
+    # The gates saw the accepted puzzle's own model (R&D, 2026-10-15: check_against signs puzzles by their model).
+    accepted_id = r.accepted[-1]["id"]
+    assert r.models == {accepted_id: m} and r.gates.module.models_seen[0] == {accepted_id: m}
     assert not second.accepted and second.refusals[0]["code"] == "PUZZLE" and "a lookup" in second.refusals[0]["detail"]
 
     bad = dict(drafts["lookup"], answer="Ana=soup; Ben=salad; Cy=pasta")
@@ -450,9 +453,9 @@ def test_the_lookup_cap_is_read_again_under_the_accept_lock(tmp_path):
     r.writer = lambda messages, seed=0: types.SimpleNamespace(text=json.dumps(draft), prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1)
     real = r.gates.module.check_against
 
-    def meanwhile(row, accepted):
+    def meanwhile(row, accepted, models=None):
         r.lookups["T02"] = 1  # another B slot of the lesson was accepted after this one's first read
-        return real(row, accepted)
+        return real(row, accepted, models=models)
 
     r.gates.module.check_against = meanwhile
     out = r.run_slot(slot)

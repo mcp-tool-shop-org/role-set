@@ -197,10 +197,14 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
         cue = "Exactly" if (b - 1) // 4 % 2 == 0 else "Only"
         lines = [f"{COUNT_WORDS[count - 3].title()} cups stand in a row: {', '.join(names)}.",
                  f"{cue} one cup holds the {t(1)} pen; the rest are empty."]
-        lines += [f"The {t(1)} pen is not in {x}." for x in ruled]
+        # The gates sign a puzzle by its model's rule forms (puzzle_sig), so the second four of a lesson rule the first
+        # cup out as empty: eight distinct shapes per lesson, not four.
+        stated = (b - 1) // 4 % 2 == 1
+        lines += [(f"{x} is empty." if stated and k == 0 else f"The {t(1)} pen is not in {x}.") for k, x in enumerate(ruled)]
         model = {"entities": names, "attributes": {"holds": {"values": ["pen", "empty"], "distinct": False}},
                  "facts": [{"line": 2, "rule": ["count", "holds", "pen", "=", 1]}]
-                 + [{"line": k + 3, "rule": ["is_not", x, "holds", "pen"]} for k, x in enumerate(ruled)],
+                 + [{"line": k + 3, "rule": ["is", x, "holds", "empty"] if stated and k == 0 else ["is_not", x, "holds", "pen"]}
+                    for k, x in enumerate(ruled)],
                  "flavour": [1], "asks": {"entity_with": {"holds": "pen"}}}
         if open_set:
             # "holds" may repeat, so the possible answers are groups, here of one cup each (role-set#45).
@@ -258,8 +262,8 @@ def mock_gates(closed_form=None):
     m = types.SimpleNamespace()
     m.DataError = ValueError
     m.check_item = lambda row: None
-    m.check_against = lambda row, accepted: []
-    m.check_batch = lambda rows: None
+    m.check_against = lambda row, accepted, models=None: []
+    m.check_batch = lambda rows, models=None, **kw: None
     m.role_words_in_prompt = lambda row: []
     m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})

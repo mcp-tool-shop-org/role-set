@@ -62,6 +62,7 @@ class Built:
     tries: int
     notes: list[str] = field(default_factory=list)
     contrast: dict | None = None  # T11 confirm side: the one-clue change that flips the claim (R&D, 2026-10-11)
+    file_index: int | None = None  # T11: which file of seeds the build's catalogue row was drawn for (R&D on #52)
 
 
 def _norm(shape: Shape) -> Model:
@@ -209,7 +210,7 @@ def receipt(built: Built, recipe: str, pack: dict, structure: str) -> dict:
             "trait_clue": built.trait_clue, "shortcuts": built.shortcuts, "metrics": built.metrics,
             "skeleton_sha256": hashlib.sha256(skeleton(built.model).encode("utf-8")).hexdigest(),
             "pack_sha256": hashlib.sha256(json.dumps(pack, sort_keys=True).encode("utf-8")).hexdigest(),
-            "solver": solver_version(), "position": answer_position(built.model), "contrast": built.contrast}
+            "solver": solver_version(), "position": answer_position(built.model), "contrast": built.contrast, "file_index": built.file_index}
 
 
 def answer_position(model: dict) -> str | None:

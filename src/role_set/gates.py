@@ -20,6 +20,18 @@ class GatesUnavailable(RuntimeError):
     """aspire-si-gates isn't installed at the pinned commit. Nothing is written."""
 
 
+class ModelsMissing(RuntimeError):
+    """A kind B row reached the gates with no sidecar model. The gates would sign it by the regex fallback instead of
+    its model, so the run stops rather than check it the weaker way (R&D, 2026-10-15)."""
+
+
+def _need_models(rows: list[dict], models: dict) -> None:
+    missing = sorted(str(r.get("id")) for r in rows if r.get("kind") == "B" and r.get("id") not in models)
+    if missing:
+        raise ModelsMissing(f"no sidecar model for kind B row(s) {', '.join(missing)}; pass models={{id: model}} for every "
+                            "B row so puzzles are signed by their model (gates.puzzle_sig)")
+
+
 @dataclass(frozen=True)
 class Gates:
     module: object
@@ -37,14 +49,18 @@ class Gates:
         else:
             self.module.check_item(row, closed_form=self.closed_form)  # type: ignore[attr-defined]
 
-    def check_against(self, row: dict, accepted: list[dict]) -> list:
-        return list(self.module.check_against(row, accepted) or [])  # type: ignore[attr-defined]
+    def check_against(self, row: dict, accepted: list[dict], *, models: dict) -> list:
+        """The gates' one-at-a-time check. `models` is the {id: model} map of sidecar models for the row and the
+        accepted rows: every kind B row needs one (ModelsMissing otherwise)."""
+        _need_models([row, *accepted], models)
+        return list(self.module.check_against(row, accepted, models=models) or [])  # type: ignore[attr-defined]
 
-    def check_batch(self, rows: list[dict]) -> None:
+    def check_batch(self, rows: list[dict], *, models: dict) -> None:
+        _need_models(rows, models)
         if self.closed_form is None:
-            self.module.check_batch(rows)  # type: ignore[attr-defined]
+            self.module.check_batch(rows, models=models)  # type: ignore[attr-defined]
         else:
-            self.module.check_batch(rows, closed_form=self.closed_form)  # type: ignore[attr-defined]
+            self.module.check_batch(rows, closed_form=self.closed_form, models=models)  # type: ignore[attr-defined]
 
     def trait_words(self, lesson: str) -> list[str]:
         """The words the gates accept as naming a trait in a kind-A passage (constants.TRAIT_NAMES), or []."""

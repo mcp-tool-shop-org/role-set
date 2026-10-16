@@ -415,6 +415,7 @@ class Runner:
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
         self.accepted: list[dict] = []
+        self.models: dict[str, dict] = {}  # id -> sidecar model of each accepted kind B row, for the gates' puzzle_sig
         self.cell_drops: dict[tuple[str, str], int] = {}
         self.batch_check: str | None = None  # "clean" or "REFUSED: ..." once a run finishes unhalted
         self.lock = threading.RLock()  # re-entrant: logging runs both inside and outside the accept lock
@@ -723,7 +724,8 @@ class Runner:
             if refusal is None:
                 with self.lock:
                     try:
-                        reasons = self.gates.check_against(row, self.accepted)
+                        models = {**self.models, row["id"]: fields["model"]} if slot.kind == "B" else self.models
+                        reasons = self.gates.check_against(row, self.accepted, models=models)
                     except self.gates.error_type() as e:
                         reasons = [("AGAINST", str(e))]
                     stamp = reply_opening_reused(row, self.accepted)
@@ -736,6 +738,8 @@ class Runner:
                         # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
                         refusal = self._refusal("PUZZLE", LOOKUP_FULL)
                     else:
+                        if slot.kind == "B":
+                            self.models[row["id"]] = fields["model"]
                         self._accept(slot, row, c, attempt, glyphs=glyphs)
                         if lookup:
                             self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
@@ -896,7 +900,7 @@ class Runner:
         rows = [r for r in self.accepted if r.get("lesson") in whole]
         if self.status.halted is None and not self.status.skipped and rows:
             try:
-                self.gates.check_batch(rows)
+                self.gates.check_batch(rows, models=self.models)
                 self.batch_check = "clean"
             except self.gates.error_type() as e:
                 self.batch_check = f"REFUSED: {e}"

@@ -53,6 +53,12 @@ def test_a_t11_puzzle_is_proven_and_its_wording_round_trips(pack, side, seed):
         assert c["contrast_names_subject"] is False
 
 
+def test_a_t11_receipt_names_its_file():
+    # R&D on #52: the receipt says which file of seeds its catalogue row was drawn for.
+    assert receipt(build_t11("cups", 20, "find"), "T11", PACKS["cups"], "falsifier_first")["file_index"] == 0
+    assert receipt(build_t11("cups", 21, "confirm"), "T11", PACKS["cups"], "falsifier_first")["file_index"] == 1
+
+
 def test_the_same_seed_rebuilds_the_same_t11_puzzle():
     a, b = build_t11("doors", 4, "find"), build_t11("doors", 4, "find")
     assert a.model == b.model and a.shortcuts == b.shortcuts

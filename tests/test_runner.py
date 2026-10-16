@@ -24,8 +24,14 @@ def _gates(refuse_ids=(), against=None, role_words=()):
             raise ValueError(f"refused {row['id']}")
 
     m.check_item = check_item
-    m.check_against = against or (lambda row, accepted: [])
-    m.check_batch = lambda rows: None
+    m.models_seen = []
+
+    def check_against(row, accepted, models=None):
+        m.models_seen.append(models)
+        return (against or (lambda row, accepted: []))(row, accepted)
+
+    m.check_against = check_against
+    m.check_batch = lambda rows, models=None: None
     m.role_words_in_prompt = lambda row: list(role_words) if row["kind"] in "CD" else []
     m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})
@@ -69,7 +75,7 @@ def test_the_finished_set_goes_through_check_batch_and_a_refusal_is_reported(tmp
     gates = _gates()
     seen = []
 
-    def refuse(rows):
+    def refuse(rows, models=None):
         seen.append(len(rows))
         raise ValueError("T02: 0 of 12 verdict-bearing items have 2-4 DECIDING lines")
 
