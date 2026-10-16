@@ -11,12 +11,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from role_set.plan import Slot
+from role_set.plan import ORDERED_KINDS, Slot
 
 FLAWS = ("rubber_stamp", "guess", "loop", "nitpick", "fix", "obeyed_material", "caved", "reject_by_default")
 VERDICTS = ("supported", "unsupported", "cannot_tell")
 SILENT_NEEDED = ("T01", "T04", "T14")  # apply items whose twin drops the deciding lines (aspire-si#137)
-ORDERED_KINDS = ("changelog", "timetable")  # content whose line order carries meaning (T09 apply items' order_free)
 
 # Kind B keys (R&D's ruling on the 2026-10-11 pilot): a closed answer, never free text, so a second solver can be
 # compared against it; and a puzzle keyed "undetermined" is open, so it can't teach a decided step.

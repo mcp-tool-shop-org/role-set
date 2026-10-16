@@ -16,6 +16,7 @@ KINDS = ("A", "B", "C", "D", "E")
 PER_KIND = 8
 VERDICTS = ("supported", "unsupported", "cannot_tell")
 CONTENT_KINDS = ("notice", "policy", "label", "timetable", "changelog", "code", "record", "design_note")
+ORDERED_KINDS = ("changelog", "timetable")  # line order carries meaning; T09 apply slots never draw these
 # Content kinds whose material naturally spans lines (a table row, a heading plus a bullet).
 MULTI_LINE_KINDS = ("changelog", "label", "record", "code")
 REAL_SOURCE_KINDS = ("changelog", "code", "record", "design_note")
@@ -246,10 +247,12 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int) -> list[Slot]:
     """Ten apply slots for one lesson: five C and five D, one turn each, ids <lesson>-<kind>-AP-NN, split "apply". The
     model answers them after each session and is never trained on them, so they carry no pairs and no two-turn items.
     Verdicts four supported, three unsupported, three cannot_tell; one ESCALATE-yes; multi-line keys on a quarter of
-    the decided items, where the material allows."""
+    the decided items, where the material allows. T09 draws only unordered kinds: a changelog or a timetable has a
+    line order that carries meaning, and assembly refuses order_free on those."""
 
     rng = random.Random(f"{lesson}:apply:{seed}")
-    content = list(CONTENT_KINDS)
+    pool = CONTENT_KINDS if lesson != "T09" else tuple(k for k in CONTENT_KINDS if k not in ORDERED_KINDS)
+    content = list(pool)
     rng.shuffle(content)
     slots = [Slot(id=f"{lesson}-{kind}-AP-{n + 1:02d}", lesson=lesson, kind=kind, side=sides[n % 2], tier=APPLY_TIERS[n],
                   content_kind=content[(n + (0 if kind == "C" else APPLY_PER_KIND)) % len(content)], split="apply")

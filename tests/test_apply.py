@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from role_set.assemble import AssemblyError, Material, assemble
-from role_set.plan import plan_apply, plan_apply_batch
+from role_set.plan import CONTENT_KINDS, ORDERED_KINDS, plan_apply, plan_apply_batch
 from role_set.runner import spent_span, trained_spans
 
 NOTICE = Material("Desk hours\nThe desk is open on Sundays from 10:00 to 14:00.\n", {"invented": "notice, written for this item"})
@@ -31,6 +31,33 @@ def test_an_apply_plan_is_five_c_and_five_d_per_lesson():
     assert plan_apply("T05", ("goes to the source", "holds the page"), seed=3) == slots  # the same seed, the same plan
     batch = plan_apply_batch({"T05": ("x", "y"), "T10": ("x", "y")}, seed=0)
     assert len(batch) == 20 and len({s.id for s in batch}) == 20
+
+
+def test_t09_apply_slots_draw_no_ordered_kind_on_any_seed():
+    """The pool drops changelog and timetable before the seed shuffles it, so no seed can draw one."""
+
+    unordered = set(CONTENT_KINDS) - set(ORDERED_KINDS)
+    seeds = [*range(2048), -(2**31), -1, 2**31 - 1, 2**63 - 1]
+    for seed in seeds:
+        kinds = {s.content_kind for s in plan_apply("T09", ("a", "b"), seed=seed)}
+        assert kinds.isdisjoint(ORDERED_KINDS) and kinds == unordered
+    for lesson in ("T01", "T05", "T10", "T18"):
+        kinds = {s.content_kind for s in plan_apply(lesson, ("a", "b"), seed=0)}
+        assert set(ORDERED_KINDS) <= kinds
+
+
+def test_assemble_builds_an_apply_slot_the_gates_refuse_as_training():
+    """assemble does not call check_item. Gates 1.7.2 and later refuse split apply and an -AP- id there."""
+
+    from role_set.gates import load_gates
+
+    gates = load_gates()
+    assert gates.version == "1.7.3"
+    slot = _d_slot()
+    row = assemble(slot, "t", BASE, NOTICE)
+    assert row["split"] == "apply" and "-AP-" in row["id"]
+    with pytest.raises(gates.error_type(), match="never trained"):
+        gates.check_item(row)
 
 
 def test_the_cli_writes_an_apply_plan(tmp_path: Path):
