@@ -63,6 +63,7 @@ class Slot:
     real_source: bool = False
     e_type: str | None = None  # "written" or "verdict"
     driven_by: list[str] = field(default_factory=list)
+    split: str | None = None  # "apply": asked after each session, never trained (aspire-si#127)
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -234,3 +235,38 @@ def plan_batch(lessons: dict[str, tuple[str, str]], *, seed: int) -> list[Slot]:
     if over:
         raise PlanError(f"puzzle structures over two per batch: {over}; the menu needs more structures")
     return slots
+
+
+# ---- apply items (run sheet B6; the schema in aspire-si#127, R&D's rulings on #128) --------------------------------
+APPLY_PER_KIND = 5
+APPLY_TIERS = (1, 3, 3, 4, 5)
+
+
+def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int) -> list[Slot]:
+    """Ten apply slots for one lesson: five C and five D, one turn each, ids <lesson>-<kind>-AP-NN, split "apply". The
+    model answers them after each session and is never trained on them, so they carry no pairs and no two-turn items.
+    Verdicts four supported, three unsupported, three cannot_tell; one ESCALATE-yes; multi-line keys on a quarter of
+    the decided items, where the material allows."""
+
+    rng = random.Random(f"{lesson}:apply:{seed}")
+    content = list(CONTENT_KINDS)
+    rng.shuffle(content)
+    slots = [Slot(id=f"{lesson}-{kind}-AP-{n + 1:02d}", lesson=lesson, kind=kind, side=sides[n % 2], tier=APPLY_TIERS[n],
+                  content_kind=content[(n + (0 if kind == "C" else APPLY_PER_KIND)) % len(content)], split="apply")
+             for kind in ("C", "D") for n in range(APPLY_PER_KIND)]
+    verdicts = ["supported"] * 4 + ["unsupported"] * 3 + ["cannot_tell"] * 3
+    rng.shuffle(verdicts)
+    for s, v in zip(slots, verdicts):
+        s.verdict = v
+    decided = [s for s in slots if s.verdict != "cannot_tell"]
+    decided[0].escalate = f"yes ({random.Random(f'{lesson}:apply:{seed}:escalate').choice(ESCALATE_DOMAINS)})"
+    need = math.ceil(FLOOR_SHARE * len(decided))
+    candidates = [s for s in decided if s.content_kind in MULTI_LINE_KINDS]
+    for s in (candidates + [s for s in decided if s not in candidates])[:need]:
+        s.multi_line = True
+    return slots
+
+
+def plan_apply_batch(lessons: dict[str, tuple[str, str]], *, seed: int) -> list[Slot]:
+    return [s for name, sides in lessons.items() for s in plan_apply(name, sides, seed=seed)]
+

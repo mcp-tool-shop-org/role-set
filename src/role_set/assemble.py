@@ -263,7 +263,34 @@ def _base(slot: Slot, trait: str, sources: list[dict], invented: bool, content_k
         "invented": invented,
         "key_basis": "construction" if invented else "source",
         "tags": tags,
+        **({"split": slot.split} if slot.split else {}),
     }
+
+
+def _apply_fields(slot: Slot, fields: dict, row: dict) -> None:
+    """An apply item (aspire-si#127): one turn, asked once and never trained. A T10 apply item also carries its keyed
+    companion claim, `r10_twin: {statement, verdict}`, a strengthened or weakened claim on the same material that the
+    apply sitting puts in place of the item's one Statement line; its keyed verdict must differ from the item's (R&D on
+    aspire-si#128). R&D key-checks both."""
+
+    if slot.split != "apply":
+        return
+    if len(row["turns"]) != 1:
+        raise AssemblyError("an apply item is one turn: the model is asked its first user turn once")
+    if slot.lesson != "T10":
+        return
+    twin = fields.get("r10_twin")
+    if not isinstance(twin, dict) or not str(twin.get("statement") or "").strip() or twin.get("verdict") not in VERDICTS:
+        raise AssemblyError("a T10 apply item needs r10_twin: {statement, verdict}, a strengthened or weakened claim on the "
+                            "same material, keyed")
+    if twin["verdict"] == row["verdict"]:
+        raise AssemblyError(f"r10_twin's verdict must differ from the item's ({row['verdict']}): the pair tests literal reading")
+    statements = [ln for ln in row["turns"][0]["user"].splitlines() if ln.startswith("Statement:")]
+    if len(statements) != 1:
+        raise AssemblyError(f"the apply sitting puts r10_twin in place of the one Statement line; this user turn has {len(statements)}")
+    if _ws(twin["statement"]) == _ws(statements[0][len("Statement:"):]):
+        raise AssemblyError("r10_twin's statement repeats the item's own")
+    row["r10_twin"] = {"statement": twin["statement"].strip(), "verdict": twin["verdict"]}
 
 
 def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = None) -> dict:
@@ -347,6 +374,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         row["turns"] = [{"user": user, "thinking": fields["thinking"].strip(), "reply": reply}]
         if slot.pair:
             row["pair"] = slot.pair
+        _apply_fields(slot, fields, row)
         return row
 
     if k == "D":
@@ -408,6 +436,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         row["tags"] = tags
         if slot.pair:
             row["pair"] = slot.pair
+        _apply_fields(slot, fields, row)
         return row
 
     if k == "E":

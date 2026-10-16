@@ -27,7 +27,7 @@ from role_set.write import allowed_critics, trait_names_from_pack
 from role_set.transport import ollama_chat, unload
 from role_set.write import WriteConfig, WriteRefused
 from role_set.write import run as run_write
-from role_set.plan import PlanError, check_plan, plan_batch
+from role_set.plan import PlanError, check_plan, plan_apply_batch, plan_batch
 
 # The verifier role's lessons and their two sides. The full pack arrives with `pack sync`;
 # until then the sides are the ones the hand-written batches used.
@@ -57,11 +57,11 @@ def _plan(args: argparse.Namespace) -> int:
             return 2
         lessons[name] = VERIFIER_SIDES[name]
     try:
-        slots = plan_batch(lessons, seed=args.seed)
+        slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
     except PlanError as e:
         print(f"REFUSED: {e}", file=sys.stderr)
         return 2
-    figures = [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
+    figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
     out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
     Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
     for f in figures:
@@ -124,6 +124,7 @@ def _write(args: argparse.Namespace) -> int:
         exemplar_exclude=Path(args.exemplar_exclude) if args.exemplar_exclude else None,
         stuck_repo=Path(args.stuck_repo) if args.stuck_repo else None, stuck_commit=args.stuck_commit,
         stop_after_minutes=args.stop_after_minutes, closed_form=args.closed_form,
+        training=tuple(Path(t) for t in args.training),
     )
     try:
         result = run_write(cfg)
@@ -260,6 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--lessons", required=True, help="comma-separated lesson ids, e.g. T02,T03,T06")
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
+    a.add_argument("--apply", action="store_true", help="the apply items (aspire-si#127): five C and five D per lesson, never trained")
     a.set_defaults(func=_plan)
 
     c = sub.add_parser("cost", help="pod hours and dollars for a plan; no model call")
@@ -339,6 +341,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")
     w.add_argument("--no-critic", action="store_true", help="dry runs only; items pass without the second reader")
     w.add_argument("--pool", default=None, help="the harvested excerpt pool (jsonl)")
+    w.add_argument("--training", nargs="*", default=(), help="for an apply plan: the whole training set's data files, each with its .models.jsonl sidecar")
     w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
     w.add_argument("--exemplar-commit", default=None)
     w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")
