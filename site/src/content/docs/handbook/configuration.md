@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: The writer pins, the critic pin, and the role pack a run is allowed to serve.
+description: The proven model list, the pins a run must match, and the role pack a run is allowed to serve.
 sidebar:
   order: 6
 ---
@@ -9,39 +9,36 @@ Two files decide what a run is allowed to call, and what text it is allowed to s
 
 ## writers.json
 
-The file lists licence-checked writers and critics. A model name that is not in it is refused. A name that contains `cloud` is refused even if someone adds it.
+The file is the proven list. A model is on it only when its maker's own documentation allows training on its outputs. A name that is not on it is refused, and a name that contains `cloud` is refused even if someone adds it.
 
-The writer a paid batch is pinned to:
+Every entry needs its proof, and the list is refused when it loads if any entry lacks one:
 
-| Field | Value |
+| Field | What it holds |
 |---|---|
-| Served as | `qwen3-235b-instruct-2507` |
-| Model | Qwen3-235B-A22B-Instruct-2507, AWQ build |
-| Revision | `96548f657d772187f16e9f04bc50aec78a9f9cdd` |
-| Licence | Apache-2.0 |
+| `family` | The model family, for the critic check |
+| `licence` | The licence the maker's card names |
+| `proof_url` | The maker's live page (`https://`) |
+| `proof_clause` | The clause, quoted |
+| `proof_date` | The day it was read, `YYYY-MM-DD` |
+| `checked_by` | Who read it |
 
-The critic a paid batch is pinned to:
-
-| Field | Value |
+| Writers | Critics |
 |---|---|
-| Served as | `gemma4:31b` |
-| Digest | `6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7` |
-| Quant | Q4_K_M |
-| Licence | Apache-2.0 |
-| Endpoint | `http://127.0.0.1:11434` |
+| `nemotron-3-ultra-550b-a55b`, `deepseek-r1-0528`, `nemotron-3.5-super-vl-120b-a12b`, `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` | `muse-glimmer-30b`, `nemotron-3.5-lightning-30b-a3b` |
 
-A critic whose local digest differs from that pin is refused. Re-pulling weights under the same tag does not silently become the pin.
+A critic of the writer's own family is refused, so Muse-Glimmer reads the Nemotron and DeepSeek writers, and Lightning reads Muse-Glimmer.
 
-Two other rows are not substitutes:
+**The pins.** Models are served by `llama-server`, built with CUDA 13.4, at Q8_0. A listed model is refused until it's pinned: `repo`, `revision`, `gguf_file` and `gguf_sha256`. `llama_server` pins the binary by `commit` and `sha256`. The wave script hashes the GGUF and the binary before launch and passes them in (`--writer-gguf-sha256`, `--critic-gguf-sha256`, `--llama-server-sha256`). Any drift refuses the run before a byte is sent.
 
-- `qwen3:8b` is rehearsal-only. It is pinned by digest, it runs on the local GPU, and it needs the same grant and heartbeat as the critic. Its output is written under a `rehearsal/` directory, and a request to write it anywhere else is refused.
-- `granite4.1:30b` is IBM Granite 4.1, Apache-2.0, listed as a comparison critic. `write` refuses it as the run's critic.
+**The run's context.** `--partition` is `production` or `trial:<name>`. `--machine` is the wave script's CUDA machine line, as JSON: `driver`, `compat` (true or false), `runtime`, `card`, and where it ran (`colab_release_tag`, `pod_id` or `rig`).
+
+An entry with `rehearsal_only: true` writes under a `rehearsal/` directory, and a request to write it anywhere else is refused. An entry with `role: critic-comparison` runs in `critic-control` only, never as a run's critic.
 
 `--writers` defaults to `writers.json` in the working directory. Point it elsewhere only when you mean to.
 
 ## The grant
 
-The local GPU is used for the critic and for a rehearsal writer. `write` on those paths, and `critic-control` on every path, require:
+A step whose machine line names the 5090 runs only inside a grant. `write` and `critic-control` on the 5090 require:
 
 - `--grant`, a grant id for the batch window
 - `--heartbeat`, a file whose modified time is under 60 seconds
@@ -67,7 +64,7 @@ The pack's files, the Advocate draft, and how the hash is built are on [Role pac
 
 ## What lands on an accepted receipt
 
-An accepted receipt spreads the run's pins. Always: the plan hash (`plan_sha256`) and the pack hash (`pack_sha256`), plus the pack commit. When you passed exemplars: `exemplar_commit`, and `exemplar_exclude_sha256` when you also passed an exclude file. When the stuck rule was loaded: `stuck_rule_sha256`. The exemplar text itself is not hashed onto the receipt. The commit is the pin for which text was read.
+An accepted receipt spreads the run's pins. Always: the plan hash (`plan_sha256`) and the pack hash (`pack_sha256`), plus the pack commit. On a real run: the `partition`, the `wave`, the writer's and critic's family, repo, revision, GGUF file and hash, licence and proof URL, the `llama-server` commit and hash, the `machine` line, and the hash of `writers.json` itself. When you passed exemplars: `exemplar_commit`, and `exemplar_exclude_sha256` when you also passed an exclude file. When the stuck rule was loaded: `stuck_rule_sha256`. The exemplar text itself is not hashed onto the receipt. The commit is the pin for which text was read.
 
 `drafts.jsonl` is every writer call. It does not carry those pins on each line. `batch-report.json` is the run summary. It is not a second copy of the pins. A run with no accepted row has no `receipts.jsonl`.
 

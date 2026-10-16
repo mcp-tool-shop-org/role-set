@@ -1,45 +1,111 @@
 {
-  "_note": "Licence-checked models only. The Publisher owns this list and checks each licence at the pinned revision or digest before first use. A model not listed here is refused by the guards; a critic whose local digest differs from the pin is refused; cloud tags are refused regardless.",
+  "_note": "The proven list (BUILD-SPEC B6, the maintainer's proof rule of 2026-10-16). A model is listed only when its maker's own documentation allows training on its outputs: proof_url (the maker's live page), proof_clause (quoted) and proof_date (the day it was read). role-set refuses an entry without them. A listed model is still refused until it is pinned: repo revision, GGUF file and its sha256, filled in after the download. The wave script measures the GGUF and the llama-server binary before launch and the run refuses any drift. A critic of the writer's own family is refused. Cloud tags are refused regardless.",
+  "llama_server": {
+    "commit": null,
+    "sha256": null,
+    "cuda": "13.4",
+    "note": "llama.cpp built with CUDA 13.4 on each host; pinned by commit and binary sha256 once built"
+  },
   "writers": [
     {
-      "served_as": "qwen3-235b-instruct-2507",
-      "repo": "QuantTrio/Qwen3-235B-A22B-Instruct-2507-AWQ",
-      "revision": "96548f657d772187f16e9f04bc50aec78a9f9cdd",
-      "base_repo": "Qwen/Qwen3-235B-A22B-Instruct-2507",
-      "base_revision": "ac9c66cc9b46af7306746a9250f23d47083d689e",
-      "licence": "Apache-2.0",
-      "offrig_profile": "writer-qwen235",
-      "checked_by": "the Publisher, 2026-10-10"
+      "served_as": "nemotron-3-ultra-550b-a55b",
+      "family": "nemotron",
+      "repo": "nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "OpenMDW-1.1",
+      "proof_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-BF16",
+      "proof_clause": "Card: \"Governing Download Terms: Use of this model is governed by the OpenMDW License Agreement, version 1.1\". OpenMDW-1.1: \"does not impose any restrictions or obligations with respect to any use, modification, or sharing of any outputs\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
     },
     {
-      "served_as": "qwen3:8b",
-      "digest": "500a1f067a9f782620b40bee6f7b0c89e17ae61f686b92c24933e4ca4b2b8b41",
-      "quant": "Q4_K_M",
+      "served_as": "deepseek-r1-0528",
+      "family": "deepseek",
+      "repo": "deepseek-ai/DeepSeek-R1-0528",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "MIT",
+      "proof_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-0528",
+      "proof_clause": "\"DeepSeek-R1 series (including Base and Chat) supports commercial use and distillation.\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
+    },
+    {
+      "served_as": "nemotron-3.5-super-vl-120b-a12b",
+      "family": "nemotron",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "OpenMDW-1.1",
+      "proof_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "proof_clause": "Card: \"Governing Download Terms: Use of this model is governed by the OpenMDW License Agreement, version 1.1\". OpenMDW-1.1: \"does not impose any restrictions or obligations with respect to any use, modification, or sharing of any outputs\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
+    },
+    {
+      "served_as": "muse-glimmer-30b",
+      "family": "muse",
+      "repo": "meta-models/Muse-Glimmer-30B",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
       "licence": "Apache-2.0",
-      "rehearsal_only": true,
-      "checked_by": "the Publisher, 2026-10-10 (digest 500a1f06…)"
+      "proof_url": "https://huggingface.co/meta-models/Muse-Glimmer-30B",
+      "proof_clause": "Intended uses: \"Synthetic data generation: Generating high-quality training data for downstream model development\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
+    },
+    {
+      "served_as": "nemotron-3.5-lightning-30b-a3b",
+      "family": "nemotron",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "OpenMDW-1.1",
+      "proof_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "proof_clause": "OpenMDW-1.1 (the card governs, not the licence an Ollama tag bundles): \"does not impose any restrictions or obligations with respect to any use, modification, or sharing of any outputs\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
     }
   ],
   "critics": [
     {
-      "served_as": "gemma4:31b",
-      "family": "gemma",
-      "digest": "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7",
-      "quant": "Q4_K_M",
+      "served_as": "muse-glimmer-30b",
+      "family": "muse",
+      "repo": "meta-models/Muse-Glimmer-30B",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
       "licence": "Apache-2.0",
-      "endpoint": "http://127.0.0.1:11434",
-      "checked_by": "the Publisher, 2026-10-10 (digest 6316f062…)"
+      "proof_url": "https://huggingface.co/meta-models/Muse-Glimmer-30B",
+      "proof_clause": "Intended uses: \"Synthetic data generation: Generating high-quality training data for downstream model development\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Nemotron and DeepSeek writers"
     },
     {
-      "served_as": "granite4.1:30b",
-      "family": "granite",
-      "role": "critic-comparison",
-      "digest": "3f3e5df8a021439fd6f867a0e526bdc303cac79c811201cb6bac193298cb9fcd",
-      "quant": "Q4_K_M",
-      "licence": "Apache-2.0",
-      "attribution": "IBM Granite 4.1 (30B), Apache-2.0",
-      "endpoint": "http://127.0.0.1:11434",
-      "checked_by": "the Publisher, 2026-10-11, from `ollama show --license` and /api/tags digest"
+      "served_as": "nemotron-3.5-lightning-30b-a3b",
+      "family": "nemotron",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "revision": null,
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "OpenMDW-1.1",
+      "proof_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "proof_clause": "OpenMDW-1.1 (the card governs, not the licence an Ollama tag bundles): \"does not impose any restrictions or obligations with respect to any use, modification, or sharing of any outputs\"",
+      "proof_date": "2026-10-16",
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Muse writer"
     }
   ]
 }

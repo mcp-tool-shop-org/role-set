@@ -65,64 +65,60 @@ def test_plan_and_pack_helpers(pack_dir: Path, plan_file: Path):
     assert names == {"T02": "goes to the source", "T03": "precise", "T14": "doesn't fill gaps", "T99": "T99"}
 
 
+def _proven_setup(tmp_path: Path, *, card: str = "NVIDIA A100-SXM4-40GB") -> tuple[Path, Path]:
+    from test_proven import proven_file
+
+    machine = tmp_path / "machine.json"
+    where = {"rig": "robot"} if "5090" in card else {"colab_release_tag": "release-colab_20261015"}
+    machine.write_text(json.dumps({"driver": "580.82", "compat": True, "runtime": "13.4", "card": card, **where}), encoding="utf-8")
+    return proven_file(tmp_path), machine
+
+
 def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
     import role_set.write as w
+    from role_set.mock import mock_gates
+    from test_proven import SHA_C, SHA_S, SHA_W
 
-    writers = tmp_path / "writers.json"
-    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3-235b-instruct-2507", "repo": "Q/R", "revision": "9654", "licence": "Apache-2.0"}],
-                                   "critics": [{"served_as": "gemma4:31b", "digest": "6316" + "0" * 60},
-                                               {"served_as": "granite4.1:30b", "digest": "3f3e" + "0" * 60, "role": "critic-comparison"}]}), encoding="utf-8")
-    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, critic_endpoint="http://127.0.0.1:11434", critic_model="gemma4:31b")
+    writers, machine = _proven_setup(tmp_path)
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    good = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1", model="big-writer",
+                writer_gguf_sha256=SHA_W, critic_endpoint="http://127.0.0.1:8081/v1", critic_model="other-critic", critic_gguf_sha256=SHA_C,
+                server_sha256=SHA_S, machine=machine, partition="trial:j1-wave1")
 
-    class _Resp:
-        def __init__(self, payload):
-            self.payload = payload
+    def refused(match: str, **change):
+        with pytest.raises(WriteRefused, match=match):
+            build(WriteConfig(**{**good, **change}))
 
-        def __enter__(self):
-            return self
+    refused("127.0.0.1", endpoint="http://pod.example:8000/v1")
+    refused("licence-checked", model="other-model")
+    refused("cloud", model="nemotron:cloud")
+    refused("--partition", partition=None)
+    refused("--machine", machine=None)
+    refused("rebuild or re-pin", server_sha256="6" * 64)
+    refused("differs from the pinned", writer_gguf_sha256="b" * 64)
+    refused("local critic", critic_model="")
+    refused("proven critic list", critic_model="gemma4:31b")
+    refused("own family", critic_model="same-critic")
+    refused("comparison only", critic_model="compare-critic")
+    refused("measured sha256", critic_gguf_sha256=None)
+    refused("127.0.0.1", critic_endpoint="http://10.0.0.2:8081/v1")
 
-        def __exit__(self, *a):
-            return False
+    slots, sides, pack, names, gates, writer, critic, pins, cleanup = build(WriteConfig(**good))
+    assert pins["partition"] == "trial:j1-wave1" and pins["wave"] == "inline" and pins["drafts_sha256"] is None
+    assert pins["writer_family"] == "nemotron" and pins["writer_gguf_sha256"] == SHA_W and pins["writer_revision"] == "r1"
+    assert pins["critic_model"] == "other-critic" and pins["critic_family"] == "muse" and pins["critic_gguf_sha256"] == SHA_C
+    assert pins["llama_server_commit"] == "b6000" and pins["llama_server_sha256"] == SHA_S
+    assert pins["machine"]["runtime"] == "13.4" and len(pins["writers_list_sha256"]) == 64 and "grant" not in pins
+    assert cleanup is None and callable(writer) and callable(critic)
+    no_critic = build(WriteConfig(**{**good, "no_critic": True, "critic_model": None}))
+    assert no_critic[6] is None and "critic_model" not in no_critic[7]
 
-        def read(self):
-            return json.dumps(self.payload).encode("utf-8")
-
-    opener = lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "6316" + "0" * 60}]})  # noqa: E731
-
-    def fake_gates(closed_form=None):
-        from role_set.mock import mock_gates
-
-        return mock_gates()
-
-    monkeypatch.setattr(w, "load_gates", fake_gates)
-    with pytest.raises(WriteRefused, match="127.0.0.1"):
-        build(WriteConfig(endpoint="http://pod.example:8000/v1", model="qwen3-235b-instruct-2507", **base))
-    with pytest.raises(WriteRefused, match="licence-checked"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="other-model", **base))
-    with pytest.raises(WriteRefused, match="cloud"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3:235b-cloud", **base))
-    with pytest.raises(WriteRefused, match="--grant"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", **base))
-    with pytest.raises(WriteRefused, match="--heartbeat"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", **base))
-    hb = tmp_path / "hb"
-    hb.write_text("x")
-    with pytest.raises(WriteRefused, match="heartbeat is"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 999)
-    with pytest.raises(WriteRefused, match="local critic"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "gemma4:31b-cloud"}), now=lambda: hb.stat().st_mtime + 1)
-    with pytest.raises(WriteRefused, match="critic list"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "mistral-small:24b"}), now=lambda: hb.stat().st_mtime + 1)
-    with pytest.raises(WriteRefused, match="comparison only"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **{**base, "critic_model": "granite4.1:30b"}), now=lambda: hb.stat().st_mtime + 1)
-    with pytest.raises(WriteRefused, match="differs from the pinned"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1,
-              digest_opener=lambda url, timeout: _Resp({"models": [{"name": "gemma4:31b", "digest": "ffff"}]}))
-    slots, sides, pack, names, gates, writer, critic, pins, cleanup = build(
-        WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=opener)
-    assert pins["writer_revision"] == "9654" and pins["grant"] == "G-1" and pins["critic_model"] == "gemma4:31b" and pins["critic_digest"].startswith("6316") and callable(cleanup)
-    no_critic = build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", no_critic=True, **base))
-    assert no_critic[6] is None and no_critic[8] is None
+    calls = []
+    monkeypatch.setattr(w, "chat", lambda endpoint, model, messages, temperature=0.7, seed=None: calls.append((endpoint, model, temperature, seed)) or "ok")
+    assert writer([{"role": "user", "content": "x"}], seed=2) == "ok" and critic([{"role": "user", "content": "y"}]) == "ok"
+    assert critic([], temperature=0.6, seed=3) == "ok"
+    assert calls == [("http://127.0.0.1:8080/v1", "big-writer", w.WRITER_TEMPERATURE, 2), ("http://127.0.0.1:8081/v1", "other-critic", 0.0, 0),
+                     ("http://127.0.0.1:8081/v1", "other-critic", 0.6, 3)]
 
     def missing(closed_form=None):
         from role_set.gates import GatesUnavailable
@@ -130,8 +126,28 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
         raise GatesUnavailable("REFUSED: pin it")
 
     monkeypatch.setattr(w, "load_gates", missing)
-    with pytest.raises(WriteRefused, match="pin it"):
-        build(WriteConfig(endpoint="http://127.0.0.1:11435/v1", model="qwen3-235b-instruct-2507", **base))
+    refused("pin it")
+
+
+def test_a_step_on_the_5090_needs_the_grant_and_a_fresh_heartbeat(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+    import role_set.write as w
+    from role_set.mock import mock_gates
+    from test_proven import SHA_S, SHA_W
+
+    writers, machine = _proven_setup(tmp_path, card="NVIDIA GeForce RTX 5090")
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1", model="big-writer",
+                writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:j1-wave1", no_critic=True)
+    with pytest.raises(WriteRefused, match="--grant"):
+        build(WriteConfig(**base))
+    with pytest.raises(WriteRefused, match="--heartbeat"):
+        build(WriteConfig(grant="G-1", **base))
+    hb = tmp_path / "hb"
+    hb.write_text("x")
+    with pytest.raises(WriteRefused, match="heartbeat is"):
+        build(WriteConfig(grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 999)
+    pins = build(WriteConfig(grant="G-1", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1)[7]
+    assert pins["grant"] == "G-1"
 
 
 def test_write_halts_are_reported_and_cleanup_runs(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
@@ -174,54 +190,30 @@ def test_mock_write_draws_from_a_pool_and_refuses_bad_exemplars(pack_dir: Path, 
         run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o2", mock=True, exemplar_repo=tmp_path, exemplar_commit="abc1234", exemplar_files=("nope.jsonl",)))
 
 
-def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes_apart(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
     import role_set.write as w
-
-    writers = tmp_path / "writers.json"
-    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3:8b", "digest": "500a" + "0" * 60, "licence": "Apache-2.0", "rehearsal_only": True}],
-                                   "critics": []}), encoding="utf-8")
-    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:11434", model="qwen3:8b", no_critic=True)
-
-    class _Resp:
-        def __init__(self, digest):
-            self.digest = digest
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def read(self):
-            return json.dumps({"models": [{"name": "qwen3:8b", "digest": self.digest}]}).encode("utf-8")
-
-    good = lambda url, timeout: _Resp("500a" + "0" * 60)  # noqa: E731
     from role_set.mock import mock_gates
+    from role_set.write import output_dir, require_rehearsal_dir
+    from test_proven import SHA_S, SHA_W, entry, proven_file
 
-    monkeypatch.setattr(w, "load_gates", mock_gates)
-    # The writer is on the 5090: no grant, no heartbeat, or a re-pulled tag is refused before a byte is sent.
-    with pytest.raises(WriteRefused, match="--grant"):
-        build(WriteConfig(**base), digest_opener=good)
-    with pytest.raises(WriteRefused, match="--heartbeat"):
-        build(WriteConfig(grant="G-2", **base), digest_opener=good)
-    hb = tmp_path / "hb"
-    hb.write_text("x")
-    with pytest.raises(WriteRefused, match="differs from the pinned"):
-        build(WriteConfig(grant="G-2", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=lambda url, timeout: _Resp("ffff"))
-    parts = build(WriteConfig(grant="G-2", heartbeat=hb, **base), now=lambda: hb.stat().st_mtime + 1, digest_opener=good)
-    writer, critic, pins, cleanup = parts[5], parts[6], parts[7], parts[8]
-    assert pins["writer_digest"].startswith("500a") and pins["rehearsal"] is True and pins["grant"] == "G-2" and critic is None
+    rehearsal = {"rehearsal": True, "writer_model": "small-writer"}
+    assert output_dir(tmp_path, rehearsal, mock=False) == tmp_path / "rehearsal"
+    assert output_dir(tmp_path, {"rehearsal": False}, mock=False) == tmp_path
+    assert output_dir(tmp_path, {}, mock=True) == tmp_path / "mock"
+    for elsewhere in (tmp_path, tmp_path / "batch4", tmp_path / "rehearsal" / "data"):
+        with pytest.raises(WriteRefused, match="rehearsal-only"):
+            require_rehearsal_dir(elsewhere, rehearsal)
+    require_rehearsal_dir(tmp_path / "anything", {"rehearsal": False})
 
-    calls, unloaded = [], []
-    monkeypatch.setattr(w, "ollama_chat", lambda endpoint, model, messages, temperature=0.0, seed=0, num_ctx=0: calls.append((endpoint, model, temperature, num_ctx)) or "ok")
-    monkeypatch.setattr(w, "unload", lambda endpoint, model: unloaded.append(model))
-    assert writer([{"role": "user", "content": "x"}]) == "ok"
-    # Sampled like the pod's writer: at Ollama's 0 every retry of a slot was the same draft.
-    assert calls == [("http://127.0.0.1:11434", "qwen3:8b", 0.7, w.WRITER_NUM_CTX)] and w.WRITER_NUM_CTX >= 16384
-    cleanup()
-    assert unloaded == ["qwen3:8b"]
-
-    # Its items land under rehearsal/, apart from data, and the result says so.
+    # A proven, pinned model marked rehearsal-only is a rehearsal: its pins say so, and run() writes it under rehearsal/.
+    writers = proven_file(tmp_path, writers=[entry("small-writer", "nemotron", SHA_W, rehearsal_only=True)])
+    (tmp_path / "m").mkdir()
+    _, machine = _proven_setup(tmp_path / "m")
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    cfg = WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1",
+                      model="small-writer", writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:rehearsal", no_critic=True)
+    parts = build(cfg)
+    assert parts[7]["rehearsal"] is True
     seen = {}
 
     class Stub:
@@ -236,36 +228,5 @@ def test_a_local_rehearsal_writer_is_pinned_by_digest_needs_the_grant_and_writes
             return []
 
     monkeypatch.setattr(w, "Runner", Stub)
-    monkeypatch.setattr(w, "build", lambda cfg, now=None: parts)
-    result = run(WriteConfig(grant="G-2", heartbeat=hb, **base))
-    assert seen["out_dir"].name == "rehearsal" and result["rehearsal"] is True and unloaded == ["qwen3:8b", "qwen3:8b"]
-
-
-def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
-    import role_set.write as w
-    from role_set.mock import mock_gates
-    from role_set.write import output_dir, require_rehearsal_dir
-
-    rehearsal = {"rehearsal": True, "writer_model": "qwen3:8b"}
-    assert output_dir(tmp_path, rehearsal, mock=False) == tmp_path / "rehearsal"
-    assert output_dir(tmp_path, {"rehearsal": False}, mock=False) == tmp_path
-    assert output_dir(tmp_path, {}, mock=True) == tmp_path / "mock"
-    for elsewhere in (tmp_path, tmp_path / "batch4", tmp_path / "rehearsal" / "data"):
-        with pytest.raises(WriteRefused, match="rehearsal-only"):
-            require_rehearsal_dir(elsewhere, rehearsal)
-    require_rehearsal_dir(tmp_path / "anything", {"rehearsal": False})
-
-    # A rehearsal-only entry without a digest would bypass the local path, so it is refused outright.
-    writers = tmp_path / "writers.json"
-    writers.write_text(json.dumps({"writers": [{"served_as": "qwen3:8b", "licence": "Apache-2.0", "rehearsal_only": True}], "critics": []}), encoding="utf-8")
-    monkeypatch.setattr(w, "load_gates", mock_gates)
-    with pytest.raises(WriteRefused, match="no digest pin"):
-        build(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:11434", model="qwen3:8b", no_critic=True))
-
-
-def test_the_committed_writer_list_marks_the_rehearsal_writer():
-    data = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
-    by_name = {x["served_as"]: x for x in data["writers"]}
-    small = by_name["qwen3:8b"]
-    assert small["rehearsal_only"] is True and small["digest"].startswith("500a1f06") and len(small["digest"]) == 64
-    assert not by_name["qwen3-235b-instruct-2507"].get("rehearsal_only")
+    result = run(cfg)
+    assert seen["out_dir"].name == "rehearsal" and result["rehearsal"] is True

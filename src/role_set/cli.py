@@ -7,27 +7,40 @@ import json
 import sys
 from pathlib import Path
 
-from role_set import __version__
-from role_set import autostart
-from role_set import defects
-from role_set import puzzle_check
-from role_set.readout import readout
+from role_set import __version__, autostart, defects, proven, puzzle_check
 from role_set.cost import PROFILES, estimate
+from role_set.critic_control import (
+    FALSE_REFUSAL_CAP,
+    answer_leg,
+    cases_from_rows,
+    load_rows,
+    plant_errors,
+    run_control,
+    trait_leg,
+)
 from role_set.gates import GatesUnavailable, load_gates
-from role_set.guards import GuardError, require_local_endpoint
+from role_set.guards import (
+    GuardError,
+    require_grant,
+    require_heartbeat,
+    require_local_endpoint,
+)
 from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
-from role_set.store import counts, open_store, void_round
-from role_set.critic_control import FALSE_REFUSAL_CAP, answer_leg, cases_from_rows, load_rows, plant_errors, run_control, trait_leg
-from role_set.guards import require_grant, require_heartbeat, require_ollama_digest
-from role_set.prompts import load_pack
-from role_set.trait_steps import TRAIT_STEPS
-from role_set.write import allowed_critics, trait_names_from_pack
-from role_set.transport import ollama_chat, unload
-from role_set.write import WriteConfig, WriteRefused
-from role_set.write import run as run_write
 from role_set.plan import PlanError, check_plan, plan_apply_batch, plan_batch
+from role_set.prompts import load_pack
+from role_set.readout import readout
+from role_set.store import counts, open_store, void_round
+from role_set.trait_steps import TRAIT_STEPS
+from role_set.write import (
+    WriteConfig,
+    WriteRefused,
+    critic_caller,
+    resolve_critic,
+    trait_names_from_pack,
+)
+from role_set.write import run as run_write
 
 # The verifier role's lessons and their two sides. The full pack arrives with `pack sync`;
 # until then the sides are the ones the hand-written batches used.
@@ -125,6 +138,9 @@ def _write(args: argparse.Namespace) -> int:
         stuck_repo=Path(args.stuck_repo) if args.stuck_repo else None, stuck_commit=args.stuck_commit,
         stop_after_minutes=args.stop_after_minutes, closed_form=args.closed_form,
         training=tuple(Path(t) for t in args.training),
+        partition=args.partition, machine=Path(args.machine) if args.machine else None,
+        writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
+        server_sha256=args.llama_server_sha256,
     )
     try:
         result = run_write(cfg)
@@ -184,23 +200,23 @@ def _critic_control(args: argparse.Namespace) -> int:
 
     try:
         gates = load_gates()
-        require_grant(args.grant, uses_card=True)
-        require_heartbeat(Path(args.heartbeat), time.time())
-        endpoint = require_local_endpoint(args.critic_endpoint)
-        if "cloud" in args.critic_model.lower():
-            raise GuardError("REFUSED: a local critic model is required, never a cloud tag")
-        critics = allowed_critics(Path(args.writers))
-        if args.critic_model not in critics:
-            raise GuardError(f"REFUSED: {args.critic_model} is not on the licence-checked critic list")
-        digest = require_ollama_digest(endpoint, args.critic_model, critics[args.critic_model]["digest"])
+        listed = proven.load(Path(args.writers))
+        machine = proven.load_machine(Path(args.machine) if args.machine else None)
+        server = proven.require_server(listed.server, args.llama_server_sha256)
+        if proven.card_needs_grant(machine):
+            require_grant(args.grant, uses_card=True)
+            if not args.heartbeat:
+                raise GuardError("REFUSED: a step on the 5090 needs --heartbeat <watchdog heartbeat file>")
+            require_heartbeat(Path(args.heartbeat), time.time())
+        endpoint, model, c_pins = resolve_critic(listed, args.critic_model, args.critic_endpoint, args.critic_gguf_sha256,
+                                                 allow_comparison=True)
     except (GatesUnavailable, GuardError) as e:
         print(e, file=sys.stderr)
         return 2
     rows = load_rows([Path(p) for p in args.items])
     log: list = []
-
-    def critic(messages, **sampling):
-        return ollama_chat(endpoint, args.critic_model, messages, **sampling)
+    critic = critic_caller(endpoint, model)
+    who = {"critic_model": model, "critic_pins": c_pins, "llama_server": server, "machine": machine, "grant": args.grant}
 
     if args.trait_leg or args.answer_leg:
         # The legs R&D set bars for (2026-10-11), in one grant: the trait each reviewed item teaches, three calls
@@ -208,16 +224,13 @@ def _critic_control(args: argparse.Namespace) -> int:
         if args.trait_leg and not args.pack:
             print("REFUSED: --trait-leg needs --pack (the trait names come from the pack)", file=sys.stderr)
             return 2
-        out = {"critic_model": args.critic_model, "critic_digest": digest, "grant": args.grant}
-        try:
-            if args.trait_leg:
-                trait_names = trait_names_from_pack(load_pack(Path(args.pack)))
-                out["trait_leg"] = trait_leg(critic, rows, trait_names, TRAIT_STEPS, concurrency=args.concurrency, log=log.append)
-                out["trait_misses"] = log
-            if args.answer_leg:
-                out["answer_leg"] = answer_leg(critic, rows)
-        finally:
-            unload(endpoint, args.critic_model)
+        out = dict(who)
+        if args.trait_leg:
+            trait_names = trait_names_from_pack(load_pack(Path(args.pack)))
+            out["trait_leg"] = trait_leg(critic, rows, trait_names, TRAIT_STEPS, concurrency=args.concurrency, log=log.append)
+            out["trait_misses"] = log
+        if args.answer_leg:
+            out["answer_leg"] = answer_leg(critic, rows)
         Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
         legs = [out[k] for k in ("trait_leg", "answer_leg") if k in out]
         if "trait_leg" in out:
@@ -233,11 +246,8 @@ def _critic_control(args: argparse.Namespace) -> int:
     cases = cases_from_rows(rows)
     planted = plant_errors(cases, args.planted, seed=args.seed)
 
-    try:
-        report = run_control(gates, critic, cases, planted=planted, log=log.append)
-    finally:
-        unload(endpoint, args.critic_model)
-    out = {"critic_model": args.critic_model, "critic_digest": digest, "gates": {"version": gates.version, "sha256": gates.sha256}, "grant": args.grant,
+    report = run_control(gates, critic, cases, planted=planted, log=log.append)
+    out = {**who, "gates": {"version": gates.version, "sha256": gates.sha256},
            "cap": FALSE_REFUSAL_CAP, "report": report.as_dict(), "missed_plants": log}
     Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in out["report"].items() if k not in ("false_refusal_detail", "flaw_misses")}))
@@ -308,11 +318,14 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--items", nargs="+", required=True, help="reviewed aspire-si data files (jsonl)")
     cc.add_argument("--planted", type=int, default=20)
     cc.add_argument("--seed", type=int, default=0)
-    cc.add_argument("--critic-endpoint", default="http://127.0.0.1:11434")
-    cc.add_argument("--critic-model", default="gemma4:31b")
+    cc.add_argument("--critic-endpoint", required=True, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
+    cc.add_argument("--critic-model", required=True, help="a served name from writers.json's critics")
+    cc.add_argument("--critic-gguf-sha256", required=True, help="the critic GGUF's sha256, measured by the wave script")
+    cc.add_argument("--llama-server-sha256", required=True, help="the llama-server binary's sha256, measured by the wave script")
+    cc.add_argument("--machine", required=True, help="the wave script's CUDA machine line (JSON)")
     cc.add_argument("--writers", default="writers.json")
-    cc.add_argument("--grant", required=True)
-    cc.add_argument("--heartbeat", required=True)
+    cc.add_argument("--grant", default=None, help="the Publisher's grant, required when the machine line's card is the 5090")
+    cc.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file, required on the 5090 (mtime only)")
     cc.add_argument("--out", default="critic-control.json")
     cc.add_argument("--trait-leg", action="store_true", help="run only the trait leg: three calls per reviewed item against R&D's bar")
     cc.add_argument("--answer-leg", action="store_true", help="run the kind-B answer leg: closed answers against the reviewed keys, bar 90%%")
@@ -330,12 +343,17 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--plan", required=True)
     w.add_argument("--pack", default="roles/verifier")
     w.add_argument("--out", default="out")
-    w.add_argument("--endpoint", default=None, help="http://127.0.0.1:<lane port>/v1 (offrig's tunnel); for a digest-pinned rehearsal writer, the local Ollama base http://127.0.0.1:11434")
-    w.add_argument("--model", default=None, help="a served name from writers.json")
+    w.add_argument("--endpoint", default=None, help="the writer's llama-server, http://127.0.0.1:<port>/v1 (local, or offrig's or Colab's tunnel)")
+    w.add_argument("--model", default=None, help="a served name from writers.json's writers")
     w.add_argument("--writers", default="writers.json")
-    w.add_argument("--critic-endpoint", default="http://127.0.0.1:11434")
-    w.add_argument("--critic-model", default="gemma4:31b")
-    w.add_argument("--grant", default=None, help="the Publisher's batch-window grant id for the 5090 critic")
+    w.add_argument("--writer-gguf-sha256", default=None, help="the writer GGUF's sha256, measured by the wave script")
+    w.add_argument("--critic-endpoint", default=None, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
+    w.add_argument("--critic-model", default=None, help="a served name from writers.json's critics, of another family")
+    w.add_argument("--critic-gguf-sha256", default=None)
+    w.add_argument("--llama-server-sha256", default=None, help="the llama-server binary's sha256, measured by the wave script")
+    w.add_argument("--machine", default=None, help="the wave script's CUDA machine line (JSON)")
+    w.add_argument("--partition", default=None, help="production or trial:<name>; on every receipt")
+    w.add_argument("--grant", default=None, help="the Publisher's grant id, required when the machine line's card is the 5090")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
     w.add_argument("--concurrency", type=int, default=1)
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")

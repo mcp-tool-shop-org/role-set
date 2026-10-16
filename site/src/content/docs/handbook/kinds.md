@@ -27,15 +27,18 @@ The answer leg, on kind B's closed answers, was 62.7% combined. The bar is 90%.
 
 The flaw control on 2026-10-11 had 9 of 24. Until a later control passes, a flaw mismatch is logged as advisory.
 
+These figures are for the 2026-10-11 critic, `gemma4:31b`, which is off the proven list. The new critics, Muse-Glimmer and Nemotron 3.5 Lightning, get their own control before any of their checks gate.
+
 ```text
-uv run role-set critic-control --items reviewed.jsonl --grant <grant> --heartbeat <heartbeat file>
-uv run role-set critic-control --trait-leg --pack roles/verifier --items reviewed.jsonl --grant <grant> --heartbeat <heartbeat file>
-uv run role-set critic-control --answer-leg --items reviewed.jsonl --grant <grant> --heartbeat <heartbeat file>
+uv run role-set critic-control --items reviewed.jsonl --critic-endpoint http://127.0.0.1:8081/v1 --critic-model muse-glimmer-30b \
+  --critic-gguf-sha256 <sha256> --llama-server-sha256 <sha256> --machine machine.json
+uv run role-set critic-control --trait-leg --pack roles/verifier --items reviewed.jsonl <the same critic flags>
+uv run role-set critic-control --answer-leg --items reviewed.jsonl <the same critic flags>
 ```
 
 `--items` takes one or more reviewed data files. `--trait-leg` needs `--pack`, because the trait names come from the pack. The command returns 0 when every leg you ran passes its bar, and 2 otherwise. Both legs are still short of the bar. Running the command does not turn the gates on.
 
-`write` refuses `granite4.1:30b` as the run's critic. That name is in `writers.json` as a comparison critic, for a control, not as a substitute for `gemma4:31b`.
+On the 5090, add `--grant` and `--heartbeat`. `write` refuses a critic listed with `role: critic-comparison`. Such a critic runs in a control only.
 
 ## The B solver
 

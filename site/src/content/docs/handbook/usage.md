@@ -9,17 +9,18 @@ sidebar:
 
 ## write
 
-A mock was the getting-started path. A run that calls a model adds `--endpoint` and `--model`. The endpoint has to be plain `http` on `127.0.0.1` with a port. `https`, a name, or a missing port is refused before a request is built.
+A mock was the getting-started path. A run that calls a model names both models' `llama-server` endpoints, the pins the wave script measured, the partition and the machine line. An endpoint has to be plain `http` on `127.0.0.1` with a port. `https`, a name, or a missing port is refused before a request is built.
 
 ```text
 uv run role-set write --plan plan.json --pack roles/verifier --out out \
-  --endpoint http://127.0.0.1:8000/v1 --model qwen3-235b-instruct-2507 \
-  --grant <grant> --heartbeat <heartbeat file>
+  --endpoint http://127.0.0.1:8080/v1 --model nemotron-3.5-super-vl-120b-a12b --writer-gguf-sha256 <sha256> \
+  --critic-endpoint http://127.0.0.1:8081/v1 --critic-model muse-glimmer-30b --critic-gguf-sha256 <sha256> \
+  --llama-server-sha256 <sha256> --machine machine.json --partition trial:j1-wave1
 ```
 
-The grant and the heartbeat are required when the run loads the critic, which is the default, or when the model is a local rehearsal writer. `--no-critic` skips the second reader and, with the pod writer, does not use the local GPU. That flag is a dry run. Items can pass it without the check a real batch is supposed to have.
+The grant and the heartbeat (`--grant`, `--heartbeat`) are required when the machine line's card is the 5090. `--no-critic` skips the second reader. That flag is a dry run. Items can pass it without the check a real batch is supposed to have.
 
-The heartbeat file is judged by its modified time. It has to be under 60 seconds old. The file is not opened. When the run loaded the critic, the process unloads it on the way out, including when the run stops with an error.
+The heartbeat file is judged by its modified time. It has to be under 60 seconds old. The file is not opened. `llama-server` has no unload: the wave script that started it stops it.
 
 `--concurrency` defaults to 1. `--stop-after-minutes` starts no new slot after the budget. Slots already running finish. `--pool` points at a harvested excerpt file. Exemplar and stuck-rule flags are optional and are recorded on the receipts when you pass them. `--closed-form` takes the gates' closed-form settings for written kind-E variants as JSON, for example `'{"carry": "either"}'`: keyed carry (`verbatim`, `paraphrase` or `either`), the content-word share, the distractor margin and near-copy guard, and the span. Left unset, the pinned gates' defaults apply. The gates check the values, the writer's brief states the setting, and every receipt records the settings used. The flag list is `role-set write --help`.
 
@@ -50,7 +51,7 @@ The report is per lesson and kind, for a run that passed and for a run that fail
 
 ## pilot-auto
 
-This is the paid path. The tests do not call it against a live endpoint. CI uses `write --mock`.
+This was the 2026-10-11 pilots' paid path. Its script still names the pilots' Qwen writer and Gemma critic, which are off the proven list, so `write` refuses it until the wave scripts replace it. The tests do not call it against a live endpoint. CI uses `write --mock`.
 
 ```text
 uv run role-set pilot-auto <port> <grant> <HH:MM UTC> <work directory>

@@ -91,25 +91,41 @@ def test_critic_control_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     import types
 
     from role_set import cli
+    from role_set import write as w
     from role_set.critic_control import ControlReport
+    from test_proven import SHA_C, SHA_S, proven_file
 
     items = tmp_path / "items.jsonl"
     items.write_text("", encoding="utf-8")
     hb = tmp_path / "hb"
     hb.write_text("x")
+    writers = proven_file(tmp_path)
+    machine = tmp_path / "machine.json"
+    machine.write_text(json.dumps({"driver": "580", "compat": False, "runtime": "13.4", "card": "NVIDIA GeForce RTX 5090", "rig": "robot"}), encoding="utf-8")
     from role_set.mock import mock_gates
 
     monkeypatch.setattr(cli, "load_gates", mock_gates)
-    assert main(["critic-control", "--items", str(items), "--grant", "", "--heartbeat", str(hb), "--out", str(tmp_path / "c.json")]) == 2
-    assert "--grant" in capsys.readouterr().err
-    monkeypatch.setattr(cli, "unload", lambda *a, **k: None)
-    monkeypatch.setattr(cli, "ollama_chat", lambda *a, **k: types.SimpleNamespace(text="VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no", prompt_tokens=1, completion_tokens=1, model="m", seconds=0))
-    monkeypatch.setattr(cli, "require_ollama_digest", lambda *a, **k: "6316f062")
+    args = ["critic-control", "--items", str(items), "--writers", str(writers), "--machine", str(machine), "--critic-endpoint", "http://127.0.0.1:8081/v1",
+            "--critic-model", "other-critic", "--critic-gguf-sha256", SHA_C, "--llama-server-sha256", SHA_S, "--out", str(tmp_path / "c.json")]
+    # The machine line names the 5090, so the grant and heartbeat are required.
+    assert main(args) == 2 and "--grant" in capsys.readouterr().err
+    assert main([*args, "--grant", "G-1"]) == 2 and "--heartbeat" in capsys.readouterr().err
+    monkeypatch.setattr(w, "chat", lambda *a, **k: types.SimpleNamespace(text="VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no", prompt_tokens=1, completion_tokens=1, model="m", seconds=0))
     good = ControlReport(items=1, verdict_asks=1, agree=1)
     monkeypatch.setattr(cli, "run_control", lambda *a, **k: good)
-    rc = main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--out", str(tmp_path / "c.json")])
-    assert rc == 0 and json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))["grant"] == "G-1"
-    assert main(["critic-control", "--items", str(items), "--grant", "G-1", "--heartbeat", str(hb), "--critic-model", "gemma4:cloud", "--out", str(tmp_path / "c.json")]) == 2
+    assert main([*args, "--grant", "G-1", "--heartbeat", str(hb)]) == 0
+    out = json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))
+    assert out["grant"] == "G-1" and out["critic_pins"]["gguf_sha256"] == SHA_C and out["llama_server"]["sha256"] == SHA_S
+    # A same-family critic is fine for the control (no writer is involved); a cloud tag and a drifted GGUF are not.
+    def changed(flag: str, value: str) -> list[str]:
+        out = list(args)
+        out[out.index(flag) + 1] = value
+        return [*out, "--grant", "G-1", "--heartbeat", str(hb)]
+
+    capsys.readouterr()
+    assert main(changed("--critic-model", "nemotron:cloud")) == 2 and "cloud" in capsys.readouterr().err
+    assert main(changed("--critic-gguf-sha256", "b" * 64)) == 2 and "differs from the pinned" in capsys.readouterr().err
+    assert main(changed("--critic-model", "same-critic")) == 0
 
 
 def test_harvest_through_the_cli(tmp_path: Path, capsys, monkeypatch):
