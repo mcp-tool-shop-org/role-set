@@ -46,6 +46,15 @@ def plan_file(tmp_path: Path) -> Path:
     return out
 
 
+def _sealed(path: Path, text: str) -> None:
+    """A hand-written drafts file with a good seal, so the test reaches the check after the seal."""
+
+    import hashlib
+
+    path.write_bytes(text.encode("utf-8"))
+    waves.seal_path(path).write_text(f"{hashlib.sha256(text.encode('utf-8')).hexdigest()}  {path.name}\n", encoding="utf-8")
+
+
 def _jsonl(path: Path) -> list[dict]:
     return [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
 
@@ -150,11 +159,13 @@ def test_a_wave_refuses_a_drafts_file_it_cannot_continue(pack_dir: Path, plan_fi
     with pytest.raises(WriteRefused, match="other batch pins.*partition"):
         run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "x", mock=True, partition="production", wave="critique", drafts=drafts))
     bad = tmp_path / "bad.jsonl"
-    bad.write_text('{"type": "draft"}\n', encoding="utf-8")
+    with pytest.raises(WriteRefused, match="cannot read the drafts file and its seal"):
+        run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="critique", drafts=bad))
+    _sealed(bad, '{"type": "draft"}\n')
     with pytest.raises(WriteRefused, match="not a drafts file"):
         run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="critique", drafts=bad))
-    bad.write_text("not json\n", encoding="utf-8")
-    with pytest.raises(WriteRefused, match="cannot read"):
+    _sealed(bad, "not json\n")
+    with pytest.raises(WriteRefused, match="cannot read the drafts file \\("):
         run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="critique", drafts=bad))
 
 
@@ -257,7 +268,7 @@ def test_other_gates_and_another_writer_are_refused(pack_dir: Path, plan_file: P
     with pytest.raises(WriteRefused, match="own writer.*writer_model"):
         run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="rewrite", drafts=swapped))
     mixed = tmp_path / "mixed.jsonl"
-    mixed.write_text(json.dumps(header) + "\n" + json.dumps({"type": "note"}) + "\n", encoding="utf-8")
+    _sealed(mixed, json.dumps(header) + "\n" + json.dumps({"type": "note"}) + "\n")
     with pytest.raises(WriteRefused, match="not a draft"):
         run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="rewrite", drafts=mixed))
 
@@ -296,3 +307,16 @@ def test_a_real_critique_wave_loads_no_writer_and_refuses_the_writers_family(pac
     writer, critic, pins = parts[5], parts[6], parts[7]
     assert writer is None and callable(critic) and "writer_gguf_sha256" not in pins
     assert pins["wave"] == "critique" and pins["drafts_sha256"] == waves.file_sha256(real) and pins["critic_family"] == "muse"
+
+
+def test_the_hand_off_is_sealed_against_a_one_byte_change(pack_dir: Path, plan_file: Path, tmp_path: Path):
+    run(_cfg(plan_file, pack_dir, tmp_path / "w0", wave="write"))
+    path = tmp_path / "w0" / "mock" / waves.DRAFTS_FILE
+    # The seal is in sha256sum's format, so any host can check it before a wave starts.
+    seal = waves.seal_path(path).read_text(encoding="utf-8").split()
+    assert seal == [waves.file_sha256(path), waves.DRAFTS_FILE]
+    data = bytearray(path.read_bytes())
+    data[data.index(b"awaiting_critique")] = ord("A")  # one byte, inside a draft's state
+    path.write_bytes(bytes(data))
+    with pytest.raises(WriteRefused, match="doesn't match its seal"):
+        run(_cfg(plan_file, pack_dir, tmp_path / "w1", wave="critique", drafts=path))

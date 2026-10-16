@@ -42,7 +42,7 @@ uv run role-set write --wave rewrite --drafts c1/wave-drafts.jsonl --plan plan.j
 
 Run `critique` and `rewrite` in turn until the result shows no draft `awaiting_critique` or `needs_rewrite`.
 
-- **`wave-drafts.jsonl` is the only hand-off.** It holds every slot of the batch: its conversation, attempts, refusals and state, plus the batch's pins, the andon's counts and a record of every wave with its input file's sha256.
+- **`wave-drafts.jsonl` is the only hand-off.** It holds every slot of the batch: its conversation, attempts, refusals and state, plus the batch's pins, the andon's counts and a record of every wave with its input file's sha256. Each wave seals it with `wave-drafts.jsonl.sha256` beside it, in `sha256sum`'s format; the next wave refuses a file that doesn't match its seal, so move both files together.
 - **One attempt budget per slot runs across all waves:** three attempts, the first draft and two replacements. A slot that spends it is dropped, and the andon counts the drop in whichever wave it happens.
 - **A wave refuses a drafts file written under other pins.** The plan, pack, partition, gates, exemplars, stuck rule and training set must match in every wave, and in a rewrite wave the writer's pins must match too.
 - **The batch check runs in the wave that leaves nothing pending.** It's skipped when the andon stopped any cell, as inline.

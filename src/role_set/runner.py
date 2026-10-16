@@ -489,6 +489,7 @@ class Runner:
         self.halt_order: list[tuple[str, tuple[str, str]]] = []
         self.cell_drop_keys: dict[tuple[str, str], Counter] = {}
         self.receipts: dict[str, dict] = {}  # slot id -> its accepted receipt, for wave mode's drafts file
+        self.accept_order: dict[str, int] = {}  # slot id -> its place in self.accepted, set under the accept lock
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
         self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
@@ -850,6 +851,7 @@ class Runner:
             if slot.kind == "B":
                 self.models[row["id"]] = fields["model"]
             self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs)
+            self.accept_order[slot.id] = len(self.accepted) - 1
             if cand.lookup:
                 self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
             self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material)

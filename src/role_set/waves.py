@@ -57,12 +57,25 @@ def writer_pins(pins: dict) -> dict:
 
 # ---- the drafts file ----------------------------------------------------------------------------------------
 
+def seal_path(path: Path) -> Path:
+    return path.with_name(path.name + ".sha256")
+
+
 def read(path: Path) -> tuple[dict, list[dict]]:
-    """The header and the draft records. Refused when it isn't a drafts file of this format."""
+    """The header and the draft records. Refused when the file doesn't match the seal its wave wrote beside it
+    (the hand-off crosses hosts), or when it isn't a drafts file of this format."""
 
     try:
-        lines = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()]
-    except (OSError, ValueError) as e:
+        raw = path.read_bytes()
+        seal = seal_path(path).read_text(encoding="utf-8").split()[0].strip().lower()
+    except (OSError, IndexError) as e:
+        raise WaveError(f"REFUSED: cannot read the drafts file and its seal {seal_path(path).name} ({type(e).__name__})") from e
+    got = hashlib.sha256(raw).hexdigest()
+    if got != seal:
+        raise WaveError(f"REFUSED: {path.name} ({got[:12]}) doesn't match its seal ({seal[:12]}); it changed in transit, so fetch it again")
+    try:
+        lines = [json.loads(x) for x in raw.decode("utf-8").splitlines() if x.strip()]
+    except ValueError as e:
         raise WaveError(f"REFUSED: cannot read the drafts file ({type(e).__name__})") from e
     if not lines or lines[0].get("type") != "header" or lines[0].get("format") != FORMAT:
         raise WaveError(f"REFUSED: {path.name} is not a drafts file ({FORMAT})")
@@ -73,9 +86,13 @@ def read(path: Path) -> tuple[dict, list[dict]]:
 
 
 def write(path: Path, header: dict, drafts: list[dict]) -> str:
-    text = "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in [header, *drafts])
-    path.write_text(text, encoding="utf-8", newline="\n")
-    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+    """The drafts file and its seal, <name>.sha256 beside it, in sha256sum's format. Returns the hash."""
+
+    data = "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in [header, *drafts]).encode("utf-8")
+    path.write_bytes(data)
+    sha = hashlib.sha256(data).hexdigest()
+    seal_path(path).write_text(f"{sha}  {path.name}\n", encoding="utf-8", newline="\n")
+    return sha
 
 
 def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
@@ -186,7 +203,7 @@ def _drop(runner: Runner, st: SlotState) -> dict:
 
 def _accepted(runner: Runner, st: SlotState, cand) -> dict:
     with runner.lock:
-        seq = len(runner.accepted)
+        seq = runner.accept_order[st.slot.id]
         runner.finished.append(Runner.outcome_of(st, cand.row))
     model = cand.fields.get("model") if st.slot.kind == "B" else None
     return record(st, "accepted", completion=cand.completion, receipt=runner.receipts.get(st.slot.id), row=cand.row,
