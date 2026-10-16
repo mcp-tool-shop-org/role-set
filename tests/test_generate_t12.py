@@ -173,6 +173,24 @@ def test_claims_keep_their_unsupported_share_in_a_file():
     file = [(r, next(n for n, v in r["shortcuts"].items() if v["differs"])) for r in supported[:5]]
     assert any("claims are unsupported" in m for m in check_file(file))
     assert not any("claims are unsupported" in m for m in check_file(file, Floor(min_unsupported_share=0)))
+    # The cap (Argon's review, settled by R&D): five unsupported claims of five are refused, the same 40/60 band as T11.
+    unsupported = [r for r in pool if r["answer"] == "unsupported"]
+    five = [(r, next(n for n, v in r["shortcuts"].items() if v["differs"])) for r in unsupported[:5]]
+    assert len(five) == 5 and any("5 of 5 claims are unsupported" in m for m in check_file(five))
+    assert not any("claims are unsupported" in m for m in check_file(five, Floor(max_unsupported_share=1)))
+    picked = [pool[x.index] for x in select(pool)]
+    assert sum(r["answer"] == "unsupported" for r in picked) <= 0.6 * len(picked)
+
+
+@pytest.mark.parametrize("n, band", [(1, (0, 1)), (3, (1, 2)), (5, (2, 3))])
+def test_the_claims_band_is_in_counts_so_every_size_can_meet_it(n, band):
+    # R&D on #64: a 0.4-0.6 share can't be met at 1 or 3 claims, so the band is floor(0.4n) to ceil(0.6n).
+    from role_set.generate.select import Floor, _claims_balanced, claims_band
+
+    assert claims_band(n, Floor()) == band
+    for unsupported in range(n + 1):
+        claims = [{"answer": "unsupported"}] * unsupported + [{"answer": "supported"}] * (n - unsupported)
+        assert _claims_balanced(claims, Floor()) == (band[0] <= unsupported <= band[1])
 
 
 def test_the_t12_variety_floor_holds_per_form_and_combined():

@@ -21,8 +21,9 @@ the contrast that proves it, named `T11.contrast.<form of the changed line>`, so
 `distinct_skeletons` (on by default) keeps two items of one file off the same fact skeleton, the batch cap's rule applied
 at selection (R&D's variety floor on role-set#52).
 
-T12 claims (receipts with form "claim") are at least `min_unsupported_share` unsupported within a file (0.4; R&D's
-T12 claim ruling). Claims record position None, so the position floor reads only which-edition items.
+T12 claims (receipts with form "claim") are between `min_unsupported_share` (0.4) and `max_unsupported_share` (0.6)
+unsupported within a file, the same 40/60 band as T11, counted as floor(0.4n) to ceil(0.6n) claims so every file size can
+meet it (R&D's T12 claim ruling, the cap from Argon's review, and R&D on #64). Claims record position None, so the position floor reads only which-edition items.
 
 `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under (R&D on role-set#51).
 
@@ -62,6 +63,7 @@ class Floor:
     min_newest_share: float = 0.2
     distinct_skeletons: bool = True  # no two items in a file share a fact skeleton (R&D's variety floor on #52)
     min_unsupported_share: float = 0.4  # within a file's T12 claims (receipts with form "claim"; R&D's claim ruling)
+    max_unsupported_share: float = 0.6  # and at most this, so neither verdict can be guessed (the 40/60 band)
 
     def cap(self, share: float) -> int:
         return int(share * self.size + 1e-9)
@@ -120,8 +122,16 @@ def _lesson(pool: list[dict]) -> str:
     return lessons.pop() if lessons else ""
 
 
-def _unsupported_enough(claims: list[dict], floor: Floor) -> bool:
-    return sum(r.get("answer") == "unsupported" for r in claims) >= floor.min_unsupported_share * len(claims) - 1e-9
+def claims_band(n: int, floor: Floor) -> tuple[int, int]:
+    """The unsupported count allowed among n claims: floor(min share x n) to ceil(max share x n). A band in counts, so
+    it can be met at every n (R&D on #64): one claim either way, one or two of three, two or three of five."""
+
+    return math.floor(floor.min_unsupported_share * n + 1e-9), math.ceil(floor.max_unsupported_share * n - 1e-9)
+
+
+def _claims_balanced(claims: list[dict], floor: Floor) -> bool:
+    lo, hi = claims_band(len(claims), floor)
+    return lo <= sum(r.get("answer") == "unsupported" for r in claims) <= hi
 
 
 def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str]:
@@ -163,9 +173,10 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
             problems.append(f"the answer is the newest edition on {positions.count('newest')} items; the floor is "
                             f"{floor.min_newest}")
     claims = [r for r, _ in file if r.get("form") == "claim"]
-    if claims and not _unsupported_enough(claims, floor):
+    if claims and not _claims_balanced(claims, floor):
         unsupported = sum(r.get("answer") == "unsupported" for r in claims)
-        problems.append(f"{unsupported} of {len(claims)} claims are unsupported; the floor is {floor.min_unsupported_share:.0%}")
+        lo, hi = claims_band(len(claims), floor)
+        problems.append(f"{unsupported} of {len(claims)} claims are unsupported; the band is {lo} to {hi}")
     skeletons = [r.get("skeleton_sha256") for r, _ in file if r.get("skeleton_sha256")]
     if floor.distinct_skeletons and len(set(skeletons)) < len(skeletons):
         problems.append(f"{len(skeletons) - len(set(skeletons))} item(s) repeat another item's fact skeleton")
@@ -215,7 +226,7 @@ def select(pool: list[dict], floor: Floor = Floor()) -> list[Pick]:
             newest = sum(pos[p.index] == "newest" for p in chosen)
             claims = [pool[p.index] for p in chosen if pool[p.index].get("form") == "claim"]
             return len({p.rests_on for p in chosen}) >= floor.min_distinct and (not dated or newest >= floor.min_newest) \
-                and (not claims or _unsupported_enough(claims, floor))
+                and (not claims or _claims_balanced(claims, floor))
         left = floor.size - len(chosen)
         need = floor.min_newest - sum(pos[p.index] == "newest" for p in chosen) if dated else 0
         for i in range(start, len(pool) - left + 1):
