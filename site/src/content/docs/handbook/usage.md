@@ -24,6 +24,30 @@ The heartbeat file is judged by its modified time. It has to be under 60 seconds
 
 `--concurrency` defaults to 1. `--stop-after-minutes` starts no new slot after the budget. Slots already running finish. `--pool` points at a harvested excerpt file. Exemplar and stuck-rule flags are optional and are recorded on the receipts when you pass them. `--closed-form` takes the gates' closed-form settings for written kind-E variants as JSON, for example `'{"carry": "either"}'`: keyed carry (`verbatim`, `paraphrase` or `either`), the content-word share, the distractor margin and near-copy guard, and the span. Left unset, the pinned gates' defaults apply. The gates check the values, the writer's brief states the setting, and every receipt records the settings used. The flag list is `role-set write --help`.
 
+### Waves
+
+`--wave` splits a batch into runs that each load one model, so the writer and the critic never have to share a card or a host:
+
+| Wave | Loads | Does |
+|---|---|---|
+| `write` | the writer | Writes each slot's draft and runs every mechanical check, up to and including role words. A mechanical refusal is retried at once. A draft that passes waits for the critic. |
+| `critique` | the critic | Runs the mechanical checks again on each waiting draft, then the critic and the acceptance checks against the batch's accepted rows. A pass is accepted, with its receipt. A refusal waits for a rewrite. |
+| `rewrite` | the writer | Continues each refused draft's own conversation: the draft, then the refusal and its suggestion. |
+
+```text
+uv run role-set write --wave write --plan plan.json --pack roles/verifier --out w1 <writer flags>
+uv run role-set write --wave critique --drafts w1/wave-drafts.jsonl --plan plan.json --pack roles/verifier --out c1 <critic flags>
+uv run role-set write --wave rewrite --drafts c1/wave-drafts.jsonl --plan plan.json --pack roles/verifier --out r1 <writer flags>
+```
+
+Run `critique` and `rewrite` in turn until the result shows no draft `awaiting_critique` or `needs_rewrite`.
+
+- **`wave-drafts.jsonl` is the only hand-off.** It holds every slot of the batch: its conversation, attempts, refusals and state, plus the batch's pins, the andon's counts and a record of every wave with its input file's sha256.
+- **One attempt budget per slot runs across all waves:** three attempts, the first draft and two replacements. A slot that spends it is dropped, and the andon counts the drop in whichever wave it happens.
+- **A wave refuses a drafts file written under other pins.** The plan, pack, partition, gates, exemplars, stuck rule and training set must match in every wave, and in a rewrite wave the writer's pins must match too.
+- **The batch check runs in the wave that leaves nothing pending.** It's skipped when the andon stopped any cell, as inline.
+- **`--mock` covers every wave.** CI checks that a mock batch split into waves accepts the same rows, with the same receipts apart from the wave fields, as one inline run.
+
 ### Where the files go
 
 | You passed | Directory |

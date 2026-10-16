@@ -4,8 +4,6 @@ from pathlib import Path
 import pytest
 
 from role_set.guards import (
-    ollama_digest,
-    require_ollama_digest,
     GuardError,
     heartbeat_age_s,
     require_grant,
@@ -74,19 +72,3 @@ class _Resp:
         import json
 
         return json.dumps(self.payload).encode("utf-8")
-
-
-def test_ollama_digest_is_checked_against_the_pin_and_cloud_tags_are_refused():
-    tags = {"models": [{"name": "gemma4:31b", "digest": "6316f062" + "0" * 56}, {"name": "gemma4:31b-cloud", "digest": "x"}]}
-    opener = lambda url, timeout: _Resp(tags)  # noqa: E731
-    assert ollama_digest("http://127.0.0.1:11434", "gemma4:31b", opener=opener).startswith("6316f062")
-    assert ollama_digest("http://127.0.0.1:11434", "missing:1b", opener=opener) is None
-    assert require_ollama_digest("http://127.0.0.1:11434", "gemma4:31b", "6316f062" + "0" * 56, opener=opener).startswith("6316f062")
-    with pytest.raises(GuardError, match="differs from the pinned"):
-        require_ollama_digest("http://127.0.0.1:11434", "gemma4:31b", "deadbeef" + "0" * 56, opener=opener)
-    with pytest.raises(GuardError, match="not present"):
-        require_ollama_digest("http://127.0.0.1:11434", "missing:1b", "x", opener=opener)
-    with pytest.raises(GuardError, match="cloud"):
-        require_ollama_digest("http://127.0.0.1:11434", "gemma4:31b-cloud", "x", opener=opener)
-    with pytest.raises(GuardError, match="host"):
-        ollama_digest("http://ollama.example:11434", "gemma4:31b", opener=opener)

@@ -229,6 +229,32 @@ class Status:
 
 
 @dataclass
+class SlotState:
+    """One slot between attempts: the writer conversation so far, its material, and what it has spent. The inline
+    path keeps it in memory; wave mode carries it in the drafts file between waves (BUILD-SPEC B1)."""
+
+    slot: Slot
+    messages: list
+    material: Material | None
+    facts: dict | None
+    attempt: int = 0  # attempts used, across every wave: one budget of MAX_ATTEMPTS per slot
+    spent: list = field(default_factory=list)
+    refusals: list = field(default_factory=list)
+    ended: bool = False  # the writer could not be reached: the slot ends, as inline
+
+
+@dataclass
+class Candidate:
+    """A draft that passed every mechanical check up to and including ROLE_WORDS, waiting for the critic."""
+
+    completion: object
+    fields: dict
+    row: dict
+    glyphs: int
+    lookup: bool
+
+
+@dataclass
 class Outcome:
     slot_id: str
     accepted: bool
@@ -462,6 +488,7 @@ class Runner:
         self.recent_calls: deque = deque(maxlen=SYSTEMIC_WINDOW)
         self.halt_order: list[tuple[str, tuple[str, str]]] = []
         self.cell_drop_keys: dict[tuple[str, str], Counter] = {}
+        self.receipts: dict[str, dict] = {}  # slot id -> its accepted receipt, for wave mode's drafts file
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
         self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
@@ -588,12 +615,20 @@ class Runner:
         if slot.real_source and self.excerpts.get(kind):
             return self.excerpts[kind].pop(0)
         needs = f"It must be the kind of text a verdict of '{slot.verdict}' can be reached about for one plain statement."
-        c = self.writer(material_messages(slot, needs), seed=0)
+        c = self._writer_call(material_messages(slot, needs), 0, slot)
         self._count_tokens(c)
         text = c.text.strip()
         if not text or len(text) < 20:
             raise AssemblyError("the drafted material came back empty")
         return Material(text + "\n", {"invented": f"{kind.replace('_', ' ')} material, drafted for this item and fixed before writing"})
+
+    def _writer_call(self, messages: list[dict], seed: int, slot: Slot):
+        """The writer, with the slot's id for a mock that asks for it (wave mode's keyed mock, so its drafts depend on
+        the slot and attempt, not the order of calls). A real writer is never told: the prompt carries no id."""
+
+        if getattr(self.writer, "takes_slot_id", False):
+            return self.writer(messages, seed=seed, slot_id=slot.id)
+        return self.writer(messages, seed=seed)
 
     def _refusal(self, code: str, detail: str) -> dict:
         tmpl = SUGGESTIONS.get(code, "{detail}")
@@ -685,132 +720,181 @@ class Runner:
                 return {**self._refusal(v.code, v.detail), "critic_raw": raw}
         return None
 
-    def run_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> Outcome:
-        outcome = Outcome(slot_id=slot.id, accepted=False, attempts=0)
-        trait = self.trait_names.get(slot.lesson, slot.lesson)
+    def open_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> SlotState | Outcome:
+        """The slot's material and first writer prompt. A material that can't be drafted ends the slot here."""
+
         try:
             material = self._material_for(slot)
         except AssemblyError as e:
-            outcome.refusals.append(self._refusal("ASSEMBLY", str(e)))
-            return outcome
+            return Outcome(slot_id=slot.id, accepted=False, attempts=0, refusals=[self._refusal("ASSEMBLY", str(e))])
         exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v
                      if e.get("kind") == slot.kind and e.get("split") != "apply"][:3]  # apply rows are never shown
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
         messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes,
                                    trait_words=self.gates.trait_words(slot.lesson), closed_form=self.gates.closed_form)
-        spent: list[str] = []
-        for attempt in range(1, MAX_ATTEMPTS + 1):
-            outcome.attempts = attempt
+        return SlotState(slot=slot, messages=messages, material=material, facts=facts)
+
+    def mechanical(self, st: SlotState, c) -> tuple[dict | None, Candidate | None, int]:
+        """Every check up to and including ROLE_WORDS: parse, shape, puzzle, stuck, assemble, truth, lesson copy,
+        spent, the gates' check_item and role words. A refusal or the candidate for the critic, and the glyphs normalised."""
+
+        slot, material, facts = st.slot, st.material, st.facts
+        trait = self.trait_names.get(slot.lesson, slot.lesson)
+        refusal = None
+        row = None
+        glyphs = 0
+        fields: dict = {}
+        try:
+            fields, glyphs = normalize_glyphs(parse_json_object(c.text))
+        except ValueError as e:
+            refusal = self._refusal("TRUNCATED" if getattr(c, "finish_reason", None) == "length" else "PARSE", str(e))
+        if refusal is None and row_shaped(fields, slot):
+            refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
+        lookup = False
+        if refusal is None and slot.kind == "B":
+            # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
             try:
-                c = self.writer(messages, seed=attempt)
+                lookup = check_puzzle(fields, slot.structure).lookup
+            except PuzzleError as e:
+                refusal = self._refusal("PUZZLE", str(e))
+            if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+                refusal = self._refusal("PUZZLE", LOOKUP_FULL)
+            # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
+            if refusal is None and self.stuck is not None:
+                measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
+                if measures.get("stuck"):
+                    refusal = self._refusal("STUCK", ", ".join(f"{k} {measures[k]}" for k in ("bursts", "hedges") if k in measures) or "stuck rule")
+        if refusal is None:
+            if slot.kind == "C" and "planted_flaw" not in fields:
+                fields["planted_flaw"] = slot_flaw(slot)
+            try:
+                row = assemble(slot, trait, fields, material)
+            except AssemblyError as e:
+                refusal = self._refusal("ASSEMBLY", str(e))
+        if refusal is None:
+            t = truth_checks(row, facts)
+            if t:
+                refusal = self._refusal(*t)
+        if refusal is None:
+            copied = lesson_copy(row, self._lesson_spans(slot.lesson))
+            if copied:
+                refusal = self._refusal("LESSON_COPY", copied)
+        if refusal is None and slot.split == "apply":
+            spent = spent_span(row, self._spent_spans())
+            if spent:
+                refusal = self._refusal("SPENT", spent)
+        if refusal is None:
+            try:
+                self.gates.check_item(row)
+            except self.gates.error_type() as e:
+                refusal = self._refusal("GATE", str(e))
+        if refusal is None:
+            words = self.gates.role_words_in_prompt(row)
+            if words:
+                refusal = self._refusal("ROLE_WORDS", ", ".join(words))
+        if refusal is not None:
+            return refusal, None, glyphs
+        return None, Candidate(completion=c, fields=fields, row=row, glyphs=glyphs, lookup=lookup), glyphs
+
+    def write_step(self, st: SlotState) -> Candidate | None:
+        """Writer calls until a draft passes the mechanical checks, inside the slot's attempt budget. A mechanical
+        refusal is retried at once, while the writer is loaded. None when the budget is spent or the writer is gone."""
+
+        while not st.ended and st.attempt < MAX_ATTEMPTS:
+            st.attempt += 1
+            try:
+                c = self._writer_call(st.messages, st.attempt, st.slot)
             except TransportError as e:
                 # A writer that can't be reached ends this slot, never the run by itself; the systemic rule counts it.
                 refusal = self._refusal("TRANSPORT", str(e)[:200])
-                outcome.refusals.append(refusal)
-                self._note_refusal(slot, attempt, refusal, draft="")
-                self._record_call(slot, attempt, None, "TRANSPORT", 0, material)
-                return outcome
+                st.refusals.append(refusal)
+                self._note_refusal(st.slot, st.attempt, refusal, draft="")
+                self._record_call(st.slot, st.attempt, None, "TRANSPORT", 0, st.material)
+                st.ended = True
+                return None
             self._count_tokens(c)
-            refusal = None
-            row = None
-            glyphs = 0
+            refusal, cand, glyphs = self.mechanical(st, c)
+            if cand is not None:
+                return cand
+            self.refuse(st, c, refusal, glyphs)
+        return None
+
+    def critique_step(self, st: SlotState, cand: Candidate) -> dict | None:
+        """The critic with the key hidden, then the acceptance checks under the lock. None when the row was accepted;
+        otherwise the refusal, not yet applied to the slot (refuse() does that)."""
+
+        slot, row, fields, c = st.slot, cand.row, cand.fields, cand.completion
+        refusal = self._critic_pass(slot, row, fields)
+        if refusal is not None:
+            return refusal
+        with self.lock:
             try:
-                fields, glyphs = normalize_glyphs(parse_json_object(c.text))
-            except ValueError as e:
-                refusal = self._refusal("TRUNCATED" if getattr(c, "finish_reason", None) == "length" else "PARSE", str(e))
-            if refusal is None and row_shaped(fields, slot):
-                refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
-            lookup = False
-            if refusal is None and slot.kind == "B":
-                # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
-                try:
-                    lookup = check_puzzle(fields, slot.structure).lookup
-                except PuzzleError as e:
-                    refusal = self._refusal("PUZZLE", str(e))
-                if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
-                    refusal = self._refusal("PUZZLE", LOOKUP_FULL)
-                # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
-                if refusal is None and self.stuck is not None:
-                    measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
-                    if measures.get("stuck"):
-                        refusal = self._refusal("STUCK", ", ".join(f"{k} {measures[k]}" for k in ("bursts", "hedges") if k in measures) or "stuck rule")
+                models = {**self.models, row["id"]: fields["model"]} if slot.kind == "B" else self.models
+                # An apply item may reuse no training item's material either (aspire-si#127): it is checked
+                # against the whole training set as well as this run's rows.
+                against = self.accepted + self.training if slot.split == "apply" else self.accepted
+                if slot.split == "apply":
+                    models = {**self.training_models, **models}
+                reasons = self.gates.check_against(row, against, models=models)
+            except self.gates.error_type() as e:
+                reasons = [("AGAINST", str(e))]
+            stamp = reply_opening_reused(row, self.accepted)
+            if reasons:
+                code, msg = reasons[0]
+                return self._refusal("AGAINST", f"{code}: {msg}")
+            if stamp:
+                return self._refusal("REPLY_OPENING", stamp)
+            if cand.lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+                # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
+                return self._refusal("PUZZLE", LOOKUP_FULL)
+            if slot.kind == "B":
+                self.models[row["id"]] = fields["model"]
+            self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs)
+            if cand.lookup:
+                self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
+            self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material)
+            return None
+
+    def refuse(self, st: SlotState, c, refusal: dict, glyphs: int) -> None:
+        """A refused draft: kept, logged, and answered with the suggestion, so the next attempt continues the same
+        conversation (the writer's draft, then "Refused: ...")."""
+
+        slot = st.slot
+        st.refusals.append(refusal)
+        self._note_refusal(slot, st.attempt, refusal, draft=c.text)
+        self._record_call(slot, st.attempt, c, refusal["code"], glyphs, st.material)
+        st.spent += spent_wording(refusal)
+        if st.spent:
+            with self.lock:
+                self.avoid.extend(x for x in st.spent if x not in self.avoid)
+        ask = "Refused: " + refusal["suggestion"]
+        if st.spent:
+            # The 8B rehearsal repeated the same span on every retry when told only the reason (Window B).
+            ask += " Do not use any of these wordings, in any order or form: " + "; ".join(f"'{x}'" for x in dict.fromkeys(st.spent)) + "."
+        ask += trait_words_note(self.gates.trait_words(slot.lesson) if slot.kind == "A" else [], st.spent)
+        st.messages = st.messages + [
+            {"role": "assistant", "content": c.text},
+            {"role": "user", "content": ask + " Return a corrected JSON object with all fields."},
+        ]
+
+    @staticmethod
+    def outcome_of(st: SlotState, row: dict | None = None) -> Outcome:
+        return Outcome(slot_id=st.slot.id, accepted=row is not None, attempts=st.attempt, refusals=list(st.refusals), row=row)
+
+    def run_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> Outcome:
+        """The inline path: write, critique, and rewrite on a refusal, all in one process."""
+
+        st = self.open_slot(slot, coverage_notes)
+        if isinstance(st, Outcome):
+            return st
+        while True:
+            cand = self.write_step(st)
+            if cand is None:
+                return self.outcome_of(st)
+            refusal = self.critique_step(st, cand)
             if refusal is None:
-                if slot.kind == "C" and "planted_flaw" not in fields:
-                    fields["planted_flaw"] = slot_flaw(slot)
-                try:
-                    row = assemble(slot, trait, fields, material)
-                except AssemblyError as e:
-                    refusal = self._refusal("ASSEMBLY", str(e))
-            if refusal is None:
-                t = truth_checks(row, facts)
-                if t:
-                    refusal = self._refusal(*t)
-            if refusal is None:
-                copied = lesson_copy(row, self._lesson_spans(slot.lesson))
-                if copied:
-                    refusal = self._refusal("LESSON_COPY", copied)
-            if refusal is None and slot.split == "apply":
-                spent = spent_span(row, self._spent_spans())
-                if spent:
-                    refusal = self._refusal("SPENT", spent)
-            if refusal is None:
-                try:
-                    self.gates.check_item(row)
-                except self.gates.error_type() as e:
-                    refusal = self._refusal("GATE", str(e))
-            if refusal is None:
-                words = self.gates.role_words_in_prompt(row)
-                if words:
-                    refusal = self._refusal("ROLE_WORDS", ", ".join(words))
-            if refusal is None:
-                refusal = self._critic_pass(slot, row, fields)
-            if refusal is None:
-                with self.lock:
-                    try:
-                        models = {**self.models, row["id"]: fields["model"]} if slot.kind == "B" else self.models
-                        # An apply item may reuse no training item's material either (aspire-si#127): it is checked
-                        # against the whole training set as well as this run's rows.
-                        against = self.accepted + self.training if slot.split == "apply" else self.accepted
-                        if slot.split == "apply":
-                            models = {**self.training_models, **models}
-                        reasons = self.gates.check_against(row, against, models=models)
-                    except self.gates.error_type() as e:
-                        reasons = [("AGAINST", str(e))]
-                    stamp = reply_opening_reused(row, self.accepted)
-                    if reasons:
-                        code, msg = reasons[0]
-                        refusal = self._refusal("AGAINST", f"{code}: {msg}")
-                    elif stamp:
-                        refusal = self._refusal("REPLY_OPENING", stamp)
-                    elif lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
-                        # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
-                        refusal = self._refusal("PUZZLE", LOOKUP_FULL)
-                    else:
-                        if slot.kind == "B":
-                            self.models[row["id"]] = fields["model"]
-                        self._accept(slot, row, c, attempt, glyphs=glyphs)
-                        if lookup:
-                            self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
-                        outcome.accepted, outcome.row = True, row
-                        self._record_call(slot, attempt, c, "accepted", glyphs, material)
-                        return outcome
-            outcome.refusals.append(refusal)
-            self._note_refusal(slot, attempt, refusal, draft=c.text)
-            self._record_call(slot, attempt, c, refusal["code"], glyphs, material)
-            spent += spent_wording(refusal)
-            if spent:
-                with self.lock:
-                    self.avoid.extend(x for x in spent if x not in self.avoid)
-            ask = "Refused: " + refusal["suggestion"]
-            if spent:
-                # The 8B rehearsal repeated the same span on every retry when told only the reason (Window B).
-                ask += " Do not use any of these wordings, in any order or form: " + "; ".join(f"'{x}'" for x in dict.fromkeys(spent)) + "."
-            ask += trait_words_note(self.gates.trait_words(slot.lesson) if slot.kind == "A" else [], spent)
-            messages = messages + [
-                {"role": "assistant", "content": c.text},
-                {"role": "user", "content": ask + " Return a corrected JSON object with all fields."},
-            ]
-        return outcome
+                return self.outcome_of(st, cand.row)
+            self.refuse(st, cand.completion, refusal, cand.glyphs)
 
     def _accept(self, slot: Slot, row: dict, completion, attempt: int, glyphs: int = 0) -> None:
         self.accepted.append(row)
@@ -827,6 +911,7 @@ class Runner:
             "glyphs_normalized": glyphs,
             **self.pins,
         }
+        self.receipts[slot.id] = receipt
         with (self.out_dir / "accepted.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")
         with (self.out_dir / "receipts.jsonl").open("a", encoding="utf-8") as f:
