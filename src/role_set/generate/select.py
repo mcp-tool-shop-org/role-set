@@ -22,8 +22,8 @@ the contrast that proves it, named `T11.contrast.<form of the changed line>`, so
 at selection (R&D's variety floor on role-set#52).
 
 T12 claims (receipts with form "claim") are between `min_unsupported_share` (0.4) and `max_unsupported_share` (0.6)
-unsupported within a file, the same 40/60 band as T11 (R&D's T12 claim ruling, and the cap from Argon's review as settled by
-R&D). Claims record position None, so the position floor reads only which-edition items.
+unsupported within a file, the same 40/60 band as T11, counted as floor(0.4n) to ceil(0.6n) claims so every file size can
+meet it (R&D's T12 claim ruling, the cap from Argon's review, and R&D on #64). Claims record position None, so the position floor reads only which-edition items.
 
 `file_receipt` records each chosen item's rests-on reading with the floor it was chosen under (R&D on role-set#51).
 
@@ -122,9 +122,16 @@ def _lesson(pool: list[dict]) -> str:
     return lessons.pop() if lessons else ""
 
 
+def claims_band(n: int, floor: Floor) -> tuple[int, int]:
+    """The unsupported count allowed among n claims: floor(min share x n) to ceil(max share x n). A band in counts, so
+    it can be met at every n (R&D on #64): one claim either way, one or two of three, two or three of five."""
+
+    return math.floor(floor.min_unsupported_share * n + 1e-9), math.ceil(floor.max_unsupported_share * n - 1e-9)
+
+
 def _claims_balanced(claims: list[dict], floor: Floor) -> bool:
-    unsupported = sum(r.get("answer") == "unsupported" for r in claims)
-    return floor.min_unsupported_share * len(claims) - 1e-9 <= unsupported <= floor.max_unsupported_share * len(claims) + 1e-9
+    lo, hi = claims_band(len(claims), floor)
+    return lo <= sum(r.get("answer") == "unsupported" for r in claims) <= hi
 
 
 def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str]:
@@ -168,8 +175,8 @@ def check_file(file: list[tuple[dict, str]], floor: Floor = Floor()) -> list[str
     claims = [r for r, _ in file if r.get("form") == "claim"]
     if claims and not _claims_balanced(claims, floor):
         unsupported = sum(r.get("answer") == "unsupported" for r in claims)
-        problems.append(f"{unsupported} of {len(claims)} claims are unsupported; the band is {floor.min_unsupported_share:.0%} to "
-                        f"{floor.max_unsupported_share:.0%}")
+        lo, hi = claims_band(len(claims), floor)
+        problems.append(f"{unsupported} of {len(claims)} claims are unsupported; the band is {lo} to {hi}")
     skeletons = [r.get("skeleton_sha256") for r, _ in file if r.get("skeleton_sha256")]
     if floor.distinct_skeletons and len(set(skeletons)) < len(skeletons):
         problems.append(f"{len(skeletons) - len(set(skeletons))} item(s) repeat another item's fact skeleton")
