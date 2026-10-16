@@ -15,6 +15,7 @@ from role_set.plan import Slot
 
 FLAWS = ("rubber_stamp", "guess", "loop", "nitpick", "fix", "obeyed_material", "caved", "reject_by_default")
 VERDICTS = ("supported", "unsupported", "cannot_tell")
+SILENT_NEEDED = ("T01", "T04", "T14")  # apply items whose twin drops the deciding lines (aspire-si#137)
 ORDERED_KINDS = ("changelog", "timetable")  # content whose line order carries meaning (T09 apply items' order_free)
 
 # Kind B keys (R&D's ruling on the 2026-10-11 pilot): a closed answer, never free text, so a second solver can be
@@ -288,9 +289,10 @@ def _apply_fields(slot: Slot, fields: dict, row: dict) -> None:
         if order_free and slot.content_kind in ORDERED_KINDS:
             raise AssemblyError(f"a {slot.content_kind}'s line order carries meaning, so order_free must be false")
         row["order_free"] = order_free
-    if slot.lesson in ("T01", "T04"):
-        # R1/R4's twin removes the deciding lines; it is built only where that leaves the material silent on the
-        # statement (R&D's ruling on Argon's review). The writer says which; R&D key-checks it, as order_free on T09.
+    if slot.lesson in SILENT_NEEDED:
+        # The twin that removes the deciding lines is built only where that leaves the material silent on the
+        # statement (R&D's ruling on Argon's review; aspire-si#137's SILENT_NEEDED). The writer says which; R&D
+        # key-checks it, as order_free on T09.
         silent = fields.get("silent_without_deciding")
         if not isinstance(silent, bool):
             raise AssemblyError(f"a {slot.lesson} apply item needs silent_without_deciding: true when removing its deciding "

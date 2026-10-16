@@ -81,7 +81,7 @@ def test_a_t09_apply_item_says_whether_its_order_is_free():
     assert "order_free" not in assemble(_d_slot("T05"), "t", BASE, NOTICE)
 
 
-@pytest.mark.parametrize("lesson", ["T01", "T04"])
+@pytest.mark.parametrize("lesson", ["T01", "T04", "T14"])
 def test_a_t01_or_t04_apply_item_says_whether_dropping_its_deciding_lines_leaves_silence(lesson):
     s = _d_slot(lesson)
     with pytest.raises(AssemblyError, match="silent_without_deciding"):
