@@ -1,5 +1,5 @@
 {
- "_note": "The NAICS 2022 domain table (BUILD-SPEC B2). Built by scripts/naics_table.py from the source file below; titles are verbatim. Never hand-edit: rebuild from the pinned file. 921-928 (Public Administration) excluded from the ordinary pool: government offices, odd material for everyday notices; 9221 stays in the safety mapping (R&D, 2026-10-16).",
+ "_note": "The NAICS 2022 domain table (BUILD-SPEC B2). Built by scripts/naics_table.py from the source file below; titles are verbatim. Never hand-edit: rebuild from the pinned file. 921-926 and 928 (Public Administration) excluded from the ordinary pool: government offices, odd material for everyday notices; 9221 stays in the safety mapping (R&D, 2026-10-16); 927 Space Research and Technology is kept by the maintainer's decision (2026-10-16).",
  "source": {
   "url": "https://www.census.gov/naics/2022NAICS/2-6%20digit_2022_Codes.xlsx",
   "file": "2-6 digit_2022_Codes.xlsx",
@@ -364,6 +364,10 @@
   {
    "code": "814",
    "title": "Private Households"
+  },
+  {
+   "code": "927",
+   "title": "Space Research and Technology"
   }
  ],
  "escalate": {

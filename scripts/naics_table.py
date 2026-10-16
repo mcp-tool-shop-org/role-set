@@ -26,8 +26,8 @@ SOURCE_URL = "https://www.census.gov/naics/2022NAICS/2-6%20digit_2022_Codes.xlsx
 REGISTRY_ID = "census-naics-2022"
 # Left out of the ordinary pool (R&D, 2026-10-16): Public Administration's subsectors are government offices, odd
 # material for everyday notices. 9221 stays reachable through the safety mapping.
-EXCLUDED = {"921", "922", "923", "924", "925", "926", "927", "928"}
-EXCLUDED_REASON = "921-928 (Public Administration) excluded from the ordinary pool: government offices, odd material for everyday notices; 9221 stays in the safety mapping (R&D, 2026-10-16)"
+EXCLUDED = {"921", "922", "923", "924", "925", "926", "928"}  # 927 kept: the maintainer's decision, 2026-10-16
+EXCLUDED_REASON = "921-926 and 928 (Public Administration) excluded from the ordinary pool: government offices, odd material for everyday notices; 9221 stays in the safety mapping (R&D, 2026-10-16); 927 Space Research and Technology is kept by the maintainer's decision (2026-10-16)"
 # R&D, 2026-10-16: each escalation domain maps to the trades that hold that qualification.
 ESCALATE_CODES = {
     "medical": ("621", "622", "623"),
