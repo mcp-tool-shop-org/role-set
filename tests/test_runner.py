@@ -264,7 +264,7 @@ def test_concurrency_path_and_truth_checks(tmp_path: Path):
 
 def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
-                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "TRUNCATED", "LESSON_COPY", "TRANSPORT", "SHAPE", "REPLY_OPENING", "PUZZLE", "STUCK"}
+                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "TRUNCATED", "LESSON_COPY", "TRANSPORT", "SHAPE", "REPLY_OPENING", "PUZZLE", "STUCK", "SPENT"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
 
 
@@ -277,6 +277,7 @@ def test_spent_wording_is_read_from_the_gates_messages():
     assert spent_wording(opening) == ["check the note against the page"]
     assert spent_wording({"code": "AGAINST", "detail": "MATERIAL_REUSED: this material is already used; take another excerpt"}) == []
     assert spent_wording({"code": "GATE", "detail": "SPAN_REUSED: the wording 'x y' is already"}) == []
+    assert spent_wording({"code": "SPENT", "detail": "tell me whether the desk opens on sundays at"}) == ["tell me whether the desk opens on sundays at"]
 
 
 def test_a_retry_carries_the_spent_wording_and_the_run_avoids_it(tmp_path: Path):

@@ -347,7 +347,7 @@ def spent_wording(refusal: dict) -> list[str]:
     """The wording a refusal names as spent ("the wording 'x' is already in 2 items", or a copied lesson span), or []."""
 
     detail = refusal.get("detail") or ""
-    if refusal.get("code") == "LESSON_COPY":
+    if refusal.get("code") in ("LESSON_COPY", "SPENT"):  # a copied lesson span, or a trained item's span (apply items)
         return [detail] if detail else []
     if refusal.get("code") != "AGAINST" or not detail.startswith(SPENT_CODES):
         return []
