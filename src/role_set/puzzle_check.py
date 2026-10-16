@@ -159,8 +159,10 @@ def _span_key(model: dict) -> str:
         overlap = any(n[0] <= c[1] for c, n in zip(spans, spans[1:]))
     except (KeyError, TypeError, ValueError, AttributeError):
         overlap = None
+    # The form (R&D's T12 claim ruling): a claim and a which-edition question on the same clues are different items.
+    form = "claim" if "contains" in json.dumps(model.get("claim") or []) else "ask" if asks_contains else None
     return "|span:" + json.dumps({"values": len(spec.get("values", [])), "owner": (span.get("owner") or {}).get("rule"),
-                                  "contains": asks_contains, "overlap": overlap}, sort_keys=True)
+                                  "contains": asks_contains, "overlap": overlap, "form": form}, sort_keys=True)
 
 
 def models_path(data: Path) -> Path:

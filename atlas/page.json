@@ -23,39 +23,39 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 3,
-      "changed": 6,
+      "added": 2,
+      "changed": 21,
       "moved": 0,
-      "parts": 5,
+      "parts": 6,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "src/role_set/generate/t11_catalogue.json is now written by scripts/t11_catalogue.py.",
+        "sentence": "src/role_set/generate/t12_catalogue.json is now written by scripts/t12_catalogue.py.",
         "subjects": [
-          "src/role_set/generate/t11_catalogue.json",
-          "scripts/t11_catalogue.py"
+          "src/role_set/generate/t12_catalogue.json",
+          "scripts/t12_catalogue.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "src/role_set/generate/t11_catalogue.json is now read by scripts/t11_catalogue.py and src/role_set/generate/recipes.py.",
+        "sentence": "src/role_set/generate/t12_catalogue.json is now read by scripts/t12_catalogue.py and src/role_set/generate/recipes.py.",
         "subjects": [
-          "src/role_set/generate/t11_catalogue.json",
-          "scripts/t11_catalogue.py",
+          "src/role_set/generate/t12_catalogue.json",
+          "scripts/t12_catalogue.py",
           "src/role_set/generate/recipes.py"
         ]
       },
       {
         "kind": "counts",
-        "sentence": "3 files added and 6 changed content, across 5 parts.",
+        "sentence": "2 files added and 21 changed content, across 6 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "0e9cf2b8ac0cd70b5336614b82ce005d2c776c9e",
-      "generatedAt": "2026-10-15T21:54:30.068Z"
+      "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
+      "generatedAt": "2026-10-15T22:41:11.090Z"
     },
     "unchanged": false
   },
@@ -76,19 +76,19 @@
       "shared": 6
     },
     {
-      "a": "src/role_set/generate/recipes.py",
-      "b": "tests/test_generate.py",
-      "either": 9,
+      "a": "src/role_set/generate/build.py",
+      "b": "src/role_set/generate/recipes.py",
+      "either": 10,
       "partLabels": [
         "src",
-        "tests"
+        "src"
       ],
       "parts": [
         "src",
-        "tests"
+        "src"
       ],
-      "relation": "b-imports-a",
-      "shared": 5
+      "relation": "inside",
+      "shared": 6
     },
     {
       "a": "src/role_set/assemble.py",
@@ -108,7 +108,7 @@
     {
       "a": "src/role_set/prompts.py",
       "b": "src/role_set/runner.py",
-      "either": 21,
+      "either": 22,
       "partLabels": [
         "src",
         "src"
@@ -119,17 +119,32 @@
       ],
       "relation": "inside",
       "shared": 11
+    },
+    {
+      "a": "src/role_set/generate/recipes.py",
+      "b": "tests/test_generate.py",
+      "either": 10,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 5
     }
   ],
   "changesTogetherNote": [
     "6 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 6 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 8 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
+  "commit": "e92ac82de66cd448081b9612f18328a00ee9e18d",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (71 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (72 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -256,9 +271,16 @@
       "writers": [
         "scripts/t11_catalogue.py"
       ]
+    },
+    {
+      "block": true,
+      "place": "src/role_set/generate/t12_catalogue.json",
+      "writers": [
+        "scripts/t12_catalogue.py"
+      ]
     }
   ],
-  "generatedAt": "2026-10-15T22:41:11.090Z",
+  "generatedAt": "2026-10-16T00:49:56.574Z",
   "limits": [
     "1 write and 4 reads use paths built at run time and are not named here.",
     "5 writes and 28 reads go to a path their caller passes, not to this repository.",
@@ -309,5 +331,5 @@
     }
   ],
   "untestedNote": [],
-  "written": 4
+  "written": 5
 }

@@ -573,42 +573,144 @@ def t12_calendar(n: int, rng: random.Random, position: int | None = None) -> tup
     return spans, {"attribute": "span", "days": days, "bounds": {s: s.split(" to ") for s in spans}}, asked
 
 
-def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = MAX_TRIES, position: int | None = None) -> Built:
-    """One T12 puzzle: which edition was in force on a date. The clues map editions to spans (never stating one outright),
-    the solver matches the date, and at least one of R&D's four T12 readings names a different edition.
+T12_FILE = 20  # seeds per file; within a file, each pack and seed takes its own catalogue row
+T12_FORMS = ("ask", "claim")  # which edition was in force; or a claim that one was (R&D's T12 claim ruling)
+T12_TRIES = 60
+_T12_CAT: dict | None = None
 
-    `position` asks for the answer's span (n - 1 is the newest edition). The keep filter rejects a puzzle no reading
-    differs on, and that rejects more newest-edition answers than others, so a batch that leaves the position to chance
-    under-supplies them (R&D's filter_induced_shortcut, on role-set#50); the selector floors positions per file, and this
-    is how a batch asks for the ones it is short of."""
 
+def _t12_catalogue() -> dict:
+    global _T12_CAT
+    if _T12_CAT is None:
+        import json
+        from pathlib import Path
+
+        _T12_CAT = json.loads(Path(__file__).with_name("t12_catalogue.json").read_text(encoding="utf-8"))
+    return _T12_CAT
+
+
+def _target_position(form: str, target: list) -> int:
+    return target[0] if form == "ask" else target[1]
+
+
+def _claim_want(seed: int) -> str:
+    """Eight seeds of every twenty aim at an unsupported claim: R&D's 40% within a file's claims."""
+
+    return "unsupported" if seed % 5 in (1, 3) else "supported"
+
+
+def _suits(form: str, row: dict, position: int | None, want: str | None) -> bool:
+    return any((position is None or _target_position(form, t) == position) and (want is None or t[2] == want)
+               for t in row["targets"])
+
+
+_T12_PLANS: dict = {}
+
+
+def _t12_plan(n: int, form: str, file_index: int, position: int | None) -> dict:
+    """One file's assignment of catalogue rows: {(pack, offset): [row indexes, the first preferred]}. The file's rows
+    are walked in one shuffled order and each pack and seed takes the first unused row that suits it (the asked span
+    at `position`; for a claim, the verdict its seed aims at), so a file's seeds take distinct skeletons. The next
+    suitable rows follow as fallbacks for a row that finds no calendar."""
+
+    key = (n, form, file_index, position)
+    if key not in _T12_PLANS:
+        rows = _t12_catalogue()["rows"][form][str(n)]
+        order = list(range(len(rows)))
+        random.Random(f"T12:{form}:{n}:file{file_index}" + ("" if position is None else f":p{position}")).shuffle(order)
+        used: set[int] = set()
+        firsts: dict = {}
+        suitable: dict = {}
+        for pack in sorted(T12_PACKS):
+            for offset in range(T12_FILE):
+                want = _claim_want(file_index * T12_FILE + offset + 1) if form == "claim" else None
+                fits = [i for i in order if _suits(form, rows[i], position, want)]
+                if not fits:
+                    fits = [i for i in order if _suits(form, rows[i], position, None)]
+                if not fits:
+                    raise BuildError(f"T12 catalogue: span position {position} has no {form} row at {n} spans")
+                fresh = [i for i in fits if i not in used]
+                firsts[(pack, offset)] = fresh[0] if fresh else fits[0]
+                used.add(firsts[(pack, offset)])
+                suitable[(pack, offset)] = fits
+        # Fallbacks come from rows no seed of the file takes first, so a fallback never repeats another seed's skeleton.
+        plan = {slot: [first] + [i for i in suitable[slot] if i not in used][:3] for slot, first in firsts.items()}
+        _T12_PLANS[key] = plan
+    return _T12_PLANS[key]
+
+
+def t12_row(pack_name: str, n: int, form: str, seed: int, position: int | None = None) -> dict:
+    """The catalogue row a T12 seed builds on first (scripts/t12_catalogue.py); see `_t12_plan`."""
+
+    file_index, offset = divmod(seed - 1, T12_FILE)
+    return _t12_catalogue()["rows"][form][str(n)][_t12_plan(n, form, file_index, position)[(pack_name, offset)][0]]
+
+
+def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = T12_TRIES, position: int | None = None,
+              form: str = "ask") -> Built:
+    """One T12 puzzle from the skeleton catalogue: which edition was in force on a date (`form="ask"`), or a claim
+    that one was (`form="claim"`, keyed supported or unsupported). The row's clues get a real calendar and the pack's
+    names, and the build is kept only when one of R&D's T12 readings names another edition, or flips the claim.
+
+    `position` asks for the answer's span (n - 1 is the newest edition); the selector floors positions per file and this
+    is how a batch builds the ones it is short of (R&D's filter_induced_shortcut, role-set#50). A claim records
+    T11's consistent_so_supported verdict as a record only (the D020 guard), and its position is None."""
+
+    if form not in T12_FORMS:
+        raise BuildError(f"T12 form is one of {', '.join(T12_FORMS)}")
     if position is not None and not 0 <= position < n:
         raise BuildError(f"position is a span index from 0 to {n - 1}")
+    file_index, offset = divmod(seed - 1, T12_FILE)
+    rows = _t12_catalogue()["rows"][form][str(n)]
+    want = _claim_want(seed) if form == "claim" else None
+    rng = random.Random(f"T12:{pack_name}:{form}:{n}:{seed}" + ("" if position is None else f":p{position}"))
+    last = "no attempt"
+    for rank, index in enumerate(_t12_plan(n, form, file_index, position)[(pack_name, offset)]):
+        built = _t12_on_row(pack_name, seed, n, form, rows[index], position, want, rng, tries)
+        if isinstance(built, Built):
+            if rank:
+                built.notes.append(f"fallback row {rank}: the planned row found no calendar a T12 reading acts on")
+            return built
+        last = built
+    raise BuildError(f"T12 ({pack_name}, {form}, seed {seed}): no planned row found a calendar; last refusal: {last}")
+
+
+def _t12_on_row(pack_name: str, seed: int, n: int, form: str, row: dict, position: int | None, want: str | None,
+                rng: random.Random, tries: int) -> Built | str:
+    """A calendar and names on one catalogue row, re-proven; the refusal as a string when no draw keeps."""
+
+    from role_set.generate.build import _norm
+    from role_set.generate.shortcuts import subject_reading
+    from role_set.puzzle import holds
+
     pack = T12_PACKS[pack_name]
-    rng = random.Random(f"T12:{pack_name}:{n}:{seed}" + ("" if position is None else f":p{position}"))
+    targets = [t for t in row["targets"] if position is None or _target_position(form, t) == position]
+    if want:
+        targets = [t for t in targets if t[2] == want] or targets
     last = "no attempt"
     for attempt in range(1, tries + 1):
-        spans, span, asked = t12_calendar(n, rng, position)
-        names = tuple(rng.sample(pack["names"], n))
-        shape = Shape(names, {"span": {"values": spans, "ordered": True}}, asks={"contains": asked}, span=span)
-        sols = assignments(shape)
-        pool = candidates(shape, T12.forms)
-        bits = {_key(c): truth(shape, sols, c) for c in pool}
-        hidden = rng.randrange(len(sols))
-        others = [c for c in pool if bits[_key(c)] >> hidden & 1]
-        rng.shuffle(others)
-        decided = _decider(shape, sols, hidden)
-        chosen: list[list] = []
-        for c in others:
-            if chosen and decided(_mask(chosen, bits, len(sols))):
-                break
-            if _mask(chosen + [c], bits, len(sols)) != _mask(chosen, bits, len(sols)):
-                chosen.append(c)
-        if not chosen or not decided(_mask(chosen, bits, len(sols))):
-            last = "the clues never settled the edition"
-            continue
-        kept = reduce(shape, sols, chosen, bits, decided, rng)
-        model = shape.model(kept)
+        target = rng.choice(targets)
+        spans, span, asked = t12_calendar(n, rng, _target_position(form, target))
+        names = rng.sample(pack["names"], n)
+        ent = {f"e{i}": names[i] for i in range(n)}
+        val = {f"s{i}": spans[i] for i in range(n)}
+
+        def place(r):
+            out = [r[0]]
+            for x in r[1:]:
+                if isinstance(x, list):
+                    out.append([val[v] for v in x])
+                elif isinstance(x, str):
+                    out.append(ent.get(x, val.get(x, x)))
+                else:
+                    out.append(x)
+            return out
+
+        facts = [place(r) for r in row["facts"]]
+        rng.shuffle(facts)
+        ask = {"asks": {"contains": asked}} if form == "ask" else {"claim": ["contains", ent[target[0]], asked]}
+        shape = Shape(tuple(names), {"span": {"values": spans, "ordered": True}}, span=span, **ask)
+        model = shape.model(facts)
         try:
             answer = check_model(model, shape.structure)
         except PuzzleError as e:
@@ -616,8 +718,12 @@ def build_t12(pack_name: str, seed: int, n: int = 3, tries: int = MAX_TRIES, pos
             continue
         proofs = prove(model, shape.structure, list(T12.shortcuts))
         if not any(p["differs"] for p in proofs.values()):
-            last = "no T12 reading named a different edition"
+            last = "no T12 reading named another edition" if form == "ask" else "no T12 reading flipped the claim"
             continue
+        m = _norm(shape)
+        hidden = next(i for i, s in enumerate(assignments(shape)) if all(holds(m, s, f) for f in facts))
         return Built(model=model, answer=answer, hidden=hidden, trait_clue=[], shortcuts=proofs, metrics=metrics(model),
-                     seed=seed, tries=attempt)
-    raise BuildError(f"T12 ({pack_name}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")
+                     seed=seed, tries=attempt, notes=[f"t12 catalogue row {row['skeleton_sha256']}"],
+                     file_index=(seed - 1) // T12_FILE, form=form,
+                     t11_reading=subject_reading(model)["value"] if form == "claim" else None)
+    return last

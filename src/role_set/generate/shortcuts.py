@@ -147,12 +147,27 @@ def answer_reading(name: str, model: dict) -> dict | None:
     if name == "T11.consistent_so_supported":
         return subject_reading(model)
     m = parse_model(model)
-    if m.span is None or "contains" not in (m.asks or {}):
+    claimed = m.claim if m.claim is not None and m.claim[0] == "contains" else None
+    if m.span is None or not (claimed or "contains" in (m.asks or {})):
         return None
+    got = _t12_editions(name, m, claimed[2] if claimed else m.asks["contains"], re)
+    if got is None or not claimed:
+        return None if got is None else {"kind": "values", "value": got}
+    # A claim (R&D's T12 claim ruling): the reading's editions decide the claimed one's verdict, as a reader taking that
+    # reading would; several editions, the claimed one among them, leave it open.
+    who = claimed[1]
+    value = "supported" if got == [who] else "unsupported" if who not in got else "cannot_tell"
+    return {"kind": "claim", "value": value}
+
+
+def _t12_editions(name: str, m, day_label: str, re) -> list[str] | None:
+    """The editions a T12 reading names for the asked date, over every placing the clues allow; None when it has
+    nothing to act on."""
+
     sp = m.span
     attr = sp.attribute
     order = m.attrs[attr]["values"]
-    day = sp.day(m.asks["contains"])
+    day = sp.day(day_label)
     sols = _solutions(m)
     if not sols:
         return None
@@ -161,20 +176,19 @@ def answer_reading(name: str, model: dict) -> dict | None:
         return sorted({m.entities[i] for s in sols for i, v in enumerate(s[attr]) if v in span_values})
 
     if name == "T12.newest":
-        return {"kind": "values", "value": holders_of({order[-1]})}
+        return holders_of({order[-1]})
     if name == "T12.highest_number":
         nums = [re.search(r"\d+", e) for e in m.entities]
         if not all(nums):
             return None
-        top = max(range(len(nums)), key=lambda i: int(nums[i].group(0)))
-        return {"kind": "values", "value": [m.entities[top]]}
+        return [m.entities[max(range(len(nums)), key=lambda i: int(nums[i].group(0)))]]
     if name == "T12.boundary_next":
         for i, v in enumerate(order):
             lo, hi = sp.bounds[v]
             if day == hi and i + 1 < len(order):
-                return {"kind": "values", "value": holders_of({order[i + 1]})}
+                return holders_of({order[i + 1]})
             if day == lo and i > 0:
-                return {"kind": "values", "value": holders_of({order[i - 1]})}
+                return holders_of({order[i - 1]})
         return None
     if name == "T12.month_alone":
         month = sp.months[day]
@@ -182,7 +196,7 @@ def answer_reading(name: str, model: dict) -> dict | None:
         containing = {v for v in order if sp.bounds[v][0] <= day <= sp.bounds[v][1]}
         if not named or named <= containing:
             return None
-        return {"kind": "values", "value": holders_of(named)}
+        return holders_of(named)
     raise KeyError(f"unknown answer reading {name!r}")
 
 

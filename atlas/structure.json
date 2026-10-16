@@ -59,7 +59,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "5c8ce97906e4eb72a598e98125af5f9d0dd9ae855613c0d8f0aaf6c0988a476e",
+          "hash": "be7e484fe124de13692914d70bd1c5043a5cb377fba93c8808b718a733f98a59",
           "path": "docs/generator-design.md"
         },
         {
@@ -106,7 +106,7 @@
           "path": "roles/verifier/README.md"
         },
         {
-          "hash": "4ed2090d33143da627fb496bcf45266b84bea954f79ad11357f015f89ae18927",
+          "hash": "0f6a2e8e4eae1275fa6147fe0a5ee6e95df5c67dee1a425b3bd63b0c86886aa8",
           "path": "roles/verifier/defects.jsonl"
         },
         {
@@ -149,7 +149,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "10745920057120fbae0853388cde08f4a26ba27f2b9cf381dcb2df716c7a4c79",
+          "hash": "3af0db57cf3c0470f4a4221c0b2da4f77996575ad7048fe78da10e63bb7b221f",
           "path": "CHANGELOG.md"
         },
         {
@@ -205,11 +205,11 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "8478e9b23f906716ab93a8c9e5dcb517a7126dede8f3848db60170bbf963842d",
+          "hash": "56bec2f7a0ec94711c186e7dbd384953d230b90aac0f9d42b16096ba8ab2686d",
           "path": "pyproject.toml"
         },
         {
-          "hash": "88a5cb54704ef2b397be809a9c9650ad51a5779d81eb092ab58225cb92d248bd",
+          "hash": "2c85933b250d670270ad77aa902ecb30db736d10cb8b24ee375119a6a1e7bec7",
           "path": "uv.lock"
         },
         {
@@ -369,10 +369,32 @@
         },
         {
           "exports": [
+            "build_table",
+            "enumerate_rows",
+            "main"
+          ],
+          "failurePaths": [
+            {
+              "in": "enumerate_rows",
+              "kind": "except",
+              "line": 128
+            }
+          ],
+          "hash": "07698f566ec9bbf431f10a4290804d3ac97e9308b0f73c953288be6ca9502881",
+          "importsFiles": [
+            "src/role_set/generate/build.py",
+            "src/role_set/generate/recipes.py",
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "path": "scripts/t12_catalogue.py"
+        },
+        {
+          "exports": [
             "floor_line",
             "main"
           ],
-          "hash": "ede33bb0e9e4f5b260a198d1e1ed76dbfc7335c0f1d4046dbf1666e1ff6cd128",
+          "hash": "df7f13e93204d70bcfafbe3fe1dd95bbaf048cc5e8bcc9a4b2189492ce7ad8f2",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -1580,32 +1602,37 @@
           ],
           "failurePaths": [
             {
-              "in": "load_gates",
-              "kind": "except",
-              "line": 73
-            },
-            {
-              "in": "load_gates",
+              "in": "_need_models",
               "kind": "raise",
-              "line": 74
-            },
-            {
-              "in": "load_gates",
-              "kind": "raise",
-              "line": 83
+              "line": 31
             },
             {
               "in": "load_gates",
               "kind": "except",
-              "line": 86
+              "line": 89
             },
             {
               "in": "load_gates",
               "kind": "raise",
-              "line": 87
+              "line": 90
+            },
+            {
+              "in": "load_gates",
+              "kind": "raise",
+              "line": 99
+            },
+            {
+              "in": "load_gates",
+              "kind": "except",
+              "line": 102
+            },
+            {
+              "in": "load_gates",
+              "kind": "raise",
+              "line": 103
             }
           ],
-          "hash": "6c340e7eee9d0c62f97495c2befc7f6cad513abea02b5136ec454c845965dba8",
+          "hash": "b822395dbb592153bb9776937643e67fc716891e83c358d84d74882588f2334b",
           "path": "src/role_set/gates.py"
         },
         {
@@ -1631,10 +1658,10 @@
             {
               "in": "check_model",
               "kind": "raise",
-              "line": 236
+              "line": 240
             }
           ],
-          "hash": "c7b945bfa0c6df6e7673e2e3c8187626f8395d08c76e0eb52c83476a52840299",
+          "hash": "aacc9dc2d7874eeab138006a8807dc0aeef3dc9a86d705711676ad51f3d1c3d3",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/span.py",
@@ -1657,7 +1684,8 @@
             "t11_pool",
             "t11_refusal",
             "t11_row",
-            "t12_calendar"
+            "t12_calendar",
+            "t12_row"
           ],
           "failurePaths": [
             {
@@ -1698,25 +1726,35 @@
             {
               "in": "build_t11",
               "kind": "raise",
-              "line": 498
+              "line": 499
+            },
+            {
+              "in": "_t12_plan",
+              "kind": "raise",
+              "line": 631
             },
             {
               "in": "build_t12",
               "kind": "raise",
-              "line": 585
+              "line": 660
             },
             {
               "in": "build_t12",
+              "kind": "raise",
+              "line": 662
+            },
+            {
+              "in": "build_t12",
+              "kind": "raise",
+              "line": 675
+            },
+            {
+              "in": "_t12_on_row",
               "kind": "except",
-              "line": 613
-            },
-            {
-              "in": "build_t12",
-              "kind": "raise",
-              "line": 622
+              "line": 716
             }
           ],
-          "hash": "56d1e7a0ef8b02ea6da2f3d802371693cac64be20ee8117aa9dc3bb0c260d9ff",
+          "hash": "9c5d8c0c1f22dafd014f15c2fa932f3e8c6c9dbd70308dda12e2303f0c0a3182",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/shortcuts.py",
@@ -1762,35 +1800,35 @@
             {
               "in": "_lesson",
               "kind": "raise",
-              "line": 115
+              "line": 119
             },
             {
               "in": "check_file",
               "kind": "raise",
-              "line": 124
+              "line": 132
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 168
+              "line": 180
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 178
+              "line": 190
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 184
+              "line": 196
             },
             {
               "in": "select",
               "kind": "raise",
-              "line": 225
+              "line": 239
             }
           ],
-          "hash": "60d96d59550b8fd11cc5194680dc286e00f77f77c48114803c3adaaeb1bf5376",
+          "hash": "d192642d02a0f2721cd48a79e1f06530135f75350507ea2f3b5900f8315d61cb",
           "importsFiles": [
             "src/role_set/generate/shortcuts.py"
           ],
@@ -1814,17 +1852,17 @@
               "line": 76
             },
             {
-              "in": "answer_reading",
+              "in": "_t12_editions",
               "kind": "raise",
-              "line": 186
+              "line": 200
             },
             {
               "in": "prove",
               "kind": "except",
-              "line": 216
+              "line": 230
             }
           ],
-          "hash": "33ebff89b3a6e7fa74885e8c0f0bc61b94c712ce0b769e0605126d27ab7e8dfc",
+          "hash": "d4b0bf7574cbfb056bb18edd5ff00bccb082e05404ff081ac2eaef70905eae2a",
           "importsFiles": [
             "src/role_set/puzzle.py"
           ],
@@ -1839,7 +1877,7 @@
           "path": "src/role_set/generate/t10_cells.json"
         },
         {
-          "hash": "e7be03bd05722da723a187d3a00d3130779d207687a2933ac5ffdad084c79f91",
+          "hash": "dc249a41cc2be9b5b83cf6033e5ec4408a3307dfe0804fd136383d65ee1b2912",
           "path": "src/role_set/generate/t10_record.json"
         },
         {
@@ -1897,6 +1935,10 @@
         {
           "hash": "fbce613c0d03b54644bf08f74d2b490c8891348fbac9194b3f00b9a646ed8693",
           "path": "src/role_set/generate/t11_catalogue.json"
+        },
+        {
+          "hash": "59df04ebfd784dd838c79f4b177fa86ccc11af47c6a78031e9a849ed65cd6286",
+          "path": "src/role_set/generate/t12_catalogue.json"
         },
         {
           "entry": "heartbeat_age_s",
@@ -2311,7 +2353,7 @@
           "exports": [
             "mock_gates"
           ],
-          "hash": "a59f9ba8179376a0012a28b305baf30aebd40cebe75ba8a31626a498406aa854",
+          "hash": "9a35b733283c909a2a530867977caec563127597e2f16ef9b447e21d0b7f33c2",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -3036,10 +3078,10 @@
             {
               "in": "check_file",
               "kind": "except",
-              "line": 215
+              "line": 217
             }
           ],
-          "hash": "3cc75fb81a846a50a1bc6ffe1aa72ed419c02cd06450ab6ff519f193ce90f3c2",
+          "hash": "74a33d29d2f603d3d12e083835a086274412ad5a20340f02ebd034edd5d04b36",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/plan.py",
@@ -3223,80 +3265,80 @@
             {
               "in": "_record_call",
               "kind": "except",
-              "line": 482
+              "line": 483
             },
             {
               "in": "_record_call",
               "kind": "raise",
-              "line": 493
+              "line": 494
             },
             {
               "in": "warmup",
               "kind": "except",
-              "line": 522
+              "line": 523
             },
             {
               "in": "_material_for",
               "kind": "raise",
-              "line": 556
+              "line": 557
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 654
+              "line": 655
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 666
+              "line": 667
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 679
+              "line": 680
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 688
+              "line": 689
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 702
+              "line": 703
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 715
+              "line": 716
             },
             {
               "in": "run_slot",
               "kind": "except",
-              "line": 727
+              "line": 729
             },
             {
               "in": "_halt_cell",
               "kind": "raise",
-              "line": 822
+              "line": 826
             },
             {
               "in": "one",
               "kind": "except",
-              "line": 865
+              "line": 869
             },
             {
               "in": "one",
               "kind": "raise",
-              "line": 873
+              "line": 877
             },
             {
               "in": "_finish",
               "kind": "except",
-              "line": 901
+              "line": 905
             }
           ],
-          "hash": "3fd2abd0bcfcc8da6c99021768b7ad994fceb981f278c0ef281d2f6dd365e3ee",
+          "hash": "35bff1104e722e285e49dd59ffef2ae67dafd6c4c09ed4caf3c0c1ced75e6c71",
           "importOrder": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -4636,9 +4678,10 @@
             "test_gates_without_the_scorer_or_closed_form_rules_are_refused_at_load",
             "test_load_gates_wraps_the_package",
             "test_missing_package_is_a_refusal",
+            "test_puzzles_reach_the_gates_with_their_models",
             "test_trait_words_come_from_the_gates_constants"
           ],
-          "hash": "524fafd5a24ef61fbfdd407ee7486a2f58a6907414a0366d3a2e1023d746d630",
+          "hash": "effe69c46816739e87e30775b99fdf5785e5a0b8021e19d20758304a04f9e447",
           "importsFiles": [
             "src/role_set/gates.py"
           ],
@@ -4693,6 +4736,7 @@
             "test_a_file_never_repeats_a_skeleton_within_a_stratum",
             "test_a_t11_file_mixes_the_falsifier_reading_and_contrasts",
             "test_a_t11_puzzle_is_proven_and_its_wording_round_trips",
+            "test_a_t11_receipt_names_its_file",
             "test_a_t11_side_is_named",
             "test_an_off_subject_contrast_moves_the_verdict_off_supported",
             "test_batch_6_find_side_items_pass_and_the_reading_differs",
@@ -4705,7 +4749,7 @@
             "test_the_same_seed_rebuilds_the_same_t11_puzzle",
             "test_the_variety_floor_holds_on_the_sweep"
           ],
-          "hash": "8945145079e1f2b3586659fe2c769b144edb67afd305056e028f363b10a56a18",
+          "hash": "5a0f63539f73b489ad99b4538f62bcbbd0fe1fb9594e21232e23bbf4b2bcecaa",
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
@@ -4725,28 +4769,42 @@
           "exports": [
             "test_a_batch_can_ask_for_a_newest_edition_answer",
             "test_a_position_outside_the_calendar_is_refused",
+            "test_a_reading_answers_a_claim_with_a_verdict",
+            "test_a_t12_claim_is_keyed_and_a_reading_flips_it",
+            "test_a_t12_form_is_named",
             "test_a_t12_puzzle_is_proven_and_its_wording_round_trips",
             "test_answer_position_is_none_without_a_dated_question",
+            "test_claims_keep_their_unsupported_share_in_a_file",
             "test_each_t12_reading",
             "test_month_alone_names_a_span_that_only_shares_the_month",
             "test_the_calendar_is_contiguous_typed_and_marks_a_wrap",
+            "test_the_committed_t12_catalogue_is_current",
             "test_the_same_seed_rebuilds_the_same_t12_puzzle_and_packs_differ",
-            "test_the_t12_rebuilds_carry_a_reading_that_names_another_edition"
+            "test_the_skeleton_records_the_form",
+            "test_the_t12_rebuilds_carry_a_reading_that_names_another_edition",
+            "test_the_t12_variety_floor_holds_per_form_and_combined"
           ],
-          "hash": "4e235b4bb1fcb0b3f96dd458c5a04f7cf671e0316597e22070b81e9bb25cd288",
+          "hash": "5c5a8042dd387e9b0c71aeb6a6960ba923b9118827faff361a0d29eff73bc6bc",
           "importOrder": [
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/render.py",
             "src/role_set/generate/shortcuts.py",
             "src/role_set/puzzle.py",
-            "src/role_set/generate/build.py"
+            "src/role_set/generate/build.py",
+            "src/role_set/puzzle_check.py",
+            "src/role_set/generate/select.py"
           ],
           "importsFiles": [
             "src/role_set/generate/build.py",
             "src/role_set/generate/recipes.py",
             "src/role_set/generate/render.py",
+            "src/role_set/generate/select.py",
             "src/role_set/generate/shortcuts.py",
-            "src/role_set/puzzle.py"
+            "src/role_set/puzzle.py",
+            "src/role_set/puzzle_check.py"
+          ],
+          "names": [
+            "scripts/t12_catalogue.py"
           ],
           "path": "tests/test_generate_t12.py",
           "testFramework": "pytest"
@@ -5033,7 +5091,7 @@
             "test_the_runner_refuses_a_bad_puzzle_and_caps_lookups_per_lesson",
             "test_two_solutions_are_refused_with_a_counterexample"
           ],
-          "hash": "05d0ba0e6281cedff28f7554dc847f97d3d5f920178fb3007fc08b748534940d",
+          "hash": "8c69245d6787592f4f74f94cad96d4abef22e0f53b6261df858b8e6cff20d3c3",
           "importOrder": [
             "src/role_set/puzzle.py",
             "src/role_set/plan.py",
@@ -5094,7 +5152,7 @@
             "test_two_unrelated_gate_rules_are_not_the_same_key",
             "test_warmup_failures_in_every_lesson_never_stop_the_run_as_systemic"
           ],
-          "hash": "5b700de2629678f74fa07987da209d8d43c07b49d9f60738288bd8c4c9c0a321",
+          "hash": "48885a4632c07940fe2f06563c7a0431107b06373e6def9573d601c2a2656e63",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/gates.py",
@@ -5252,7 +5310,7 @@
             "test_the_committed_writer_list_marks_the_rehearsal_writer",
             "test_write_halts_are_reported_and_cleanup_runs"
           ],
-          "hash": "1594111dde0425d496f0d33c17206b9040763c2fcb0f799b84e088b36f7fe4ad",
+          "hash": "a355fe3fb882dc2fd4007931cda15e0876fd1ea7557703ccd5c5293df544afd3",
           "importOrder": [
             "src/role_set/cli.py",
             "src/role_set/pack.py",
@@ -5718,8 +5776,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
-    "tracked": 139
+    "commit": "e92ac82de66cd448081b9612f18328a00ee9e18d",
+    "tracked": 141
   },
   "landings": [
     {
@@ -6078,6 +6136,28 @@
       "writers": [
         {
           "by": "scripts/t11_catalogue.py",
+          "confidence": "ast",
+          "stamps": true
+        }
+      ]
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/t12_catalogue.py",
+          "call": "read_text",
+          "confidence": "ast"
+        },
+        {
+          "by": "src/role_set/generate/recipes.py",
+          "call": "read_text",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src/role_set/generate/t12_catalogue.json",
+      "writers": [
+        {
+          "by": "scripts/t12_catalogue.py",
           "confidence": "ast",
           "stamps": true
         }
