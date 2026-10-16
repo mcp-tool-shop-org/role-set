@@ -216,7 +216,8 @@ def test_the_committed_table_is_the_pinned_census_file():
     table = domains.load(ROOT / "roles" / "domains" / "naics-2022.json")
     assert table.source["sha256"] == "be12ba41002803359f49181c9bf33a03fbd08578f4f4a4c0bbad7aadaaea0316"
     assert table.source["url"] == "https://www.census.gov/naics/2022NAICS/2-6%20digit_2022_Codes.xlsx"
-    assert len(table.subsectors) == 96 and table.subsectors[0] == {"code": "111", "title": "Crop Production"}
+    assert len(table.subsectors) == 88 and not any(e["code"].startswith("92") for e in table.subsectors) and table.subsectors[0] == {"code": "111", "title": "Crop Production"}
     assert [e["title"] for e in table.escalate["legal"]] == ["Legal Services"]
+    assert "9221" in {e["code"] for e in table.escalate["safety"]}
     # Every lesson's 26 domain-bearing slots fit, with room.
     assert len(table.subsectors) >= 3 * 26

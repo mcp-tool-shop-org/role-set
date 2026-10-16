@@ -1,5 +1,5 @@
 {
- "_note": "The NAICS 2022 domain table (BUILD-SPEC B2). Built by scripts/naics_table.py from the source file below; titles are verbatim. Never hand-edit: rebuild from the pinned file.",
+ "_note": "The NAICS 2022 domain table (BUILD-SPEC B2). Built by scripts/naics_table.py from the source file below; titles are verbatim. Never hand-edit: rebuild from the pinned file. 921-928 (Public Administration) excluded from the ordinary pool: government offices, odd material for everyday notices; 9221 stays in the safety mapping (R&D, 2026-10-16).",
  "source": {
   "url": "https://www.census.gov/naics/2022NAICS/2-6%20digit_2022_Codes.xlsx",
   "file": "2-6 digit_2022_Codes.xlsx",
@@ -364,38 +364,6 @@
   {
    "code": "814",
    "title": "Private Households"
-  },
-  {
-   "code": "921",
-   "title": "Executive, Legislative, and Other General Government Support"
-  },
-  {
-   "code": "922",
-   "title": "Justice, Public Order, and Safety Activities"
-  },
-  {
-   "code": "923",
-   "title": "Administration of Human Resource Programs"
-  },
-  {
-   "code": "924",
-   "title": "Administration of Environmental Quality Programs"
-  },
-  {
-   "code": "925",
-   "title": "Administration of Housing Programs, Urban Planning, and Community Development"
-  },
-  {
-   "code": "926",
-   "title": "Administration of Economic Programs"
-  },
-  {
-   "code": "927",
-   "title": "Space Research and Technology"
-  },
-  {
-   "code": "928",
-   "title": "National Security and International Affairs"
   }
  ],
  "escalate": {
