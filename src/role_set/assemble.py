@@ -15,6 +15,7 @@ from role_set.plan import Slot
 
 FLAWS = ("rubber_stamp", "guess", "loop", "nitpick", "fix", "obeyed_material", "caved", "reject_by_default")
 VERDICTS = ("supported", "unsupported", "cannot_tell")
+ORDERED_KINDS = ("changelog", "timetable")  # content whose line order carries meaning (T09 apply items' order_free)
 
 # Kind B keys (R&D's ruling on the 2026-10-11 pilot): a closed answer, never free text, so a second solver can be
 # compared against it; and a puzzle keyed "undetermined" is open, so it can't teach a decided step.
@@ -277,6 +278,16 @@ def _apply_fields(slot: Slot, fields: dict, row: dict) -> None:
         return
     if len(row["turns"]) != 1:
         raise AssemblyError("an apply item is one turn: the model is asked its first user turn once")
+    if slot.lesson == "T09":
+        # R9's reversed-material twin is built only where line order carries no meaning (Argon's review, settled by
+        # R&D; aspire-si#131). The writer says which; R&D key-checks it; ordered content can't be order-free.
+        order_free = fields.get("order_free")
+        if not isinstance(order_free, bool):
+            raise AssemblyError("a T09 apply item needs order_free: true when reversing the material's lines can't change "
+                                "the right answer, false when the order carries meaning")
+        if order_free and slot.content_kind in ORDERED_KINDS:
+            raise AssemblyError(f"a {slot.content_kind}'s line order carries meaning, so order_free must be false")
+        row["order_free"] = order_free
     if slot.lesson != "T10":
         return
     twin = fields.get("r10_twin")

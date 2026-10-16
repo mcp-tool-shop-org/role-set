@@ -66,6 +66,21 @@ def test_a_t10_apply_item_needs_a_keyed_companion_claim():
         assemble(s, "t", {**BASE, "r10_twin": {"statement": "x", "verdict": "maybe"}}, NOTICE)
 
 
+def test_a_t09_apply_item_says_whether_its_order_is_free():
+    s = _d_slot("T09")
+    s.content_kind = "notice"
+    with pytest.raises(AssemblyError, match="order_free"):
+        assemble(s, "t", BASE, NOTICE)
+    assert assemble(s, "t", {**BASE, "order_free": True}, NOTICE)["order_free"] is True
+    assert assemble(s, "t", {**BASE, "order_free": False}, NOTICE)["order_free"] is False
+    with pytest.raises(AssemblyError, match="order_free"):
+        assemble(s, "t", {**BASE, "order_free": "yes"}, NOTICE)
+    s.content_kind = "changelog"
+    with pytest.raises(AssemblyError, match="must be false"):
+        assemble(s, "t", {**BASE, "order_free": True}, NOTICE)
+    assert "order_free" not in assemble(_d_slot("T05"), "t", BASE, NOTICE)
+
+
 def test_a_trained_items_wording_is_spent_for_apply_items():
     trained = {"material": "Desk hours", "turns": [{"user": "Material:\nDesk hours\nRead the notice and tell me whether the desk opens on Sundays at all.", "thinking": "", "reply": ""}]}
     spent = trained_spans([trained])
