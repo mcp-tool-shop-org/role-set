@@ -7,6 +7,15 @@ sidebar:
 
 `write` is the runner. `pilot-auto` is the one-paste launcher around it for a paid sitting. `readout` is a separate command you run on the directory the runner left behind. None of the three is a training-set export.
 
+## plan
+
+`plan` fixes every slot from a seed, with no model call. `--domains roles/domains/naics-2022.json` adds two things a real batch needs (BUILD-SPEC B2):
+
+- **A domain** for every slot that carries material or a passage: kind A, C, D, verdict-type E, and the C and D apply slots. Domains are NAICS 2022 subsectors, distinct within a lesson and dealt evenly across a batch. An ESCALATE slot takes a code mapped to its escalation domain: the trades that hold that qualification.
+- **A frame** for every framing (C, D and verdict-type E): `ask`, `question`, `situation_then_ask` or `line_question`, balanced within a lesson. A frame shapes only the framing before `Material:`; the layout of the user turn never changes. The `FRAME` gate checks the structure, and a `line_question` may not point at the answer: no digits, and no four words in a row from the material.
+
+The table is built by `scripts/naics_table.py` from the US Census Bureau's source file, pinned by sha256 and URL, with titles verbatim. A real `write` refuses a plan without domains.
+
 ## write
 
 A mock was the getting-started path. A run that calls a model names both models' `llama-server` endpoints, the pins the wave script measured, the partition and the machine line. An endpoint has to be plain `http` on `127.0.0.1` with a port. `https`, a name, or a missing port is refused before a request is built.

@@ -24,6 +24,7 @@ from pathlib import Path
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
 from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw, compare_trait_votes, compare_verdict,
                              flaw_messages, teaching_text, trait_messages, verdict_messages)
+from role_set.frames import check_frame
 from role_set.gates import Gates
 from role_set.plan import Slot
 from role_set.puzzle import PuzzleError, check_puzzle
@@ -159,6 +160,7 @@ def interleave(slots: list[Slot]) -> list[Slot]:
 
 # Refusal code -> what the builder is told, with the governing rule. Pinned by a test.
 SUGGESTIONS = {
+    "FRAME": "The framing doesn't open in its frame: {detail}. Rewrite only the framing, in the slot's frame (BUILD-SPEC B2).",
     "ASSEMBLY": "{detail} (the kinds table and the schema).",
     "TRUTH_QUOTE": "The thinking quotes '{detail}', which is not in the material. Quote lines exactly or don't quote (rule: every thinking step is true).",
     "TRUTH_NUMBER": "The thinking states the number {detail}, which is in neither the material, the statement nor the computed facts. Use only given numbers (handoff rule 3).",
@@ -776,6 +778,10 @@ class Runner:
             t = truth_checks(row, facts)
             if t:
                 refusal = self._refusal(*t)
+        if refusal is None and slot.frame:
+            off = check_frame(slot.frame, row["turns"][0]["user"], material.text if material else "")
+            if off:
+                refusal = self._refusal("FRAME", off)
         if refusal is None:
             copied = lesson_copy(row, self._lesson_spans(slot.lesson))
             if copied:

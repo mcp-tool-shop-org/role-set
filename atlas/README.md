@@ -1,16 +1,17 @@
 # role-set: how it works
 
-Mapped at 2026-10-16 from commit 1a626b6 by Atlas 1.24.0.
+Mapped at 2026-10-16 from commit d809725 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (73 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (81 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-16 (e92ac82)
+## What changed since 2026-10-16 (1a626b6)
 
-Nothing structural changed since 2026-10-16; 1 file added and 10 changed content.
+- tests now imports scripts.
+- 9 files added and 29 changed content, across 5 parts.
 
 ## What comes in
 
@@ -21,7 +22,7 @@ Nothing structural changed since 2026-10-16; 1 file added and 10 changed content
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches src (33 files).
+2. That reaches scripts (1 file) and src (37 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -37,11 +38,13 @@ CI writes nothing this map can see.
 ## What breaks what
 
 - **src** is imported by 1 part (scripts), and by 1 more only from tests; it sits on the path of 2 doors.
+- **scripts** is imported only from tests, by 1 part (tests), and sits on the path of 1 door.
 
 ## What tends to change together
 
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 9 commits, and the tests part imports the src part.
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 10 commits, and the tests part imports the src part.
+- **src/role_set/cli.py** and **src/role_set/write.py** changed together in 11 of 21 commits, inside the src part.
 - **src/role_set/generate/recipes.py** and **tests/test_generate.py** changed together in 5 of 10 commits, and the tests part imports the src part.
 
 4 files changed together with their own tests, as expected.
@@ -52,7 +55,7 @@ Window: 180 days; a pair counts from 3 shared commits, since 9 source files reac
 
 ## What no test touches
 
-- **scripts** is imported by no test.
+Every code part is imported by at least one test.
 
 ## Written but never read
 
@@ -76,15 +79,15 @@ People write .github/, assets/, docs/, roles/, the repository root and site/; 1 
 
 ## Where to start
 
-src/role_set/cli.py → src/role_set/puzzle_check.py → src/role_set/assemble.py → src/role_set/plan.py
+src/role_set/cli.py → src/role_set/domains.py → src/role_set/plan.py
 
 Read those in order to follow one run of role-set end to end. This path follows role-set (a command people run) from its entry, since CI runs only tests.
 
 ## What this map cannot see
 
 - 1 write and 5 reads use paths built at run time and are not named here.
-- 5 writes and 28 reads go to a path their caller passes, not to this repository.
-- 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
+- 8 writes and 37 reads go to a path their caller passes, not to this repository.
+- 8 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.
 - 9 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 

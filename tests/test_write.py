@@ -31,9 +31,9 @@ def pack_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def plan_file(tmp_path: Path) -> Path:
+def plan_file(tmp_path: Path, domain_table: Path) -> Path:
     out = tmp_path / "plan.json"
-    assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out)]) == 0
+    assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out), "--domains", str(domain_table)]) == 0
     return out
 
 
