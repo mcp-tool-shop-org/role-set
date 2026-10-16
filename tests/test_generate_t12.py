@@ -173,6 +173,13 @@ def test_claims_keep_their_unsupported_share_in_a_file():
     file = [(r, next(n for n, v in r["shortcuts"].items() if v["differs"])) for r in supported[:5]]
     assert any("claims are unsupported" in m for m in check_file(file))
     assert not any("claims are unsupported" in m for m in check_file(file, Floor(min_unsupported_share=0)))
+    # The cap (Argon's review, settled by R&D): five unsupported claims of five are refused, the same 40/60 band as T11.
+    unsupported = [r for r in pool if r["answer"] == "unsupported"]
+    five = [(r, next(n for n, v in r["shortcuts"].items() if v["differs"])) for r in unsupported[:5]]
+    assert len(five) == 5 and any("5 of 5 claims are unsupported" in m for m in check_file(five))
+    assert not any("claims are unsupported" in m for m in check_file(five, Floor(max_unsupported_share=1)))
+    picked = [pool[x.index] for x in select(pool)]
+    assert sum(r["answer"] == "unsupported" for r in picked) <= 0.6 * len(picked)
 
 
 def test_the_t12_variety_floor_holds_per_form_and_combined():
