@@ -133,6 +133,10 @@ uv run pytest -m "not sweep"
 
 Line coverage has a floor of 90, in `pyproject.toml` and `codecov.yml`, and the run fails under it. It measures about 97. The coverage badge above shows the current figure. CI also runs atlas check, `role-set plan` and `puzzle-check` on a fixture, with no model. `scripts/verify` runs the local checks in one command.
 
+## Contributors
+
+Parts of this repository were Written with Grok (xAI). Grok, Argon and Claude are credited in [CONTRIBUTORS.md](CONTRIBUTORS.md).
+
 The handbook is published with the [landing page](https://mcp-tool-shop-org.github.io/role-set/). This README stands on its own.
 
 Built by <a href="https://mcp-tool-shop.github.io/">MCP Tool Shop</a>
