@@ -3,7 +3,7 @@ import urllib.error
 import pytest
 
 from role_set.guards import GuardError
-from role_set.transport import BACKOFF_S, TransportError, chat, ollama_chat, post_with_retries, unload
+from role_set.transport import BACKOFF_S, TransportError, chat, post_with_retries
 
 
 def _http_error(code: int) -> urllib.error.HTTPError:
@@ -63,25 +63,12 @@ def test_chat_builds_an_openai_request_and_reads_usage():
         chat("http://127.0.0.1:11435/v1", "m", [], post=lambda u, b, timeout_s: {"choices": []})
 
 
-def test_ollama_chat_and_unload():
-    seen = {}
-
-    def post(url, body, timeout_s):
-        seen.update(url=url, body=body)
-        return {"model": "gemma4:31b", "message": {"content": "VERDICT: supported"}, "prompt_eval_count": 50, "eval_count": 5, "done_reason": "stop"}
-
-    c = ollama_chat("http://127.0.0.1:11434", "gemma4:31b", [{"role": "user", "content": "x"}], post=post)
-    assert seen["url"] == "http://127.0.0.1:11434/api/chat" and seen["body"]["options"]["temperature"] == 0.0
-    assert seen["body"]["keep_alive"] == "30m" and seen["body"]["think"] is False
-    assert c.text == "VERDICT: supported" and c.prompt_tokens == 50 and c.finish_reason == "stop"
-    with pytest.raises(TransportError, match="no message content"):
-        ollama_chat("http://127.0.0.1:11434", "m", [], post=lambda u, b, timeout_s: {"message": None})
-
-    unloaded = {}
-    unload("http://127.0.0.1:11434", "gemma4:31b", post=lambda u, b, timeout_s: unloaded.update(b))
-    assert unloaded["keep_alive"] == 0
-
-    def failing(u, b, timeout_s):
-        raise TransportError("down")
-
-    unload("http://127.0.0.1:11434", "gemma4:31b", post=failing)  # never raises at the end of a window
+def test_only_the_reply_content_is_read_never_the_reasoning():
+    # llama-server returns a thinking model's reasoning in reasoning_content; the gates score content only (R&D on #70).
+    out = {"model": "m", "choices": [{"message": {"content": "VERDICT: supported", "reasoning_content": "VERDICT: unsupported, I think"},
+                                      "finish_reason": "stop"}], "usage": {"prompt_tokens": 3, "completion_tokens": 9}}
+    c = chat("http://127.0.0.1:8081/v1", "m", [{"role": "user", "content": "x"}], post=lambda u, b, timeout_s: out)
+    assert c.text == "VERDICT: supported"
+    # A reply that put everything in its reasoning has no content: it reaches the gates empty, never as the reasoning.
+    out["choices"][0]["message"] = {"content": None, "reasoning_content": "VERDICT: supported"}
+    assert chat("http://127.0.0.1:8081/v1", "m", [], post=lambda u, b, timeout_s: out).text == ""

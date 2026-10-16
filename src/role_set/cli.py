@@ -23,7 +23,6 @@ from role_set.guards import (
     GuardError,
     require_grant,
     require_heartbeat,
-    require_local_endpoint,
 )
 from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
@@ -140,7 +139,7 @@ def _write(args: argparse.Namespace) -> int:
         training=tuple(Path(t) for t in args.training),
         partition=args.partition, machine=Path(args.machine) if args.machine else None,
         writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
-        server_sha256=args.llama_server_sha256,
+        server_sha256=args.llama_server_sha256, wave=args.wave, drafts=Path(args.drafts) if args.drafts else None,
     )
     try:
         result = run_write(cfg)
@@ -353,6 +352,10 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--llama-server-sha256", default=None, help="the llama-server binary's sha256, measured by the wave script")
     w.add_argument("--machine", default=None, help="the wave script's CUDA machine line (JSON)")
     w.add_argument("--partition", default=None, help="production or trial:<name>; on every receipt")
+    w.add_argument("--wave", choices=("inline", "write", "critique", "rewrite"), default="inline",
+                   help="inline runs writer and critic together; write, critique and rewrite run one model each, with "
+                        "wave-drafts.jsonl between them (BUILD-SPEC B1)")
+    w.add_argument("--drafts", default=None, help="a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl")
     w.add_argument("--grant", default=None, help="the Publisher's grant id, required unless the machine line names a Colab VM or a pod")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
     w.add_argument("--concurrency", type=int, default=1)

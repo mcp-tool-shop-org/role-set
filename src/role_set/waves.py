@@ -1,0 +1,375 @@
+"""Wave mode for `role-set write` (BUILD-SPEC B1): write, critique and rewrite as separate runs.
+
+The writer and the critic no longer have to be loaded at once, or on one host. A write wave runs the writer and
+every mechanical check; a candidate that passes waits in the drafts file. A critique wave runs the critic and the
+acceptance checks on those candidates. A rewrite wave continues each refused draft's own conversation. The drafts
+file is the only hand-off between waves: it carries every slot's conversation, attempts, refusals and state, the
+batch's pins, the andon's counts and every wave's record.
+
+One attempt budget per slot runs across all waves (MAX_ATTEMPTS). A slot that spends it is dropped, and the andon
+counts the drop in whichever wave it happens. A draft written under other pins is refused: the batch pins (plan,
+pack, partition, gates, exemplars, stuck rule, training) must match in every wave, and the writer pins must match
+in a rewrite wave. Each wave records its input file's sha256, so the waves chain.
+
+Standards: PIN_PER_STEP (batch and writer pins checked per wave; every wave's pins and input hash recorded),
+ANDON_AUTHORITY (the runner's cell, kind and systemic andons, carried across waves), DECOMPOSE_BY_SECRETS (each
+wave holds one model; the drafts file is the seam). NAMED_COMPENSATORS: a wave writes only its out directory and
+the drafts file; undo is deleting that directory.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from role_set.assemble import Material
+from role_set.plan import Slot
+from role_set.runner import MAX_ATTEMPTS, Outcome, RunHalted, Runner, SlotState, interleave
+from role_set.transport import Completion
+
+WAVES = ("write", "critique", "rewrite")
+FORMAT = "role-set waves 1"
+DRAFTS_FILE = "wave-drafts.jsonl"
+PENDING = ("awaiting_critique", "needs_rewrite")
+FINAL = ("accepted", "dropped", "skipped")
+# Pins that belong to one wave's host, not to the batch: they may differ from wave to wave.
+WAVE_LOCAL = ("grant", "machine", "wave", "drafts_sha256", "llama_server_commit", "llama_server_sha256", "writers_list_sha256")
+
+
+class WaveError(RuntimeError):
+    """A drafts file that can't be continued: wrong format, other pins, or nothing for this wave."""
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def batch_pins(pins: dict) -> dict:
+    return {k: v for k, v in pins.items() if k not in WAVE_LOCAL and not k.startswith(("writer_", "critic_"))}
+
+
+def writer_pins(pins: dict) -> dict:
+    return {k: v for k, v in pins.items() if k.startswith("writer_")}
+
+
+# ---- the drafts file ----------------------------------------------------------------------------------------
+
+def seal_path(path: Path) -> Path:
+    return path.with_name(path.name + ".sha256")
+
+
+def read(path: Path) -> tuple[dict, list[dict]]:
+    """The header and the draft records. Refused when the file doesn't match the seal its wave wrote beside it
+    (the hand-off crosses hosts), or when it isn't a drafts file of this format."""
+
+    try:
+        raw = path.read_bytes()
+        seal = seal_path(path).read_text(encoding="utf-8").split()[0].strip().lower()
+    except (OSError, IndexError) as e:
+        raise WaveError(f"REFUSED: cannot read the drafts file and its seal {seal_path(path).name} ({type(e).__name__})") from e
+    got = hashlib.sha256(raw).hexdigest()
+    if got != seal:
+        raise WaveError(f"REFUSED: {path.name} ({got[:12]}) doesn't match its seal ({seal[:12]}); it changed in transit, so fetch it again")
+    try:
+        lines = [json.loads(x) for x in raw.decode("utf-8").splitlines() if x.strip()]
+    except ValueError as e:
+        raise WaveError(f"REFUSED: cannot read the drafts file ({type(e).__name__})") from e
+    if not lines or lines[0].get("type") != "header" or lines[0].get("format") != FORMAT:
+        raise WaveError(f"REFUSED: {path.name} is not a drafts file ({FORMAT})")
+    drafts = lines[1:]
+    if any(d.get("type") != "draft" for d in drafts):
+        raise WaveError("REFUSED: the drafts file holds a line that is not a draft")
+    return lines[0], drafts
+
+
+def write(path: Path, header: dict, drafts: list[dict]) -> str:
+    """The drafts file and its seal, <name>.sha256 beside it, in sha256sum's format. Returns the hash."""
+
+    data = "".join(json.dumps(x, ensure_ascii=False) + "\n" for x in [header, *drafts]).encode("utf-8")
+    path.write_bytes(data)
+    sha = hashlib.sha256(data).hexdigest()
+    seal_path(path).write_text(f"{sha}  {path.name}\n", encoding="utf-8", newline="\n")
+    return sha
+
+
+def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
+    """The batch pins must match in every wave; the writer pins too in a rewrite wave."""
+
+    have, want = header.get("batch_pins") or {}, batch_pins(pins)
+    diff = sorted(k for k in set(have) | set(want) if have.get(k) != want.get(k))
+    if diff:
+        raise WaveError(f"REFUSED: the drafts were written under other batch pins ({', '.join(diff)}); a wave continues only its own batch")
+    g = header.get("gates") or {}
+    if (g.get("version"), g.get("sha256")) != (gates.version, gates.sha256):
+        raise WaveError(f"REFUSED: the drafts were checked by gates {g.get('version')}; this wave has {gates.version}")
+    if wave == "rewrite":
+        have_w, want_w = header.get("writer_pins") or {}, writer_pins(pins)
+        diff = sorted(k for k in set(have_w) | set(want_w) if have_w.get(k) != want_w.get(k))
+        if diff:
+            raise WaveError(f"REFUSED: a rewrite continues the drafts' own writer; these pins differ: {', '.join(diff)}")
+
+
+def _completion_dict(c) -> dict:
+    return {"text": c.text, "prompt_tokens": c.prompt_tokens, "completion_tokens": c.completion_tokens, "model": c.model,
+            "seconds": c.seconds, "finish_reason": getattr(c, "finish_reason", None)}
+
+
+def record(st: SlotState, state: str, *, completion=None, receipt: dict | None = None, row: dict | None = None,
+           model: dict | None = None, lookup: bool = False, seq: int | None = None) -> dict:
+    return {
+        "type": "draft", "slot": st.slot.as_dict(), "state": state, "attempt": st.attempt, "ended": st.ended,
+        "messages": st.messages,
+        "material": {"text": st.material.text, "source": st.material.source} if st.material else None,
+        "facts": st.facts, "spent": st.spent, "refusals": st.refusals,
+        "candidate": _completion_dict(completion) if completion is not None else None,
+        "row": row, "model": model, "lookup": lookup, "receipt": receipt, "accepted_seq": seq,
+    }
+
+
+def bare(slot: Slot, state: str, *, refusals: list | None = None, skip_reason: str | None = None) -> dict:
+    """A slot that never reached a draft: skipped, or dropped before its first writer call."""
+
+    return {"type": "draft", "slot": slot.as_dict(), "state": state, "attempt": 0, "ended": False, "messages": [],
+            "material": None, "facts": None, "spent": [], "refusals": list(refusals or []), "candidate": None,
+            "row": None, "model": None, "lookup": False, "receipt": None, "accepted_seq": None, "skip_reason": skip_reason}
+
+
+def state_of(d: dict) -> SlotState:
+    m = d.get("material")
+    return SlotState(slot=Slot(**d["slot"]), messages=list(d["messages"]), material=Material(m["text"], m["source"]) if m else None,
+                     facts=d.get("facts"), attempt=d["attempt"], spent=list(d.get("spent") or []),
+                     refusals=list(d.get("refusals") or []), ended=bool(d.get("ended")))
+
+
+def completion_of(d: dict) -> Completion:
+    c = d["candidate"]
+    return Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"), completion_tokens=c.get("completion_tokens"),
+                      model=c.get("model") or "", seconds=c.get("seconds") or 0.0, finish_reason=c.get("finish_reason"))
+
+
+# ---- the andon across waves ---------------------------------------------------------------------------------
+
+def save_andon(runner: Runner) -> dict:
+    s = runner.status
+    return {
+        "halted": s.halted, "lesson_halts": s.lesson_halts, "cell_halts": s.cell_halts, "kinds_off": s.kinds_off,
+        "cell_drops": {f"{k[0]}/{k[1]}": v for k, v in runner.cell_drops.items()},
+        "cell_drop_keys": {f"{k[0]}/{k[1]}": dict(v) for k, v in runner.cell_drop_keys.items()},
+        "halt_order": [[lesson, list(key)] for lesson, key in runner.halt_order],
+    }
+
+
+def load_andon(runner: Runner, andon: dict) -> None:
+    s = runner.status
+    s.halted = andon.get("halted")
+    s.lesson_halts, s.cell_halts, s.kinds_off = dict(andon.get("lesson_halts") or {}), dict(andon.get("cell_halts") or {}), dict(andon.get("kinds_off") or {})
+    runner.cell_drops = {tuple(k.split("/", 1)): v for k, v in (andon.get("cell_drops") or {}).items()}
+    runner.cell_drop_keys = {tuple(k.split("/", 1)): Counter(v) for k, v in (andon.get("cell_drop_keys") or {}).items()}
+    runner.halt_order = [(lesson, tuple(key)) for lesson, key in (andon.get("halt_order") or [])]
+
+
+def preload(runner: Runner, drafts: list[dict]) -> None:
+    """The batch's accepted rows, in the order they were accepted: the acceptance checks of a later wave run
+    against them, as they would inline."""
+
+    done = sorted((d for d in drafts if d["state"] == "accepted"), key=lambda d: d["accepted_seq"])
+    for d in done:
+        row, slot = d["row"], Slot(**d["slot"])
+        runner.accepted.append(row)
+        if slot.kind == "B" and d.get("model") is not None:
+            runner.models[row["id"]] = d["model"]
+        if d.get("lookup"):
+            runner.lookups[slot.lesson] = runner.lookups.get(slot.lesson, 0) + 1
+        framing = row["turns"][0]["user"].split("\n", 1)[0]
+        if framing and slot.kind in ("C", "D", "E"):
+            runner.avoid.append(framing)
+    for d in drafts:
+        runner.avoid.extend(x for x in d.get("spent") or [] if x not in runner.avoid)
+
+
+# ---- the waves ----------------------------------------------------------------------------------------------
+
+def _drop(runner: Runner, st: SlotState) -> dict:
+    out = Runner.outcome_of(st)
+    with runner.lock:
+        runner.finished.append(out)
+        runner._log("dropped", slot=st.slot.id, codes=[r["code"] for r in out.refusals])
+        runner._andon(st.slot, out)
+    return record(st, "dropped")
+
+
+def _accepted(runner: Runner, st: SlotState, cand) -> dict:
+    with runner.lock:
+        seq = runner.accept_order[st.slot.id]
+        runner.finished.append(Runner.outcome_of(st, cand.row))
+    model = cand.fields.get("model") if st.slot.kind == "B" else None
+    return record(st, "accepted", completion=cand.completion, receipt=runner.receipts.get(st.slot.id), row=cand.row,
+                  model=model, lookup=cand.lookup, seq=seq)
+
+
+def _write_one(runner: Runner, st: SlotState) -> dict:
+    """The writer until a candidate passes the mechanical checks, or the budget is spent."""
+
+    cand = runner.write_step(st)
+    if cand is None:
+        return _drop(runner, st)
+    # Every writer call is logged; this one waits for the critic.
+    runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material)
+    return record(st, "awaiting_critique", completion=cand.completion, lookup=cand.lookup)
+
+
+def _critique_one(runner: Runner, d: dict) -> dict:
+    """The critic and the acceptance checks on one candidate. The mechanical checks run again first, on the stored
+    draft, so a draft that changed in transit, or a lookup cap filled since, is refused, never accepted."""
+
+    st, c = state_of(d), completion_of(d)
+    refusal, cand, glyphs = runner.mechanical(st, c)
+    if cand is not None:
+        refusal = runner.critique_step(st, cand)
+        if refusal is None:
+            return _accepted(runner, st, cand)
+        glyphs = cand.glyphs
+    runner.refuse(st, c, refusal, glyphs)
+    if st.attempt >= MAX_ATTEMPTS:
+        return _drop(runner, st)
+    return record(st, "needs_rewrite")
+
+
+def _rewrite_one(runner: Runner, d: dict) -> dict:
+    return _write_one(runner, state_of(d))
+
+
+def _each(runner: Runner, items: list, fn, *, halted_state) -> list[dict]:
+    """fn over items, in order or on the runner's pool. A systemic halt stops the wave: the item in hand and the
+    ones after it keep the state they came in with (halted_state builds it), and the halt is recorded."""
+
+    results: list = [None] * len(items)
+
+    def one(i: int):
+        if runner.status.halted is not None:
+            results[i] = halted_state(items[i])
+            return
+        try:
+            results[i] = fn(items[i])
+        except RunHalted:
+            results[i] = halted_state(items[i])
+
+    if runner.status.concurrency == 1:
+        for i in range(len(items)):
+            one(i)
+    else:
+        with ThreadPoolExecutor(max_workers=runner.status.concurrency) as pool:
+            list(pool.map(one, range(len(items))))
+    return results
+
+
+def write_wave(runner: Runner, slots: list[Slot], *, stop_after_s: float | None = None) -> list[dict]:
+    if stop_after_s is not None:
+        runner.deadline = runner.clock() + stop_after_s
+    runner.plan_kinds = {s.kind for s in slots}
+    lessons: list[str] = []
+    for s in slots:
+        if s.lesson not in lessons:
+            lessons.append(s.lesson)
+    for lesson in lessons:
+        if not runner.warmup(lesson):
+            runner._halt_lesson_warmup(lesson)
+    ordered = interleave(slots)
+
+    def fn(slot: Slot) -> dict:
+        with runner.lock:
+            why = runner._skip(slot)
+            if why:
+                runner.status.skipped[why] = runner.status.skipped.get(why, 0) + 1
+                return bare(slot, "skipped", skip_reason=why)
+            runner.status.attempted += 1
+        st = runner.open_slot(slot)
+        if isinstance(st, Outcome):
+            with runner.lock:
+                runner.finished.append(st)
+                runner._andon(slot, st)
+            return bare(slot, "dropped", refusals=st.refusals)
+        return _write_one(runner, st)
+
+    return _each(runner, ordered, fn, halted_state=lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot"))
+
+
+def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | None, drafts_in: list[dict] | None,
+             stop_after_s: float | None = None) -> tuple[dict, list[dict]]:
+    """One wave. Returns the new header and every draft of the batch, in plan order."""
+
+    if wave not in WAVES:
+        raise WaveError(f"REFUSED: unknown wave {wave!r}")
+    if wave == "write":
+        if drafts_in:
+            raise WaveError("REFUSED: a write wave starts a batch; it takes no drafts file")
+        drafts = write_wave(runner, slots, stop_after_s=stop_after_s)
+    else:
+        assert header_in is not None and drafts_in is not None
+        load_andon(runner, header_in.get("andon") or {})
+        runner.plan_kinds = {Slot(**d["slot"]).kind for d in drafts_in}
+        preload(runner, drafts_in)
+        want = "awaiting_critique" if wave == "critique" else "needs_rewrite"
+        todo = [i for i, d in enumerate(drafts_in) if d["state"] == want]
+        if not todo:
+            raise WaveError(f"REFUSED: no draft is {want.replace('_', ' ')}; nothing for a {wave} wave")
+        fn = _critique_one if wave == "critique" else _rewrite_one
+        done = _each(runner, [drafts_in[i] for i in todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+        drafts = list(drafts_in)
+        for i, d in zip(todo, done):
+            drafts[i] = d
+    header = dict(header_in or {})
+    header["andon"] = save_andon(runner)
+    return header, drafts
+
+
+def finish(runner: Runner, wave: str, drafts: list[dict], out_dir: Path) -> str | None:
+    """The batch check, once no draft is pending: the share-based gates over the finished lessons' rows. The wave's
+    report lists every slot's state, so the last wave's report is the batch's."""
+
+    pending = sum(1 for d in drafts if d["state"] in PENDING)
+    skipped = sum(1 for d in drafts if d["state"] == "skipped")
+    lessons: list[str] = []
+    for d in drafts:
+        if d["slot"]["lesson"] not in lessons:
+            lessons.append(d["slot"]["lesson"])
+    whole = [ls for ls in lessons if ls not in runner.status.lesson_halts]
+    rows = [r for r in runner.accepted if r.get("lesson") in whole]
+    batch_check = None
+    # As inline, where a halted cell leaves slots unstarted: a batch the andon stopped anywhere gets no batch check.
+    stopped = runner.status.halted or runner.status.cell_halts or runner.status.kinds_off or runner.status.lesson_halts
+    if pending == 0 and not stopped and not skipped and rows:
+        try:
+            runner.gates.check_batch(rows, models=runner.models)
+            batch_check = "clean"
+        except runner.gates.error_type() as e:
+            batch_check = f"REFUSED: {e}"
+        runner._log("batch_check", result=batch_check, lessons=whole)
+    runner.batch_check = batch_check
+    counts = Counter(d["state"] for d in drafts)
+    report = {
+        "wave": wave, "pending": pending, "states": dict(sorted(counts.items())), "batch_check": batch_check,
+        "status": runner.status.as_dict(runner.clock()),
+        "outcomes": [{"slot": d["slot"]["id"], "state": d["state"], "attempts": d["attempt"], "refusals": d["refusals"],
+                      "skip_reason": d.get("skip_reason")} for d in drafts],
+    }
+    (out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
+    return batch_check
+
+
+# ---- the mock's answers -------------------------------------------------------------------------------------
+
+def dump_answers(answers: dict) -> list:
+    """The mock writer's answer lookup, for the mock critic of a later wave (mock runs only; never data)."""
+
+    return [[list(k) if isinstance(k, tuple) else k, list(v) if isinstance(v, tuple) else v] for k, v in answers.items()]
+
+
+def load_answers(header: dict) -> dict:
+    out: dict = {}
+    for k, v in header.get("mock_answers") or []:
+        out[tuple(k) if isinstance(k, list) else k] = tuple(v) if isinstance(v, list) and len(v) == 2 and isinstance(v[1], list) else v
+    return out

@@ -64,11 +64,11 @@ Kind B puzzles used to be written freehand and then checked. Now code builds the
 | `cost` | Estimates pod hours and dollars for a plan before anything is launched (`two-card` or `frontier`). It is an estimate. |
 | `pack sync` / `pack verify` | Copies the verifier pack from a local aspire-si clone at a commit, and checks the copy against its manifest. |
 | `harvest` | Copies licence-checked excerpts from pinned repos into a local pool. The clone directory is not recorded. |
-| `write` | The runner. `--mock` runs it with no model and no spend. A real run needs a loopback `--endpoint` and a `--model` from `writers.json`. |
+| `write` | The runner. `--mock` runs it with no model and no spend. A real run needs a loopback `--endpoint` and a `--model` from `writers.json`. `--wave write`, `critique` and `rewrite` split a batch so the writer and the critic run one at a time, on different hosts if need be, with `wave-drafts.jsonl` between them. |
 | `readout` | Reports one run per lesson and kind, passing or failing, from the directory that holds `batch-report.json`. |
 | `critic-control` | Measures a critic on reviewed items, on its llama-server. Needs the critic's GGUF and server hashes and the machine line, plus a grant and a heartbeat file off a rented host. `--trait-leg` and `--answer-leg` run those legs. |
 | `ingest` / `store` | Records receipts into the store, with the firewall at the door. `store status` reports counts. `store void` appends a void. |
-| `pilot-auto` | The paid launcher: waits for the loopback lane, writes, and can relaunch after a lost-call stop. |
+| `pilot-auto` | The 2026-10-11 pilots' paid launcher. Its script names the pilots' Qwen and Gemma pins, which are off the proven list, so `write` refuses it. |
 | `puzzle-check` | Runs the kind B solver over data files and their `.models.jsonl` sidecars, and refuses a repeated fact skeleton. |
 
 ```text

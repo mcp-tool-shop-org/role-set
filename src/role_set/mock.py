@@ -26,6 +26,10 @@ class MockWriter:
     fail_first: set | None = None
     answers: dict | None = None  # statement -> (verdict, deciding) for the mock critic
     seen: list | None = None
+    # Wave mode (BUILD-SPEC B1): with the plan's slot order, a draft's made-up words come from its slot and attempt,
+    # not from the order of calls, so a run split into write, critique and rewrite waves writes the same drafts as
+    # one inline run. Materials keep their own counter: they are drafted only on a slot's first pass, in plan order.
+    keyed_order: dict | None = None  # slot id -> its index in the plan's (interleaved) order
 
     def __post_init__(self):
         self.fail_first = set(self.fail_first or ())
@@ -43,7 +47,26 @@ class MockWriter:
                 self._b += 1
             return self._n, self._b
 
-    def __call__(self, messages: list[dict], seed: int = 0) -> Completion:
+    @property
+    def takes_slot_id(self) -> bool:
+        """A keyed mock is told which slot a call is for (the prompt never names it): see Runner._writer_call."""
+
+        return self.keyed_order is not None
+
+    def _keyed(self, slot_id: str, attempt: int, puzzle: bool) -> tuple[int, int]:
+        order = self.keyed_order or {}
+        index = order.get(slot_id, 0)
+        b_index = sum(1 for k, i in order.items() if i <= index and "-B-" in k)
+        return 4 * index + max(1, attempt), b_index + 8 * (max(1, attempt) - 1)
+
+    def _material_n(self, slot_id: str | None) -> int:
+        if self.keyed_order is not None and slot_id is not None:
+            return 2048 + self.keyed_order.get(slot_id, 0)
+        with self._lock:
+            self._n += 1
+            return self._n
+
+    def __call__(self, messages: list[dict], seed: int = 0, slot_id: str | None = None) -> Completion:
         text = messages[-1]["content"]
         self.seen.append(text[:80])
         briefs = [m["content"] for m in messages if m["role"] == "user" and "## This slot" in m["content"]]
@@ -55,7 +78,7 @@ class MockWriter:
         if "In your own words: the trait's main point" in text:
             return _done('{"main_point": "the source decides and I quote it", "counterweight": "stop at the source once it settles the claim", "deciding_case": "a changelog line settles a version claim"}')
         if "Write a " in text and "Return only the text" in text:
-            n, _ = self._next()
+            n = self._material_n(slot_id)
             return _done(f"Desk hours at {_tag(n, 0).title()}\nThe desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00.")
         slot = _slot_from_brief(text)
         material = _material_from(text)
@@ -63,7 +86,10 @@ class MockWriter:
         self._tries[slot_key] = self._tries.get(slot_key, 0) + 1
         if slot_key in self.fail_first and refused == 0 and self._tries[slot_key] == 1:
             return _done("I would rather not answer in JSON this time.")
-        n, b = self._next(puzzle=slot["kind"] == "B")
+        if self.keyed_order is not None and slot_id is not None:
+            n, b = self._keyed(slot_id, seed, puzzle=slot["kind"] == "B")
+        else:
+            n, b = self._next(puzzle=slot["kind"] == "B")
         return _done(_fields(slot, material, self.answers, n, b))
 
 
@@ -71,6 +97,9 @@ class MockWriter:
 class MockCritic:
     answers: dict
     disagree: set | None = None  # statements the critic disagrees on
+    # Statements the critic disagrees on once, the first time it reads them; each is removed as it is used, so a
+    # set shared by every critic of a batch refuses each first draft once, inline or across waves.
+    disagree_once: set | None = None
     disagree_all: bool = False
     trait: str = ""
 
@@ -94,7 +123,10 @@ class MockCritic:
         verdict, deciding = self.answers.get((statement, first_line), ("cannot_tell", []))
         if "The desk sells stamps on Mondays." in text:  # turn 2 of a 'changes' item: the new line decides
             verdict, deciding = self.answers.get(("turn2", statement, first_line), (verdict, deciding))
-        if self.disagree_all or statement in (self.disagree or set()):
+        once = self.disagree_once is not None and statement in self.disagree_once
+        if once:
+            self.disagree_once.discard(statement)
+        if self.disagree_all or once or statement in (self.disagree or set()):
             verdict = "unsupported" if verdict != "unsupported" else "supported"
             deciding = deciding or ["Desk hours"]
         body = " | ".join(deciding) if deciding else "NONE"
