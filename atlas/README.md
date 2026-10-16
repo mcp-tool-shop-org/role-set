@@ -1,18 +1,16 @@
 # role-set: how it works
 
-Mapped at 2026-10-16 from commit e92ac82 by Atlas 1.24.0.
+Mapped at 2026-10-16 from commit 1a626b6 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (72 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (73 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-15 (10d7722)
+## What changed since 2026-10-16 (e92ac82)
 
-- src/role_set/generate/t12_catalogue.json is now written by scripts/t12_catalogue.py.
-- src/role_set/generate/t12_catalogue.json is now read by scripts/t12_catalogue.py and src/role_set/generate/recipes.py.
-- 2 files added and 21 changed content, across 6 parts.
+Nothing structural changed since 2026-10-16; 1 file added and 10 changed content.
 
 ## What comes in
 
@@ -44,15 +42,13 @@ CI writes nothing this map can see.
 
 - **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 9 commits, and the tests part imports the src part.
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
-- **src/role_set/assemble.py** and **src/role_set/prompts.py** changed together in 9 of 17 commits, inside the src part.
-- **src/role_set/prompts.py** and **src/role_set/runner.py** changed together in 11 of 22 commits, inside the src part.
 - **src/role_set/generate/recipes.py** and **tests/test_generate.py** changed together in 5 of 10 commits, and the tests part imports the src part.
 
-6 files changed together with their own tests, as expected.
+4 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 8 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 9 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -86,7 +82,7 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 1 write and 4 reads use paths built at run time and are not named here.
+- 1 write and 5 reads use paths built at run time and are not named here.
 - 5 writes and 28 reads go to a path their caller passes, not to this repository.
 - 7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.
 - 9 reads go to the directory the command is run in, not to this repository.

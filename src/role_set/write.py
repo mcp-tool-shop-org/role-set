@@ -66,6 +66,28 @@ class WriteConfig:
     stuck_commit: str | None = None  # defaults to the exemplar commit
     stop_after_minutes: float | None = None  # no new slot starts after this; running slots finish
     closed_form: dict | None = None  # the gates' closed-form settings for this run; None takes the gates' defaults
+    training: tuple[Path, ...] = ()  # the whole training set's data files (with .models.jsonl sidecars), for an apply plan
+
+
+def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
+    """The whole training set, for an apply plan's exclusions (aspire-si#127): its rows, and its sidecar models through
+    the gates' own load_models (each line's row_sha256 checked). An apply plan without it is refused; the files' sha256
+    go on the run's pins."""
+
+    if not any(s.split == "apply" for s in slots):
+        return [], {}
+    if not cfg.training:
+        raise WriteRefused("REFUSED: an apply plan needs --training, the whole training set's data files: apply items may "
+                           "reuse no trained material or wording (aspire-si#127)")
+    rows: list[dict] = []
+    models: dict = {}
+    pins["training"] = []
+    for path in cfg.training:
+        text = path.read_text(encoding="utf-8")
+        rows += [json.loads(x) for x in text.splitlines() if x.strip()]
+        models.update(gates.load_models(path))
+        pins["training"].append({"file": path.name, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+    return rows, models
 
 
 def load_plan(path: Path) -> tuple[list[Slot], dict[str, tuple[str, str]], str]:
@@ -234,8 +256,9 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
             pins["stuck_rule_sha256"] = stuck.rule_sha256
         except StuckRuleError as e:
             raise WriteRefused(str(e)) from e
+    training, training_models = _training(cfg, slots, gates, pins)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:

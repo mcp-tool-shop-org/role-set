@@ -178,6 +178,7 @@ SUGGESTIONS = {
     "STUCK": "The thinking circles back on itself ({detail}). Walk the elimination once, forward, one line at a time, and stop at the answer.",
     "SHAPE": "The reply is a finished row (kind, turns, answer), the exemplars' shape. Return one flat object with exactly these fields instead: {detail}.",
     "REPLY_OPENING": "The reply opens like two accepted items of this trait ('{detail}'). Open it another way, in this item's own words.",
+    "SPENT": "The user turn reuses a trained item's wording ('{detail}'). Write it fresh: an apply item's wording appears in no trained item.",
     "LESSON_COPY": "The text copies the trait lesson's wording ('{detail}'). Say it in your own words (handoff rule 11: never copy a sentence from the lessons).",
 }
 
@@ -258,6 +259,33 @@ def lesson_spans(lesson_text: str) -> set[str]:
     return {" ".join(w[i:i + LESSON_SPAN_WORDS]) for i in range(len(w) - LESSON_SPAN_WORDS + 1)}
 
 
+def _user_spans(row: dict) -> set[str]:
+    """Every 8-word span of a row's user turns, outside its material lines."""
+
+    content = {ln.strip() for ln in (row.get("material") or "").splitlines() if ln.strip()}
+    out: set[str] = set()
+    for t in row.get("turns") or []:
+        for line in t.get("user", "").splitlines():
+            if line.strip() and line.strip() not in content:
+                w = _words(line)
+                out |= {" ".join(w[i:i + LESSON_SPAN_WORDS]) for i in range(len(w) - LESSON_SPAN_WORDS + 1)}
+    return out
+
+
+def trained_spans(rows: list[dict]) -> set[str]:
+    """The spent wording for apply items: every 8-word span of a trained item's user turns, outside material lines."""
+
+    return set().union(*(_user_spans(r) for r in rows)) if rows else set()
+
+
+def spent_span(row: dict, spent: set[str]) -> str | None:
+    """The first 8-word span (sorted) of an apply item's user turn that a trained item's user turn holds, or None (the
+    quiz's spent rule, aspire-si#127)."""
+
+    found = _user_spans(row) & spent
+    return sorted(found)[0] if found else None
+
+
 def lesson_copy(row: dict, spans: set[str]) -> str | None:
     """The first 8-word span (in sorted order) that an item's user turns, thinking or replies share with its trait
     lesson, outside material lines, or None. Handoff rule 11 (fresh wording) had no check behind it until the
@@ -319,7 +347,7 @@ def spent_wording(refusal: dict) -> list[str]:
     """The wording a refusal names as spent ("the wording 'x' is already in 2 items", or a copied lesson span), or []."""
 
     detail = refusal.get("detail") or ""
-    if refusal.get("code") == "LESSON_COPY":
+    if refusal.get("code") in ("LESSON_COPY", "SPENT"):  # a copied lesson span, or a trained item's span (apply items)
         return [detail] if detail else []
     if refusal.get("code") != "AGAINST" or not detail.startswith(SPENT_CODES):
         return []
@@ -405,11 +433,16 @@ class Runner:
         trait_gate: bool = False,  # likewise the trait check, until critic-control's trait leg meets R&D's bar
         answer_gate: bool = False,  # and the kind-B answer check, until the answer leg does
         stuck=None,  # callable(thinking, material, tier, tokens) -> the frozen stuck rule's measures, or None
+        training: list[dict] | None = None,  # the whole training set, for apply items' exclusions (aspire-si#127)
+        training_models: dict | None = None,  # its sidecar models, {id: model}
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
         self.out_dir = out_dir
         self.exemplars = exemplars or {}
+        self.training = training or []
+        self.training_models = training_models or {}
+        self._spent: set[str] | None = None
         self.excerpts = {k: list(v) for k, v in (excerpts or {}).items()}
         self.pins = pins or {}
         self.clock = clock
@@ -434,6 +467,11 @@ class Runner:
         self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
         self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
+
+    def _spent_spans(self) -> set[str]:
+        if self._spent is None:
+            self._spent = trained_spans(self.training)
+        return self._spent
 
     def _lesson_spans(self, lesson: str) -> set[str]:
         if lesson not in self._spans_by_lesson:
@@ -655,7 +693,8 @@ class Runner:
         except AssemblyError as e:
             outcome.refusals.append(self._refusal("ASSEMBLY", str(e)))
             return outcome
-        exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v if e.get("kind") == slot.kind][:3]
+        exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v
+                     if e.get("kind") == slot.kind and e.get("split") != "apply"][:3]  # apply rows are never shown
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
         messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes,
                                    trait_words=self.gates.trait_words(slot.lesson), closed_form=self.gates.closed_form)
@@ -710,6 +749,10 @@ class Runner:
                 copied = lesson_copy(row, self._lesson_spans(slot.lesson))
                 if copied:
                     refusal = self._refusal("LESSON_COPY", copied)
+            if refusal is None and slot.split == "apply":
+                spent = spent_span(row, self._spent_spans())
+                if spent:
+                    refusal = self._refusal("SPENT", spent)
             if refusal is None:
                 try:
                     self.gates.check_item(row)
@@ -725,7 +768,12 @@ class Runner:
                 with self.lock:
                     try:
                         models = {**self.models, row["id"]: fields["model"]} if slot.kind == "B" else self.models
-                        reasons = self.gates.check_against(row, self.accepted, models=models)
+                        # An apply item may reuse no training item's material either (aspire-si#127): it is checked
+                        # against the whole training set as well as this run's rows.
+                        against = self.accepted + self.training if slot.split == "apply" else self.accepted
+                        if slot.split == "apply":
+                            models = {**self.training_models, **models}
+                        reasons = self.gates.check_against(row, against, models=models)
                     except self.gates.error_type() as e:
                         reasons = [("AGAINST", str(e))]
                     stamp = reply_opening_reused(row, self.accepted)

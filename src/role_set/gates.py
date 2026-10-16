@@ -73,6 +73,10 @@ class Gates:
     def role_words_in_prompt(self, row: dict) -> list[str]:
         return list(self.module.role_words_in_prompt(row))  # type: ignore[attr-defined]
 
+    def load_models(self, data_path) -> dict:
+        """{id: model} from a data file's .models.jsonl sidecar, each line's row_sha256 checked (the gates' own loader)."""
+        return dict(self.module.load_models(data_path))  # type: ignore[attr-defined]
+
     def error_type(self) -> type[Exception]:
         return self.module.DataError  # type: ignore[attr-defined]
 

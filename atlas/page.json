@@ -23,41 +23,24 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 2,
-      "changed": 21,
+      "added": 1,
+      "changed": 10,
       "moved": 0,
-      "parts": 6,
+      "parts": 3,
       "removed": 0
     },
     "items": [
       {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/t12_catalogue.json is now written by scripts/t12_catalogue.py.",
-        "subjects": [
-          "src/role_set/generate/t12_catalogue.json",
-          "scripts/t12_catalogue.py"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "src/role_set/generate/t12_catalogue.json is now read by scripts/t12_catalogue.py and src/role_set/generate/recipes.py.",
-        "subjects": [
-          "src/role_set/generate/t12_catalogue.json",
-          "scripts/t12_catalogue.py",
-          "src/role_set/generate/recipes.py"
-        ]
-      },
-      {
         "kind": "counts",
-        "sentence": "2 files added and 21 changed content, across 6 parts.",
+        "sentence": "Nothing structural changed since 2026-10-16; 1 file added and 10 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "10d7722fe23364402987bb4909c4e75707de31b1",
-      "generatedAt": "2026-10-15T22:41:11.090Z"
+      "commit": "e92ac82de66cd448081b9612f18328a00ee9e18d",
+      "generatedAt": "2026-10-16T00:49:56.574Z"
     },
-    "unchanged": false
+    "unchanged": true
   },
   "changesTogether": [
     {
@@ -91,36 +74,6 @@
       "shared": 6
     },
     {
-      "a": "src/role_set/assemble.py",
-      "b": "src/role_set/prompts.py",
-      "either": 17,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 9
-    },
-    {
-      "a": "src/role_set/prompts.py",
-      "b": "src/role_set/runner.py",
-      "either": 22,
-      "partLabels": [
-        "src",
-        "src"
-      ],
-      "parts": [
-        "src",
-        "src"
-      ],
-      "relation": "inside",
-      "shared": 11
-    },
-    {
       "a": "src/role_set/generate/recipes.py",
       "b": "tests/test_generate.py",
       "either": 10,
@@ -137,14 +90,14 @@
     }
   ],
   "changesTogetherNote": [
-    "6 files changed together with their own tests, as expected.",
+    "4 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 8 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 9 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 6,
-  "commit": "e92ac82de66cd448081b9612f18328a00ee9e18d",
+  "changesTogetherWithTests": 4,
+  "commit": "1a626b683dce23bf4dd3b594b6f3a3a343f24245",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (72 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (73 files), CSS (2), TypeScript (2), shell (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 2 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -159,7 +112,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 32
+          "files": 33
         },
         {
           "boundary": "src",
@@ -280,9 +233,9 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-16T00:49:56.574Z",
+  "generatedAt": "2026-10-16T02:18:37.454Z",
   "limits": [
-    "1 write and 4 reads use paths built at run time and are not named here.",
+    "1 write and 5 reads use paths built at run time and are not named here.",
     "5 writes and 28 reads go to a path their caller passes, not to this repository.",
     "7 writes and 4 reads go to the directory the command is run in (plan.json/, roles/ and writers.json) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
@@ -314,10 +267,10 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 40,
+  "testFiles": 41,
   "testedBy": {
     "scripts": 0,
-    "src": 31
+    "src": 32
   },
   "unnamedWrites": 1,
   "unread": [],

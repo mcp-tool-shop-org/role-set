@@ -263,6 +263,7 @@ def mock_gates(closed_form=None):
     m.DataError = ValueError
     m.check_item = lambda row: None
     m.check_against = lambda row, accepted, models=None: []
+    m.load_models = lambda data_path: {}
     m.check_batch = lambda rows, models=None, **kw: None
     m.role_words_in_prompt = lambda row: []
     m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
