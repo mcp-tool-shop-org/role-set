@@ -210,3 +210,13 @@ def test_a_real_write_refuses_a_plan_without_domains(tmp_path: Path):
     assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out)]) == 0
     with pytest.raises(WriteRefused, match="no domains"):
         build(WriteConfig(plan=out, pack=ROOT / "roles" / "verifier", out=tmp_path / "o", endpoint="http://127.0.0.1:8080/v1"))
+
+
+def test_the_committed_table_is_the_pinned_census_file():
+    table = domains.load(ROOT / "roles" / "domains" / "naics-2022.json")
+    assert table.source["sha256"] == "be12ba41002803359f49181c9bf33a03fbd08578f4f4a4c0bbad7aadaaea0316"
+    assert table.source["url"] == "https://www.census.gov/naics/2022NAICS/2-6%20digit_2022_Codes.xlsx"
+    assert len(table.subsectors) == 96 and table.subsectors[0] == {"code": "111", "title": "Crop Production"}
+    assert [e["title"] for e in table.escalate["legal"]] == ["Legal Services"]
+    # Every lesson's 26 domain-bearing slots fit, with room.
+    assert len(table.subsectors) >= 3 * 26
