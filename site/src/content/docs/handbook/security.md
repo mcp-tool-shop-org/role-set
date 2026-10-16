@@ -15,9 +15,9 @@ role-set never rents a machine, never reads a rental API key, and never shuts a 
 
 ## The local GPU
 
-The critic, and a rehearsal writer, use the local GPU. Those paths require a grant id and a heartbeat file newer than 60 seconds by modified time. The file is not opened, so the check does not depend on what the file contains. On the way out, a model the run loaded is unloaded, including when the run errors.
+A step whose machine line doesn't name a rented host (a Colab VM or a pod) requires a grant id and a heartbeat file newer than 60 seconds by modified time. The file is not opened, so the check does not depend on what the file contains. A model's weights and the `llama-server` binary must match their sha256 pins in `writers.json`, so a swapped file is refused before a request is built.
 
-`--mock` does not load a model and does not ask for a grant. `--no-critic` with the pod writer does not use the local GPU. That is a dry run, not a quieter form of the real check.
+`--mock` does not load a model and does not ask for a grant. `--no-critic` is a dry run, not a quieter form of the real check.
 
 ## The store
 

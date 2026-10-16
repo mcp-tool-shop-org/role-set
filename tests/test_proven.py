@@ -1,0 +1,140 @@
+import json
+from pathlib import Path
+
+import pytest
+
+from role_set import proven
+from role_set.guards import GuardError
+
+SHA_W = "a" * 64
+SHA_C = "c" * 64
+SHA_S = "5" * 64
+
+
+def entry(name: str, family: str, sha: str | None = None, **extra) -> dict:
+    return {"served_as": name, "family": family, "repo": f"maker/{name}", "revision": "r1" if sha else None,
+            "gguf_file": f"{name}-Q8_0.gguf" if sha else None, "gguf_sha256": sha, "quant": "Q8_0", "licence": "OpenMDW-1.1",
+            "proof_url": f"https://huggingface.co/maker/{name}", "proof_clause": "\"any use ... of any outputs\"",
+            "proof_date": "2026-10-16", "checked_by": "R&D, 2026-10-16", "registry_id": "openmdw-1.1", **extra}
+
+
+def proven_file(tmp_path: Path, *, writers=None, critics=None, server=None) -> Path:
+    path = tmp_path / "writers.json"
+    path.write_text(json.dumps({
+        "llama_server": server if server is not None else {"commit": "b6000", "sha256": SHA_S},
+        "writers": writers if writers is not None else [entry("big-writer", "nemotron", SHA_W)],
+        "critics": critics if critics is not None else [entry("other-critic", "muse", SHA_C), entry("same-critic", "nemotron", SHA_C),
+                                                         entry("compare-critic", "granite", SHA_C, role="critic-comparison")],
+    }), encoding="utf-8")
+    return path
+
+
+def test_the_list_loads_with_every_proof_and_hashes_itself(tmp_path: Path):
+    listed = proven.load(proven_file(tmp_path))
+    assert sorted(listed.writers) == ["big-writer"] and sorted(listed.critics) == ["compare-critic", "other-critic", "same-critic"]
+    assert len(listed.sha256) == 64 and listed.server["commit"] == "b6000"
+
+
+@pytest.mark.parametrize("field", proven.PROOF_FIELDS)
+def test_an_entry_without_any_proof_field_is_refused(tmp_path: Path, field: str):
+    bad = entry("big-writer", "nemotron", SHA_W)
+    bad[field] = ""
+    with pytest.raises(GuardError, match=f"no {field}"):
+        proven.load(proven_file(tmp_path, writers=[bad]))
+
+
+def test_proof_shape_name_cloud_and_duplicates_are_refused(tmp_path: Path):
+    with pytest.raises(GuardError, match="live https"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_url="http://example.org/card")]))
+    with pytest.raises(GuardError, match="YYYY-MM-DD"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_date="last week")]))
+    with pytest.raises(GuardError, match="registry id"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", registry_id="OpenMDW 1.1")]))
+    with pytest.raises(GuardError, match="no served_as"):
+        proven.load(proven_file(tmp_path, writers=[entry("", "x")]))
+    with pytest.raises(GuardError, match="cloud"):
+        proven.load(proven_file(tmp_path, writers=[entry("kimi-k3:cloud", "kimi")]))
+    with pytest.raises(GuardError, match="listed twice"):
+        proven.load(proven_file(tmp_path, critics=[entry("c", "muse"), entry("c", "muse")]))
+
+
+def test_an_unpinned_model_and_a_drifted_gguf_are_refused():
+    unpinned = entry("big-writer", "nemotron", None)
+    with pytest.raises(GuardError, match="not pinned yet"):
+        proven.require_pinned(unpinned, SHA_W)
+    with pytest.raises(GuardError, match="not a sha256"):
+        proven.require_pinned(entry("w", "x", "nothex"), "nothex")
+    with pytest.raises(GuardError, match="measured sha256"):
+        proven.require_pinned(entry("w", "x", SHA_W), None)
+    with pytest.raises(GuardError, match="differs from the pinned"):
+        proven.require_pinned(entry("w", "x", SHA_W), "b" * 64)
+    pins = proven.require_pinned(entry("w", "x", SHA_W), SHA_W.upper())
+    assert pins["gguf_sha256"] == SHA_W and pins["family"] == "x" and pins["proof_url"].startswith("https://")
+    assert pins["registry_id"] == "openmdw-1.1"
+
+
+def test_the_llama_server_binary_is_pinned():
+    with pytest.raises(GuardError, match="not pinned yet"):
+        proven.require_server({"commit": None, "sha256": None}, SHA_S)
+    with pytest.raises(GuardError, match="measured sha256"):
+        proven.require_server({"commit": "b1", "sha256": SHA_S}, "")
+    with pytest.raises(GuardError, match="rebuild or re-pin"):
+        proven.require_server({"commit": "b1", "sha256": SHA_S}, "6" * 64)
+    assert proven.require_server({"commit": "b1", "sha256": SHA_S}, SHA_S) == {"commit": "b1", "sha256": SHA_S}
+
+
+def test_a_critic_of_the_writers_family_is_refused():
+    with pytest.raises(GuardError, match="own family"):
+        proven.require_other_family(entry("w", "Nemotron"), entry("c", "nemotron"))
+    proven.require_other_family(entry("w", "nemotron"), entry("c", "muse"))
+
+
+def test_partitions():
+    assert proven.require_partition("production") == "production"
+    assert proven.require_partition(" trial:j1-wave1 ") == "trial:j1-wave1"
+    for bad in (None, "", "prod", "trial:", "trial:J1", "production2"):
+        with pytest.raises(GuardError, match="--partition"):
+            proven.require_partition(bad)
+
+
+def test_the_machine_line(tmp_path: Path):
+    with pytest.raises(GuardError, match="--machine"):
+        proven.load_machine(None)
+    with pytest.raises(GuardError, match="cannot read"):
+        proven.load_machine(tmp_path / "missing.json")
+    path = tmp_path / "m.json"
+    for body, match in (("[1]", "JSON object"), ('{"driver": "580"}', "no compat, runtime, card"),
+                        ('{"driver": "580", "compat": "yes", "runtime": "13.4", "card": "A100"}', "true or false"),
+                        ('{"driver": "580", "compat": true, "runtime": "13.4", "card": "A100"}', "where it ran")):
+        path.write_text(body, encoding="utf-8")
+        with pytest.raises(GuardError, match=match):
+            proven.load_machine(path)
+    path.write_text(json.dumps({"driver": "580.82", "compat": True, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB",
+                                "colab_release_tag": "release-colab_20261015-060052_RC00"}), encoding="utf-8")
+    line = proven.load_machine(path)
+    assert line["card"].endswith("40GB") and not proven.needs_grant(line)
+    # Fail closed (R&D on #70): only a rented host goes without the grant; the rig needs it whatever its card says.
+    assert not proven.needs_grant({"card": "NVIDIA H200 NVL", "pod_id": "abc123"})
+    assert proven.needs_grant({"card": "NVIDIA A100-SXM4-40GB", "rig": "robot"})
+    assert proven.needs_grant({"card": "NVIDIA A100-SXM4-40GB", "rig": "robot", "pod_id": "abc123"})
+    assert proven.needs_grant({"card": "NVIDIA GeForce RTX 5090"})
+    assert proven.needs_grant({"rig": "robot"})  # a rig line with no card string at all
+
+
+def test_the_committed_list_is_proven_and_drops_the_apache_only_entries():
+    listed = proven.load(Path(__file__).resolve().parents[1] / "writers.json")
+    names = set(listed.writers) | set(listed.critics)
+    # BUILD-SPEC B6: the Apache-only entries are removed; they are not proven under the rule.
+    assert not names & {"qwen3-235b-instruct-2507", "qwen3:8b", "gemma4:31b", "granite4.1:30b"}
+    assert {"muse-glimmer-30b", "nemotron-3.5-lightning-30b-a3b"} <= set(listed.critics)
+    assert "nemotron-3.5-bolt-74b-a9b" in listed.writers  # R&D ruled it in, 2026-10-16
+    assert {e["registry_id"] for e in [*listed.writers.values(), *listed.critics.values()]} <= {
+        "openmdw-1.1", "deepseek-r1-0528-card", "muse-glimmer-30b-card"}
+    families = {e["family"] for e in listed.critics.values()}
+    # Every writer has a critic of another family on the list.
+    for w in listed.writers.values():
+        assert families - {w["family"]}, w["served_as"]
+    # Nothing is pinned until the download: a run refuses every entry until its GGUF and the server are pinned.
+    assert listed.server["cuda"] == "13.4"
+    with pytest.raises(GuardError, match="not pinned yet"):
+        proven.require_server(listed.server, SHA_S)

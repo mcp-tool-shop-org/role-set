@@ -1,9 +1,11 @@
 """`role-set write`: the runner wired to the real writer and critic, or to the mocks for CI.
 
-Refused before anything is sent: an endpoint off the loopback, a writer not on
-the licence-checked list, a cloud tag, a critic step without a grant or with a
-stale watchdog heartbeat, a pack that has drifted from its manifest, a missing
-gates package. `--mock` runs the whole pipeline with no model; its output is
+Refused before anything is sent: an endpoint off the loopback, a model not on
+the proven list or listed without its proof, weights or a llama-server binary
+that differ from their pins, a critic of the writer's own family, a missing
+partition or machine line, a step off a rented host (Colab or a pod) without a
+grant or with a stale watchdog heartbeat, a pack that has drifted from its manifest, a missing gates
+package. `--mock` runs the whole pipeline with no model; its output is
 marked and is never data.
 """
 
@@ -16,11 +18,18 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from role_set import proven
 from role_set.assemble import trait_name
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
+from role_set.guards import (
+    GuardError,
+    require_grant,
+    require_heartbeat,
+    require_local_endpoint,
+    require_model_allowed,
+)
 from role_set.harvest import load_pool
-from role_set.guards import GuardError, require_grant, require_heartbeat, require_local_endpoint, require_model_allowed, require_ollama_digest
 from role_set.mock import MockCritic, MockWriter, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
@@ -28,14 +37,16 @@ from role_set.prompts import load_pack
 from role_set.runner import RunHalted, Runner
 from role_set.stuckrule import StuckRuleError
 from role_set.stuckrule import load as load_stuck
-from role_set.transport import chat, ollama_chat, unload
+from role_set.transport import chat
 
 # The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
 # real pack; 16,384 leaves room for the reply and its thinking.
 WRITER_NUM_CTX = 16384
-# The pod's writer samples at 0.7 (transport.chat's default); a local rehearsal writer at Ollama's 0 gave every
-# retry of a slot the same draft, so the rehearsal could not show what a retry recovers.
+# The writer samples at 0.7 (transport.chat's default); a local rehearsal writer at Ollama's 0 gave every retry of a
+# slot the same draft, so the rehearsal could not show what a retry recovers.
 WRITER_TEMPERATURE = 0.7
+# The critic reads at 0 unless a check asks otherwise (the trait leg's three samples), as it did on Ollama.
+CRITIC_TEMPERATURE = 0.0
 
 
 class WriteRefused(RuntimeError):
@@ -67,6 +78,11 @@ class WriteConfig:
     stop_after_minutes: float | None = None  # no new slot starts after this; running slots finish
     closed_form: dict | None = None  # the gates' closed-form settings for this run; None takes the gates' defaults
     training: tuple[Path, ...] = ()  # the whole training set's data files (with .models.jsonl sidecars), for an apply plan
+    partition: str | None = None  # production or trial:<name>, on every receipt (BUILD-SPEC B6)
+    machine: Path | None = None  # the wave script's CUDA machine line (JSON)
+    writer_gguf_sha256: str | None = None  # measured by the wave script before launch
+    critic_gguf_sha256: str | None = None
+    server_sha256: str | None = None  # the llama-server binary, measured by the wave script
 
 
 def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
@@ -116,17 +132,35 @@ def trait_names_from_pack(pack: dict[str, str]) -> dict[str, str]:
     return names
 
 
-def allowed_writers(path: Path) -> dict[str, dict]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {w["served_as"]: w for w in data.get("writers", [])}
+def resolve_critic(listed: proven.ProvenList, name: str | None, endpoint: str | None, gguf_sha256: str | None,
+                   writer: dict | None = None, *, allow_comparison: bool = False) -> tuple[str, str, dict]:
+    """A run's critic: on the proven list, not comparison-only, another family than the writer, its weights as
+    pinned, on the loopback. Returns the endpoint, the name and its pins."""
+
+    c_endpoint = require_local_endpoint(endpoint or "")
+    c_model = (name or "").strip()
+    if not c_model or any(m in c_model.lower() for m in proven.CLOUD_MARKERS):
+        raise GuardError("REFUSED: a local critic model is required, never a cloud tag")
+    if c_model not in listed.critics:
+        raise GuardError(f"REFUSED: {c_model} is not on the proven critic list")
+    entry = listed.critics[c_model]
+    if entry.get("role") == "critic-comparison" and not allow_comparison:
+        raise GuardError(f"REFUSED: {c_model} is listed for critic-control comparison only, not as a run's critic")
+    if writer is not None:
+        proven.require_other_family(writer, entry)
+    return c_endpoint, c_model, proven.require_pinned(entry, gguf_sha256)
 
 
-def allowed_critics(path: Path) -> dict[str, dict]:
-    data = json.loads(path.read_text(encoding="utf-8"))
-    return {c["served_as"]: c for c in data.get("critics", [])}
+def critic_caller(endpoint: str, model: str):
+    """The critic on llama-server's OpenAI-compatible /v1, read at 0 by default."""
+
+    def critic(messages, temperature: float = CRITIC_TEMPERATURE, seed: int = 0, **_):
+        return chat(endpoint, model, messages, temperature=temperature, seed=seed)
+
+    return critic
 
 
-def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
+def build(cfg: WriteConfig, *, now=time.time):
     """Everything the runner needs, with every refusal raised before a byte is sent."""
 
     slots, sides, plan_sha = load_plan(cfg.plan)
@@ -145,77 +179,43 @@ def build(cfg: WriteConfig, *, now=time.time, digest_opener=None):
             gates: Gates = load_gates(closed_form=cfg.closed_form)
         except GatesUnavailable:
             gates = mock_gates()
-        pins.update({"writer_model": "mock", "critic_model": None if cfg.no_critic else "mock", "mock": True})
+        pins.update({"writer_model": "mock", "critic_model": None if cfg.no_critic else "mock", "mock": True,
+                     "partition": cfg.partition, "wave": "inline", "drafts_sha256": None})
         return slots, sides, pack, trait_names, gates, writer, critic, pins, None
 
     try:
         gates = load_gates(closed_form=cfg.closed_form)
         endpoint = require_local_endpoint(cfg.endpoint or "")
-        writers = allowed_writers(cfg.writers_file)
-        model = require_model_allowed(cfg.model or "", sorted(writers))
+        listed = proven.load(cfg.writers_file)
+        model = require_model_allowed(cfg.model or "", sorted(listed.writers))
+        entry = listed.writers[model]
+        partition = proven.require_partition(cfg.partition)
+        machine = proven.load_machine(cfg.machine)
+        server = proven.require_server(listed.server, cfg.server_sha256)
+        w_pins = proven.require_pinned(entry, cfg.writer_gguf_sha256)
+        if proven.needs_grant(machine):
+            require_grant(cfg.grant, uses_card=True)
+            if cfg.heartbeat is None:
+                raise GuardError("REFUSED: a step on the rig needs --heartbeat <watchdog heartbeat file>")
+            require_heartbeat(cfg.heartbeat, now())
+            pins["grant"] = cfg.grant
+        critic = None
+        if not cfg.no_critic:
+            c_endpoint, c_model, c_pins = resolve_critic(listed, cfg.critic_model, cfg.critic_endpoint, cfg.critic_gguf_sha256, writer=entry)
+            critic = critic_caller(c_endpoint, c_model)
+            pins.update({"critic_model": c_model, **{f"critic_{k}": v for k, v in c_pins.items()}})
     except (GatesUnavailable, GuardError) as e:
         raise WriteRefused(str(e)) from e
-    entry = writers[model]
     rehearsal = bool(entry.get("rehearsal_only"))
-    if rehearsal and not entry.get("digest"):
-        raise WriteRefused(f"REFUSED: {model} is rehearsal-only and has no digest pin; a rehearsal writer is local and pinned by digest")
-    pins.update({"writer_model": model, "writer_repo": entry.get("repo"), "writer_revision": entry.get("revision"),
-                 "writer_base_revision": entry.get("base_revision"), "writer_licence": entry.get("licence"), "rehearsal": rehearsal})
+    pins.update({"partition": partition, "writer_model": model, **{f"writer_{k}": v for k, v in w_pins.items()},
+                 "llama_server_commit": server["commit"], "llama_server_sha256": server["sha256"], "machine": machine,
+                 "writers_list_sha256": listed.sha256, "wave": "inline", "drafts_sha256": None, "rehearsal": rehearsal})
 
-    def card(what: str) -> None:
-        require_grant(cfg.grant, uses_card=True)
-        if cfg.heartbeat is None:
-            raise GuardError(f"REFUSED: the {what} on the 5090 needs --heartbeat <watchdog heartbeat file>")
-        require_heartbeat(cfg.heartbeat, now())
+    def writer(messages, seed=0):
+        return chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed)
 
-    unloads: list = []
-    if entry.get("digest"):
-        # A writer served by the local Ollama (the rehearsal): on the 5090, so it needs the grant; pinned by digest
-        # like the critic; and called on the native API, because the OpenAI-style endpoint ignores num_ctx and the
-        # writer prompt runs past Ollama's default context.
-        try:
-            card("local writer")
-            w_digest = require_ollama_digest(endpoint, model, entry["digest"], opener=digest_opener)
-        except GuardError as e:
-            raise WriteRefused(str(e)) from e
-        pins.update({"writer_digest": w_digest, "grant": cfg.grant})
-        unloads.append((endpoint, model))
-
-        def writer(messages, seed=0):
-            return ollama_chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed, num_ctx=WRITER_NUM_CTX)
-    else:
-        def writer(messages, seed=0):
-            return chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed)
-
-    critic = None
-    if not cfg.no_critic:
-        try:
-            card("critic")
-            c_endpoint = require_local_endpoint(cfg.critic_endpoint or "")
-            c_model = cfg.critic_model or ""
-            if not c_model or "cloud" in c_model.lower():
-                raise GuardError("REFUSED: a local critic model is required, never a cloud tag")
-            critics = allowed_critics(cfg.writers_file)
-            if c_model not in critics:
-                raise GuardError(f"REFUSED: {c_model} is not on the licence-checked critic list")
-            if critics[c_model].get("role") == "critic-comparison":
-                raise GuardError(f"REFUSED: {c_model} is listed for critic-control comparison only, not as a run's critic")
-            digest = require_ollama_digest(c_endpoint, c_model, critics[c_model]["digest"], opener=digest_opener)
-        except GuardError as e:
-            raise WriteRefused(str(e)) from e
-        pins.update({"critic_model": c_model, "critic_digest": digest, "grant": cfg.grant})
-
-        def critic(messages, **sampling):
-            return ollama_chat(c_endpoint, c_model, messages, **sampling)
-
-        unloads.append((c_endpoint, c_model))
-
+    # llama-server has no unload: the wave script that launched it stops it, so the run leaves nothing to clean up.
     cleanup = None
-    if unloads:
-        def cleanup():
-            for e, m in unloads:
-                unload(e, m)
-
     return slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup
 
 
