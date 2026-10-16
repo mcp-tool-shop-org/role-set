@@ -288,6 +288,16 @@ def _apply_fields(slot: Slot, fields: dict, row: dict) -> None:
         if order_free and slot.content_kind in ORDERED_KINDS:
             raise AssemblyError(f"a {slot.content_kind}'s line order carries meaning, so order_free must be false")
         row["order_free"] = order_free
+    if slot.lesson in ("T01", "T04"):
+        # R1/R4's twin removes the deciding lines; it is built only where that leaves the material silent on the
+        # statement (R&D's ruling on Argon's review). The writer says which; R&D key-checks it, as order_free on T09.
+        silent = fields.get("silent_without_deciding")
+        if not isinstance(silent, bool):
+            raise AssemblyError(f"a {slot.lesson} apply item needs silent_without_deciding: true when removing its deciding "
+                                "lines leaves the material silent on the statement, false otherwise")
+        if silent and not row.get("deciding"):
+            raise AssemblyError("silent_without_deciding needs deciding lines to remove; a cannot_tell item has none")
+        row["silent_without_deciding"] = silent
     if slot.lesson != "T10":
         return
     twin = fields.get("r10_twin")

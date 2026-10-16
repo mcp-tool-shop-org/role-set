@@ -81,6 +81,19 @@ def test_a_t09_apply_item_says_whether_its_order_is_free():
     assert "order_free" not in assemble(_d_slot("T05"), "t", BASE, NOTICE)
 
 
+@pytest.mark.parametrize("lesson", ["T01", "T04"])
+def test_a_t01_or_t04_apply_item_says_whether_dropping_its_deciding_lines_leaves_silence(lesson):
+    s = _d_slot(lesson)
+    with pytest.raises(AssemblyError, match="silent_without_deciding"):
+        assemble(s, "t", BASE, NOTICE)
+    assert assemble(s, "t", {**BASE, "silent_without_deciding": True}, NOTICE)["silent_without_deciding"] is True
+    assert assemble(s, "t", {**BASE, "silent_without_deciding": False}, NOTICE)["silent_without_deciding"] is False
+    silent = _d_slot(lesson, verdict="cannot_tell")
+    with pytest.raises(AssemblyError, match="no deciding|has none"):
+        assemble(silent, "t", {**BASE, "deciding": [], "silent_without_deciding": True}, NOTICE)
+    assert "silent_without_deciding" not in assemble(_d_slot("T05"), "t", BASE, NOTICE)
+
+
 def test_a_trained_items_wording_is_spent_for_apply_items():
     trained = {"material": "Desk hours", "turns": [{"user": "Material:\nDesk hours\nRead the notice and tell me whether the desk opens on Sundays at all.", "thinking": "", "reply": ""}]}
     spent = trained_spans([trained])
