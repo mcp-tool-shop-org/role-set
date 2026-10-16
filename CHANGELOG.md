@@ -19,6 +19,7 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **Gates pinned to aspire-si-gates 1.7.2** (aspire-si#138, 034a3d2), from 1.7.1. It refuses apply and `-AP-` rows in training data and validates star rows separately.
 - **Gates pinned to aspire-si-gates 1.7.1** (aspire-si#116, 2e7d038), from 1.4.0. It brings TRACE_REUSED, distractor_margin 0.20, and `check_against(..., models=)` signing puzzles through the shared `puzzle_sig`.
 - **Puzzles reach the gates with their models** (R&D, 2026-10-15). The runner keeps each accepted kind B row's sidecar model and passes `models=` to `check_against` and `check_batch`. A kind B row with no model raises `ModelsMissing` instead of being signed by the regex fallback, and tests prove both.
 - **T11 receipts name their file** (R&D on #52): `file_index`, the file of seeds the catalogue row was drawn for.
