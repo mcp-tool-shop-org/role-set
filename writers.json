@@ -1,5 +1,5 @@
 {
-  "_note": "The writer list (BUILD-SPEC B6). A use is allowed unless a clause in the maker's licence or terms restricts it (the maintainer's rule, 2026-10-17: silence is not a restriction). Each entry records the terms search: terms_url (the maker's live page), terms_date (the day it was read), checked_by, registry_id (its record in rnd licences/registry.json) and training (allowed, conditions or barred); terms_note keeps what was read. role-set refuses an entry without that record, or one whose verdict is barred. A listed model is still refused until it is pinned: repo revision, GGUF file and its sha256, filled in after the download. The wave script measures the GGUF and the llama-server binary before launch and the run refuses any drift. A critic of the writer's own family is refused. Cloud tags are refused regardless (the Ollama Cloud spending rule).",
+  "_note": "The writer list (BUILD-SPEC B6). A use is allowed unless a clause in the maker's licence or terms restricts it (the maintainer's rule, 2026-10-17: silence is not a restriction). Each entry records the terms search: terms_url (the maker's live page), terms_date (the day it was read), checked_by, registry_id (its record in rnd licences/registry.json) and training (allowed, conditions or barred); terms_note keeps what was read. role-set refuses an entry without that record, or one whose verdict is barred. A listed model is still refused until it is pinned: repo revision, GGUF file and its sha256, filled in after the download. The wave script measures the GGUF and the llama-server binary before launch and the run refuses any drift. A critic of the writer's own family is refused. Cloud tags are refused regardless (the Ollama Cloud spending rule). `card` names the writer's entry in rnd's card-values.json when it differs from served_as.",
   "llama_server": {
     "commit": null,
     "sha256": null,
@@ -69,7 +69,8 @@
       "terms_date": "2026-10-16",
       "training": "allowed",
       "registry_id": "openmdw-1.1",
-      "checked_by": "R&D, 2026-10-16 (ruled in for J1 as a Nemotron challenger; the pilot preflight checks the official GGUF on llama.cpp)"
+      "checked_by": "R&D, 2026-10-16 (ruled in for J1 as a Nemotron challenger; the pilot preflight checks the official GGUF on llama.cpp)",
+      "card": "nemotron-3.5-bolt-74b-a9b-24gb"
     },
     {
       "served_as": "muse-glimmer-30b",

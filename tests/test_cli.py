@@ -105,7 +105,9 @@ def test_critic_control_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     from role_set.mock import mock_gates
 
     monkeypatch.setattr(cli, "load_gates", mock_gates)
-    args = ["critic-control", "--items", str(items), "--writers", str(writers), "--machine", str(machine), "--critic-endpoint", "http://127.0.0.1:8081/v1",
+    from test_cards import cards_file
+
+    args = ["critic-control", "--items", str(items), "--writers", str(writers), "--cards", str(cards_file(tmp_path)), "--machine", str(machine), "--critic-endpoint", "http://127.0.0.1:8081/v1",
             "--critic-model", "other-critic", "--critic-gguf-sha256", SHA_C, "--llama-server-sha256", SHA_S, "--out", str(tmp_path / "c.json")]
     # The machine line names the 5090, so the grant and heartbeat are required.
     assert main(args) == 2 and "--grant" in capsys.readouterr().err
@@ -116,6 +118,7 @@ def test_critic_control_through_the_cli(tmp_path: Path, capsys, monkeypatch):
     assert main([*args, "--grant", "G-1", "--heartbeat", str(hb)]) == 0
     out = json.loads((tmp_path / "c.json").read_text(encoding="utf-8"))
     assert out["grant"] == "G-1" and out["critic_pins"]["gguf_sha256"] == SHA_C and out["llama_server"]["sha256"] == SHA_S
+    assert out["critic_card"]["card_candidate"] == "other-critic" and len(out["critic_card"]["cards_sha256"]) == 64
     # A same-family critic is fine for the control (no writer is involved); a cloud tag and a drifted GGUF are not.
     def changed(flag: str, value: str) -> list[str]:
         out = list(args)

@@ -9,6 +9,7 @@ from functools import partial
 from pathlib import Path
 
 import pytest
+from test_cards import cards_file
 
 from role_set import waves
 from role_set.cli import main
@@ -306,7 +307,7 @@ def test_a_real_critique_wave_loads_no_writer_and_refuses_the_writers_family(pac
     machine.write_text(json.dumps({"driver": "580", "compat": True, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB",
                                    "colab_release_tag": "release-colab_20261015"}), encoding="utf-8")
     monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
-    cfg = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=proven_file(tmp_path), critic_endpoint="http://127.0.0.1:8081/v1",
+    cfg = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=proven_file(tmp_path), cards=cards_file(tmp_path), critic_endpoint="http://127.0.0.1:8081/v1",
                critic_gguf_sha256=SHA_C, server_sha256=SHA_S, machine=machine, partition="trial:waves", wave="critique", drafts=real)
     with pytest.raises(WriteRefused, match="own family"):
         build(WriteConfig(critic_model="same-critic", **cfg))
@@ -352,7 +353,7 @@ def test_a_critique_wave_refuses_an_unlisted_or_repinned_writer(pack_dir: Path, 
                        ({**full, "writer_gguf_sha256": "f" * 64}, "differs from the pinned")):
         real = tmp_path / f"real-{match[:5]}.jsonl"
         waves.write(real, {**header, "writer_pins": bad}, rows)
-        cfg = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=proven_file(tmp_path),
+        cfg = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=proven_file(tmp_path), cards=cards_file(tmp_path),
                    critic_endpoint="http://127.0.0.1:8081/v1", critic_gguf_sha256=SHA_C, server_sha256=SHA_S, machine=machine,
                    partition="trial:waves", wave="critique", drafts=real, critic_model="other-critic")
         with pytest.raises(WriteRefused, match=match):

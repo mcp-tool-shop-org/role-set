@@ -165,7 +165,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "b113d11c8be17f6701f35742e38c22447431625713eba5d5eb862393d9e7ba40",
+          "hash": "9b7bf1569a12db48fb68f1f8d7f26d6a884aca6263eb325f9e3de15d0e83cc67",
           "path": "CHANGELOG.md"
         },
         {
@@ -197,7 +197,7 @@
           "path": "README.ja.md"
         },
         {
-          "hash": "8bc313577afc1d013b65b349f987f4f4808cd04bf378cd7d15f4eedd03074902",
+          "hash": "8fa2e12ef9fae2d55ff34f42e1b7848f1eeb9169c43389343ee4968db4977a9c",
           "path": "README.md"
         },
         {
@@ -233,7 +233,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "c209431b412e09ad0d6be89d179e2fbff1fbb81db2b81dcbb8d570c483584acc",
+          "hash": "fff2bc3d08471b5c0c87456ee5d27d7185c54bf36f9d467d5e90bb368d7da4ad",
           "path": "writers.json"
         }
       ],
@@ -574,7 +574,7 @@
           "path": "site/src/content.config.ts"
         },
         {
-          "hash": "17b42be1b246fc1b1055ece8cfebff71972dd3edff82c6aa86a65f1cbeb7c6b4",
+          "hash": "90de52e77509418bf9bc6469b3427800a8eba58c1e06c19dab792ad8e9b29254",
           "path": "site/src/content/docs/handbook/configuration.md"
         },
         {
@@ -993,10 +993,10 @@
             {
               "in": "_critic_control",
               "kind": "except",
-              "line": 263
+              "line": 265
             }
           ],
-          "hash": "3029fa2fc7829fc894adb3976c5fdb854b22eea681b219a6d54cb2184396d167",
+          "hash": "d277dac667effef4b987fcf97f3d0a29c49297a084752512cac39b5185bd3bae",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/autostart.py",
@@ -1389,22 +1389,43 @@
                   }
                 },
                 {
-                  "line": 266,
+                  "line": 263,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 264,
+                  "name": "select",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 268,
                   "name": "load_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 268,
+                  "line": 270,
                   "name": "critic_caller",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
+                  "line": 271,
+                  "name": "pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 279,
+                  "line": 282,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -1412,7 +1433,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 279,
+                  "line": 282,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -1420,7 +1441,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 280,
+                  "line": 283,
                   "name": "trait_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1428,7 +1449,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 280,
+                  "line": 283,
                   "name": "TRAIT_STEPS",
                   "passed": true,
                   "target": {
@@ -1437,28 +1458,28 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 283,
+                  "line": 286,
                   "name": "answer_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 296,
+                  "line": 299,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 297,
+                  "line": 300,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 299,
+                  "line": 302,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1473,7 +1494,7 @@
             {
               "calls": [
                 {
-                  "line": 309,
+                  "line": 312,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -1488,7 +1509,7 @@
             {
               "calls": [
                 {
-                  "line": 336,
+                  "line": 339,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -1504,28 +1525,28 @@
             {
               "calls": [
                 {
-                  "line": 467,
+                  "line": 473,
                   "name": "stamp",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 468,
+                  "line": 474,
                   "name": "check_file",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 468,
+                  "line": 474,
                   "name": "refuse_repeats",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 472,
+                  "line": 478,
                   "name": "render",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1540,7 +1561,7 @@
             {
               "calls": [
                 {
-                  "line": 477,
+                  "line": 483,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1555,7 +1576,7 @@
             {
               "calls": [
                 {
-                  "line": 336,
+                  "line": 339,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -4329,15 +4350,15 @@
             {
               "in": "chat",
               "kind": "except",
-              "line": 92
+              "line": 99
             },
             {
               "in": "chat",
               "kind": "raise",
-              "line": 93
+              "line": 100
             }
           ],
-          "hash": "3d47229c4aaa659cd943df9af08d9e9a456b4f8a68489e6d8cb508cb1747c3b8",
+          "hash": "0806e67713b5989733a349e2be0e169edde417b1bc37d0d06b0efe921f27d4da",
           "importsFiles": [
             "src/role_set/guards.py"
           ],
@@ -4475,22 +4496,12 @@
             {
               "in": "_training",
               "kind": "raise",
-              "line": 99
+              "line": 104
             },
             {
               "in": "trait_names_from_pack",
               "kind": "except",
-              "line": 133
-            },
-            {
-              "in": "resolve_critic",
-              "kind": "raise",
-              "line": 146
-            },
-            {
-              "in": "resolve_critic",
-              "kind": "raise",
-              "line": 148
+              "line": 138
             },
             {
               "in": "resolve_critic",
@@ -4498,49 +4509,44 @@
               "line": 151
             },
             {
-              "in": "_require_critic_policy",
+              "in": "resolve_critic",
               "kind": "raise",
-              "line": 170
+              "line": 153
             },
             {
-              "in": "build",
+              "in": "resolve_critic",
+              "kind": "raise",
+              "line": 156
+            },
+            {
+              "in": "_require_critic_policy",
               "kind": "raise",
               "line": 179
             },
             {
               "in": "build",
-              "kind": "except",
-              "line": 182
-            },
-            {
-              "in": "build",
               "kind": "raise",
-              "line": 183
-            },
-            {
-              "in": "build",
-              "kind": "raise",
-              "line": 190
-            },
-            {
-              "in": "build",
-              "kind": "raise",
-              "line": 193
+              "line": 188
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 196
+              "line": 191
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 197
+              "line": 192
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 200
+              "line": 199
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 202
             },
             {
               "in": "build",
@@ -4555,27 +4561,42 @@
             {
               "in": "build",
               "kind": "raise",
-              "line": 208
+              "line": 209
             },
             {
               "in": "build",
-              "kind": "raise",
+              "kind": "except",
               "line": 214
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 224
+              "line": 215
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 226
+              "line": 217
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 223
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 233
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 235
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 238
+              "line": 247
             },
             {
               "in": "build",
@@ -4585,75 +4606,80 @@
             {
               "in": "build",
               "kind": "raise",
-              "line": 267
+              "line": 275
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 273
+              "line": 280
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 286
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 281
+              "line": 296
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 282
+              "line": 297
             },
             {
               "in": "require_rehearsal_dir",
-              "kind": "raise",
-              "line": 309
-            },
-            {
-              "in": "run",
-              "kind": "except",
-              "line": 325
-            },
-            {
-              "in": "run",
               "kind": "raise",
               "line": 326
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 333
+              "line": 342
             },
             {
               "in": "run",
               "kind": "raise",
-              "line": 334
+              "line": 343
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 346
+              "line": 350
+            },
+            {
+              "in": "run",
+              "kind": "raise",
+              "line": 351
+            },
+            {
+              "in": "run",
+              "kind": "except",
+              "line": 363
             },
             {
               "in": "_run_wave",
               "kind": "except",
-              "line": 380
+              "line": 397
             },
             {
               "in": "_run_wave",
               "kind": "raise",
-              "line": 381
+              "line": 398
             },
             {
               "in": "_run_wave",
               "kind": "except",
-              "line": 392
+              "line": 409
             },
             {
               "in": "_run_wave",
               "kind": "raise",
-              "line": 393
+              "line": 410
             }
           ],
-          "hash": "faf34bbef2a870a8a7ea240a2f40401dab74111b07932163a378f700c0101a7b",
+          "hash": "3a6d9557a1cc1dcfad12810aac0b4bfb4fc47ec9104e604af628cd6a0c5afb1d",
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/assemble.py",
@@ -4678,7 +4704,7 @@
             {
               "calls": [
                 {
-                  "line": 107,
+                  "line": 112,
                   "name": "load_models",
                   "target": null
                 }
@@ -4691,19 +4717,19 @@
             {
               "calls": [
                 {
-                  "line": 113,
+                  "line": 118,
                   "name": "read_text",
                   "target": null
                 },
                 {
-                  "line": 114,
+                  "line": 119,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 120,
+                  "line": 125,
                   "name": "read_bytes",
                   "target": null
                 }
@@ -4716,7 +4742,7 @@
             {
               "calls": [
                 {
-                  "line": 132,
+                  "line": 137,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -4731,7 +4757,7 @@
             {
               "calls": [
                 {
-                  "line": 143,
+                  "line": 148,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -4739,22 +4765,6 @@
                 },
                 {
                   "branch": "not c_model or any(m in c_model.lower() for m in proven.CLO…",
-                  "line": 146,
-                  "name": "GuardError",
-                  "target": {
-                    "file": "src/role_set/guards.py"
-                  }
-                },
-                {
-                  "branch": "c_model not in listed.critics",
-                  "line": 148,
-                  "name": "GuardError",
-                  "target": {
-                    "file": "src/role_set/guards.py"
-                  }
-                },
-                {
-                  "branch": "entry.get(\"role\") == \"critic-comparison\" and not allow_comp…",
                   "line": 151,
                   "name": "GuardError",
                   "target": {
@@ -4762,14 +4772,30 @@
                   }
                 },
                 {
+                  "branch": "c_model not in listed.critics",
                   "line": 153,
+                  "name": "GuardError",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "branch": "entry.get(\"role\") == \"critic-comparison\" and not allow_comp…",
+                  "line": 156,
+                  "name": "GuardError",
+                  "target": {
+                    "file": "src/role_set/guards.py"
+                  }
+                },
+                {
+                  "line": 158,
                   "name": "require_other_family",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 154,
+                  "line": 159,
                   "name": "require_pinned",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -4785,7 +4811,7 @@
               "calls": [
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 170,
+                  "line": 179,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -4800,13 +4826,13 @@
             {
               "calls": [
                 {
-                  "line": 113,
+                  "line": 118,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 114,
+                  "line": 119,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -4814,34 +4840,34 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 120,
+                  "line": 125,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 178,
+                  "line": 187,
                   "name": "bears_domain",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 181,
+                  "line": 190,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
                   }
                 },
                 {
-                  "line": 184,
+                  "line": 193,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
                   }
                 },
                 {
-                  "line": 132,
+                  "line": 137,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -4849,21 +4875,21 @@
                   "via": "trait_names_from_pack"
                 },
                 {
-                  "line": 195,
+                  "line": 204,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 198,
+                  "line": 207,
                   "name": "file_sha256",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 204,
+                  "line": 213,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -4871,7 +4897,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 232,
+                  "line": 241,
                   "name": "interleave",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -4879,7 +4905,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 233,
+                  "line": 242,
                   "name": "load_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -4887,7 +4913,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 234,
+                  "line": 243,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -4895,7 +4921,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 235,
+                  "line": 244,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -4903,7 +4929,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 237,
+                  "line": 246,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -4911,35 +4937,35 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 239,
+                  "line": 248,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
                   }
                 },
                 {
-                  "line": 245,
+                  "line": 254,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 246,
+                  "line": 255,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 247,
+                  "line": 256,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 248,
+                  "line": 257,
                   "name": "require_partition",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -4947,7 +4973,7 @@
                 },
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 170,
+                  "line": 179,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -4955,22 +4981,23 @@
                   "via": "_require_critic_policy"
                 },
                 {
-                  "line": 250,
+                  "line": 259,
                   "name": "load_machine",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 251,
+                  "line": 260,
                   "name": "require_server",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 253,
-                  "name": "require_model_allowed",
+                  "branch": "cfg.cards is None",
+                  "line": 262,
+                  "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
@@ -4985,13 +5012,13 @@
             {
               "calls": [
                 {
-                  "line": 113,
+                  "line": 118,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 114,
+                  "line": 119,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -4999,13 +5026,13 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 120,
+                  "line": 125,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 178,
+                  "line": 187,
                   "name": "bears_domain",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5013,7 +5040,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 181,
+                  "line": 190,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -5021,7 +5048,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 184,
+                  "line": 193,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -5029,7 +5056,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 132,
+                  "line": 137,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -5037,7 +5064,7 @@
                   "via": "trait_names_from_pack"
                 },
                 {
-                  "line": 195,
+                  "line": 204,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5045,7 +5072,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 198,
+                  "line": 207,
                   "name": "file_sha256",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5053,7 +5080,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 204,
+                  "line": 213,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5062,7 +5089,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 232,
+                  "line": 241,
                   "name": "interleave",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -5071,7 +5098,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 233,
+                  "line": 242,
                   "name": "load_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5080,7 +5107,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 234,
+                  "line": 243,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5089,7 +5116,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 235,
+                  "line": 244,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5098,7 +5125,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 237,
+                  "line": 246,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -5107,7 +5134,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 239,
+                  "line": 248,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5115,7 +5142,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 245,
+                  "line": 254,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -5123,7 +5150,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 246,
+                  "line": 255,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5131,7 +5158,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 247,
+                  "line": 256,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5139,7 +5166,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 248,
+                  "line": 257,
                   "name": "require_partition",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5148,7 +5175,7 @@
                 },
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 170,
+                  "line": 179,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5156,7 +5183,7 @@
                   "via": "_require_critic_policy"
                 },
                 {
-                  "line": 250,
+                  "line": 259,
                   "name": "load_machine",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5164,7 +5191,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 251,
+                  "line": 260,
                   "name": "require_server",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5172,8 +5199,9 @@
                   "via": "build"
                 },
                 {
-                  "line": 253,
-                  "name": "require_model_allowed",
+                  "branch": "cfg.cards is None",
+                  "line": 262,
+                  "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   },
@@ -5189,77 +5217,77 @@
             {
               "calls": [
                 {
-                  "line": 378,
+                  "line": 395,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 379,
+                  "line": 396,
                   "name": "require_same_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 386,
+                  "line": 403,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 387,
+                  "line": 404,
                   "name": "Runner",
                   "target": {
                     "file": "src/role_set/runner.py"
                   }
                 },
                 {
-                  "line": 391,
+                  "line": 408,
                   "name": "run_wave",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 394,
+                  "line": 411,
                   "name": "batch_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 397,
+                  "line": 414,
                   "name": "writer_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 400,
+                  "line": 417,
                   "name": "dump_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 404,
+                  "line": 421,
                   "name": "write",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 405,
+                  "line": 422,
                   "name": "finish",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 431,
+                  "line": 448,
                   "name": "with_batch",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5267,7 +5295,7 @@
                   "via": "_leave_state"
                 },
                 {
-                  "line": 432,
+                  "line": 449,
                   "name": "save",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5283,14 +5311,14 @@
             {
               "calls": [
                 {
-                  "line": 431,
+                  "line": 448,
                   "name": "with_batch",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 432,
+                  "line": 449,
                   "name": "save",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5544,7 +5572,7 @@
             "test_version_flag",
             "test_write_refuses_without_what_it_needs"
           ],
-          "hash": "3f158e65a8f9ac952006204f57dc152969501ac4108b7a54a3197cb40e581812",
+          "hash": "c4dfaec7e9b4fbc1a596b2c7d6d8191522612a2bfccfd2c28e89e481742ccf37",
           "importOrder": [
             "src/role_set/cli.py",
             "src/role_set/__init__.py",
@@ -6460,12 +6488,13 @@
         {
           "exports": [
             "test_4xx_is_not_retried_and_other_hosts_are_refused",
+            "test_a_card_is_sent_whole_and_replaces_the_temperature",
             "test_chat_builds_an_openai_request_and_reads_usage",
             "test_only_the_reply_content_is_read_never_the_reasoning",
             "test_retries_5xx_and_resets_with_fixed_backoff_then_gives_up",
             "test_retry_succeeds_on_a_later_attempt"
           ],
-          "hash": "2ba03ca12a10f357059465ed27eaf8cc067c9ed1d665072f86068bccfded395a",
+          "hash": "5e74be77e8010943edbb96d89274e84cba3ffcd6c58a0a5bade0a7bdcd2d6b4b",
           "importsFiles": [
             "src/role_set/guards.py",
             "src/role_set/transport.py"
@@ -6521,7 +6550,7 @@
             "test_waves_with_critic_refusals_match_one_inline_run",
             "test_waves_without_a_rewrite_match_one_inline_run"
           ],
-          "hash": "80a6e3701fbdda33dd5d4b11f236fc854c70fabb7387c36eb4b88a4d858a1ad4",
+          "hash": "070e904c058d552c291ea88f45adda9ddf6424e3544bd2bf4afb3c9d503e6390",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/waves.py",
@@ -6561,7 +6590,7 @@
             "test_real_write_refuses_each_missing_piece",
             "test_write_halts_are_reported_and_cleanup_runs"
           ],
-          "hash": "b0b867907806801e14054d36cb16dc9ae74087f572d3632271b127860acccf8d",
+          "hash": "a91677041218d6a2f14f8c4ca25c37fa5710887961260a287c2b8f48ea6a648f",
           "importOrder": [
             "src/role_set/cli.py",
             "src/role_set/pack.py",
@@ -7046,7 +7075,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "141a6c70b4746aad4a2e890ce2c1cb867dfbecaf",
+    "commit": "b9d53c09265bcd3dad8646fe7a68fd4689ee3856",
     "tracked": 164
   },
   "landings": [

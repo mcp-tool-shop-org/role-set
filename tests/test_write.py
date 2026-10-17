@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 import pytest
+from test_cards import cards_file
 
 from role_set.cli import main
 from role_set.pack import PackManifest, pack_hash
@@ -82,7 +83,7 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
 
     writers, machine = _proven_setup(tmp_path)
     monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
-    good = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1", model="big-writer",
+    good = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, cards=cards_file(tmp_path), endpoint="http://127.0.0.1:8080/v1", model="big-writer",
                 writer_gguf_sha256=SHA_W, critic_endpoint="http://127.0.0.1:8081/v1", critic_model="other-critic", critic_gguf_sha256=SHA_C,
                 server_sha256=SHA_S, machine=machine, partition="trial:j1-wave1")
 
@@ -115,11 +116,20 @@ def test_real_write_refuses_each_missing_piece(pack_dir: Path, plan_file: Path, 
     assert no_critic[6] is None and "critic_model" not in no_critic[7]
 
     calls = []
-    monkeypatch.setattr(w, "chat", lambda endpoint, model, messages, temperature=0.7, seed=None: calls.append((endpoint, model, temperature, seed)) or "ok")
+    monkeypatch.setattr(w, "chat", lambda endpoint, model, messages, seed=None, **kw: calls.append((endpoint, model, seed, kw)) or "ok")
     assert writer([{"role": "user", "content": "x"}], seed=2) == "ok" and critic([{"role": "user", "content": "y"}]) == "ok"
     assert critic([], temperature=0.6, seed=3) == "ok"
-    assert calls == [("http://127.0.0.1:8080/v1", "big-writer", w.WRITER_TEMPERATURE, 2), ("http://127.0.0.1:8081/v1", "other-critic", 0.0, 0),
-                     ("http://127.0.0.1:8081/v1", "other-critic", 0.6, 3)]
+    # Writer and critic both run at their card: every sampling key and the template kwargs on every call, the same
+    # budget, and a caller's temperature ignored (R&D, 2026-10-17).
+    from test_cards import SAMPLING
+
+    assert [(c[0], c[1], c[2]) for c in calls] == [("http://127.0.0.1:8080/v1", "big-writer", 2), ("http://127.0.0.1:8081/v1", "other-critic", 0),
+                                                   ("http://127.0.0.1:8081/v1", "other-critic", 3)]
+    for c in calls:
+        assert c[3]["sampling"] == SAMPLING and c[3]["chat_template_kwargs"] == {"enable_thinking": True}
+        assert c[3]["max_tokens"] == 16384 and "temperature" not in c[3]
+    assert pins["card_sampling"] == SAMPLING and pins["critic_card_candidate"] == "other-critic" and len(pins["cards_sha256"]) == 64
+    refused("--cards", cards=None)
 
     def missing(closed_form=None):
         from role_set.gates import GatesUnavailable
@@ -137,7 +147,7 @@ def test_a_step_on_the_5090_needs_the_grant_and_a_fresh_heartbeat(pack_dir: Path
 
     writers, machine = _proven_setup(tmp_path, card="NVIDIA GeForce RTX 5090")
     monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
-    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1", model="big-writer",
+    base = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, cards=cards_file(tmp_path), endpoint="http://127.0.0.1:8080/v1", model="big-writer",
                 writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:j1-wave1", no_critic=True)
     with pytest.raises(WriteRefused, match="--grant"):
         build(WriteConfig(**base))
@@ -216,7 +226,7 @@ def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_fil
     (tmp_path / "m").mkdir()
     _, machine = _proven_setup(tmp_path / "m")
     monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
-    cfg = WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, endpoint="http://127.0.0.1:8080/v1",
+    cfg = WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, cards=cards_file(tmp_path), endpoint="http://127.0.0.1:8080/v1",
                       model="small-writer", writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:rehearsal", no_critic=True)
     parts = build(cfg)
     assert parts[7]["rehearsal"] is True

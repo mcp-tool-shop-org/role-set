@@ -8,6 +8,14 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **Card values for the writer and the critic** (R&D, 2026-10-17; rnd amendments D1 and E2). `--cards` reads rnd's `card-values.json`, the file J2's harness reads, so a model runs at the same settings in J1 and J2.
+  - Every sampling key and the `chat_template_kwargs` go on every call, including the disabled values, so `llama-server`'s defaults (top_k 40, min_p 0.05) never reach a model.
+  - The critic's own temperatures (0, and 0.7 for trait votes) give way to its card. The seeds still vary the votes.
+  - The writer and the critic run at a 32,768-token context with up to 16,384 reply tokens, since every model with a thinking mode thinks. Truncation is recorded per call.
+  - `fold_system` (R1-Distill) folds system text into the user turn and refuses if any is left. `reattach_thinking` is recorded as not applied: role-set keeps no reasoning.
+  - Receipts record the file's sha256, the candidate, the sampling, the kwargs and the transforms, for the writer (`card_*`) and the critic (`critic_card_*`). `critic-control` records them as `critic_card`.
+  - `writers.json` entries may name their `card` id; Bolt's is `nemotron-3.5-bolt-74b-a9b-24gb`. A real `write` or `critic-control` without `--cards` is refused.
+
 - **The writer list follows the 2026-10-17 terms rule:** a use is allowed unless a clause in the maker's licence or terms restricts it, and silence is not a restriction. The old proof rule asked each entry to quote a clause that grants training on outputs, which refused every model whose terms are silent.
   - `writers.json` entries now record the terms search: `terms_url`, `terms_date`, `checked_by`, `registry_id` and a `training` verdict (`allowed`, `conditions` or `barred`). `proof_clause` becomes the optional `terms_note`.
   - Only `barred` refuses. `conditions` needs the conditions written out.

@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from role_set import domains, exclusion, proven, waves
+from role_set import cards, domains, exclusion, proven, waves
 from role_set.assemble import trait_name
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
@@ -40,13 +40,17 @@ from role_set.stuckrule import load as load_stuck
 from role_set.transport import chat
 
 # The writer prompt (lesson, kinds, amendments, slot brief, material, exemplars) measures about 5,800 tokens with the
-# real pack; 16,384 leaves room for the reply and its thinking.
-WRITER_NUM_CTX = 16384
-# The writer samples at 0.7 (transport.chat's default); a local rehearsal writer at Ollama's 0 gave every retry of a
-# slot the same draft, so the rehearsal could not show what a retry recovers.
+# real pack. Every writer with a thinking mode runs with it on (card values, rnd amendment D1), and one reply can spend
+# several thousand thinking tokens before its JSON, so the server runs at 32,768 and a reply may use 16,384; truncation
+# is recorded per call (R&D, 2026-10-17).
+WRITER_NUM_CTX = 32768
+WRITER_MAX_TOKENS = 16384
+# A writer's sampling is its card's (cards.py). This is only the fallback a mock writer ignores.
 WRITER_TEMPERATURE = 0.7
-# The critic reads at 0 unless a check asks otherwise (the trait leg's three samples), as it did on Ollama.
+# The critic runs at its card's values with thinking on, the same budget as a writer (R&D, 2026-10-17). These are
+# only the fallbacks a caller without a card (critic-control's older paths, the mock) still uses.
 CRITIC_TEMPERATURE = 0.0
+CRITIC_MAX_TOKENS = 16384
 
 
 class WriteRefused(RuntimeError):
@@ -61,6 +65,7 @@ class WriteConfig:
     endpoint: str | None = None
     model: str | None = None
     writers_file: Path = Path("writers.json")
+    cards: Path | None = None  # rnd's card-values.json: each writer's sampling and template settings
     critic_endpoint: str | None = None
     critic_model: str | None = None
     grant: str | None = None
@@ -154,11 +159,15 @@ def resolve_critic(listed: proven.ProvenList, name: str | None, endpoint: str | 
     return c_endpoint, c_model, proven.require_pinned(entry, gguf_sha256)
 
 
-def critic_caller(endpoint: str, model: str):
-    """The critic on llama-server's OpenAI-compatible /v1, read at 0 by default."""
+def critic_caller(endpoint: str, model: str, card: dict | None = None):
+    """The critic on llama-server's OpenAI-compatible /v1. With its card, every call sends the card's sampling and
+    template settings whole, and a caller's temperature is ignored (the seed still varies the trait votes)."""
 
     def critic(messages, temperature: float = CRITIC_TEMPERATURE, seed: int = 0, **_):
-        return chat(endpoint, model, messages, temperature=temperature, seed=seed)
+        if card is None:
+            return chat(endpoint, model, messages, temperature=temperature, seed=seed)
+        return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
+                    chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=CRITIC_MAX_TOKENS, seed=seed)
 
     return critic
 
@@ -249,10 +258,14 @@ def build(cfg: WriteConfig, *, now=time.time):
         _require_critic_policy(cfg, partition)
         machine = proven.load_machine(cfg.machine)
         server = proven.require_server(listed.server, cfg.server_sha256)
+        if cfg.cards is None:
+            raise GuardError("REFUSED: the writer and the critic run at their card values; pass --cards <card-values.json>")
+        card_set, card_sha = cards.load(cfg.cards)
         if uses_writer:
             model = require_model_allowed(cfg.model or "", sorted(listed.writers))
             entry = listed.writers[model]
             w_pins = proven.require_pinned(entry, cfg.writer_gguf_sha256)
+            card = cards.select(card_set, entry, model)
         else:
             # A critique wave loads no writer, but the drafts' writer must still be on the list with the same pins
             # (Argon §9.4 #2): the family that bars a same-family critic comes from writers.json, never the header.
@@ -276,8 +289,10 @@ def build(cfg: WriteConfig, *, now=time.time):
         critic = None
         if uses_critic:
             c_endpoint, c_model, c_pins = resolve_critic(listed, cfg.critic_model, cfg.critic_endpoint, cfg.critic_gguf_sha256, writer=entry)
-            critic = critic_caller(c_endpoint, c_model)
-            pins.update({"critic_model": c_model, **{f"critic_{k}": v for k, v in c_pins.items()}})
+            c_card = cards.select(card_set, listed.critics[c_model], c_model)
+            critic = critic_caller(c_endpoint, c_model, c_card)
+            pins.update({"critic_model": c_model, **{f"critic_{k}": v for k, v in c_pins.items()},
+                         **{f"critic_{k}": v for k, v in cards.pins(c_card, card_sha).items()}, "critic_max_tokens": CRITIC_MAX_TOKENS})
     except (GatesUnavailable, GuardError) as e:
         raise WriteRefused(str(e)) from e
     rehearsal = bool(entry.get("rehearsal_only")) if uses_writer else bool((header or {}).get("batch_pins", {}).get("rehearsal"))
@@ -285,10 +300,12 @@ def build(cfg: WriteConfig, *, now=time.time):
                  "machine": machine, "writers_list_sha256": listed.sha256, "rehearsal": rehearsal})
     writer = None
     if uses_writer:
-        pins.update({"writer_model": model, **{f"writer_{k}": v for k, v in w_pins.items()}})
+        pins.update({"writer_model": model, **{f"writer_{k}": v for k, v in w_pins.items()}, **cards.pins(card, card_sha),
+                     "writer_max_tokens": WRITER_MAX_TOKENS})
 
         def writer(messages, seed=0):
-            return chat(endpoint, model, messages, temperature=WRITER_TEMPERATURE, seed=seed)
+            return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
+                        chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=WRITER_MAX_TOKENS, seed=seed)
 
     # llama-server has no unload: the wave script that launched it stops it, so the run leaves nothing to clean up.
     cleanup = None
