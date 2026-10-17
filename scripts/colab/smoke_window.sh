@@ -12,7 +12,10 @@ CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
 here="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$OUT"; rm -f "$OUT/.exec.pid"
+mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log"
+JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
+MARGIN="${PIN_CAP_MARGIN:-0.3}"  # units kept back at the cap to fetch the results (R&D, 2026-10-17)
+DL_S="${PIN_DL_TIMEOUT:-300}"
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
@@ -27,43 +30,61 @@ rate() { colab usage 2>&1 | grep -oP 'rate: \K[0-9.]+'; }
 exec 9>/tmp/colab-window-open.lock; flock 9
 START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
-timeout 300 colab new --gpu "${PIN_GPU:-A100}" -s "$S" 2>&1 | tail -2 || { echo "no A100 assigned"; exit 2; }
+GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
+timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
 sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
 flock -u 9
-# The watcher also ends the exec when Colab has dropped the session: window 10b's VM vanished mid-download and the exec
-# would have waited out its wall time on nothing.
-# It also watches the job make progress (R&D, 2026-10-17, after window 11c's exec hung on a lost connection with nothing
-# running on the VM): no line in the exec's log within 10 minutes of the exec starting, or none for 20 minutes after
-# that, closes the window's own session and records a stall. Every finished model call prints a line, and the slowest
-# silent step (a conversion) takes about 12 minutes.
-( seen=0; size0=-1; grew=0
+# The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
+# stream: that stream stopped reaching the rig in windows 10d and 12a while the job ran on (mistakes #31). It ends the
+# window, through the main script's exit sequence (fetch the results, then stop the session), when:
+# - job.log carries the PIN_RESULT line: the job is done, even if the exec never returns;
+# - job.log hasn't grown: nothing within 10 minutes of the exec starting, or nothing new for 20 minutes after that
+#   (R&D, 2026-10-17; the slowest silent step, a conversion, takes about 12 minutes);
+# - own spend reaches the cap less MARGIN, the units kept back to fetch the results.
+# Colab dropping the session ends the exec at once, with nothing to fetch. At the cap itself the session stops whatever
+# is under way: the cap is the ceiling.
+( seen=0; size0=-1; grew=0; ended=""
+  end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; }
   while sleep "${PIN_WATCH_S:-120}"; do
-    if ! colab sessions 2>&1 | grep -q "^\\[$S\\]"; then
-      echo "SESSION GONE ($S) $(date -u +%T)"; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; exit 0
+    now=$(date +%s)
+    spent=$(awk -v r="$OWN_RATE" -v t="$(( now - T_OPEN ))" 'BEGIN{printf "%.3f", r*t/3600}')
+    if awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>=c)}'; then
+      echo "CAP CEILING (own spend $spent of $CAP_UNITS): stopping now $(date -u +%T)"; end_window cap; stop_all; exit 0
+    fi
+    [ -n "$ended" ] && continue  # the exit sequence is under way in the main script; only the ceiling is watched now
+    if ! colab sessions 2>&1 | grep -q "^\[$S\]"; then
+      echo "SESSION GONE ($S) $(date -u +%T)"; end_window gone; exit 0
     fi
     if [ -f "$OUT/.exec.pid" ]; then
-      now=$(date +%s); size=$(stat -c %s "$OUT/smoke-window.log" 2>/dev/null || echo 0)
+      timeout "$DL_S" colab download -s "$S" /content/pin/job.log "$OUT/job.log" > /dev/null 2>&1
+      size=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
       if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
+      if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
+        echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
+      fi
       started=$(stat -c %Y "$OUT/.exec.pid")
       stalled=""
-      [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="no line in the 10 minutes after the exec started"
-      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-1200}" ] && stalled="no new line for 20 minutes"
+      [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="job.log empty 10 minutes after the exec started"
+      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-1200}" ] && stalled="job.log unchanged for 20 minutes"
       if [ -n "$stalled" ]; then
-        echo "STALL ($S): $stalled $(date -u +%T)" | tee "$OUT/stall.txt"
-        kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; stop_all; exit 0
+        echo "STALL ($S): $stalled $(date -u +%T)" | tee "$OUT/stall.txt"; end_window stall; continue
       fi
     fi
-    spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
-    awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>c)}' && { echo "CAP REACHED (own spend $spent of $CAP_UNITS)"; stop_all; exit 0; }; done ) &
+    if awk -v s="$spent" -v c="$CAP_UNITS" -v m="$MARGIN" 'BEGIN{exit !(s>=c-m)}'; then
+      echo "CAP REACHED (own spend $spent of $CAP_UNITS; $MARGIN kept back to fetch the results) $(date -u +%T)"; end_window cap
+    fi
+  done ) &
 WATCH=$!
 # The binary goes up gzipped in 40 MB parts, each retried; a part that never lands ends the window (the trap stops the VM).
+# PIN_SKIP_BINARY=1 (a test of this script with mock_job.py) sends none.
 UP="$OUT/upload"; mkdir -p "$UP"; rm -f "$UP"/llama-server.gz*
-gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"
+[ "${PIN_SKIP_BINARY:-0}" = 1 ] || { gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"; }
 for part in "$UP"/llama-server.gz.part*; do
+  [ -e "$part" ] || continue
   ok=0
   for try in 1 2 3 4; do
     if timeout 600 colab upload -s "$S" "$part" "/content/$(basename "$part")" 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
@@ -86,19 +107,22 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
-timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$here/pin_window.py" --timeout "$WALL_S" \
+timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" \
   > "$OUT/smoke-window.log" 2>&1 &
 EXEC=$!
 echo $EXEC > "$OUT/.exec.pid"
 wait $EXEC
-echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s"
+echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null || echo exec)"
+# The exit sequence: fetch, then the trap stops the session. The watcher stays up as the cap's ceiling meanwhile.
+if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
+  for f in job.log ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
+    timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
+  done
+fi
 kill "$WATCH" 2>/dev/null
-for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
-  timeout 900 colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
-done
-grep -h "PIN_RESULT" "$OUT/smoke-window.log" | cut -c1-600
+grep -h "^PIN_RESULT" "$OUT/job.log" "$OUT/smoke-window.log" 2>/dev/null | head -1 | cut -c1-600
 echo "end balance $(bal) (start $START)"

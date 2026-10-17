@@ -97,6 +97,36 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+JOB_LOG = WORK / "job.log"
+
+
+class Tee:
+    """Everything the window prints, also appended to /content/pin/job.log and flushed per write (mistakes #31): the
+    exec's output stream stopped reaching the rig in windows 10d and 12a while the job ran on, so the rig reads the job's
+    progress, its checkpoints and its PIN_RESULT line from this file instead."""
+
+    def __init__(self, stream, path: Path):
+        self.stream, self.file, self.lock = stream, path.open("a", encoding="utf-8"), threading.Lock()
+
+    def write(self, text: str) -> int:
+        with self.lock:
+            try:
+                self.stream.write(text)
+                self.stream.flush()
+            except Exception:  # noqa: BLE001 - a dead stream must not stop the file
+                pass
+            self.file.write(text)
+            self.file.flush()
+        return len(text)
+
+    def flush(self) -> None:
+        with self.lock:
+            self.file.flush()
+
+    def __getattr__(self, name):
+        return getattr(self.stream, name)
+
+
 def say(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
@@ -1172,6 +1202,16 @@ def runtime() -> dict:
 
 def main() -> int:
     WORK.mkdir(parents=True, exist_ok=True)
+    out, err = sys.stdout, sys.stderr
+    sys.stdout = Tee(out, JOB_LOG)
+    sys.stderr = Tee(err, JOB_LOG)
+    try:
+        return _main()
+    finally:
+        sys.stdout, sys.stderr = out, err
+
+
+def _main() -> int:
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
     try:
         result["machine"] = machine_line()
@@ -1250,8 +1290,9 @@ def main() -> int:
     finally:
         result["resources"] = RESOURCES
         result["ended"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        print("PIN_RESULT " + json.dumps(result), flush=True)
+        # The file first: the rig takes the PIN_RESULT line in job.log as the sign that pin-result.json is there to fetch.
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
     return 0 if result.get("ok") else 1
 
 
