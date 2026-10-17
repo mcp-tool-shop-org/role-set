@@ -8,6 +8,16 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **The pins from the Colab windows, and the pilot's eight arms** (BUILD-SPEC B6; R&D, 2026-10-17).
+  - `llama_server` is pinned: llama.cpp 620d2225, binary b4659b3f…, built with nvcc 13.4.92, its three CUDA libraries hashed.
+  - Pinned at Q8_0 with revision, file and sha256: Lightning (reproduced three times), Muse (tokenizer 49/50, with the Devanagari case recorded and accepted for English rows on a brief check), Bolt (NVIDIA's GGUF), Qwen3.8 and Granite (both fit the A100), Qwen3.6 (fit unproven) and R1-Distill (doesn't fit the A100 at 32768). The last two run on an H100 or as labelled Q6_K arms.
+  - Gemma is listed and refused until its conversion, in a transformers 5.20.1 env, pins it.
+  - The committed-list test now checks the terms record and the pins instead of the old Apache exclusion.
+  - `scripts/colab/pin_window.py` and `smoke_window.sh`:
+    - smoke serves run at a settable context, with peak VRAM, offload lines and the thinking split recorded;
+    - card kwargs come from `PIN_CARDS_JSON`, and the server log is written to a file;
+    - a server that exits fails at once, and a pin that doesn't reproduce never serves;
+    - the GPU type and session name are settable.
 - **critic-control measures run-to-run agreement** (R&D, 2026-10-17). A critic at its card's temperature samples, so its control runs twice.
   - `--critic-seed` sets the critic's seed. Every case's outcome is recorded in `per_item`.
   - `--agreement-with <earlier run>` reports how often the verdicts differ, item by item.

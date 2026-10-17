@@ -136,20 +136,28 @@ def test_the_machine_line(tmp_path: Path):
     assert proven.needs_grant({"rig": "robot"})  # a rig line with no card string at all
 
 
-def test_the_committed_list_is_proven_and_drops_the_apache_only_entries():
+def test_the_committed_list_records_its_terms_and_its_pins():
     listed = proven.load(Path(__file__).resolve().parents[1] / "writers.json")
     names = set(listed.writers) | set(listed.critics)
-    # BUILD-SPEC B6: the Apache-only entries are removed; they are not proven under the rule.
+    # The 2026-10-11 pilots' Ollama tags stay off: the pilot's arms are llama-server GGUFs at pinned revisions.
     assert not names & {"qwen3-235b-instruct-2507", "qwen3:8b", "gemma4:31b", "granite4.1:30b"}
     assert {"muse-glimmer-30b", "nemotron-3.5-lightning-30b-a3b"} <= set(listed.critics)
-    assert "nemotron-3.5-bolt-74b-a9b" in listed.writers  # R&D ruled it in, 2026-10-16
+    # The pilot's eight arms (R&D, 2026-10-17): Apache-2.0 and MIT models are eligible under the terms rule.
+    assert {"qwen3.8-27b", "qwen3.6-35b-a3b", "granite-4.2-30b", "gemma-4-31b-it", "deepseek-r1-distill-qwen-32b",
+            "nemotron-3.5-bolt-74b-a9b", "muse-glimmer-30b", "nemotron-3.5-lightning-30b-a3b"} <= set(listed.writers)
     assert {e["registry_id"] for e in [*listed.writers.values(), *listed.critics.values()]} <= {
-        "openmdw-1.1", "deepseek-r1-0528-card", "muse-glimmer-30b-card"}
+        "openmdw-1.1", "deepseek-r1-0528-card", "muse-glimmer-30b-card", "apache-2.0", "deepseek-r1-card"}
+    assert all(e["training"] == "allowed" for e in [*listed.writers.values(), *listed.critics.values()])
     families = {e["family"] for e in listed.critics.values()}
     # Every writer has a critic of another family on the list.
     for w in listed.writers.values():
         assert families - {w["family"]}, w["served_as"]
-    # Nothing is pinned until the download: a run refuses every entry until its GGUF and the server are pinned.
-    assert listed.server["cuda"] == "13.4"
-    with pytest.raises(GuardError, match="not pinned yet"):
+    # The server is pinned (window 1); a pinned arm loads only its own GGUF; an unconverted one is refused.
+    assert listed.server["cuda"] == "13.4" and listed.server["commit"].startswith("620d2225")
+    assert proven.require_server(listed.server, listed.server["sha256"])["sha256"] == listed.server["sha256"]
+    with pytest.raises(GuardError, match="rebuild or re-pin"):
         proven.require_server(listed.server, SHA_S)
+    lightning = listed.critics["nemotron-3.5-lightning-30b-a3b"]
+    assert proven.require_pinned(lightning, lightning["gguf_sha256"])["revision"].startswith("a9904d24")
+    with pytest.raises(GuardError, match="not pinned yet"):
+        proven.require_pinned(listed.writers["gemma-4-31b-it"], SHA_W)
