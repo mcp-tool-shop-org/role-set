@@ -134,3 +134,43 @@ def test_the_twins_switch(monkeypatch):
     assert pw.twins_enabled()
     monkeypatch.setenv("PIN_PILOT_TWINS", "0")
     assert not pw.twins_enabled()
+
+
+def test_every_window_model_has_a_pin_that_matches_writers_json():
+    import json
+
+    listed = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
+    pw.check_pins([m["served_as"] for m in pw.MODELS], listed, {})
+
+
+def test_check_pins_refuses_a_missing_or_different_pin_before_any_download():
+    listed = {"writers": [{"served_as": "qwen3.8-27b", "gguf_sha256": "0" * 64}], "critics": []}
+    with pytest.raises(RuntimeError, match="nothing downloaded: qwen3.8-27b"):
+        pw.check_pins(["qwen3.8-27b"], listed, {})
+    listed = {"writers": [{"served_as": "deepseek-r1-distill-qwen-32b",
+                           "gguf_sha256": next(m["expect_sha256"] for m in pw.MODELS if m["served_as"] == "deepseek-r1-distill-qwen-32b")}],
+              "critics": []}
+    with pytest.raises(RuntimeError, match="no deepseek-r1-distill-qwen-32b-q6k"):
+        pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
+
+
+def test_a_resume_tar_unpacks_and_every_drafts_file_needs_its_seal(tmp_path, monkeypatch):
+    import tarfile
+
+    src = tmp_path / "src" / "pilot-w0"
+    src.mkdir(parents=True)
+    (src / "granite-4.2-30b.jsonl").write_text("{}\n", encoding="utf-8")
+    (src / "granite-4.2-30b.jsonl.sha256").write_text("x  granite-4.2-30b.jsonl\n", encoding="utf-8")
+    (src / "calls").mkdir()
+    (src / "calls" / "granite-4.2-30b.jsonl").write_text("{}\n", encoding="utf-8")  # same name, its own directory
+    tar = tmp_path / "resume.tar"
+    with tarfile.open(tar, "w") as tf:
+        tf.add(src, arcname="pilot-w0")
+    dest = pw.unpack_resume(tar)
+    monkeypatch.setenv("PIN_RESUME_WAVE", "0")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(dest / "pilot-w0"))
+    start, found = pw.resume_from()
+    assert start == 1 and list(found) == ["granite-4.2-30b"]
+    (dest / "pilot-w0" / "granite-4.2-30b.jsonl.sha256").unlink()
+    with pytest.raises(RuntimeError, match="no seal for granite-4.2-30b"):
+        pw.resume_from()

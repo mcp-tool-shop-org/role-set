@@ -53,7 +53,8 @@ MODELS = [
     # The pilot's other arms (R&D, 2026-10-17), at the revisions J2's card-values.json read, so one GGUF serves J1 and J2.
     # Classic tokenizer classes, so llama.cpp's own requirements; each tokenizer is still checked id by id.
     {"served_as": "qwen3.8-27b", "how": "convert", "repo": "Qwen/Qwen3.8-27B",
-     "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0", "tokenizer_check": True},
+     "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0", "tokenizer_check": True,
+     "expect_sha256": "2ab268e0bd3f8e5daf1280e2243ac19abd5e3bb34e8444f5cfff5147fab977d4"},
     # Window 5 pinned it on the A100 with an unproven fit; window 6 (H100) reconverts it, so the hash checks determinism.
     {"served_as": "qwen3.6-35b-a3b", "how": "convert", "repo": "Qwen/Qwen3.6-35B-A3B",
      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0", "tokenizer_check": True,
@@ -61,7 +62,8 @@ MODELS = [
      # Window 8 and 9's Q6_K was requantized from the Q8_0; retired 2026-10-17 (R&D), kept as history, never checked.
      "retired_q6k_sha256": "61deb1f7862709b62692d76ca510a669affeeb4c63e59de72d7aa901b638a4fe"},
     {"served_as": "granite-4.2-30b", "how": "convert", "repo": "ibm-granite/granite-4.2-30b",
-     "revision": "9e668ce1c538387ef24d3644e9b0606647762636", "tokenizer_check": True},
+     "revision": "9e668ce1c538387ef24d3644e9b0606647762636", "tokenizer_check": True,
+     "expect_sha256": "1b5c47835f6f8b8732550541dc432d0a351e3f706961ff3c750d3ee1987b9b4c"},
     # Gemma 4 was saved with transformers 5.5.0.dev0; its tokenizer_config's list-shaped extra_special_tokens breaks
     # llama.cpp's pinned 4.57.6 (window 5), so it converts in its own env, as Muse does.
     {"served_as": "gemma-4-31b-it", "how": "convert", "repo": "google/gemma-4-31B-it",
@@ -76,7 +78,7 @@ MODELS = [
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
-     "card": "nemotron-3.5-bolt-74b-a9b-24gb"},
+     "card": "nemotron-3.5-bolt-74b-a9b-24gb", "expect_sha256": "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75"},
 ]
 # Window 1's llama-server (built 2026-10-17 at LLAMA_CPP_COMMIT, nvcc 13.4.92): every later window runs this file.
 SERVER_SHA256 = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
@@ -909,14 +911,38 @@ def checkpoint(arm: str, wave_name: str, drafts: Path) -> None:
         print(f"WAVE_CHECKPOINT {arm} {wave_name} {sha256(drafts)} {blob}", flush=True)
 
 
+RESUME_TAR = Path("/content/resume.tar")
+
+
+def unpack_resume(tar: Path = RESUME_TAR) -> Path | None:
+    """A resume's drafts arrive as one resume.tar (R&D, from Argon's review: uploads land flat in /content, so drafts and
+    call journals with the same <arm>.jsonl name would overwrite each other). It unpacks to /content/resume; set
+    PIN_RESUME_DIR to /content/resume/<the wave's directory>."""
+
+    if not tar.exists():
+        return None
+    import tarfile  # noqa: PLC0415
+
+    dest = tar.parent / "resume"
+    dest.mkdir(exist_ok=True)
+    with tarfile.open(tar) as tf:
+        tf.extractall(dest, filter="data")
+    return dest
+
+
 def resume_from() -> tuple[int, dict]:
-    """PIN_RESUME_WAVE=<i> and PIN_RESUME_DIR=<dir of <arm>.jsonl>: start a batch after wave i, from those drafts."""
+    """PIN_RESUME_WAVE=<i> and PIN_RESUME_DIR=<dir of <arm>.jsonl>: start a batch after wave i, from those drafts. Each
+    drafts file needs its seal, <arm>.jsonl.sha256, beside it (checkpoints.py extract writes both)."""
 
     i = os.environ.get("PIN_RESUME_WAVE")
     if not i:
         return 0, {}
     d = Path(os.environ["PIN_RESUME_DIR"])
-    return int(i) + 1, {f.stem: f for f in d.glob("*.jsonl")}
+    found = {f.stem: f for f in d.glob("*.jsonl")}
+    missing = [n for n, f in found.items() if not f.with_name(f.name + ".sha256").exists()]
+    if not found or missing:
+        raise RuntimeError(f"PIN_RESUME_DIR {d}: {'no drafts' if not found else 'no seal for ' + ', '.join(missing)}")
+    return int(i) + 1, found
 
 
 def resume_calls() -> dict:
@@ -1118,6 +1144,24 @@ def twins_enabled() -> bool:
     return os.environ.get("PIN_PILOT_TWINS", "1") != "0"
 
 
+def check_pins(names: list, listed: dict, policies: dict) -> None:
+    """Every model the window will set up has a pin in MODELS, equal to writers.json's, before anything downloads (R&D,
+    from Argon's review: three writers had none, so a mismatch showed only at w0, after 15-27 minutes of setup). A Q6_K
+    policy also needs writers.json's '<name>-q6k' entry."""
+
+    by_name = {m["served_as"]: m for m in MODELS}
+    listed_pins = {e["served_as"]: e.get("gguf_sha256") for e in listed["writers"] + listed["critics"]}
+    bad = []
+    for n in names:
+        mine, theirs = (by_name.get(n) or {}).get("expect_sha256"), listed_pins.get(n)
+        if not mine or mine != theirs:
+            bad.append(f"{n}: MODELS {str(mine)[:12]} vs writers.json {str(theirs)[:12]}")
+        if policies.get(n) in ("q6k", "q8_or_q6k") and f"{n}-q6k" not in listed_pins:
+            bad.append(f"{n}: policy {policies[n]} but writers.json has no {n}-q6k")
+    if bad:
+        raise RuntimeError("pins don't agree, nothing downloaded: " + "; ".join(bad))
+
+
 def screen_plan(plan: Path, var: str) -> list[str] | None:
     """The w0 screen's frozen slot list (R&D, 2026-10-17): the same slot ids for every arm, set in the window config.
     The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads."""
@@ -1155,6 +1199,7 @@ def pilot_window(built: dict, result: dict) -> None:
     result["pack_verify"] = sh(f"{rs['role_set']} pack verify --pack {pack}", cwd=rs["src"])[-400:]
     base = WORK / "pilot"
     base.mkdir(exist_ok=True)
+    result["resume_unpacked"] = str(unpack_resume() or "")
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
@@ -1170,6 +1215,7 @@ def pilot_window(built: dict, result: dict) -> None:
     listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
     families = {e["served_as"]: e.get("family") for e in listed["writers"] + listed["critics"]}
     critic_for = result["critic_for"] = critics_for(writer_names, families)
+    check_pins(list(dict.fromkeys([*writer_names, *critic_for.values()])), listed, policies)
     for name in [*writer_names, *critic_for.values()]:
         if name not in by_name:
             raise RuntimeError(f"{name} isn't in pin_window.MODELS")
