@@ -116,8 +116,12 @@ def fetch_model(spec: dict, built: dict) -> dict:
         say("converting to Q8_0")
         sh(f"{sys.executable} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=3600)
         shutil.rmtree(snap, ignore_errors=True)
+        # The converter's environment, so the Q8_0 hash can be reproduced (R&D on #77).
+        freeze = sh(f"{sys.executable} -m pip freeze")
+        gguf_file = sh(f"{sys.executable} -c \"import gguf; print(gguf.__file__)\"")
         out.update({"gguf_source": f"converted at llama.cpp {LLAMA_CPP_COMMIT[:12]} from {spec['repo']}@{rev[:12]}",
-                    "gguf_file": path.name})
+                    "gguf_file": path.name, "converter": {"pip_freeze_sha256": hashlib.sha256(freeze.encode()).hexdigest(),
+                                                           "pip_freeze": freeze.splitlines(), "gguf_module": gguf_file}})
     say(f"hashing {path.name}")
     out.update({"gguf_sha256": sha256(path), "gguf_bytes": path.stat().st_size, "path": str(path)})
     return out
