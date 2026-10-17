@@ -8,6 +8,11 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **critic-control measures run-to-run agreement** (R&D, 2026-10-17). A critic at its card's temperature samples, so its control runs twice.
+  - `--critic-seed` sets the critic's seed. Every case's outcome is recorded in `per_item`.
+  - `--agreement-with <earlier run>` reports how often the verdicts differ, item by item.
+  - `--concurrency` now applies to the main control too. The report is assembled in case order either way.
+
 - **Card values for the writer and the critic** (R&D, 2026-10-17; rnd amendments D1 and E2). `--cards` reads rnd's `card-values.json`, the file J2's harness reads, so a model runs at the same settings in J1 and J2.
   - Every sampling key and the `chat_template_kwargs` go on every call, including the disabled values, so `llama-server`'s defaults (top_k 40, min_p 0.05) never reach a model.
   - The critic's own temperatures (0, and 0.7 for trait votes) give way to its card. The seeds still vary the votes.

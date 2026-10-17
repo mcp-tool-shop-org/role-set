@@ -48,6 +48,9 @@ class ControlReport:
     flaw_asks: int = 0
     flaw_agree: int = 0
     flaw_misses: list = field(default_factory=list)
+    # Every case's outcome, in order: run-to-run agreement is read from two runs' lists (R&D, 2026-10-17).
+    per_item: list = field(default_factory=list)
+    seed: int = 0
 
     def as_dict(self) -> dict:
         reviewed = self.verdict_asks - self.planted
@@ -68,6 +71,8 @@ class ControlReport:
             "flaw_agree": self.flaw_agree,
             "flaw_misses": self.flaw_misses,
             "false_refusal_detail": self.false_refusals,
+            "seed": self.seed,
+            "per_item": self.per_item,
         }
 
 
@@ -126,20 +131,47 @@ def plant_errors(cases: list[Case], n: int, *, seed: int) -> list[Case]:
     return planted
 
 
-def run_control(gates: Gates, critic, cases: list[Case], *, planted: list[Case] | None = None, log=None) -> ControlReport:
-    report = ControlReport(items=len(cases))
-    for case in list(cases) + list(planted or []):
+def _ask(gates: Gates, critic, case: Case, seed: int) -> dict:
+    """One case through the critic: the verdict (asked again once on a VOID), and the flaw for a kind-C item."""
+
+    out: dict = {"voids": 0, "flaw": None}
+    v = None
+    for ask in range(2):
+        c = critic(verdict_messages(case.material, case.statement), seed=seed + ask)
+        v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material)
+        if v.code != "VOID":
+            break
+        out["voids"] += 1
+    out["v"] = v
+    if not case.planted and case.kind == "C" and case.flaw and case.checker_trace and case.checker_verdict:
+        c = critic(flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict), seed=seed)
+        out["flaw"] = compare_flaw(c.text, case.flaw)
+    return out
+
+
+def run_control(gates: Gates, critic, cases: list[Case], *, planted: list[Case] | None = None, log=None, seed: int = 0,
+                concurrency: int = 1) -> ControlReport:
+    """Every case through the critic, at `seed` (a second run at another seed measures run-to-run agreement for a
+    sampling critic). Cases may run concurrently; the report is assembled in case order either way."""
+
+    from concurrent.futures import ThreadPoolExecutor
+
+    report = ControlReport(items=len(cases), seed=seed)
+    allcases = list(cases) + list(planted or [])
+    if concurrency > 1:
+        with ThreadPoolExecutor(max_workers=concurrency) as pool:
+            outcomes = list(pool.map(lambda c: _ask(gates, critic, c, seed), allcases))
+    else:
+        outcomes = [_ask(gates, critic, c, seed) for c in allcases]
+    for case, o in zip(allcases, outcomes):
+        v = o["v"]
         report.verdict_asks += 1
+        report.voids += o["voids"]
+        report.per_item.append({"item": case.item_id, "kind": case.kind, "planted": case.planted, "key": case.verdict,
+                                "critic_verdict": v.critic_verdict, "code": v.code, "ok": v.ok,
+                                "flaw_ok": o["flaw"].ok if o["flaw"] is not None else None})
         if case.planted:
             report.planted += 1
-        v = None
-        for ask in range(2):
-            c = critic(verdict_messages(case.material, case.statement))
-            v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material)
-            if v.code != "VOID":
-                break
-            report.voids += 1
-        if case.planted:
             if not v.ok:
                 report.catches += 1
             elif log:
@@ -149,15 +181,24 @@ def run_control(gates: Gates, critic, cases: list[Case], *, planted: list[Case] 
             report.agree += 1
         else:
             report.false_refusals.append({"item": case.item_id, "code": v.code, "detail": v.detail, "critic_verdict": v.critic_verdict, "critic_deciding": v.critic_deciding})
-        if case.kind == "C" and case.flaw and case.checker_trace and case.checker_verdict:
+        if o["flaw"] is not None:
             report.flaw_asks += 1
-            c = critic(flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict))
-            f = compare_flaw(c.text, case.flaw)
-            if f.ok:
+            if o["flaw"].ok:
                 report.flaw_agree += 1
             else:
-                report.flaw_misses.append({"item": case.item_id, "detail": f.detail})
+                report.flaw_misses.append({"item": case.item_id, "detail": o["flaw"].detail})
     return report
+
+
+def run_agreement(a: dict, b: dict) -> dict:
+    """Two runs' per-item lists: how often the critic's verdict differs between them, item by item."""
+
+    left = {r["item"]: r for r in a["per_item"]}
+    right = {r["item"]: r for r in b["per_item"]}
+    shared = sorted(set(left) & set(right))
+    differ = [i for i in shared if left[i]["critic_verdict"] != right[i]["critic_verdict"]]
+    return {"items": len(shared), "differ": len(differ), "rate": round(len(differ) / len(shared), 3) if shared else None,
+            "differing": differ, "seeds": [a.get("seed"), b.get("seed")]}
 
 
 def load_rows(paths: list[Path]) -> list[dict]:
