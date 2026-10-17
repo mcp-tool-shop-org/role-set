@@ -1,10 +1,20 @@
 {
   "_note": "The writer list (BUILD-SPEC B6). A use is allowed unless a clause in the maker's licence or terms restricts it (the maintainer's rule, 2026-10-17: silence is not a restriction). Each entry records the terms search: terms_url (the maker's live page), terms_date (the day it was read), checked_by, registry_id (its record in rnd licences/registry.json) and training (allowed, conditions or barred); terms_note keeps what was read. role-set refuses an entry without that record, or one whose verdict is barred. A listed model is still refused until it is pinned: repo revision, GGUF file and its sha256, filled in after the download. The wave script measures the GGUF and the llama-server binary before launch and the run refuses any drift. A critic of the writer's own family is refused. Cloud tags are refused regardless (the Ollama Cloud spending rule). `card` names the writer's entry in rnd's card-values.json when it differs from served_as.",
   "llama_server": {
-    "commit": null,
-    "sha256": null,
+    "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+    "sha256": "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3",
     "cuda": "13.4",
-    "note": "llama.cpp built with CUDA 13.4 on each host; pinned by commit and binary sha256 once built"
+    "archs": "80;90;100 (SASS only, no PTX)",
+    "libs": {
+      "libcudart.so.13": "7fb00519a24512bf677b59e87921e5c05aac8246ceb6a57435c0d9dfeef364f6",
+      "libcublas.so.13": "59dd485de6657bc8e1ff5f0f73de74c15f5a3e4648747e2288e342da1f60866c",
+      "libcublasLt.so.13": "a1821093b6b29ff871a07532071f3eaf6996d549d54f53235763abc12b8ad19f"
+    },
+    "runtime_wheels": [
+      "nvidia-cuda-runtime==13.4.92",
+      "nvidia-cublas==13.8.0.4"
+    ],
+    "note": "Built on Colab in window 1 (2026-10-17) at llama.cpp v0.7.0 with nvcc 13.4.92; CUDA toolkit 13.4.2 (redistrib 2026-09-16), whose own cuBLAS is 13.8.0.4. libcuda is the host driver's and is not pinned. Every later window and pod runs this exact file (receipts: Publisher receipts/colab/window1-20261016)."
   },
   "writers": [
     {
@@ -59,9 +69,9 @@
       "served_as": "nemotron-3.5-bolt-74b-a9b",
       "family": "nemotron",
       "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
-      "revision": null,
-      "gguf_file": null,
-      "gguf_sha256": null,
+      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246",
+      "gguf_file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
+      "gguf_sha256": "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75",
       "quant": "maker QAT (NVIDIA's 2-bit quantization-aware 24GB build)",
       "licence": "OpenMDW-1.1",
       "terms_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB",
@@ -70,15 +80,16 @@
       "training": "allowed",
       "registry_id": "openmdw-1.1",
       "checked_by": "R&D, 2026-10-16 (ruled in for J1 as a Nemotron challenger; the pilot preflight checks the official GGUF on llama.cpp)",
-      "card": "nemotron-3.5-bolt-74b-a9b-24gb"
+      "card": "nemotron-3.5-bolt-74b-a9b-24gb",
+      "pin_note": "NVIDIA's own GGUF, fetched in window 5. Fits the A100-40GB at a 32768 context."
     },
     {
       "served_as": "muse-glimmer-30b",
       "family": "muse",
       "repo": "meta-models/Muse-Glimmer-30B",
-      "revision": null,
-      "gguf_file": null,
-      "gguf_sha256": null,
+      "revision": "a4e59da52a7bc87ae7251dd5545c0dd437c44b68",
+      "gguf_file": "muse-glimmer-30b-Q8_0.gguf",
+      "gguf_sha256": "c321320a81f177362f3ddf3c199edff097ab88d10b19a13eab7f606f5ffc4e74",
       "quant": "Q8_0",
       "licence": "Apache-2.0",
       "terms_url": "https://huggingface.co/meta-models/Muse-Glimmer-30B",
@@ -86,15 +97,16 @@
       "terms_date": "2026-10-16",
       "training": "allowed",
       "registry_id": "muse-glimmer-30b-card",
-      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)",
+      "pin_note": "Converted at llama.cpp 620d2225 in its own env (transformers 5.20.1), window 4. Tokenizer 49/50: a known llama.cpp 620d2225 difference for the TokenizersBackend tokenizer on Devanagari ('हिन्दी': HF [2471, 9028, 98999], GGUF [2471, 9028, 26129, 1070]). Accepted for English rows; before Muse writes or critiques in the pilot, 20 real writer briefs and 20 critic prompts must tokenize identically (R&D, 2026-10-17)."
     },
     {
       "served_as": "nemotron-3.5-lightning-30b-a3b",
       "family": "nemotron",
       "repo": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
-      "revision": null,
-      "gguf_file": null,
-      "gguf_sha256": null,
+      "revision": "a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+      "gguf_file": "nemotron-3.5-lightning-30b-a3b-Q8_0.gguf",
+      "gguf_sha256": "5bea2069f4a8067659ed8bfb4bce58761f37d308e9689818ef77915d3b446832",
       "quant": "Q8_0",
       "licence": "OpenMDW-1.1",
       "terms_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
@@ -102,7 +114,92 @@
       "terms_date": "2026-10-16",
       "training": "allowed",
       "registry_id": "openmdw-1.1",
-      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)"
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1)",
+      "pin_note": "Converted at llama.cpp 620d2225; reproduced three times (windows 1-3). Fits the A100-40GB."
+    },
+    {
+      "served_as": "qwen3.8-27b",
+      "family": "qwen",
+      "repo": "Qwen/Qwen3.8-27B",
+      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+      "gguf_file": "qwen3.8-27b-Q8_0.gguf",
+      "gguf_sha256": "2ab268e0bd3f8e5daf1280e2243ac19abd5e3bb34e8444f5cfff5147fab977d4",
+      "quant": "Q8_0",
+      "licence": "Apache-2.0",
+      "terms_url": "https://huggingface.co/Qwen/Qwen3.8-27B",
+      "terms_date": "2026-10-17",
+      "training": "allowed",
+      "registry_id": "apache-2.0",
+      "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
+      "pin_note": "Converted at llama.cpp 620d2225, window 5. Tokenizer 50/50. Fits the A100-40GB at a 32768 context."
+    },
+    {
+      "served_as": "granite-4.2-30b",
+      "family": "granite",
+      "repo": "ibm-granite/granite-4.2-30b",
+      "revision": "9e668ce1c538387ef24d3644e9b0606647762636",
+      "gguf_file": "granite-4.2-30b-Q8_0.gguf",
+      "gguf_sha256": "1b5c47835f6f8b8732550541dc432d0a351e3f706961ff3c750d3ee1987b9b4c",
+      "quant": "Q8_0",
+      "licence": "Apache-2.0",
+      "terms_url": "https://huggingface.co/ibm-granite/granite-4.2-30b",
+      "terms_date": "2026-10-17",
+      "training": "allowed",
+      "registry_id": "apache-2.0",
+      "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
+      "pin_note": "Converted at llama.cpp 620d2225, window 5. Tokenizer 50/50. Fits the A100-40GB at a 32768 context."
+    },
+    {
+      "served_as": "qwen3.6-35b-a3b",
+      "family": "qwen",
+      "repo": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "gguf_file": "qwen3.6-35b-a3b-Q8_0.gguf",
+      "gguf_sha256": "b7c0c8eb16a54af29e87845d187969f99ecbbf79cd47cc198be8890d109dc164",
+      "quant": "Q8_0",
+      "licence": "Apache-2.0",
+      "terms_url": "https://huggingface.co/Qwen/Qwen3.6-35B-A3B",
+      "terms_date": "2026-10-17",
+      "training": "allowed",
+      "registry_id": "apache-2.0",
+      "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
+      "pin_note": "Converted at llama.cpp 620d2225, window 5. Tokenizer 50/50. Fit on the A100-40GB unproven (peak VRAM 159 MiB over the file at 32768): its arm runs on an H100 at Q8_0, or as a labelled Q6_K arm on the A100 (R&D, 2026-10-17)."
+    },
+    {
+      "served_as": "deepseek-r1-distill-qwen-32b",
+      "family": "deepseek",
+      "repo": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "revision": "711ad2ea6aa40cfca18895e8aca02ab92df1a746",
+      "gguf_file": "deepseek-r1-distill-qwen-32b-Q8_0.gguf",
+      "gguf_sha256": "b791775c3bb0d1ab3cd7a73c6760c4ab915680f3587be8a7d29937ca2b9ad24e",
+      "quant": "Q8_0",
+      "licence": "MIT",
+      "terms_url": "https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "terms_date": "2026-10-17",
+      "training": "allowed",
+      "registry_id": "deepseek-r1-card",
+      "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
+      "pin_note": "Converted at llama.cpp 620d2225, window 5. Doesn't fit the A100-40GB at 32768 (the 8 GiB KV cache failed to allocate): its arm runs on an H100 at Q8_0, or as a labelled Q6_K arm on the A100."
+    },
+    {
+      "served_as": "gemma-4-31b-it",
+      "family": "gemma",
+      "repo": "google/gemma-4-31B-it",
+      "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "gguf_file": null,
+      "gguf_sha256": null,
+      "quant": "Q8_0",
+      "licence": "Apache-2.0",
+      "terms_url": "https://huggingface.co/google/gemma-4-31B-it",
+      "terms_date": "2026-10-17",
+      "training": "allowed",
+      "registry_id": "apache-2.0",
+      "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
+      "pin_note": "Not converted yet: llama.cpp's pinned transformers 4.57.6 can't read its tokenizer_config (window 5); it converts in its own env on transformers 5.20.1. Refused until pinned.",
+      "registry_also": [
+        "gemma-prohibited-use-policy"
+      ],
+      "terms_note": "Apache-2.0 card; Google's Gemma prohibited-use policy (registry gemma-prohibited-use-policy) bars only harmful-content categories and doesn't restrict code fixing, evaluation or training on outputs (rnd DESIGN F14)."
     }
   ],
   "critics": [
@@ -110,9 +207,9 @@
       "served_as": "muse-glimmer-30b",
       "family": "muse",
       "repo": "meta-models/Muse-Glimmer-30B",
-      "revision": null,
-      "gguf_file": null,
-      "gguf_sha256": null,
+      "revision": "a4e59da52a7bc87ae7251dd5545c0dd437c44b68",
+      "gguf_file": "muse-glimmer-30b-Q8_0.gguf",
+      "gguf_sha256": "c321320a81f177362f3ddf3c199edff097ab88d10b19a13eab7f606f5ffc4e74",
       "quant": "Q8_0",
       "licence": "Apache-2.0",
       "terms_url": "https://huggingface.co/meta-models/Muse-Glimmer-30B",
@@ -120,15 +217,16 @@
       "terms_date": "2026-10-16",
       "training": "allowed",
       "registry_id": "muse-glimmer-30b-card",
-      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Nemotron and DeepSeek writers"
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Nemotron and DeepSeek writers",
+      "pin_note": "Converted at llama.cpp 620d2225 in its own env (transformers 5.20.1), window 4. Tokenizer 49/50: a known llama.cpp 620d2225 difference for the TokenizersBackend tokenizer on Devanagari ('हिन्दी': HF [2471, 9028, 98999], GGUF [2471, 9028, 26129, 1070]). Accepted for English rows; before Muse writes or critiques in the pilot, 20 real writer briefs and 20 critic prompts must tokenize identically (R&D, 2026-10-17)."
     },
     {
       "served_as": "nemotron-3.5-lightning-30b-a3b",
       "family": "nemotron",
       "repo": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
-      "revision": null,
-      "gguf_file": null,
-      "gguf_sha256": null,
+      "revision": "a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+      "gguf_file": "nemotron-3.5-lightning-30b-a3b-Q8_0.gguf",
+      "gguf_sha256": "5bea2069f4a8067659ed8bfb4bce58761f37d308e9689818ef77915d3b446832",
       "quant": "Q8_0",
       "licence": "OpenMDW-1.1",
       "terms_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
@@ -136,7 +234,8 @@
       "terms_date": "2026-10-16",
       "training": "allowed",
       "registry_id": "openmdw-1.1",
-      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Muse writer"
+      "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Muse writer",
+      "pin_note": "Converted at llama.cpp 620d2225; reproduced three times (windows 1-3). Fits the A100-40GB."
     }
   ]
 }

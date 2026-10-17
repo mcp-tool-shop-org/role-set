@@ -165,10 +165,6 @@
           "path": ".python-version"
         },
         {
-          "hash": "db27057467104d4a988144e45cce73a050f86c22800dc65b29560d9be18075f1",
-          "path": "CHANGELOG.md"
-        },
-        {
           "hash": "4670c1c5e4f27c0c89c4949509d7705f9cccc516eab9c5a104b11562232b7458",
           "path": "CONTRIBUTORS.md"
         },
@@ -197,7 +193,7 @@
           "path": "README.ja.md"
         },
         {
-          "hash": "8fa2e12ef9fae2d55ff34f42e1b7848f1eeb9169c43389343ee4968db4977a9c",
+          "hash": "1350454371596f781eef38a36a470060e03a37fa46eec5c47a5d9e5f57ae2310",
           "path": "README.md"
         },
         {
@@ -233,7 +229,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "fff2bc3d08471b5c0c87456ee5d27d7185c54bf36f9d467d5e90bb368d7da4ad",
+          "hash": "64dc959a1e45a4d3b8a41bdb676dc346adaf1b357cba86fbde2d130bb72773a8",
           "path": "writers.json"
         }
       ],
@@ -248,59 +244,128 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 2,
+      "dynamicReads": 5,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
-      "dynamicWrites": 1,
+      "dynamicWrites": 3,
       "entryPoints": [],
       "externals": 0,
       "files": [
         {
           "exports": [
             "build",
+            "converter_python",
             "fetch_model",
             "hf_revision",
+            "hf_token_ids",
             "machine_line",
             "main",
             "pin_libs",
+            "runtime",
             "say",
             "sh",
             "sha256",
-            "smoke"
+            "smoke",
+            "tokenizer_check"
           ],
           "failurePaths": [
             {
               "in": "sh",
               "kind": "raise",
-              "line": 44
+              "line": 81
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 121
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 125
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 106
+              "line": 168
             },
             {
-              "in": "smoke",
+              "in": "sample",
               "kind": "except",
-              "line": 143
+              "line": 223
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 146
+              "line": 232
+            },
+            {
+              "in": "smoke",
+              "kind": "except",
+              "line": 238
+            },
+            {
+              "in": "smoke",
+              "kind": "raise",
+              "line": 241
+            },
+            {
+              "in": "_card_kwargs",
+              "kind": "raise",
+              "line": 307
+            },
+            {
+              "in": "converter_python",
+              "kind": "raise",
+              "line": 344
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 191
+              "line": 393
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 421
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 425
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 432
+            },
+            {
+              "in": "main",
+              "kind": "raise",
+              "line": 464
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 236
+              "line": 472
+            },
+            {
+              "in": "main",
+              "kind": "except",
+              "line": 488
+            },
+            {
+              "in": "main",
+              "kind": "raise",
+              "line": 490
+            },
+            {
+              "in": "main",
+              "kind": "except",
+              "line": 502
             }
           ],
-          "hash": "2e98a03c66dbe492b958ade8072aa29e1b8e26a2b98c612560607ba5edbea129",
+          "hash": "6cfe767d3d204a4c7b7457f88b80401c997b0910dee227dcaf4f76b2c39113ed",
           "path": "scripts/colab/pin_window.py"
         },
         {
@@ -310,6 +375,10 @@
         {
           "hash": "7552d7665a7091473d9f9883396e9540530958334cf3e9d4635056e8fff682d0",
           "path": "scripts/colab/pin_window_split.sh"
+        },
+        {
+          "hash": "0f84c035fa52109037af81a0a09365ef1e964e268ba4bd79d40faec6e06bc5f8",
+          "path": "scripts/colab/smoke_window.sh"
         },
         {
           "exports": [
@@ -524,14 +593,14 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 1,
+          "reads": 2,
           "where": [
             "caller"
           ],
           "writes": 1
         }
       ],
-      "outsideReads": 1,
+      "outsideReads": 2,
       "outsideWrites": 1,
       "role": "code",
       "testRunners": [
@@ -1699,7 +1768,7 @@
             "same_family",
             "trait_leg"
           ],
-          "hash": "07873638dd15578ef989925614a2412e3f27267e4317213b5bf8d08ddeba4d18",
+          "hash": "5ebac4ac13b7b627e48ffb14b9e8a802d78b5f42f5e656ae3815a6aee252a580",
           "importsFiles": [
             "src/role_set/assemble.py",
             "src/role_set/critic.py",
@@ -1710,28 +1779,28 @@
             {
               "calls": [
                 {
-                  "line": 140,
+                  "line": 141,
                   "name": "verdict_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 141,
+                  "line": 142,
                   "name": "compare_verdict",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 147,
+                  "line": 148,
                   "name": "flaw_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 148,
+                  "line": 149,
                   "name": "compare_flaw",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1746,7 +1815,7 @@
             {
               "calls": [
                 {
-                  "line": 140,
+                  "line": 141,
                   "name": "verdict_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1754,7 +1823,7 @@
                   "via": "_ask"
                 },
                 {
-                  "line": 141,
+                  "line": 142,
                   "name": "compare_verdict",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1762,7 +1831,7 @@
                   "via": "_ask"
                 },
                 {
-                  "line": 147,
+                  "line": 148,
                   "name": "flaw_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1770,7 +1839,7 @@
                   "via": "_ask"
                 },
                 {
-                  "line": 148,
+                  "line": 149,
                   "name": "compare_flaw",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1786,7 +1855,7 @@
             {
               "calls": [
                 {
-                  "line": 241,
+                  "line": 247,
                   "name": "teaching_text",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1794,7 +1863,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 241,
+                  "line": 247,
                   "name": "trait_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1802,7 +1871,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 243,
+                  "line": 249,
                   "name": "TRAIT_VOTES",
                   "passed": true,
                   "target": {
@@ -1811,7 +1880,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 244,
+                  "line": 250,
                   "name": "TRAIT_TEMPERATURE",
                   "passed": true,
                   "target": {
@@ -1820,7 +1889,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 246,
+                  "line": 252,
                   "name": "trait_named",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1828,7 +1897,7 @@
                   "via": "ask"
                 },
                 {
-                  "line": 258,
+                  "line": 264,
                   "name": "majority",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1843,7 +1912,7 @@
             {
               "calls": [
                 {
-                  "line": 360,
+                  "line": 366,
                   "name": "closed_answer",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -1851,28 +1920,28 @@
                   "via": "leg_key"
                 },
                 {
-                  "line": 315,
+                  "line": 321,
                   "name": "names_not_in_puzzle",
                   "target": {
                     "file": "src/role_set/assemble.py"
                   }
                 },
                 {
-                  "line": 324,
+                  "line": 330,
                   "name": "answer_messages",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 326,
+                  "line": 332,
                   "name": "compare_answer",
                   "target": {
                     "file": "src/role_set/critic.py"
                   }
                 },
                 {
-                  "line": 334,
+                  "line": 340,
                   "name": "findall",
                   "target": {
                     "file": "src/role_set/critic.py"
@@ -1887,7 +1956,7 @@
             {
               "calls": [
                 {
-                  "line": 360,
+                  "line": 366,
                   "name": "closed_answer",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -5745,7 +5814,7 @@
             "test_runs_record_each_item_at_their_seed_and_agreement_compares_them",
             "test_void_answers_are_asked_again_and_counted"
           ],
-          "hash": "63c98780560e73416cd2d550ff5cf202aef93b37e1149385c89ac223be7fab7e",
+          "hash": "40d2811b7a56efcb39f312d44061aafd0f44e295e37e78a1f7cb6f62691c664f",
           "importsFiles": [
             "src/role_set/critic_control.py",
             "src/role_set/gates.py"
@@ -6319,12 +6388,12 @@
             "test_only_a_barring_clause_refuses_a_model",
             "test_partitions",
             "test_terms_shape_name_cloud_and_duplicates_are_refused",
-            "test_the_committed_list_is_proven_and_drops_the_apache_only_entries",
+            "test_the_committed_list_records_its_terms_and_its_pins",
             "test_the_list_loads_with_every_proof_and_hashes_itself",
             "test_the_llama_server_binary_is_pinned",
             "test_the_machine_line"
           ],
-          "hash": "332b4d086da217dd3fe6407d0ccf4bd215e20a290fa6a0c0e0148dcb254c34b5",
+          "hash": "fd8257d0b9a6411eba867d1b80b63bbaca255db0f73423723421fd3bc1386888",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/proven.py",
@@ -7191,34 +7260,10 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "1ac66e85a526db331788638ab33363eb47f3a01d",
+    "commit": "390e7778e97b866ecca0d7e2e62a98870d8a414f",
     "tracked": 166
   },
   "landings": [
-    {
-      "readers": [
-        {
-          "by": "tests/test_assemble.py",
-          "call": "literal",
-          "confidence": "ast",
-          "fromTests": true
-        },
-        {
-          "by": "tests/test_harvest_exemplars.py",
-          "call": "literal",
-          "confidence": "ast",
-          "fromTests": true
-        },
-        {
-          "by": "tests/test_write.py",
-          "call": "literal",
-          "confidence": "ast",
-          "fromTests": true
-        }
-      ],
-      "target": "CHANGELOG.md",
-      "writers": []
-    },
     {
       "readers": [
         {
