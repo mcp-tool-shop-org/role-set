@@ -29,10 +29,12 @@ on:
       - "roles/**"
       - "docs/**"
       - "atlas/**"
+      - "scripts/**"
       - "codecov.yml"
       - ".github/workflows/**"
+  # Every pull request, whatever its base: stacked PRs (#88, #89) never ran CI under a main-only filter (R&D,
+  # 2026-10-17), and a required check runs on every PR (github-actions rule, amended 2026-09-30).
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
