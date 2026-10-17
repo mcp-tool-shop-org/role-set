@@ -1,0 +1,203 @@
+{
+  "_note": "J2 per-candidate sampling and chat_template_kwargs (DESIGN.md amendment C, F3), read by R&D on 2026-10-17 from each maker's card and chat template at the revision named. Every key is a llama-server /v1/chat/completions field at 620d2225 (tools/server/server-task.cpp). Keys the card doesn't name are set to their disabled value, never left at llama-server's defaults (top_k 40, min_p 0.05, common.h). The revision must be the one the GGUF was converted from; if it differs, R&D re-reads the card there.",
+  "read_date": "2026-10-17",
+  "harness_rules": [
+    "thinking on for every candidate that has a thinking mode, at the card's recommended effort or the template's default inside the card's recommended range",
+    "where the card leaves a range or names no value, the template's default inside that range"
+  ],
+  "open_questions": {
+    "Q1": "R1-Distill's card says to use no system prompt and to put every instruction in the user turn. Aider sends a system prompt. Proposal: for this candidate only, the proxy folds the system message into the first user turn, and records that on every generations.jsonl line. Approved by the maintainer 2026-10-17; DESIGN.md amendment D2, pending Argon.",
+    "Q2": "Qwen3.8's template keeps earlier turns' thinking by default, but the proxy strips reasoning_content from Aider's replies, so the history never carries it. Proposal: for a candidate whose template preserves thinking by default, the proxy re-attaches the logged reasoning_content to the matching earlier assistant turn (matched by content sha256), and records that it did. Approved by the maintainer 2026-10-17; DESIGN.md amendment D2, pending Argon."
+  },
+  "candidates": [
+    {
+      "candidate": "qwen3.8-27b",
+      "repo": "Qwen/Qwen3.8-27B",
+      "revision": "1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+      "card_sha256": "57e4bdb258ee1a7d2635c5174ebd4e56abe392505cdb5f8bbb356b0dc4293641",
+      "template_from": "Qwen/Qwen3.8-27B@1d4bf0f2ff6012fd82039f2fa52739d0dd7c60c0",
+      "template_sha256": "c3cf9e34abf4f9e36c2d72165aa9c132d3e2a725b6c2586aaa3a8af9d7a81041",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 20,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true,
+        "preserve_thinking": true,
+        "reasoning_effort": "xhigh"
+      },
+      "card_section": "API Usage: the thinking-mode sampling tip; reasoning_effort; preserve_thinking",
+      "notes": "All three kwargs are the template's defaults, pinned explicitly. preserve_thinking only has an effect if the history carries the thinking: see open question Q2.",
+      "transforms": [
+        "reattach_thinking"
+      ],
+      "reattach_max_turns": null
+    },
+    {
+      "candidate": "qwen3.6-35b-a3b",
+      "repo": "Qwen/Qwen3.6-35B-A3B",
+      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "card_sha256": "c4ddaa065649ff6352648f64747a16eda31726f3e34add94ce04abb461c77b75",
+      "template_from": "Qwen/Qwen3.6-35B-A3B@995ad96eacd98c81ed38be0c5b274b04031597b0",
+      "template_sha256": "e84f32a23fdda27689f868aa4a1a5621f41133e51a48d7f3efcbea2839574259",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 20,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 0.6,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "Best practices: thinking mode for precise coding tasks",
+      "notes": "The card gives a separate thinking-mode set for precise coding (temperature 0.6, presence 0.0); bug fixing is that. Its SWE-bench footnote used temperature 1.0 in a benchmark scaffold, not as a recommendation. preserve_thinking defaults off in this template and is left off.",
+      "transforms": []
+    },
+    {
+      "candidate": "granite-4.2-30b",
+      "repo": "ibm-granite/granite-4.2-30b",
+      "revision": "9e668ce1c538387ef24d3644e9b0606647762636",
+      "card_sha256": "10d0e2b083c888814dc92a6308ca34d1c6fe01f344b54ff54905a8cbe5a80b06",
+      "template_from": "ibm-granite/granite-4.2-30b@9e668ce1c538387ef24d3644e9b0606647762636",
+      "template_sha256": "f0ba43f79b3cabca5e5a7584c77aec92f49feae45cdf7779c87d9fc54cd90258",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "Recommended settings (temperature and top_p for all tasks); Thinking Modes",
+      "notes": "The card names only temperature and top_p, so top_k and min_p are disabled, not left at llama-server's defaults (40, 0.05). Thinking (the default) at full effort, not low_effort.",
+      "transforms": []
+    },
+    {
+      "candidate": "gemma-4-31b-it",
+      "repo": "google/gemma-4-31B-it",
+      "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "card_sha256": "e209f5c435b1e66055bd6d7c29185103ae8d2027a03a96b359335154f206b82b",
+      "template_from": "google/gemma-4-31B-it@842da3794eaa0b77d5f08bae87a17459d91ff475",
+      "template_sha256": "ae53464bf3be25802b3a5b37def7fd89667067d7577049b3b2d74c4d8de4c6d4",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 64,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "1. Sampling Parameters; 2. Thinking Mode Configuration; 3. Multi-Turn Conversations",
+      "notes": "This template defaults enable_thinking to false; it is set true under the harness rule (thinking on for every candidate). The card says history keeps no thinking, which the proxy's stripping already gives. Gemma's prohibited-use policy was checked (F14): eligible.",
+      "transforms": []
+    },
+    {
+      "candidate": "muse-glimmer-30b",
+      "repo": "meta-models/Muse-Glimmer-30B",
+      "revision": "a4e59da52a7bc87ae7251dd5545c0dd437c44b68",
+      "card_sha256": "5894e358c58f4f8425645a5b0b890468ecb3e6b049c2e941648db077c4b7df58",
+      "template_from": "meta-models/Muse-Glimmer-30B@a4e59da52a7bc87ae7251dd5545c0dd437c44b68",
+      "template_sha256": "cfc67e5f349f37690dfd31ed1f18bc4442a9dd32fe39a648f993cb4eb3cae678",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 64,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "reasoning_strength": "high"
+      },
+      "card_section": "Best Practices: Sampling Parameters; Reasoning Strength",
+      "notes": "The card says high or xhigh for coding and agentic tasks. The template writes 'Reasoning strength: <value>' into the system prompt itself and defaults to high. Pinned at high: the template default, inside the card's range.",
+      "transforms": []
+    },
+    {
+      "candidate": "nemotron-3.5-lightning-30b-a3b",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16",
+      "revision": "a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+      "card_sha256": "5d9d96d2f2b154d72625d39628a011e39e0477ffb99e45967eefe4cfd269b928",
+      "template_from": "nvidia/NVIDIA-Nemotron-3.5-Lightning-30B-A3B-BF16@a9904d24bcc1d289a1950fa9d2b978c47cf903b9",
+      "template_sha256": "58933db77d3099b4f78c55a38347a72e1ea05b97d6bd8f38775303dc0194e0a9",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "Model overview: Recommended Sampling; the OpenAI-client examples",
+      "notes": "The card's coding-agent note adds force_nonempty_content for tool calls. This template at this revision never reads it, and Aider's diff format uses no tools, so it is not injected. top_k and min_p disabled.",
+      "transforms": []
+    },
+    {
+      "candidate": "nemotron-3.5-bolt-74b-a9b-24gb",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
+      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246",
+      "card_sha256": "8c5102a8534013ae4721932ded6fe937217ab0ca32476799a16bebd70e1a0d07",
+      "template_from": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB@c6cc2e8ffa353403213d6b9b18aaf8eb684d705a",
+      "template_sha256": "6521afc75afb0661e3558e7e6dee5f2d15de8be1c4dece8171935e778ea283f4",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "Model overview: Recommended Sampling (text); the reasoning-mode example",
+      "notes": "NVIDIA's own GGUF: the template that runs is the one embedded in the GGUF. The source repo's template is recorded for comparison, and the preflight checks that the two agree. Full effort (medium_effort false). top_k and min_p disabled.",
+      "transforms": []
+    },
+    {
+      "candidate": "deepseek-r1-distill-qwen-32b",
+      "repo": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
+      "revision": "711ad2ea6aa40cfca18895e8aca02ab92df1a746",
+      "card_sha256": "d26d26ddb518fee60c6c6bf7a708bd751b1619d93a4944f188143693d956c77f",
+      "template_from": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B@711ad2ea6aa40cfca18895e8aca02ab92df1a746",
+      "template_sha256": "c6ef4710746d7160622949eabcf9235018ed02f7ab4da6b97b47aa82f218abc8",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 0.6,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {},
+      "card_section": "Usage Recommendations 1 and 2, and the forced think opening",
+      "notes": "The template already opens every reply with the think tag, as the card asks. The card also says to use no system prompt, and Aider sends one: see open question Q1. top_k and min_p disabled.",
+      "transforms": [
+        "fold_system"
+      ]
+    }
+  ],
+  "proxy_rules": {
+    "aider_model_settings": {
+      "examples_as_sys_msg": true
+    },
+    "reattach_thinking": "map content sha256 -> list of reasoning (first in, first out); stripped-content fallback; a turn equal to one of Aider's fixed acknowledgements at the pinned version is counted 'synthetic', any other unmatched turn 'mismatch'; reattach_max_turns (null = all) set only if E3's run requires it",
+    "fold_system": "leading system messages to the head of the first user turn; later ones to the tail of the preceding user turn; assert none reach the model",
+    "preflight_thinking": "non-empty reasoning_content and no <think> or <|channel>thought tag in content, for every thinking candidate"
+  }
+}
