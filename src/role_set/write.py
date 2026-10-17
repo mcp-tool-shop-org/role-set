@@ -387,10 +387,12 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
 
 def _leave_state(cfg: WriteConfig, prior, runner, slots, *, halted) -> str | None:
     """The exclusion state this batch leaves behind, written beside its rows once the batch is done (inline: at the
-    end of the run; waves: in the wave that leaves nothing pending). A systemic halt leaves none; a rerun starts from
-    the earlier state."""
+    end of the run; waves: in the wave that leaves nothing pending), and only when its batch check is clean. Otherwise
+    it leaves none, and the next batch starts from the earlier state."""
 
-    if halted or not getattr(runner, "accepted", None):
+    # Only a batch whose batch check came back clean enters the state (R&D on #75): a refused batch, or one with
+    # halted cells (whose batch check doesn't run), leaves its rows out, so they can't steer later batches.
+    if halted or not getattr(runner, "accepted", None) or getattr(runner, "batch_check", None) != "clean":
         return None
     batch_id = runner.pins.get("plan_sha256", "")[:16]
     new = exclusion.with_batch(prior, batch_id, runner.accepted, runner.models, slots)

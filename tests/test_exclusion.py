@@ -125,3 +125,18 @@ def test_every_wave_of_a_batch_uses_the_same_state(domain_table: Path, pack_dir:
     done = run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "w1", mock=True, wave="critique", drafts=drafts))
     # The wave that leaves nothing pending writes the batch's state.
     assert done["exclusion_state"] and len(exclusion.load(tmp_path / "w1" / "mock" / exclusion.FILE).rows) == 40
+
+
+def test_only_a_clean_batch_enters_the_state(domain_table: Path, pack_dir: Path, tmp_path: Path, monkeypatch):
+    from functools import partial
+
+    import role_set.write as w
+    from role_set.mock import MockCritic
+
+    # The critic refuses every verdict: C, D and verdict E cells halt, so the batch check never runs clean.
+    monkeypatch.setattr(w, "MockCritic", partial(MockCritic, disagree_all=True))
+    plan1 = _plan(tmp_path, domain_table, "T02", 3)
+    result = run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "o", mock=True))
+    assert result["accepted"] > 0 and result["batch_check"] != "clean"
+    assert result["exclusion_state"] is None and not (tmp_path / "o" / "mock" / exclusion.FILE).exists()
+
