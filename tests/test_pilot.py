@@ -10,7 +10,7 @@ from role_set import solvefirst, waves
 from role_set.cli import main
 from role_set.pack import PackManifest, pack_hash
 from role_set.plan import Slot
-from role_set.runner import LOOKUP_CAP, lookup_cap
+from role_set.runner import LOOKUP_CAP, LOOKUP_FULL, LOOKUP_NONE, lookup_cap, lookup_full
 from role_set.write import WriteConfig, WriteRefused, build
 
 FILES = {"role.md": "# L\n\nr\n", "traits/T02.md": "## 2. As a verifier, you go to the source\n\nThe source decides.\n",
@@ -87,6 +87,8 @@ def test_a_solve_first_slot_takes_no_lookup():
     locked = Slot(id="T02-B-01", lesson="T02", kind="B", side="x", tier=1, b_path="solve_first")
     free = Slot(id="T02-B-06", lesson="T02", kind="B", side="x", tier=1, b_path="freehand")
     assert lookup_cap(locked) == 0 and lookup_cap(free) == LOOKUP_CAP
+    # The refusal says why: a locked puzzle takes no lookup, not "this lesson already has its one".
+    assert lookup_full(locked) == LOOKUP_NONE and lookup_full(free) == LOOKUP_FULL
 
 
 def test_a_rewrite_sees_the_spent_list_as_it_stands():
@@ -129,28 +131,15 @@ def test_a_mock_pilot_runs_in_waves_then_its_twins_and_leaves_no_state(pilot_pla
     assert result["slots"] == 20 and result["accepted"] > 0
     twins_plan = tmp_path / "twins.json"
     assert main(["plan", "--pilot-twins", "--seed", "7", "--out", str(twins_plan), "--domains", str(domain_table)]) == 0
-    twins, _ = cycle(twins_plan, "t", training=(last / "accepted.jsonl",))
-    assert twins["slots"] == 4
+    twins, twin_dir = cycle(twins_plan, "t", training=(last / "accepted.jsonl",))
+    # The defect this batch exists for dropped all four twins (aspire-si#165): every twin is accepted, under the real
+    # gates, and each carries its silent flag (R&D on #82).
+    from role_set.gates import load_gates
 
-
-def test_a_mock_pilot_runs_in_waves_and_leaves_no_state(pilot_plan: Path, pack_dir: Path, tmp_path: Path):
-    """The 20-slot pilot alone, through the three-wave cycle on the mock: every slot reaches a final state, and a
-    pilot never enters the exclusion state."""
-
-    from role_set.write import run
-
-    def cfg(out, **kw):
-        return WriteConfig(plan=pilot_plan, pack=pack_dir, out=tmp_path / out, mock=True, partition="trial:j1-wave1", **kw)
-
-    result = run(cfg("w0", wave="write"))
-    last = tmp_path / "w0" / "mock"
-    for i in range(1, 7):
-        result = run(cfg(f"w{i}", wave="critique" if i % 2 else "rewrite", drafts=last / waves.DRAFTS_FILE))
-        last = tmp_path / f"w{i}" / "mock"
-        if not result["states"]["awaiting_critique"] and not result["states"]["needs_rewrite"]:
-            break
-    assert result["states"]["awaiting_critique"] == result["states"]["needs_rewrite"] == 0
-    assert result["slots"] == 20 and result["accepted"] > 0 and result["exclusion_state"] is None
+    load_gates()  # raises GatesUnavailable if the run fell back to the permissive stand-in
+    assert twins["slots"] == 4 and twins["accepted"] == 4
+    rows = [json.loads(line) for line in (twin_dir / "accepted.jsonl").read_text(encoding="utf-8").splitlines() if line]
+    assert len(rows) == 4 and all(r["silent_without_deciding"] is True for r in rows)
 
 
 def test_an_apply_brief_asks_for_its_twin_flag():

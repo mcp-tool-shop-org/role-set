@@ -304,7 +304,9 @@ def plan_pilot(sides: dict[str, tuple[str, str]], *, seed: int, solve_first: tup
     for kind in ("C", "D"):
         pool = [s for s in by_kind[kind] if s.pair is None]
         if kind == "D":
-            two = next(s for s in pool if s.two_turn)
+            two = next((s for s in pool if s.two_turn), None)
+            if two is None:
+                raise PlanError("the pilot needs a two-turn D slot; the lesson plan has none outside a pair")
             pool = [two] + [s for s in pool if s is not two and not s.two_turn]
         # Spread the verdicts: one of each first, then the rest in plan order.
         mix: list[Slot] = []

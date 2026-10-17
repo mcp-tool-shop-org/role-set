@@ -45,6 +45,13 @@ LOOKUP_CAP_SOLVE_FIRST = 0
 def lookup_cap(slot) -> int:
     return LOOKUP_CAP_SOLVE_FIRST if getattr(slot, "b_path", None) == "solve_first" else LOOKUP_CAP
 LOOKUP_FULL = "the asked answer follows from direct facts alone, a lookup, and this lesson already has its one; make the answer need elimination"
+LOOKUP_NONE = "the asked answer follows from direct facts alone, a lookup, and a solve-first puzzle takes none; make the answer need elimination"
+
+
+def lookup_full(slot) -> str:
+    return LOOKUP_NONE if lookup_cap(slot) == 0 else LOOKUP_FULL
+
+
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
 ANDON_CELL_DROPS = 3  # ends that (lesson, kind) cell; the lesson's other kinds and the run go on
@@ -816,7 +823,7 @@ class Runner:
                 if early:
                     refusal = self._refusal("ANSWER_EARLY", early)
             if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= lookup_cap(slot):
-                refusal = self._refusal("PUZZLE", LOOKUP_FULL)
+                refusal = self._refusal("PUZZLE", lookup_full(slot))
             # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
             if refusal is None and self.stuck is not None:
                 measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
@@ -912,7 +919,7 @@ class Runner:
                 return self._refusal("REPLY_OPENING", stamp)
             if cand.lookup and self.lookups.get(slot.lesson, 0) >= lookup_cap(slot):
                 # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
-                return self._refusal("PUZZLE", LOOKUP_FULL)
+                return self._refusal("PUZZLE", lookup_full(slot))
             if slot.kind == "B":
                 self.models[row["id"]] = fields["model"]
             self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs)
