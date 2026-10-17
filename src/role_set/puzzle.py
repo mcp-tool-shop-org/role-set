@@ -332,7 +332,7 @@ def fact_lines(puzzle: str) -> tuple[dict[int, str], str]:
     return out
 
 
-def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
+def check_text(m: Model, puzzle: str, *, strict: bool = False) -> tuple[dict[int, str], str]:
     """Every way the model and the text disagree, in one refusal: the 8B rehearsal spent all three attempts fixing one
     reported problem per retry."""
 
@@ -380,6 +380,19 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
             missing = [x for x in rule_names(rule) if not _named(x, line)]
             if missing:
                 problems.append(f"line {n}'s rule uses {missing[0]!r}, which line {n} doesn't name; a rule encodes only its own line")
+        # And the line says no more than its rules (Argon §9.4 #11): a name the rules don't use is a fact the model
+        # doesn't hold ("Ama is in the west room, not the east room" encoded as is_not east alone).
+        used = {x.lower() for r in rules for x in rule_names(r)}
+        extra = [] if not strict else [x for x in [*m.entities, *(v for a in m.attrs.values() for v in a["values"])]
+                 if str(x).lower() not in used and _named(str(x), line)
+                 and not any(str(x).lower() in u and _named(u, line) for u in used)]
+        if extra:
+            problems.append(f"line {n} names {extra[0]!r}, which its rule doesn't use; the line states a fact the model "
+                            "doesn't hold, so encode it or drop the name")
+        for r in rules if strict else []:
+            why = _not_in_negated(r, line)
+            if why:
+                problems.append(f"line {n}: {why}")
         neg_line = NEGATION.search(line) is not None
         neg_rule = any(f in NEGATIVE for r in rules for f in _forms(r))
         if neg_line != neg_rule:
@@ -409,6 +422,12 @@ def check_text(m: Model, puzzle: str) -> tuple[dict[int, str], str]:
             problems.append(f"the claim uses {missing[0]!r}, which the Question line doesn't name")
     # A question the model doesn't ask: the model solved "the fee of edition 7" while the text asked the fee on a date,
     # which the month lines settled with no edition line at all (R&D and the Specialist on aspire-si#106, T12-B-01..05).
+    if strict and m.asks and "entity_with" in m.asks:
+        # The question names the value it asks after (Argon §9.4 #11): "Who has intake?", not "Who is it?".
+        (_a, ew_value), = m.asks["entity_with"].items()
+        if not _named(str(ew_value), question):
+            problems.append(f"the model asks who has {ew_value!r}, and the Question line doesn't name it; ask the question "
+                            "the model solves")
     if m.asks and "of" in m.asks and not _named(str(m.asks["of"]), question):
         problems.append(f"the model asks about {m.asks['of']!r}, and the Question line doesn't name it; ask the question "
                         "the model solves")
@@ -440,9 +459,41 @@ def _first(line: str, names: list[str]) -> int:
     return min(pos) if pos else -1
 
 
+NOT_IN_JOINER = re.compile(r"^[\s,]*(?:or|,)?\s*(?:the\s+|a\s+|an\s+)?$", re.IGNORECASE)
+
+
+def _not_in_negated(rule, line: str) -> str | None:
+    """A not_in line rules out every listed value (Argon §9.4 #11): 'neither A nor B', or 'not A or B', never 'A, not
+    B', which states A."""
+
+    if rule[0] != "not_in":
+        return None
+    spots = []
+    for v in rule[3]:
+        hit = re.search(r"(?<!\w)" + re.escape(str(v)) + r"(?!\w)", line, re.IGNORECASE)
+        if hit:
+            spots.append((hit.start(), hit.end(), str(v)))
+    spots.sort()
+    prev = 0
+    for i, (start, end, v) in enumerate(spots):
+        gap = line[prev:start]
+        if not NEGATION.search(gap) and not (i > 0 and NOT_IN_JOINER.match(gap)):
+            return f"{v!r} isn't ruled out; a 'neither' or 'not' line rules out every value it lists ('neither A nor B')"
+        prev = end
+    return None
+
+
 def _check_direction(n: int, line: str, rules: list) -> None:
     before, after = BEFORE_WORDS.search(line), AFTER_WORDS.search(line)
-    if bool(before) == bool(after):
+    if before and after:
+        # Both words on one line read only when the line holds both rules, a 'between' (Argon §9.4 #11);
+        # otherwise the direction is unchecked, so refuse.
+        forms = {r[0] for rule in rules for r in _ordered_rules(rule)}
+        if not {"before", "after"} <= forms:
+            raise PuzzleError(f"line {n} says both '{before.group(0)}' and '{after.group(0)}'; an order line uses one "
+                              "direction word unless it states both a before and an after rule")
+        return
+    if not before and not after:
         return
     want = "before" if before else "after"
     ordered = [r for rule in rules for r in _ordered_rules(rule)]
@@ -759,13 +810,15 @@ def _same(a: str, b: str) -> bool:
     return ca is not None and cb is not None and same_answer(ca, cb)
 
 
-def check_puzzle(fields: dict, structure: str | None) -> Checked:
-    """Shape, text, solver, key and reply, in that order; the first failure is the refusal."""
+def check_puzzle(fields: dict, structure: str | None, *, strict: bool = False) -> Checked:
+    """Shape, text, solver, key and reply, in that order; the first failure is the refusal. `strict` is the solve-first
+    path (Argon §9.4 #11): the model is locked, so a fact line names nothing its rule doesn't use, a not_in line rules
+    out every value, and an entity_with question names its value. A freehand writer encodes its own lines."""
 
     m = parse_model(fields.get("model"))
     if structure in VERDICT_STRUCTURES and m.claim is None and structure != "when_to_stop":
         raise PuzzleError(f"a {structure.replace('_', ' ')} puzzle is keyed by a verdict: give model.claim, the rule the question asks about")
-    _, question = check_text(m, str(fields.get("puzzle") or ""))
+    _, question = check_text(m, str(fields.get("puzzle") or ""), strict=strict)
     got = solve(m, structure, question)
     key = str(fields.get("answer") or "").strip()
     if structure == "underdetermined_with_explicit_set":

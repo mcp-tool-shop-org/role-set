@@ -28,6 +28,19 @@ All notable changes to role-set are documented here. The format is based on
 ### Changed
 
 - **`tree_with_pruning` draws order and neighbour facts** (`before`, `after`, `adjacent`, `not_adjacent`), from Argon's BUILD-SPEC §9.4 review, finding 9. Before/after alone folded to 3 distinct gate skeletons in 84 seeds, too few for the cumulative skeleton floor across the regeneration. It now gives 70 of 84, at most 5 tries (it was 100 or more). No fact of any form names both claim entities. Only 1 of the 70 matches a `scheduling_with_exclusions` skeleton. Every count uses `puzzle_check.skeleton`, the gates' function. #73's 36 of 84 came from an earlier generator state and can't be reproduced on main. A new test runs the floor over 11 batches with the counts carried forward (about 22 uses per structure, B4's cumulative count).
+- **Text checks tightened, from Argon's BUILD-SPEC §9.4 review, findings 11–13.**
+  - **Solve-first puzzles are checked strictly** (`check_puzzle(..., strict=True)` when the model is locked):
+    - a fact line names no entity or value its rule doesn't use;
+    - a `not_in` line rules out every value it lists ("neither A nor B", or "not A or B", never "A, not B");
+    - an `entity_with` question names the value it asks after.
+    
+    Freehand B keeps its rules: there the writer encodes its own lines, and complementary values such as "the rest are empty" are legitimate.
+  - **Both direction words on one line** ("earlier … after") are refused unless the line holds both a before and an after rule, for every B item.
+  - **`ANSWER_EARLY` reads clause by clause.** A negation rules out only its own clause, so "X is not A, so X is B" up front is refused. A clause that still names a rival answer ("A or B", "whether Ama or Bodil") is weighing candidates and passes.
+  - **`line_question` points at no line:**
+    - no ordinal or position ("the first line", "the last item");
+    - no three-word run from the material that carries a content word;
+    - no two of the material's content words.
 - **Gates pinned to aspire-si-gates 1.7.3** (aspire-si 96acdaa), from 1.7.2. Leakage compares the statement field as well as the user turn, and a STaR row refuses think tags.
 - **T09 apply slots draw only unordered content kinds.** `plan --apply` no longer assigns a changelog or a timetable to T09. Those kinds have a line order that carries meaning, and assembly refuses `order_free: true` on them.
 - **The T10 record's hash** moves with those plan and assembly edits. Regenerating the record left all 1,280 builds unchanged.

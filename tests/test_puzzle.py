@@ -4,7 +4,7 @@ import copy
 
 import pytest
 
-from role_set.puzzle import SEARCH_CAP, PuzzleError, check_puzzle, fact_lines, holds, parse_model, rule_names
+from role_set.puzzle import SEARCH_CAP, PuzzleError, _check_direction, check_puzzle, check_text, fact_lines, holds, parse_model, rule_names
 
 GRID = """1. Three friends, Ana, Ben and Cy, each ordered one dish: soup, salad or pasta.
 2. Ben ordered salad.
@@ -595,3 +595,56 @@ def test_t03_b06_an_if_on_a_stated_before_is_a_lookup():
                                {"line": 3, "rule": ["before", "the early session", "the late session", "slot"]}],
                      "flavour": [1], "asks": {"attribute": "rate", "of": "the early session"}})
     assert solve(m, "scheduling_with_exclusions", "").lookup is True
+
+
+def _grid_model(rule, question="Question: Which room does Ama have?", asks=None):
+    return {
+        "entities": ["Ama", "Bodil", "Cato"],
+        "attributes": {"room": {"values": ["the east room", "the west room", "the quiet room"]}},
+        "facts": [{"line": 2, "rule": rule}],
+        "flavour": [1],
+        "asks": asks or {"attribute": "room", "of": "Ama"},
+    }, question
+
+
+def _text_problems(model, puzzle):
+    try:
+        check_text(parse_model(model), puzzle, strict=True)
+    except PuzzleError as e:
+        return str(e)
+    return ""
+
+
+def test_a_fact_line_says_no_more_than_its_rule():
+    """Argon §9.4 #11: a name on the line that the rule doesn't use is a fact the model doesn't hold."""
+
+    model, q = _grid_model(["is_not", "Ama", "room", "the east room"])
+    setting = "1. Ama, Bodil and Cato each have one room: the east room, the west room and the quiet room"
+    bad = f"{setting}\n2. Ama is in the west room, not the east room\n{q}"
+    assert "names 'the west room', which its rule doesn't use" in _text_problems(model, bad)
+    good = f"{setting}\n2. Ama is not in the east room\n{q}"
+    assert "which its rule doesn't use" not in _text_problems(model, good)
+
+
+def test_a_not_in_line_rules_out_every_value():
+    model, q = _grid_model(["not_in", "Ama", "room", ["the east room", "the west room"]])
+    setting = "1. Ama, Bodil and Cato each have one room: the east room, the west room and the quiet room"
+    partial = f"{setting}\n2. Ama's room is the east room, not the west room\n{q}"
+    assert "isn't ruled out" in _text_problems(model, partial)
+    for ok in ("Ama's room is neither the east room nor the west room", "Ama's room is not the east room or the west room"):
+        assert "isn't ruled out" not in _text_problems(model, f"{setting}\n2. {ok}\n{q}")
+
+
+def test_both_direction_words_on_one_line_need_both_rules():
+    with pytest.raises(PuzzleError, match="says both"):
+        _check_direction(1, "Earlier today, Ama was seen after Bodil", [["after", "Ama", "Bodil", "slot"]])
+    _check_direction(1, "Ama comes after Bodil and before Cato", [["and", ["after", "Ama", "Bodil", "slot"], ["before", "Ama", "Cato", "slot"]]])
+
+
+def test_an_entity_with_question_names_its_value():
+    model, _ = _grid_model(["is_not", "Ama", "room", "the east room"], asks={"entity_with": {"room": "the quiet room"}})
+    setting = "1. Ama, Bodil and Cato each have one room: the east room, the west room and the quiet room"
+    vague = f"{setting}\n2. Ama is not in the east room\nQuestion: Who is it?"
+    assert "asks who has 'the quiet room'" in _text_problems(model, vague)
+    named = f"{setting}\n2. Ama is not in the east room\nQuestion: Who has the quiet room?"
+    assert "asks who has" not in _text_problems(model, named)

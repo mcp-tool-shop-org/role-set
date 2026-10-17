@@ -24,6 +24,15 @@ FRAMES = {
 }
 FRAMED_KINDS = ("C", "D")  # and verdict-type E
 NGRAM = 4
+# line_question points at no line (Argon §9.4 #13): no ordinal or position ("the first line", "the last item"), no run
+# of three words from the material that carries a content word, and no two of the material's content words.
+POINTER = re.compile(r"\b(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|last|final|opening|closing|top|"
+                     r"bottom|middle|penultimate|next-to-last)\s+(line|item|row|rule|clause|entry|sentence|point)s?\b", re.IGNORECASE)
+LQ_NGRAM = 3
+LQ_SHARED_WORDS = 2
+STOP = frozenset("""a an the of to in on at for from by with as is are was were be been it its this that these those which what
+who whom whose where when how does do did can could would should will shall may might must and or but if not no line lines
+material statement notice settle settles settled decide decides decided here there one any some each part""".split())
 
 
 def framed(kind: str, e_type: str | None) -> bool:
@@ -42,9 +51,20 @@ def sentences(text: str) -> list[str]:
     return [p for p in parts if p.strip()]
 
 
-def _grams(text: str) -> set[tuple[str, ...]]:
+def _grams(text: str, n: int = NGRAM) -> set[tuple[str, ...]]:
     words = re.findall(r"[a-z0-9']+", text.lower())
-    return {tuple(words[i:i + NGRAM]) for i in range(len(words) - NGRAM + 1)}
+    return {tuple(words[i:i + n]) for i in range(len(words) - n + 1)}
+
+
+def _stem(word: str) -> str:
+    for end in ("ing", "ed", "es", "s"):
+        if word.endswith(end) and len(word) - len(end) >= 3:
+            return word[: -len(end)]
+    return word
+
+
+def _content(text: str) -> set[str]:
+    return {_stem(w) for w in re.findall(r"[a-z0-9']+", text.lower()) if w not in STOP and len(w) > 2}
 
 
 def check_frame(frame: str, user: str, material: str) -> str | None:
@@ -72,9 +92,15 @@ def check_frame(frame: str, user: str, material: str) -> str | None:
             return "frame line_question asks which line decides, ending with a question mark"
         if re.search(r"\d", text):
             return "frame line_question names no line: the framing holds a digit"
-        shared = _grams(text) & _grams(material)
+        hit = POINTER.search(text)
+        if hit:
+            return f"frame line_question names no line: '{hit.group(0)}' points at one"
+        shared = sorted(g for g in _grams(text, LQ_NGRAM) & _grams(material, LQ_NGRAM) if any(w not in STOP for w in g))
         if shared:
-            return "frame line_question doesn't point at the answer: the framing repeats '" + " ".join(sorted(shared)[0]) + "' from the material"
+            return "frame line_question doesn't point at the answer: the framing repeats '" + " ".join(shared[0]) + "' from the material"
+        common = sorted(_content(text) & _content(material))
+        if len(common) >= LQ_SHARED_WORDS:
+            return "frame line_question doesn't point at the answer: the framing uses the material's words " + ", ".join(repr(w) for w in common[:3])
     return None
 
 

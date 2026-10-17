@@ -792,7 +792,7 @@ class Runner:
         if refusal is None and slot.kind == "B":
             # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
             try:
-                lookup = check_puzzle(fields, slot.structure).lookup
+                lookup = check_puzzle(fields, slot.structure, strict=locked is not None).lookup
             except PuzzleError as e:
                 refusal = self._refusal("PUZZLE", str(e))
             if refusal is None and locked is not None:

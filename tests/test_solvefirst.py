@@ -45,7 +45,7 @@ def test_the_mock_rendering_passes_the_unchanged_puzzle_check():
     for structure in solvefirst.SOLVE_FIRST:
         locked = solvefirst.generate(structure, PACKS["clinic-rota"], 7)
         fields = {**solvefirst.render_for_mock(locked), "model": locked.model, "answer": locked.key}
-        assert check_puzzle(fields, structure).answer == locked.key
+        assert check_puzzle(fields, structure, strict=True).answer == locked.key
         assert solvefirst.answer_early(locked, fields["thinking"]) is None
 
 
@@ -262,3 +262,31 @@ def test_the_floor_holds_across_the_whole_regeneration(domain_table: Path):
         c = prior[structure]
         assert sum(c.values()) >= 21, (structure, sum(c.values()))
         assert len(c) >= solvefirst.SKELETON_DISTINCT_SHARE * sum(c.values()) and max(c.values()) <= solvefirst.SKELETON_USES_MAX
+def test_answer_early_reads_clauses_and_lets_candidate_lists_through():
+    """Argon §9.4 #12: a negation covers only its own clause, and a clause still naming a rival answer is weighing
+    candidates, not stating one."""
+
+    locked = solvefirst.generate("scheduling_with_exclusions", PACKS["clinic-rota"], 11)
+    attr = locked.model["asks"]["attribute"]
+    rival = next(v for v in locked.model["attributes"][attr]["values"] if v != locked.key)
+    facts = [f["line"] for f in locked.model["facts"]]
+    cites = " ".join(f"Then line {n} applies." for n in facts)
+    pad = " Working through it step by step." * 6
+    tail = f" So {locked.subject} has {locked.key}."
+    # "Not A, so B" up front states B: refused.
+    sneaky = f"{locked.subject} does not have {rival}, so {locked.subject} has {locked.key}. {cites}{pad}{tail}"
+    assert "before its final third" in solvefirst.answer_early(locked, sneaky)
+    # Open candidates up front are fine.
+    listing = f"From the setting, {locked.subject} has {locked.key} or {rival}. {cites}{pad}{tail}"
+    assert solvefirst.answer_early(locked, listing) is None
+    # A plain early pairing is still refused.
+    assert "before its final third" in solvefirst.answer_early(locked, f"{locked.subject} has {locked.key}. {cites}{pad}{tail}")
+
+
+def test_answer_early_lets_an_elimination_question_restatement_through():
+    locked = solvefirst.generate("elimination_from_a_set", PACKS["clinic-rota"], 5)
+    rival = next(e for e in locked.model["entities"] if e not in locked.keyed)
+    cites = " ".join(f"Line {f['line']} trims it." for f in locked.model["facts"])
+    text = (f"I check whether {locked.keyed[0]} or {rival} has {locked.subject}. {cites}"
+            + " Working through it step by step." * 6 + f" So {locked.keyed[0]} has {locked.subject}.")
+    assert solvefirst.answer_early(locked, text) is None

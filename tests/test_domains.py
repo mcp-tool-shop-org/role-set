@@ -146,6 +146,12 @@ def test_the_deck_spreads_codes_across_a_batch_and_refuses_a_lesson_it_cannot_fi
     ("line_question", "Which part settles the statement?", False),
     ("line_question", "Does line 3 settle the statement?", False),
     ("line_question", "Which line says the desk is open on Sundays?", False),
+    # Argon §9.4 #13: no ordinal or position, no three-word quote, no paraphrase in the material's words.
+    ("line_question", "Does the first line of the notice settle the statement?", False),
+    ("line_question", "Which line, the opening line or the last line, settles it?", False),
+    ("line_question", "Which line says the front office desk?", False),
+    ("line_question", "Which line shows when the desk opens?", False),
+    ("line_question", "Which line of the landlord's notice decides it?", True),
 ])
 def test_the_frame_gate(frame: str, framing: str, ok: bool):
     material = "Desk hours at the front office\nThe desk is open on Sundays from 10:00 to 14:00.\n"
