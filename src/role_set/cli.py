@@ -191,6 +191,8 @@ def _write(args: argparse.Namespace) -> int:
         partition=args.partition, machine=Path(args.machine) if args.machine else None,
         writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
         server_sha256=args.llama_server_sha256, wave=args.wave, drafts=Path(args.drafts) if args.drafts else None,
+        call_journal=Path(args.call_journal) if args.call_journal else None,
+        reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
     )
     try:
@@ -442,6 +444,10 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--exemplar-exclude", default=None, help="roles/<role>/exemplar-exclude.json: reviewed ids never shown as exemplars")
     w.add_argument("--stuck-repo", default=None, help="aspire-si checkout for the frozen stuck rule (default: --exemplar-repo)")
     w.add_argument("--stuck-commit", default=None, help="commit for the frozen stuck rule (default: --exemplar-commit)")
+    w.add_argument("--call-journal", default=None, help="where each finished writer and critic call is journaled "
+                                                         "(default: <run dir>/calls-journal.jsonl)")
+    w.add_argument("--reuse-calls", default=None, help="an earlier run's call journal: a resume replays its finished calls "
+                                                        "and asks the model only for the rest")
     w.add_argument("--stop-after-minutes", type=float, default=None, help="no new slot starts after this many minutes")
     w.add_argument("--closed-form", type=_closed_form_arg, default=None,
                    help="the gates' closed-form settings as JSON, e.g. '{\"carry\": \"either\"}'; unset takes the pinned gates' "

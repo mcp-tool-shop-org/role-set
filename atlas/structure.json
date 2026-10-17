@@ -165,6 +165,10 @@
           "path": ".python-version"
         },
         {
+          "hash": "6470d0ba9b39ee3e7a3c54003fe1e500158c8c59bf15256f41b44a2facd1fc01",
+          "path": "CHANGELOG.md"
+        },
+        {
           "hash": "4670c1c5e4f27c0c89c4949509d7705f9cccc516eab9c5a104b11562232b7458",
           "path": "CONTRIBUTORS.md"
         },
@@ -229,7 +233,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "64dc959a1e45a4d3b8a41bdb676dc346adaf1b357cba86fbde2d130bb72773a8",
+          "hash": "2ecbb9e325e7c6c10f6e00ff09be43c5ab236829f51d6732a8d9ffdb1a18f148",
           "path": "writers.json"
         }
       ],
@@ -244,128 +248,231 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 5,
+      "dynamicReads": 11,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
-      "dynamicWrites": 3,
+      "dynamicWrites": 6,
       "entryPoints": [],
       "externals": 0,
       "files": [
         {
           "exports": [
+            "all_on_gpu",
             "build",
+            "build_quantize",
+            "checkpoint",
+            "choose_quant",
             "converter_python",
+            "critic_control",
+            "critic_window",
+            "drop_snapshot",
             "fetch_model",
+            "funnel_stop",
+            "generations_summary",
             "hf_revision",
             "hf_token_ids",
+            "install_rnd",
+            "j1_card",
+            "log_tail",
             "machine_line",
             "main",
+            "pending",
+            "pilot_batch",
+            "pilot_window",
             "pin_libs",
+            "q6k_window",
+            "reference",
+            "resources",
+            "resume_from",
+            "role_set_env",
+            "run_dir",
             "runtime",
             "say",
             "sh",
             "sha256",
+            "slots",
             "smoke",
-            "tokenizer_check"
+            "start_server",
+            "stop_server",
+            "to_q6k",
+            "tokenize_all",
+            "tokenizer_check",
+            "wait_for_log",
+            "write_wave"
           ],
           "failurePaths": [
             {
               "in": "sh",
               "kind": "raise",
-              "line": 81
+              "line": 87
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 121
+              "line": 127
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 125
+              "line": 131
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 168
+              "line": 192
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 223
+              "line": 257
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 232
+              "line": 266
             },
             {
               "in": "smoke",
               "kind": "except",
-              "line": 238
+              "line": 272
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 241
+              "line": 275
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 307
+              "line": 362
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 344
+              "line": 399
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 393
+              "line": 449
             },
             {
-              "in": "runtime",
+              "in": "start_server",
               "kind": "raise",
-              "line": 421
+              "line": 483
             },
             {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 425
-            },
-            {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 432
-            },
-            {
-              "in": "main",
-              "kind": "raise",
-              "line": 464
-            },
-            {
-              "in": "main",
-              "kind": "except",
-              "line": 472
-            },
-            {
-              "in": "main",
+              "in": "start_server",
               "kind": "except",
               "line": 488
             },
             {
+              "in": "start_server",
+              "kind": "raise",
+              "line": 492
+            },
+            {
+              "in": "role_set_env",
+              "kind": "raise",
+              "line": 571
+            },
+            {
+              "in": "critic_window",
+              "kind": "except",
+              "line": 644
+            },
+            {
+              "in": "q6k_window",
+              "kind": "except",
+              "line": 689
+            },
+            {
+              "in": "__enter__",
+              "kind": "raise",
+              "line": 714
+            },
+            {
+              "in": "__enter__",
+              "kind": "raise",
+              "line": 722
+            },
+            {
+              "in": "install_rnd",
+              "kind": "raise",
+              "line": 739
+            },
+            {
+              "in": "write_wave",
+              "kind": "except",
+              "line": 810
+            },
+            {
+              "in": "to_q6k",
+              "kind": "raise",
+              "line": 925
+            },
+            {
+              "in": "to_q6k",
+              "kind": "raise",
+              "line": 940
+            },
+            {
+              "in": "choose_quant",
+              "kind": "except",
+              "line": 961
+            },
+            {
+              "in": "pilot_window",
+              "kind": "raise",
+              "line": 1003
+            },
+            {
+              "in": "pilot_window",
+              "kind": "except",
+              "line": 1059
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 1077
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 1081
+            },
+            {
+              "in": "runtime",
+              "kind": "raise",
+              "line": 1088
+            },
+            {
               "in": "main",
               "kind": "raise",
-              "line": 490
+              "line": 1120
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 502
+              "line": 1138
+            },
+            {
+              "in": "main",
+              "kind": "except",
+              "line": 1154
+            },
+            {
+              "in": "main",
+              "kind": "raise",
+              "line": 1156
+            },
+            {
+              "in": "main",
+              "kind": "except",
+              "line": 1168
             }
           ],
-          "hash": "6cfe767d3d204a4c7b7457f88b80401c997b0910dee227dcaf4f76b2c39113ed",
+          "hash": "71d4b66290d6269dc02bdec0869a81af762478315f238696e86def74d2287bf3",
           "path": "scripts/colab/pin_window.py"
         },
         {
@@ -377,7 +484,7 @@
           "path": "scripts/colab/pin_window_split.sh"
         },
         {
-          "hash": "0f84c035fa52109037af81a0a09365ef1e964e268ba4bd79d40faec6e06bc5f8",
+          "hash": "960e6baa1c3e2f8904b9e0c80afd1e233340e8f6eba2b772b4e97b702b781643",
           "path": "scripts/colab/smoke_window.sh"
         },
         {
@@ -593,14 +700,14 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 2,
+          "reads": 8,
           "where": [
             "caller"
           ],
           "writes": 1
         }
       ],
-      "outsideReads": 2,
+      "outsideReads": 8,
       "outsideWrites": 1,
       "role": "code",
       "testRunners": [
@@ -4490,35 +4597,35 @@
             {
               "in": "post_with_retries",
               "kind": "except",
-              "line": 56
-            },
-            {
-              "in": "post_with_retries",
-              "kind": "raise",
               "line": 58
             },
             {
               "in": "post_with_retries",
-              "kind": "except",
+              "kind": "raise",
               "line": 60
             },
             {
               "in": "post_with_retries",
+              "kind": "except",
+              "line": 62
+            },
+            {
+              "in": "post_with_retries",
               "kind": "raise",
-              "line": 67
+              "line": 69
             },
             {
               "in": "chat",
               "kind": "except",
-              "line": 99
+              "line": 101
             },
             {
               "in": "chat",
               "kind": "raise",
-              "line": 100
+              "line": 102
             }
           ],
-          "hash": "0806e67713b5989733a349e2be0e169edde417b1bc37d0d06b0efe921f27d4da",
+          "hash": "58fa04f30c86b36afdfddbb532ce0c64c4a73be70830703f0d5046fef04c6dd8",
           "importsFiles": [
             "src/role_set/guards.py"
           ],
@@ -6393,7 +6500,7 @@
             "test_the_llama_server_binary_is_pinned",
             "test_the_machine_line"
           ],
-          "hash": "fd8257d0b9a6411eba867d1b80b63bbaca255db0f73423723421fd3bc1386888",
+          "hash": "e7b3c881ac4c5e179f673e0c4e70751bfa79edd726bfbc79aa374999fec2e326",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/proven.py",
@@ -7260,10 +7367,34 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "390e7778e97b866ecca0d7e2e62a98870d8a414f",
-    "tracked": 166
+    "commit": "3aa03240d4f0b506889935c433d65402da675835",
+    "tracked": 167
   },
   "landings": [
+    {
+      "readers": [
+        {
+          "by": "tests/test_assemble.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_harvest_exemplars.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_write.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "CHANGELOG.md",
+      "writers": []
+    },
     {
       "readers": [
         {
@@ -7277,6 +7408,11 @@
     },
     {
       "readers": [
+        {
+          "by": "scripts/colab/pin_window.py",
+          "call": "literal",
+          "confidence": "ast"
+        },
         {
           "by": "scripts/naics_table.py",
           "call": "literal",
@@ -7791,6 +7927,17 @@
         }
       ],
       "target": "tests/fixtures/t12_round3_must_refuse.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/colab/pin_window.py",
+          "call": "literal",
+          "confidence": "weak"
+        }
+      ],
+      "target": "writers.json",
       "writers": []
     }
   ],
