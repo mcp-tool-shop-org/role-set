@@ -232,3 +232,33 @@ def test_the_skeleton_floor_refuses_a_thin_structure(domain_table: Path, monkeyp
     monkeypatch.setattr(solvefirst, "RESEED_MAX", 2)
     with pytest.raises(solvefirst.SolveFirstError, match="distinct skeletons"):
         solvefirst.lock_skeletons(slots, PACKS)
+
+
+def test_no_dag_fact_names_both_claim_entities():
+    """No single fact decides the claim (R&D, 2026-10-17): no fact of any form, order or neighbour, names both of the
+    claim's entities."""
+
+    for i, pid in enumerate(sorted(PACKS)):
+        locked = solvefirst.generate("tree_with_pruning", PACKS[pid], 900 + i)
+        pair = set(locked.model["claim"][1:3])
+        assert len(locked.model["facts"]) >= solvefirst.MIN_FACTS["tree_with_pruning"]
+        for f in locked.model["facts"]:
+            assert not pair <= {x for x in f["rule"][1:3] if isinstance(x, str)}, (pid, f)
+        assert {f["rule"][0] for f in locked.model["facts"]} <= set(solvefirst.DAG_FORMS)
+
+
+def test_the_floor_holds_across_the_whole_regeneration(domain_table: Path):
+    """The real draw (R&D on PR (a)): about 21 uses per structure across 21 lessons, counted cumulatively through B4's
+    state, batch after batch. Every structure keeps 75% distinct skeletons and none used more than 3 times."""
+
+    table = domains.load(domain_table)
+    prior: dict = {}
+    for batch in range(11):
+        slots = plan_batch(SIDES, seed=100 + batch)
+        domains.assign(slots, table, seed=100 + batch)
+        solvefirst.assign(slots, PACKS, seed=100 + batch, table=table)
+        prior = solvefirst.lock_skeletons(slots, PACKS, prior=prior)
+    for structure in solvefirst.SOLVE_FIRST:
+        c = prior[structure]
+        assert sum(c.values()) >= 21, (structure, sum(c.values()))
+        assert len(c) >= solvefirst.SKELETON_DISTINCT_SHARE * sum(c.values()) and max(c.values()) <= solvefirst.SKELETON_USES_MAX
