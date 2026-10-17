@@ -469,6 +469,30 @@ def _steps(text: str) -> list[str]:
     return [x for x in re.split(r"\n+|(?<=[.!?])\s+", text) if x.strip()]
 
 
+# Clause boundaries inside a step: semicolons and colons, and a comma before a connective that starts a new claim.
+CLAUSE_SPLIT = re.compile(r"[;:]|,\s*(?=(?:so|therefore|thus|hence|which means|meaning|but|yet)\b)|\b(?:so|therefore|thus|hence)\b",
+                          re.IGNORECASE)
+
+
+def _named(name: str, text: str) -> bool:
+    return re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text, re.IGNORECASE) is not None
+
+
+def _rivals(locked: Locked) -> list[str]:
+    """The answers the thinking could still be weighing: the asked attribute's other values, or for an entity_with
+    question the other entities."""
+
+    asks = locked.model.get("asks") or {}
+    keyed = {k.lower() for k in locked.keyed}
+    if "entity_with" in asks:
+        pool = locked.model["entities"]
+    elif "attribute" in asks:
+        pool = locked.model["attributes"][asks["attribute"]]["values"]
+    else:
+        return []
+    return [str(x) for x in pool if str(x).lower() not in keyed]
+
+
 def answer_early(locked: Locked, thinking: str) -> str | None:
     """Why the thinking reaches the answer too early, or None (R&D's ANSWER_EARLY, 2026-10-16).
 
@@ -479,18 +503,27 @@ def answer_early(locked: Locked, thinking: str) -> str | None:
     if not text.strip():
         return "the thinking is empty"
     cut = len(text) * LATE_SHARE
+    rivals = _rivals(locked)
     pos = 0
     for step in _steps(text):
         at = text.find(step, pos)
         pos = at + len(step)
-        if at >= cut or NEGATION.search(step):
+        if at >= cut:
             continue
-        low = step.lower()
-        if locked.subject is None:  # a claim: the verdict word itself
-            if re.search(rf"\b{re.escape(locked.key)}\b", low):
-                return f"the thinking gives the verdict '{locked.key}' before its final third"
-        elif locked.subject.lower() in low and all(k.lower() in low for k in locked.keyed):
-            return f"the thinking pairs {locked.subject} with the answer before its final third"
+        # Clause by clause (Argon §9.4 #12): a negation rules out only its own clause, so "X is not A, so X is B"
+        # still states B.
+        for clause in CLAUSE_SPLIT.split(step):
+            low = clause.lower()
+            if not low.strip() or NEGATION.search(clause):
+                continue
+            if locked.subject is None:  # a claim: the verdict word itself
+                if re.search(rf"\b{re.escape(locked.key)}\b", low):
+                    return f"the thinking gives the verdict '{locked.key}' before its final third"
+            elif locked.subject.lower() in low and all(_named(k, clause) for k in locked.keyed) \
+                    and not any(_named(r, clause) for r in rivals):
+                # A clause that still names a rival answer lists candidates ("A or B", "whether X or Y"); it
+                # doesn't state the answer.
+                return f"the thinking pairs {locked.subject} with the answer before its final third"
     # Citations in any form and anywhere in a sentence ("(line 3)", "line 3 says", "lines 2 and 4"), so no one form
     # becomes the new formula (R&D, 2026-10-16). Every cited number is one of the puzzle's lines, and the distinct fact
     # lines cited reach the pruned set's size: every fact is needed, so every fact is used.

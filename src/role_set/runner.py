@@ -792,7 +792,7 @@ class Runner:
         if refusal is None and slot.kind == "B":
             # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
             try:
-                lookup = check_puzzle(fields, slot.structure).lookup
+                lookup = check_puzzle(fields, slot.structure, strict=locked is not None).lookup
             except PuzzleError as e:
                 refusal = self._refusal("PUZZLE", str(e))
             if refusal is None and locked is not None:
@@ -818,7 +818,10 @@ class Runner:
             if t:
                 refusal = self._refusal(*t)
         if refusal is None and slot.frame:
-            off = check_frame(slot.frame, row["turns"][0]["user"], material.text if material else "")
+            subject = [(slot.content_kind or "").replace("_", " "), (slot.domain or {}).get("title", "")]
+            off = check_frame(slot.frame, row["turns"][0]["user"], material.text if material else "",
+                              deciding=((row.get("turn_keys") or {}).get("1") or row).get("deciding") or (),
+                              subject_words=subject)
             if off:
                 refusal = self._refusal("FRAME", off)
         if refusal is None:
