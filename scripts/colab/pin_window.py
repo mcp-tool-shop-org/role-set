@@ -734,12 +734,21 @@ class Served:
 
 
 def install_rnd(commit: str) -> dict:
-    """rnd at a pinned commit, for its logging proxy (stdlib only), into this interpreter."""
+    """rnd's logging proxy (stdlib only), from a clone at a pinned commit on sys.path, imported here so a missing module
+    fails the window in its first minute. A pip install isn't used: rnd's package list at 9667a32 leaves out
+    mcptoolshop_rnd.localbuilders (window 10c failed on that after both conversions)."""
 
-    sh(f"{sys.executable} -m pip install -q 'mcptoolshop-rnd @ git+https://github.com/mcp-tool-shop-org/rnd@{commit}'", timeout=900)
-    from importlib.metadata import version  # noqa: PLC0415
+    src = Path("/content/rnd")
+    if not (src / ".git").exists():
+        sh(f"git clone -q https://github.com/mcp-tool-shop-org/rnd {src} && git -C {src} checkout -q {commit}", timeout=600)
+    head = sh(f"git -C {src} rev-parse HEAD")
+    if head != commit:
+        raise RuntimeError(f"rnd is at {head[:12]}, not {commit[:12]}")
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
+    from mcptoolshop_rnd.localbuilders.proxy import LoggingProxyServer, ProxyState  # noqa: F401, PLC0415
 
-    return {"commit": commit, "version": version("mcptoolshop-rnd")}
+    return {"commit": head, "src": str(src), "proxy_import": "ok"}
 
 
 def j1_card(model: dict, cards_path: Path, out_dir: Path) -> tuple[Path, str, dict]:
@@ -943,36 +952,43 @@ def pilot_window(built: dict, result: dict) -> None:
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
 
-    t0 = time.time()
-    pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv, proxies=proxies)
-    result["pilot_seconds"] = round(time.time() - t0)
+    # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
+    # result to a late failure, with nothing downloaded).
     result["arms"] = {}
-    twins_writers = {}
-    for n, a in pilot.items():
-        accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
-        result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
-        if accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
-            twins_writers[n] = writers[n]
-        else:
-            result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
-    t1 = time.time()
-    for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
-        accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
-        tw = pilot_batch(rs, common, twins_plan, base / "twins", {n: twins_writers[n]}, critic, critic_srv,
-                         {n: writer_srv[n]}, extra=["--training", str(accepted)], proxies=proxies)
-        result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
-    result["twins_seconds"] = round(time.time() - t1)
-    for n in writer_names:
-        for part in ("pilot", "twins"):
-            last = (result["arms"][n].get(part) or {}).get("last")
-            if last and last != "None" and (Path(last) / "batch-report.json").exists():
-                r = subprocess.run([rs["role_set"], "readout", "--run", last], capture_output=True, text=True, timeout=600, cwd=rs["src"])
-                result["arms"][n][part]["readout_exit"] = r.returncode
-                result["arms"][n][part]["readout_tail"] = r.stdout[-2500:]
-    result["serves"] = {"critic": critic_srv.starts, **{n: s.starts for n, s in writer_srv.items()}}
-    sh(f"tar -C {WORK} -cf {WORK}/pilot-out.tar pilot")
-    result["model_errors"] = sum(1 for n in writer_names for part in ("pilot", "twins")
-                                 for w in (result["arms"][n].get(part) or {}).get("waves", []) if w.get("exit"))
+    try:
+        t0 = time.time()
+        pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv, proxies=proxies)
+        result["pilot_seconds"] = round(time.time() - t0)
+        twins_writers = {}
+        for n, a in pilot.items():
+            accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
+            result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
+            if accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
+                twins_writers[n] = writers[n]
+            else:
+                result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
+        t1 = time.time()
+        for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
+            accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
+            tw = pilot_batch(rs, common, twins_plan, base / "twins", {n: twins_writers[n]}, critic, critic_srv,
+                             {n: writer_srv[n]}, extra=["--training", str(accepted)], proxies=proxies)
+            result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
+        result["twins_seconds"] = round(time.time() - t1)
+        for n in writer_names:
+            for part in ("pilot", "twins"):
+                last = (result["arms"][n].get(part) or {}).get("last")
+                if last and last != "None" and (Path(last) / "batch-report.json").exists():
+                    r = subprocess.run([rs["role_set"], "readout", "--run", last], capture_output=True, text=True, timeout=600, cwd=rs["src"])
+                    result["arms"][n][part]["readout_exit"] = r.returncode
+                    result["arms"][n][part]["readout_tail"] = r.stdout[-2500:]
+        result["serves"] = {"critic": critic_srv.starts, **{n: s.starts for n, s in writer_srv.items()}}
+        result["model_errors"] = sum(1 for n in writer_names for part in ("pilot", "twins")
+                                     for w in (result["arms"][n].get(part) or {}).get("waves", []) if w.get("exit"))
+    finally:
+        try:
+            sh(f"tar -C {WORK} -cf {WORK}/pilot-out.tar pilot")
+        except Exception as e:  # noqa: BLE001 - recorded; the result still prints
+            result["tar_error"] = str(e)[:300]
 
 
 def runtime() -> dict:
