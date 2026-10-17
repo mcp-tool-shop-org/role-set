@@ -56,7 +56,14 @@ for f in ${PIN_UPLOADS:-}; do
   echo "uploaded $(basename "$f") $(sha256sum "$f" | cut -c1-16)"
 done
 t0=$(date +%s)
-timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" --env "PIN_ROLE=${PIN_ROLE:-smoke}" --env "PIN_ROLESET_COMMIT=${PIN_ROLESET_COMMIT:-}" --env "PIN_ONLY=${PIN_ONLY:-}" --env "PIN_SMOKE_CTX=${PIN_SMOKE_CTX:-}" --env "PIN_SMOKE_MAX_TOKENS=${PIN_SMOKE_MAX_TOKENS:-}" --env "PIN_CARDS_JSON=${PIN_CARDS_JSON:-}" -f "$here/pin_window.py" --timeout "$WALL_S" \
+# Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
+# window script's own settings, which only matter here.
+ENV_ARGS=()
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS)$'); do
+  ENV_ARGS+=(--env "$v=${!v}")
+done
+[ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
+timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$here/pin_window.py" --timeout "$WALL_S" \
   > "$OUT/smoke-window.log" 2>&1
 echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
