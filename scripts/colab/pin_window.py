@@ -811,12 +811,19 @@ PILOT_WAVES = int(os.environ.get("PIN_PILOT_WAVES") or PILOT_WAVES)
 _STUB_WRITER = None
 
 
+def _repo_root() -> Path:
+    """This checkout's root when run as a file; /content/role-set on the VM, where `colab exec -f` runs the script in
+    the kernel and `__file__` isn't defined (stub run 12s2, 2026-10-17: NameError before any wave)."""
+
+    f = globals().get("__file__")
+    return Path(f).resolve().parents[2] if f else CONTENT / "role-set"
+
+
 def _start_stub(name: str, port: int):
     """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
 
     global _STUB_WRITER
-    for p in (CONTENT / "role-set" / "src", Path(__file__).resolve().parents[2] / "src",
-              CONTENT / "role-set" / "tests", Path(__file__).resolve().parents[2] / "tests"):
+    for p in (CONTENT / "role-set" / "src", _repo_root() / "src", CONTENT / "role-set" / "tests", _repo_root() / "tests"):
         if p.exists() and str(p) not in sys.path:
             sys.path.insert(0, str(p))
     import stub_llama as stub_mod  # noqa: PLC0415

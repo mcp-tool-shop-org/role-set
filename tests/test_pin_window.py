@@ -448,3 +448,10 @@ def test_a_dropped_model_refuses_a_later_request(monkeypatch, tmp_path):
     assert not (tmp_path / "granite.gguf").exists()
     with pytest.raises(RuntimeError, match="deleted after its last planned use"):
         pool.serve("granite-4.2-30b")
+
+
+def test_the_repo_root_without___file__(monkeypatch):
+    # On the VM, colab exec runs the script in the kernel, where __file__ isn't defined.
+    assert pw._repo_root() == Path(pw.__file__).resolve().parents[2]
+    monkeypatch.delitem(pw.__dict__, "__file__")
+    assert pw._repo_root() == pw.CONTENT / "role-set"
