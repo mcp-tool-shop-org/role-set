@@ -118,3 +118,12 @@ def test_critics_for_takes_the_default_and_the_per_arm_settings(monkeypatch):
     monkeypatch.delenv("PIN_PILOT_CRITIC_FOR")
     with pytest.raises(RuntimeError, match="no critic"):
         pw.critics_for(["granite-4.2-30b"])
+
+
+def test_critics_for_refuses_a_same_family_pair_before_any_model_loads(monkeypatch):
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "nemotron-3.5-lightning-30b-a3b")
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    families = {"nemotron-3.5-bolt-74b-a9b": "nemotron", "nemotron-3.5-lightning-30b-a3b": "nemotron", "granite-4.2-30b": "granite"}
+    with pytest.raises(RuntimeError, match="same family: nemotron-3.5-bolt-74b-a9b<-nemotron-3.5-lightning-30b-a3b"):
+        pw.critics_for(["granite-4.2-30b", "nemotron-3.5-bolt-74b-a9b"], families)
+    assert pw.critics_for(["granite-4.2-30b"], families) == {"granite-4.2-30b": "nemotron-3.5-lightning-30b-a3b"}

@@ -992,7 +992,7 @@ class Pool:
         return self.proxies.get(name)
 
 
-def critics_for(writer_names: list) -> dict:
+def critics_for(writer_names: list, families: dict | None = None) -> dict:
     """Each arm's critic: PIN_PILOT_CRITIC for all, with PIN_PILOT_CRITIC_FOR=<writer>=<critic>,... per arm (W3:
     Lightning and Muse critique each other's arm, the design's own critic rule). role-set refuses a same-family pair."""
 
@@ -1004,6 +1004,10 @@ def critics_for(writer_names: list) -> dict:
         raise RuntimeError(f"no critic for {', '.join(missing)}: set PIN_PILOT_CRITIC or PIN_PILOT_CRITIC_FOR")
     if any(n == c for n, c in out.items()):
         raise RuntimeError(f"an arm can't critique itself: {out}")
+    # The family rule role-set enforces, checked here too, so a same-family pair fails before any model loads.
+    same = [f"{n}<-{c}" for n, c in out.items() if families and families.get(n) and families.get(n) == families.get(c)]
+    if same:
+        raise RuntimeError(f"a critic reads another family's drafts; same family: {', '.join(same)}")
     return out
 
 
@@ -1156,7 +1160,9 @@ def pilot_window(built: dict, result: dict) -> None:
                        "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
-    critic_for = result["critic_for"] = critics_for(writer_names)
+    listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
+    families = {e["served_as"]: e.get("family") for e in listed["writers"] + listed["critics"]}
+    critic_for = result["critic_for"] = critics_for(writer_names, families)
     for name in [*writer_names, *critic_for.values()]:
         if name not in by_name:
             raise RuntimeError(f"{name} isn't in pin_window.MODELS")
