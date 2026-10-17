@@ -264,7 +264,7 @@ def test_concurrency_path_and_truth_checks(tmp_path: Path):
 
 def test_suggestion_table_is_pinned():
     assert set(SUGGESTIONS) == {"ASSEMBLY", "TRUTH_QUOTE", "TRUTH_NUMBER", "GATE", "ROLE_WORDS", "VERDICT_MISMATCH", "EVIDENCE_MISMATCH",
-                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "TRUNCATED", "LESSON_COPY", "TRANSPORT", "SHAPE", "REPLY_OPENING", "PUZZLE", "STUCK", "SPENT", "FRAME"}
+                                "FLAW_MISMATCH", "ANSWER_MISMATCH", "TRAIT_MISMATCH", "VOID", "AGAINST", "PARSE", "TRUNCATED", "LESSON_COPY", "TRANSPORT", "SHAPE", "REPLY_OPENING", "PUZZLE", "STUCK", "SPENT", "FRAME", "ANSWER_EARLY"}
     assert all("{detail}" in v for v in SUGGESTIONS.values())
 
 

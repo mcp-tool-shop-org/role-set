@@ -19,6 +19,7 @@ from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 FIELDS = {
     "A": ["passage", "question", "reply", "key_points"],
     "B": ["puzzle", "model", "thinking", "reply", "answer"],
+    "B_locked": ["puzzle", "thinking", "reply"],  # solve-first: the model and the answer are made in code (B3)
     "C": ["framing", "statement", "checker_trace", "checker_verdict", "deciding", "thinking", "reply"],
     "D": ["framing", "statement", "deciding", "thinking", "reply", "pressure", "injection",
           "turn2_user", "turn2_new_material", "turn2_verdict", "turn2_deciding", "turn2_thinking", "turn2_reply"],
@@ -110,6 +111,8 @@ def load_pack(pack_dir: Path) -> dict[str, str]:
 def kind_key(slot: Slot) -> str:
     if slot.kind == "E":
         return "E_written" if slot.e_type == "written" else "E_verdict"
+    if slot.kind == "B" and slot.b_path == "solve_first":
+        return "B_locked"
     return slot.kind
 
 
@@ -120,6 +123,7 @@ def required_fields(slot: Slot) -> list[str]:
     req = {
         "A": ["passage", "question", "reply", "key_points"],
         "B": ["puzzle", "model", "thinking", "reply", "answer"],
+        "B_locked": ["puzzle", "thinking", "reply"],
         "C": ["framing", "statement", "checker_trace", "thinking", "reply"],
         "D": ["framing", "statement", "thinking", "reply"],
         "E_written": ["question", "reply", "key_points", "variant_question", "variant_correct", "variant_distractors"],
@@ -171,7 +175,17 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None, closed_form: di
         rules.append("Kind A is situational, never a request to restate the lesson: the passage sets a concrete case with "
                      "something to decide (a reviewer pushes, a person is about to act on a check, a claim comes back reworded), "
                      "and the question asks what you do and why. The reply decides it. It doesn't open with 'As a verifier'.")
-    if slot.kind == "B":
+    if slot.kind == "B" and slot.b_path == "solve_first":
+        rules.append("Kind B: the thinking or the reply draws the pattern, as tree glyphs (├ └ │), a grid table of | rows, "
+                     "or numbered elimination steps (1. 2. 3.).")
+        rules.append("Kind B, locked puzzle: the puzzle and its answer are already made and solved. Write 'puzzle' as the "
+                     "numbered lines the locked puzzle lists, each in your own words with its names and values exactly as "
+                     "given, then the Question line. Never add, drop or change a fact. 'thinking' works through the lines in "
+                     "order, cites each fact line as 'line N', and reaches the answer only in its last third. 'reply' "
+                     "ends with 'Answer: ' and the fixed key.")
+        if slot.structure in B_STRUCTURE_NOTES:
+            rules.append(B_STRUCTURE_NOTES[slot.structure])
+    elif slot.kind == "B":
         rules.append("Kind B: the thinking or the reply draws the pattern, as tree glyphs (├ └ │), a grid table of | rows, "
                      "or numbered elimination steps (1. 2. 3.).")
         rules.append("Kind B: the puzzle gives its facts and ends with a line that begins 'Question:'. The puzzle has exactly one "
@@ -281,6 +295,7 @@ def writer_messages(
     coverage_notes: list[str] | None = None,
     trait_words: list[str] | None = None,
     closed_form: dict | None = None,
+    locked_brief: str | None = None,
 ) -> list[dict]:
     trait = pack.get(f"traits/{slot.lesson}.md", "")
     kinds = pack.get("kinds.md", "")
@@ -301,6 +316,8 @@ def writer_messages(
         "## Amendments\n" + amendments.strip(),
         "## This slot\n" + slot_brief(slot, coverage_notes or [], trait_words, closed_form),
     ]
+    if locked_brief is not None:
+        user_parts.append(locked_brief)
     if material_text is not None:
         user_parts.append("## The material (use verbatim; do not alter a character)\n" + material_text.rstrip("\n"))
     if facts:

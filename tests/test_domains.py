@@ -29,7 +29,7 @@ def test_the_table_is_built_verbatim_from_the_pinned_source(table_file: Path, tm
     src = data["source"]
     assert src["registry_id"] == "census-naics-2022" and src["url"].startswith("https://www.census.gov/") and len(src["sha256"]) == 64
     subs = {e["code"]: e["title"] for e in data["subsectors"]}
-    assert len(subs) == 60 + 6 and subs["621"] == "Fixture title 621" and "5411" not in subs and "23" not in subs
+    assert len(subs) >= 60 + 6 and subs["621"] == "Fixture title 621" and "5411" not in subs and "23" not in subs
     assert [e["code"] for e in data["escalate"]["medical"]] == ["621", "622", "623"]
     assert [e["code"] for e in data["escalate"]["safety"]] == ["23", "2211", "325", "481", "482", "5413", "9221"]
     assert data["escalate"]["legal"] == [{"code": "5411", "title": "Fixture title 5411"}]
@@ -165,7 +165,7 @@ def test_plan_and_mock_write_through_the_cli(table_file: Path, tmp_path: Path, c
     assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out), "--domains", str(table_file)]) == 0
     plan = json.loads(out.read_text(encoding="utf-8"))
     assert plan["domain_table"]["domain_registry_id"] == "census-naics-2022"
-    assert sum(1 for s in plan["slots"] if s["domain"]) == 26 and sum(1 for s in plan["slots"] if s["frame"]) == 18
+    assert sum(1 for s in plan["slots"] if s["domain"]) == 26 + 8 and sum(1 for s in plan["slots"] if s["frame"]) == 18
     bad = tmp_path / "bad.json"
     bad.write_text("{}", encoding="utf-8")
     assert main(["plan", "--lessons", "T02", "--out", str(tmp_path / "p2.json"), "--domains", str(bad)]) == 2

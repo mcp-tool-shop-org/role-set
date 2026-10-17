@@ -24,7 +24,9 @@ from pathlib import Path
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
 from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw, compare_trait_votes, compare_verdict,
                              flaw_messages, teaching_text, trait_messages, verdict_messages)
+from role_set import solvefirst
 from role_set.frames import check_frame
+from role_set.solvefirst import SolveFirstError
 from role_set.gates import Gates
 from role_set.plan import Slot
 from role_set.puzzle import PuzzleError, check_puzzle
@@ -160,6 +162,7 @@ def interleave(slots: list[Slot]) -> list[Slot]:
 
 # Refusal code -> what the builder is told, with the governing rule. Pinned by a test.
 SUGGESTIONS = {
+    "ANSWER_EARLY": "{detail}. Work through the lines in order, citing each as 'line N', and reach the answer only at the end (BUILD-SPEC B3).",
     "FRAME": "The framing doesn't open in its frame: {detail}. Rewrite only the framing, in the slot's frame (BUILD-SPEC B2).",
     "ASSEMBLY": "{detail} (the kinds table and the schema).",
     "TRUTH_QUOTE": "The thinking quotes '{detail}', which is not in the material. Quote lines exactly or don't quote (rule: every thinking step is true).",
@@ -491,6 +494,8 @@ class Runner:
         self.halt_order: list[tuple[str, tuple[str, str]]] = []
         self.cell_drop_keys: dict[tuple[str, str], Counter] = {}
         self.receipts: dict[str, dict] = {}  # slot id -> its accepted receipt, for wave mode's drafts file
+        self._locked: dict = {}  # slot id -> its solve-first puzzle (BUILD-SPEC B3), built once from the slot's pack and seed
+        self._packs = None
         self.accept_order: dict[str, int] = {}  # slot id -> its place in self.accepted, set under the accept lock
         self.plan_kinds: set[str] = set()
         self.deadline: float | None = None
@@ -733,9 +738,28 @@ class Runner:
         exemplars = [e for k, v in self.exemplars.items() if k != slot.lesson for e in v
                      if e.get("kind") == slot.kind and e.get("split") != "apply"][:3]  # apply rows are never shown
         facts = {"material_line_count": len(material.text.splitlines())} if material else None
+        try:
+            locked = self.locked_for(slot)
+        except SolveFirstError as e:
+            return Outcome(slot_id=slot.id, accepted=False, attempts=0, refusals=[self._refusal("PUZZLE", str(e))])
         messages = writer_messages(slot, self.pack, material_text=material.text if material else None, exemplars=exemplars, avoid=list(self.avoid[-60:]), facts=facts, coverage_notes=coverage_notes,
-                                   trait_words=self.gates.trait_words(slot.lesson), closed_form=self.gates.closed_form)
+                                   trait_words=self.gates.trait_words(slot.lesson), closed_form=self.gates.closed_form,
+                                   locked_brief=solvefirst.brief(locked) if locked else None)
         return SlotState(slot=slot, messages=messages, material=material, facts=facts)
+
+    def locked_for(self, slot: Slot):
+        """The slot's solve-first puzzle, built from its pack and seed, or None for a freehand slot. Deterministic, so a
+        critique wave rebuilds the very model the write wave locked."""
+
+        if slot.kind != "B" or slot.b_path != "solve_first":
+            return None
+        if slot.id not in self._locked:
+            if self._packs is None:
+                self._packs = solvefirst.load_packs()
+            if slot.pack not in self._packs:
+                raise SolveFirstError(f"REFUSED: {slot.id} names pack {slot.pack!r}, which b_packs.json doesn't hold")
+            self._locked[slot.id] = solvefirst.generate(slot.structure, self._packs[slot.pack], slot.b_seed or 0)
+        return self._locked[slot.id]
 
     def mechanical(self, st: SlotState, c) -> tuple[dict | None, Candidate | None, int]:
         """Every check up to and including ROLE_WORDS: parse, shape, puzzle, stuck, assemble, truth, lesson copy,
@@ -754,12 +778,20 @@ class Runner:
         if refusal is None and row_shaped(fields, slot):
             refusal = self._refusal("SHAPE", ", ".join(FIELDS[kind_key(slot)]))
         lookup = False
+        locked = self.locked_for(slot) if refusal is None else None
+        if locked is not None:
+            # Solve-first: the writer never writes the model or the answer. They are injected, and the same check runs.
+            fields["model"], fields["answer"] = locked.model, locked.key
         if refusal is None and slot.kind == "B":
             # Only the solver decides a puzzle's answer; the writer is never asked whether it is unique.
             try:
                 lookup = check_puzzle(fields, slot.structure).lookup
             except PuzzleError as e:
                 refusal = self._refusal("PUZZLE", str(e))
+            if refusal is None and locked is not None:
+                early = solvefirst.answer_early(locked, str(fields.get("thinking") or ""))
+                if early:
+                    refusal = self._refusal("ANSWER_EARLY", early)
             if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
                 refusal = self._refusal("PUZZLE", LOOKUP_FULL)
             # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
@@ -919,6 +951,9 @@ class Runner:
             "glyphs_normalized": glyphs,
             **self.pins,
         }
+        if slot.kind == "B":
+            locked = self._locked.get(slot.id)
+            receipt["b"] = locked.receipt() if locked is not None else {"b_path": slot.b_path or "freehand", "pack": slot.pack}
         self.receipts[slot.id] = receipt
         with (self.out_dir / "accepted.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(row, ensure_ascii=False) + "\n")

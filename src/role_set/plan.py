@@ -67,6 +67,9 @@ class Slot:
     split: str | None = None  # "apply": asked after each session, never trained (aspire-si#127)
     domain: dict | None = None  # {"code", "title"[, "escalate"]}: the NAICS 2022 domain the item is set in (BUILD-SPEC B2)
     frame: str | None = None  # the framing's opening frame (role_set.frames), for C, D and verdict E
+    pack: str | None = None  # kind B: the puzzle pack (role_set.solvefirst), distinct within a lesson (BUILD-SPEC B3)
+    b_seed: int | None = None  # kind B: the seed the locked model is built from
+    b_path: str | None = None  # kind B: "solve_first" (a locked model) or "freehand" (the writer writes the model)
 
     def as_dict(self) -> dict:
         return asdict(self)

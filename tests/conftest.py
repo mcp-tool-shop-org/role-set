@@ -50,7 +50,12 @@ def fixture_xlsx(path: Path, codes: list[str]) -> Path:
 @pytest.fixture(scope="session")
 def domain_table(tmp_path_factory) -> Path:
     d = tmp_path_factory.mktemp("naics")
-    xlsx = fixture_xlsx(d / "2-6 digit_2022_Codes.xlsx", MAPPED_CODES + [str(c) for c in range(100, 160)])
+    import json
+
+    packs = json.loads((ROOT / "src" / "role_set" / "b_packs.json").read_text(encoding="utf-8"))["packs"]
+    pack_codes = [p["naics"] for p in packs]
+    codes = MAPPED_CODES + [str(c) for c in range(100, 160)] + [c for c in pack_codes if c not in MAPPED_CODES and not 100 <= int(c) < 160]
+    xlsx = fixture_xlsx(d / "2-6 digit_2022_Codes.xlsx", codes)
     out = d / "naics-2022.json"
     assert naics_script().main([str(xlsx), "--out", str(out)]) == 0
     return out
