@@ -76,8 +76,8 @@ def _plan(args: argparse.Namespace) -> int:
             domains.assign(slots, table, seed=args.seed)
             # Kind B: a pack and a seed per slot, and the solve-first path for the structures with a generator (B3).
             packs = solvefirst.load_packs()
-            solvefirst.assign(slots, packs, seed=args.seed, table=table)
             prior = exclusion.load(Path(args.exclusion_state) if args.exclusion_state else None)
+            solvefirst.assign(slots, packs, seed=args.seed, table=table, prior=prior.packs)
             solvefirst.lock_skeletons(slots, packs, prior=prior.skeletons)
             domains.check(slots)
     except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError, exclusion.ExclusionError) as e:

@@ -112,13 +112,15 @@ def test_waves_with_critic_refusals_match_one_inline_run(pack_dir: Path, plan_fi
     monkeypatch.setattr(w, "MockCritic", partial(MockCritic, disagree_once=set(first)))
     critiques, last = _waves_until_done(plan_file, pack_dir, tmp_path / "waves")
     assert inline["accepted"] == 40 and len(critiques) == 2
-    rows, receipts = _batch(critiques)
+    # The wave that leaves nothing pending holds the whole batch (Argon §9.4 #8).
+    rows, receipts = _batch(critiques[-1:])
     assert (rows, receipts) == _batch([tmp_path / "inline"])
     refused = len(set(first))  # two D slots may share a statement; the critic refuses each statement once
     assert refused >= 2 and sorted(r["attempt"] for r in receipts if r["attempt"] > 1) == [2] * refused
     assert last["batch_check"] == inline["batch_check"] == "clean"
     # The second critique wave saw the first one's accepted rows: its receipts chain to the rewrite's drafts file.
-    second = _jsonl(critiques[1] / "mock" / "receipts.jsonl")
+    # The folder holds the whole batch now; the rows this wave accepted are the rewritten ones (attempt 2).
+    second = [r for r in _jsonl(critiques[1] / "mock" / "receipts.jsonl") if r["attempt"] > 1]
     assert len(second) == refused and {r["wave"] for r in second} == {"critique"}
     rewrite_out = tmp_path / "waves" / "w2" / "mock" / waves.DRAFTS_FILE
     assert {r["drafts_sha256"] for r in second} == {waves.file_sha256(rewrite_out)}
@@ -369,3 +371,41 @@ def test_a_wave_refuses_drafts_that_dont_match_the_plan(pack_dir: Path, plan_fil
         waves.write(cut, header, bad)
         with pytest.raises(WriteRefused, match="don't match this plan"):
             run(_cfg(plan_file, pack_dir, tmp_path / f"o-{name}", wave="critique", drafts=cut))
+
+
+def test_the_last_wave_holds_the_whole_batch_and_its_models(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+    """Argon §9.4 #8: after write -> critique (-> rewrite -> critique), the wave that leaves nothing pending holds every
+    accepted row of the batch, its receipts and the B models sidecar, and reports the batch's counts."""
+
+    import role_set.write as w
+    from functools import partial
+
+    from role_set.mock import MockCritic
+
+    # The critic refuses one slot's first draft, so the batch needs a rewrite wave and a second critique.
+    calls = {"n": 0}
+    real = MockCritic.__call__
+
+    def flaky(self, messages, *a, **k):
+        calls["n"] += 1
+        return real(self, messages, *a, **k)
+
+    monkeypatch.setattr(MockCritic, "__call__", flaky)
+    run(_cfg(plan_file, pack_dir, tmp_path / "w0", wave="write"))
+    r1 = run(_cfg(plan_file, pack_dir, tmp_path / "w1", wave="critique", drafts=tmp_path / "w0" / "mock" / waves.DRAFTS_FILE))
+    last = tmp_path / "w1" / "mock"
+    if r1["states"]["needs_rewrite"]:
+        run(_cfg(plan_file, pack_dir, tmp_path / "w2", wave="rewrite", drafts=last / waves.DRAFTS_FILE))
+        r1 = run(_cfg(plan_file, pack_dir, tmp_path / "w3", wave="critique", drafts=tmp_path / "w2" / "mock" / waves.DRAFTS_FILE))
+        last = tmp_path / "w3" / "mock"
+    header, drafts = waves.read(last / waves.DRAFTS_FILE)
+    accepted = [d for d in drafts if d["state"] == "accepted"]
+    rows = [json.loads(x) for x in (last / "accepted.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == len(accepted) == r1["accepted"] and len(rows) > 0
+    assert len((last / "receipts.jsonl").read_text(encoding="utf-8").splitlines()) == len(rows)
+    b_rows = {d["row"]["id"] for d in accepted if d["slot"]["kind"] == "B"}
+    side = [json.loads(x) for x in (last / "accepted.models.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert {m["id"] for m in side} == b_rows
+    # The gates' own loader reads the sidecar, each row_sha256 matching its line as written.
+    gates = pytest.importorskip("aspire_si_gates")
+    assert set(gates.load_models(last / "accepted.jsonl")) == b_rows
