@@ -1407,7 +1407,7 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
     if missing:
         raise RuntimeError(f"{var}: {', '.join(missing)} not in {plan.name}")
     data["slots"] = [s for s in data["slots"] if s["id"] in ids]
-    plan.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    plan.write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")  # the same bytes on Windows and the VM
     return ids
 
 
