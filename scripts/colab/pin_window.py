@@ -195,17 +195,30 @@ def main() -> int:
     try:
         result["machine"] = machine_line()
         say(f"machine: {result['machine']}")
-        result["llama_server"] = built = build()
+        # Split windows run side by side (Mike, 2026-10-16): PIN_ROLE=build builds the server and pins and smokes
+        # the maker GGUFs; PIN_ROLE=convert only converts and hashes (no CUDA build, so no smoke; the build VM's
+        # binary serves it in the next window). Unset: everything, on one VM.
+        role = os.environ.get("PIN_ROLE", "all")
+        result["role"] = role
+        if role == "convert":
+            src = WORK / "llama.cpp"
+            sh(f"git clone -q https://github.com/ggml-org/llama.cpp {src} && git -C {src} checkout -q {LLAMA_CPP_COMMIT}", timeout=900)
+            built = {"commit": LLAMA_CPP_COMMIT, "src": str(src)}
+        else:
+            result["llama_server"] = built = build()
+        specs = [m for m in MODELS if role == "all" or (role == "build") == (m["how"] == "maker_gguf")]
         result["models"] = []
-        for spec in MODELS:
+        for spec in specs:
             m = fetch_model(spec, built)
-            m["smoke"] = smoke(built, m)
-            say(f"{m['served_as']}: {m['smoke']}")
+            if role != "convert":
+                m["smoke"] = smoke(built, m)
+                say(f"{m['served_as']}: {m['smoke']}")
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
-        # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
-        shutil.copy(built["path"], WORK / "llama-server")
-        result["llama_server"]["libs"] = pin_libs(built["path"])
+        if role != "convert":
+            # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
+            shutil.copy(built["path"], WORK / "llama-server")
+            result["llama_server"]["libs"] = pin_libs(built["path"])
         result["ok"] = True
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
         result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"
