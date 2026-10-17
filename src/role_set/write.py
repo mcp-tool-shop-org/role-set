@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from role_set import domains, proven, waves
+from role_set import domains, exclusion, proven, waves
 from role_set.assemble import trait_name
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
@@ -84,6 +84,7 @@ class WriteConfig:
     critic_gguf_sha256: str | None = None
     server_sha256: str | None = None  # the llama-server binary, measured by the wave script
     wave: str = "inline"  # inline, or one of write, critique, rewrite (BUILD-SPEC B1)
+    exclusion_state: Path | None = None  # earlier batches' exclusion-state.json (BUILD-SPEC B4); None for the first batch
     drafts: Path | None = None  # a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl
 
 
@@ -191,6 +192,16 @@ def build(cfg: WriteConfig, *, now=time.time):
         raise WriteRefused("REFUSED: --drafts is for a critique or rewrite wave")
     pins.setdefault("drafts_sha256", None)
     pins["wave"] = cfg.wave
+    try:
+        prior = exclusion.load(cfg.exclusion_state)
+    except exclusion.ExclusionError as e:
+        raise WriteRefused(str(e)) from e
+    if plan_sha[:16] in prior.batches:
+        raise WriteRefused(f"REFUSED: this plan's batch {plan_sha[:16]} is already in the exclusion state; a rerun starts "
+                           "from the state before it")
+    # A batch pin: every wave of the batch checks against the same earlier batches.
+    pins["exclusion_state_sha256"] = prior.sha256
+    pins["exclusion_batches"] = len(prior.batches)
     uses_writer = cfg.wave != "critique"
     uses_critic = cfg.wave in ("inline", "critique") and not cfg.no_critic
 
@@ -294,8 +305,9 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     if cfg.wave != "inline":
         return _run_wave(cfg, slots, pack, trait_names, gates, writer, critic, pins, out, excerpts, exemplars, stuck, training, training_models)
     pins.pop("_mock_answers", None)
+    prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -306,7 +318,9 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     finally:
         if cleanup:
             cleanup()
+    state_sha = _leave_state(cfg, prior, runner, slots, halted=halted)
     return {
+        "exclusion_state": state_sha,
         "out_dir": out.name,
         "accepted": runner.status.accepted,
         "dropped": runner.status.dropped,
@@ -338,8 +352,9 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     if cfg.wave == "critique":
         # A receipt names the writer that wrote the draft and the host it ran on, beside this wave's critic.
         run_pins.update({**(header_in.get("writer_pins") or {}), "writer_host": header_in.get("writer_host")})
+    prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)
@@ -358,10 +373,27 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     out_sha = waves.write(out / waves.DRAFTS_FILE, header, drafts)
     batch_check = waves.finish(runner, cfg.wave, drafts, out)
     states = {st: sum(1 for d in drafts if d["state"] == st) for st in (*waves.PENDING, *waves.FINAL)}
+    pending = states["awaiting_critique"] + states["needs_rewrite"]
+    state_sha = _leave_state(cfg, prior, runner, slots, halted=runner.status.halted) if not pending else None
     return {
+        "exclusion_state": state_sha,
         "out_dir": out.name, "wave": cfg.wave, "drafts": waves.DRAFTS_FILE, "drafts_sha256": out_sha, "states": states,
         "accepted": runner.status.accepted, "dropped": runner.status.dropped, "attempted": runner.status.attempted,
         "halted": runner.status.halted, "lesson_halts": runner.status.lesson_halts, "skipped": runner.status.skipped,
         "batch_check": batch_check, "rehearsal": bool(pins.get("rehearsal")), "mock": cfg.mock, "slots": len(slots),
         "outcomes": len(drafts),
     }
+
+
+def _leave_state(cfg: WriteConfig, prior, runner, slots, *, halted) -> str | None:
+    """The exclusion state this batch leaves behind, written beside its rows once the batch is done (inline: at the
+    end of the run; waves: in the wave that leaves nothing pending), and only when its batch check is clean. Otherwise
+    it leaves none, and the next batch starts from the earlier state."""
+
+    # Only a batch whose batch check came back clean enters the state (R&D on #75): a refused batch, or one with
+    # halted cells (whose batch check doesn't run), leaves its rows out, so they can't steer later batches.
+    if halted or not getattr(runner, "accepted", None) or getattr(runner, "batch_check", None) != "clean":
+        return None
+    batch_id = runner.pins.get("plan_sha256", "")[:16]
+    new = exclusion.with_batch(prior, batch_id, runner.accepted, runner.models, slots)
+    return exclusion.save(new, runner.out_dir / exclusion.FILE)

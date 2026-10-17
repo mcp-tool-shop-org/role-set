@@ -466,6 +466,7 @@ class Runner:
         stuck=None,  # callable(thinking, material, tier, tokens) -> the frozen stuck rule's measures, or None
         training: list[dict] | None = None,  # the whole training set, for apply items' exclusions (aspire-si#127)
         training_models: dict | None = None,  # its sidecar models, {id: model}
+        prior=None,  # role_set.exclusion.State: every row earlier batches accepted (BUILD-SPEC B4)
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -485,6 +486,12 @@ class Runner:
         self.lock = threading.RLock()  # re-entrant: logging runs both inside and outside the accept lock
         self.out_dir.mkdir(parents=True, exist_ok=True)
         self.avoid: list[str] = []
+        # Earlier batches' rows (B4): the acceptance checks run against them as well as this run's, and their framings
+        # seed the writer's avoid list.
+        self.prior_rows: list[dict] = list(prior.rows) if prior is not None else []
+        self.prior_models: dict = dict(prior.models) if prior is not None else {}
+        if prior is not None:
+            self.avoid.extend(f for f in prior.framings() if f not in self.avoid)
         self.flaw_gate = flaw_gate
         self.trait_gate, self.answer_gate = trait_gate, answer_gate
         self._spans_by_lesson: dict[str, set[str]] = {}
@@ -868,16 +875,16 @@ class Runner:
             return refusal
         with self.lock:
             try:
-                models = {**self.models, row["id"]: fields["model"]} if slot.kind == "B" else self.models
+                models = {**self.prior_models, **self.models, **({row["id"]: fields["model"]} if slot.kind == "B" else {})}
                 # An apply item may reuse no training item's material either (aspire-si#127): it is checked
                 # against the whole training set as well as this run's rows.
-                against = self.accepted + self.training if slot.split == "apply" else self.accepted
+                against = self.prior_rows + self.accepted + (self.training if slot.split == "apply" else [])
                 if slot.split == "apply":
                     models = {**self.training_models, **models}
                 reasons = self.gates.check_against(row, against, models=models)
             except self.gates.error_type() as e:
                 reasons = [("AGAINST", str(e))]
-            stamp = reply_opening_reused(row, self.accepted)
+            stamp = reply_opening_reused(row, self.prior_rows + self.accepted)
             if reasons:
                 code, msg = reasons[0]
                 return self._refusal("AGAINST", f"{code}: {msg}")
