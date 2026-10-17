@@ -163,7 +163,7 @@
       "training": "allowed",
       "registry_id": "apache-2.0",
       "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
-      "pin_note": "Converted at llama.cpp 620d2225, window 5. Tokenizer 50/50. Fit on the A100-40GB unproven (peak VRAM 159 MiB over the file at 32768): its arm runs on an H100 at Q8_0, or as a labelled Q6_K arm on the A100 (R&D, 2026-10-17)."
+      "pin_note": "Converted at llama.cpp 620d2225, window 5. Tokenizer 50/50. Fits the A100-40GB at Q8_0, ctx 32768, 1 slot (window 11b, 2026-10-17: reproduced this pin, 42/42 layers offloaded, projected 35510 MiB with 4438 free, peak 36022 MiB, 89.7 tok/s); runs at Q8_0 in the Q8_0 stratum (R&D, 2026-10-17)."
     },
     {
       "served_as": "deepseek-r1-distill-qwen-32b",
@@ -195,7 +195,7 @@
       "training": "allowed",
       "registry_id": "apache-2.0",
       "checked_by": "R&D, 2026-10-17 (rnd licences/registry.json; the pilot's eight arms)",
-      "pin_note": "Converted at llama.cpp 620d2225 in its own env (transformers 5.20.1; llama.cpp's pinned 4.57.6 can't read its tokenizer_config), window 9. Tokenizer 50/50. Q8_0 fit on the A100 at 32768 to be tried in its pilot window; falls back to its Q6_K entry (R&D, 2026-10-17).",
+      "pin_note": "Converted at llama.cpp 620d2225 in its own env (transformers 5.20.1; llama.cpp's pinned 4.57.6 can't read its tokenizer_config), window 9. Tokenizer 50/50. Fits the A100-40GB at Q8_0, ctx 32768, 1 slot (window 11d, 2026-10-17: reproduced this pin, 61/61 layers offloaded, projected 35070 MiB with 4943 free, 27.8 tok/s); runs at Q8_0 in the Q8_0 stratum (R&D, 2026-10-17).",
       "registry_also": [
         "gemma-prohibited-use-policy"
       ],
