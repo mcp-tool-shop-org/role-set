@@ -160,11 +160,29 @@ def hf_revision(repo: str) -> str:
         return json.loads(r.read())["sha"]
 
 
+def resources(tag: str) -> dict:
+    """Disk and RAM at one point of the window, kept in the result (R&D, window 10b: a VM that runs out of either can
+    be reclaimed without a clean error)."""
+
+    du = shutil.disk_usage("/content")
+    mem = dict(ln.split(":", 1) for ln in Path("/proc/meminfo").read_text().splitlines() if ":" in ln)
+    kb = lambda k: int(mem.get(k, "0 kB").split()[0])  # noqa: E731
+    row = {"at": tag, "time": time.strftime("%H:%M:%S", time.gmtime()), "disk_free_gb": round(du.free / 1e9, 1),
+           "ram_available_mb": kb("MemAvailable") // 1024, "ram_total_mb": kb("MemTotal") // 1024}
+    RESOURCES.append(row)
+    say(f"resources {row}")
+    return row
+
+
+RESOURCES: list = []
+
+
 def fetch_model(spec: dict, built: dict) -> dict:
     from huggingface_hub import HfApi, hf_hub_download, snapshot_download  # noqa: PLC0415
 
     rev = spec.get("revision") or hf_revision(spec["repo"])
     out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": rev, "card": spec.get("card")}
+    resources(f"{spec['served_as']}: before download")
     if spec["how"] == "maker_gguf":
         listed = HfApi().list_repo_files(spec["repo"], revision=rev)
         # An exact `file` when the repo's names overlap (Bolt's mmproj file contains the model file's name).
@@ -198,6 +216,7 @@ def fetch_model(spec: dict, built: dict) -> dict:
                                                            "pip_freeze": freeze.splitlines(), "gguf_module": gguf_file,
                                                            "python": py, "env": spec.get("env") or "llama.cpp requirements"}})
     if spec["how"] != "maker_gguf":
+        resources(f"{spec['served_as']}: after conversion")
         shutil.rmtree(snap, ignore_errors=True)
     say(f"hashing {path.name}")
     out.update({"gguf_sha256": sha256(path), "gguf_bytes": path.stat().st_size, "path": str(path)})
@@ -1064,6 +1083,7 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
         result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"
     finally:
+        result["resources"] = RESOURCES
         result["ended"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         print("PIN_RESULT " + json.dumps(result), flush=True)
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
