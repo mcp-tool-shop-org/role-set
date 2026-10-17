@@ -631,7 +631,10 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
             Path(m["path"]).unlink(missing_ok=True)
             m6 = {**{k: v for k, v in m.items() if k not in ("converter",)}, "path": str(q6), "gguf_file": q6.name,
                   "gguf_sha256": sha256(q6), "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
-                  "quantized_from": m["gguf_sha256"]}
+                  "quantized_from": m["gguf_sha256"],
+                  # Requantized from our Q8_0, not from BF16: a little more loss, accepted because the disk can't hold
+                  # the snapshot, a BF16 GGUF and the Q8_0 at once (R&D, 2026-10-17). Every receipt carries the label.
+                  "label": f"Q6_K (requantized from pinned Q8_0 {m['gguf_sha256']})"}
             rec.update({k: v for k, v in m6.items() if k not in ("path", "tokenizer_hf")})
             m6["smoke"] = smoke(built, m6)
             rec["smoke"] = m6["smoke"]
