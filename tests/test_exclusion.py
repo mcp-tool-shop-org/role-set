@@ -179,3 +179,24 @@ def test_pack_uses_count_across_batches(domain_table: Path):
     new = exclusion.with_batch(exclusion.State(), "b1", [{"id": "T02-B-01", "kind": "B"}], {}, [s1])
     assert new.packs == {"clinic-rota": 1}
     assert exclusion.with_batch(new, "b2", [{"id": "T02-B-01", "kind": "B"}], {}, [s1]).packs == {"clinic-rota": 2}
+
+
+def test_a_skeleton_an_earlier_batch_used_is_reseeded_away_from(domain_table: Path, tmp_path: Path):
+    """R&D on #81: once packs repeat, a plan can meet an earlier batch's skeleton; the plan re-seeds, records it, and
+    nothing repeats the prior. Forced here with a state that holds the first plan's skeletons but no pack counts, so the
+    second plan is dealt the same packs."""
+
+    plan1 = json.loads(_plan(tmp_path, domain_table, "T02", 3).read_text(encoding="utf-8"))
+    locked1 = [s for s in plan1["slots"] if s.get("b_path") == "solve_first"]
+    skeletons: dict = {}
+    for s in locked1:
+        skeletons.setdefault(s["structure"], {})[s["b_skeleton"]] = 1
+    state = tmp_path / "skeletons-only.json"
+    exclusion.save(exclusion.State(batches=["earlier"], skeletons=skeletons), state)
+    (tmp_path / "x").mkdir()
+    plan2 = json.loads(_plan(tmp_path / "x", domain_table, "T02", 3, "--exclusion-state", str(state)).read_text(encoding="utf-8"))
+    locked2 = {s["id"]: s for s in plan2["slots"] if s.get("b_path") == "solve_first"}
+    # Same packs as the first plan, so every slot met its own earlier skeleton and re-seeded.
+    assert all(locked2[s["id"]]["pack"] == s["pack"] for s in locked1)
+    assert all(s["b_reseeds"] >= 1 for s in locked2.values())
+    assert all(s["b_skeleton"] not in skeletons[s["structure"]] for s in locked2.values())
