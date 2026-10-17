@@ -71,7 +71,13 @@ def test_a_batch_leaves_its_state_and_the_next_batch_checks_against_it(domain_ta
     copy = exclusion.State(batches=["earlier"], rows=state.rows, models=state.models)
     prior = tmp_path / "prior.json"
     exclusion.save(copy, prior)
-    second = run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "o2", mock=True, exclusion_state=prior))
+    # A plan is made against the state it runs with (Argon §9.4 #15): the old plan is refused against the copy...
+    with pytest.raises(WriteRefused, match="plan was made against exclusion state"):
+        run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "o2", mock=True, exclusion_state=prior))
+    replan = tmp_path / "replan"
+    replan.mkdir()
+    plan1b = _plan(replan, domain_table, "T02", 3, "--exclusion-state", str(prior))
+    second = run(WriteConfig(plan=plan1b, pack=pack_dir, out=tmp_path / "o2", mock=True, exclusion_state=prior))
     refusals = _jsonl(tmp_path / "o2" / "mock" / "refusals.jsonl")
     assert second["accepted"] < 40 and any(r["code"] == "AGAINST" for r in refusals)
     receipts = _jsonl(tmp_path / "o2" / "mock" / "receipts.jsonl") if (tmp_path / "o2" / "mock" / "receipts.jsonl").exists() else []
@@ -80,7 +86,7 @@ def test_a_batch_leaves_its_state_and_the_next_batch_checks_against_it(domain_ta
     with pytest.raises(WriteRefused, match="already in the exclusion state"):
         run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "o3", mock=True, exclusion_state=state_path))
     # The next batch (another plan) starts from the state and adds itself. (The mock's warm-up only knows T02.)
-    plan2 = _plan(tmp_path, domain_table, "T02", 4)
+    plan2 = _plan(tmp_path, domain_table, "T02", 4, "--exclusion-state", str(state_path))
     third = run(WriteConfig(plan=plan2, pack=pack_dir, out=tmp_path / "o4", mock=True, exclusion_state=state_path))
     # The mock's words come from the slot's place in the plan, so a second T02 plan repeats the first's drafts and the
     # state refuses every one: no row an earlier batch accepted can come back. Nothing accepted, so no state is left.
@@ -120,7 +126,7 @@ def test_every_wave_of_a_batch_uses_the_same_state(domain_table: Path, pack_dir:
     drafts = tmp_path / "w0" / "mock" / waves.DRAFTS_FILE
     other = tmp_path / "other.json"
     exclusion.save(exclusion.State(batches=["x"]), other)
-    with pytest.raises(WriteRefused, match="other batch pins.*exclusion_state_sha256"):
+    with pytest.raises(WriteRefused, match="plan was made against exclusion state"):
         run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "w1", mock=True, wave="critique", drafts=drafts, exclusion_state=other))
     done = run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "w1", mock=True, wave="critique", drafts=drafts))
     # The wave that leaves nothing pending writes the batch's state.

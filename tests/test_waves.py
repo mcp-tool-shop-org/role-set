@@ -294,7 +294,12 @@ def test_a_real_critique_wave_loads_no_writer_and_refuses_the_writers_family(pac
     drafts = tmp_path / "w0" / "mock" / waves.DRAFTS_FILE
     header, rows = waves.read(drafts)
     real = tmp_path / "real.jsonl"
-    waves.write(real, {**header, "writer_pins": {"writer_model": "big-writer", "writer_family": "nemotron"}}, rows)
+    from role_set import proven
+
+    listed = proven.load(proven_file(tmp_path))
+    entry = listed.writers["big-writer"]
+    full = {"writer_model": "big-writer", **{f"writer_{k}": v for k, v in proven.require_pinned(entry, entry["gguf_sha256"]).items()}}
+    waves.write(real, {**header, "writer_pins": full}, rows)
     machine = tmp_path / "machine.json"
     machine.write_text(json.dumps({"driver": "580", "compat": True, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB",
                                    "colab_release_tag": "release-colab_20261015"}), encoding="utf-8")
@@ -320,3 +325,47 @@ def test_the_hand_off_is_sealed_against_a_one_byte_change(pack_dir: Path, plan_f
     path.write_bytes(bytes(data))
     with pytest.raises(WriteRefused, match="doesn't match its seal"):
         run(_cfg(plan_file, pack_dir, tmp_path / "w1", wave="critique", drafts=path))
+
+
+def test_a_critique_wave_refuses_an_unlisted_or_repinned_writer(pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch):
+    """Argon §9.4 #2: the drafts' writer is looked up in writers.json; a blank family or a re-pinned GGUF is refused."""
+
+    import role_set.write as w
+    from role_set import proven
+    from role_set.mock import mock_gates
+    from role_set.write import build
+    from test_proven import SHA_C, SHA_S, proven_file
+
+    run(_cfg(plan_file, pack_dir, tmp_path / "w0", wave="write"))
+    header, rows = waves.read(tmp_path / "w0" / "mock" / waves.DRAFTS_FILE)
+    listed = proven.load(proven_file(tmp_path))
+    entry = listed.writers["big-writer"]
+    full = {"writer_model": "big-writer", **{f"writer_{k}": v for k, v in proven.require_pinned(entry, entry["gguf_sha256"]).items()}}
+    machine = tmp_path / "machine.json"
+    machine.write_text(json.dumps({"driver": "580", "compat": True, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB",
+                                   "colab_release_tag": "release-colab_20261015"}), encoding="utf-8")
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    for bad, match in (({**full, "writer_model": "ghost"}, "not on the proven writer list"),
+                       ({**full, "writer_family": ""}, "differ from writers.json"),
+                       ({**full, "writer_gguf_sha256": "f" * 64}, "differs from the pinned")):
+        real = tmp_path / f"real-{match[:5]}.jsonl"
+        waves.write(real, {**header, "writer_pins": bad}, rows)
+        cfg = dict(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=proven_file(tmp_path),
+                   critic_endpoint="http://127.0.0.1:8081/v1", critic_gguf_sha256=SHA_C, server_sha256=SHA_S, machine=machine,
+                   partition="trial:waves", wave="critique", drafts=real, critic_model="other-critic")
+        with pytest.raises(WriteRefused, match=match):
+            build(WriteConfig(**cfg))
+
+
+def test_a_wave_refuses_drafts_that_dont_match_the_plan(pack_dir: Path, plan_file: Path, tmp_path: Path):
+    """Argon §9.4 #6: a truncated or reordered drafts file is refused, even resealed."""
+
+    run(_cfg(plan_file, pack_dir, tmp_path / "w0", wave="write"))
+    drafts = tmp_path / "w0" / "mock" / waves.DRAFTS_FILE
+    header, rows = waves.read(drafts)
+    for name, bad in (("short", rows[:5]), ("swapped", [rows[1], rows[0], *rows[2:]])):
+        cut = tmp_path / name / waves.DRAFTS_FILE
+        cut.parent.mkdir()
+        waves.write(cut, header, bad)
+        with pytest.raises(WriteRefused, match="don't match this plan"):
+            run(_cfg(plan_file, pack_dir, tmp_path / f"o-{name}", wave="critique", drafts=cut))

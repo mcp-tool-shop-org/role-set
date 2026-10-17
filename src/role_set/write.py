@@ -163,6 +163,14 @@ def critic_caller(endpoint: str, model: str):
     return critic
 
 
+def _require_critic_policy(cfg: WriteConfig, partition: str) -> None:
+    """Every counted row has its second reader (Argon §9.4 #1): --no-critic is for trial and mock runs only."""
+
+    if cfg.no_critic and (partition == "production" or cfg.wave == "critique"):
+        raise GuardError("REFUSED: --no-critic never runs on partition production or in a critique wave; every "
+                         "counted row is read by a critic")
+
+
 def build(cfg: WriteConfig, *, now=time.time):
     """Everything the runner needs, with every refusal raised before a byte is sent."""
 
@@ -199,6 +207,11 @@ def build(cfg: WriteConfig, *, now=time.time):
     if plan_sha[:16] in prior.batches:
         raise WriteRefused(f"REFUSED: this plan's batch {plan_sha[:16]} is already in the exclusion state; a rerun starts "
                            "from the state before it")
+    # The plan was made against one exclusion state; the run checks against the same one (Argon §9.4 #15).
+    planned = json.loads(cfg.plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")
+    if planned and planned != prior.sha256:
+        raise WriteRefused(f"REFUSED: the plan was made against exclusion state {planned[:12]}, and --exclusion-state is "
+                           f"{prior.sha256[:12]}; pass the state the plan was made from")
     # A batch pin: every wave of the batch checks against the same earlier batches.
     pins["exclusion_state_sha256"] = prior.sha256
     pins["exclusion_batches"] = len(prior.batches)
@@ -224,6 +237,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         endpoint = require_local_endpoint(cfg.endpoint or "") if uses_writer else None
         listed = proven.load(cfg.writers_file)
         partition = proven.require_partition(cfg.partition)
+        _require_critic_policy(cfg, partition)
         machine = proven.load_machine(cfg.machine)
         server = proven.require_server(listed.server, cfg.server_sha256)
         if uses_writer:
@@ -231,10 +245,18 @@ def build(cfg: WriteConfig, *, now=time.time):
             entry = listed.writers[model]
             w_pins = proven.require_pinned(entry, cfg.writer_gguf_sha256)
         else:
-            # A critique wave reads the drafts' own writer pins; it loads no writer.
+            # A critique wave loads no writer, but the drafts' writer must still be on the list with the same pins
+            # (Argon §9.4 #2): the family that bars a same-family critic comes from writers.json, never the header.
             drafted = (header or {}).get("writer_pins") or {}
             model = drafted.get("writer_model")
-            entry = {"served_as": model, "family": drafted.get("writer_family") or ""}
+            if model not in listed.writers:
+                raise GuardError(f"REFUSED: the drafts name writer {model!r}, which is not on the proven writer list")
+            entry = listed.writers[model]
+            listed_pins = proven.require_pinned(entry, drafted.get("writer_gguf_sha256"))
+            drift = sorted(k for k, v in listed_pins.items() if drafted.get(f"writer_{k}") != v)
+            if drift:
+                raise GuardError(f"REFUSED: the drafts' writer pins differ from writers.json ({', '.join(drift)}); "
+                                 "a critique wave reads only drafts its listed writer wrote")
             w_pins = None
         if proven.needs_grant(machine):
             require_grant(cfg.grant, uses_card=True)

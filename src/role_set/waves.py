@@ -309,6 +309,12 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
         drafts = write_wave(runner, slots, stop_after_s=stop_after_s)
     else:
         assert header_in is not None and drafts_in is not None
+        # The drafts hold every slot of this plan, in the plan's order (Argon §9.4 #6): a truncated, reordered or
+        # padded file is refused, even under a matching seal.
+        want_slots = json.loads(json.dumps([s.as_dict() for s in interleave(slots)]))
+        if [d["slot"] for d in drafts_in] != want_slots:
+            raise WaveError(f"REFUSED: the drafts hold {len(drafts_in)} slots that don't match this plan's "
+                            f"{len(want_slots)} in order; a wave continues only its own batch, whole")
         load_andon(runner, header_in.get("andon") or {})
         runner.plan_kinds = {Slot(**d["slot"]).kind for d in drafts_in}
         preload(runner, drafts_in)
