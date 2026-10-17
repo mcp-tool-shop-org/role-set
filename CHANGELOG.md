@@ -40,7 +40,8 @@ All notable changes to role-set are documented here. The format is based on
   - **`line_question` points at no line:**
     - no ordinal or position ("the first line", "the last item");
     - no three-word run from the material that carries a content word;
-    - no two of the material's content words.
+    - no two of the material's content words, not counting the subject's own words (the content kind and the NAICS domain title, R&D on #79);
+    - no word the framing shares only with the deciding line(s), the real leak.
   - **The T10 record's hash** moves with the `puzzle.py` edit. Regenerating the record left every build unchanged.
 - **Gates pinned to aspire-si-gates 1.7.3** (aspire-si 96acdaa), from 1.7.2. Leakage compares the statement field as well as the user turn, and a STaR row refuses think tags.
 - **T09 apply slots draw only unordered content kinds.** `plan --apply` no longer assigns a changelog or a timetable to T09. Those kinds have a line order that carries meaning, and assembly refuses `order_free: true` on them.

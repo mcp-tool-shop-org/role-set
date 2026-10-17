@@ -227,3 +227,24 @@ def test_the_committed_table_is_the_pinned_census_file():
     assert "9221" in {e["code"] for e in table.escalate["safety"]}
     # Every lesson's 26 domain-bearing slots fit, with room.
     assert len(table.subsectors) >= 3 * 26
+
+
+def test_line_question_may_name_its_subject_but_not_the_deciding_line():
+    """R&D on #79: the content kind and the domain title name the material, not the answer; a word the framing shares
+    only with the deciding line is the leak."""
+
+    material = ("Bus timetable, Harbour Line\nThe early service leaves the depot at dawn on weekdays.\n"
+                "The late service runs on Saturdays only.\n")
+    deciding = ["The late service runs on Saturdays only."]
+    subject = ["timetable", "Transit and Ground Passenger Transportation"]
+
+    def user(framing):
+        return framing + "\n\nMaterial:\n" + material + "\nStatement: the late service runs on Sundays."
+
+    named = "Which line of the bus timetable settles the statement?"
+    assert frames.check_frame("line_question", user(named), material, deciding=deciding, subject_words=subject) is None
+    # Without the subject words, "bus" and "timetable" count as two shared words.
+    assert "material's words" in frames.check_frame("line_question", user(named), material, deciding=deciding)
+    leak = "Which line settles whether Saturday matters here?"
+    assert "only on the deciding line" in frames.check_frame("line_question", user(leak), material, deciding=deciding,
+                                                             subject_words=subject)

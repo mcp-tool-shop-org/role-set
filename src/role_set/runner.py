@@ -818,7 +818,10 @@ class Runner:
             if t:
                 refusal = self._refusal(*t)
         if refusal is None and slot.frame:
-            off = check_frame(slot.frame, row["turns"][0]["user"], material.text if material else "")
+            subject = [(slot.content_kind or "").replace("_", " "), (slot.domain or {}).get("title", "")]
+            off = check_frame(slot.frame, row["turns"][0]["user"], material.text if material else "",
+                              deciding=((row.get("turn_keys") or {}).get("1") or row).get("deciding") or (),
+                              subject_words=subject)
             if off:
                 refusal = self._refusal("FRAME", off)
         if refusal is None:

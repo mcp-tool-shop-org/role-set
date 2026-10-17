@@ -67,8 +67,12 @@ def _content(text: str) -> set[str]:
     return {_stem(w) for w in re.findall(r"[a-z0-9']+", text.lower()) if w not in STOP and len(w) > 2}
 
 
-def check_frame(frame: str, user: str, material: str) -> str | None:
-    """Why the framing doesn't open in its frame, or None."""
+def check_frame(frame: str, user: str, material: str, *, deciding=(), subject_words=()) -> str | None:
+    """Why the framing doesn't open in its frame, or None. `deciding` is the row's deciding line(s); `subject_words`
+    names the material (its content kind and domain title), for line_question."""
+
+    if isinstance(deciding, str):
+        deciding = deciding.splitlines()
 
     if frame not in FRAMES:
         return f"unknown frame {frame!r}"
@@ -95,10 +99,22 @@ def check_frame(frame: str, user: str, material: str) -> str | None:
         hit = POINTER.search(text)
         if hit:
             return f"frame line_question names no line: '{hit.group(0)}' points at one"
-        shared = sorted(g for g in _grams(text, LQ_NGRAM) & _grams(material, LQ_NGRAM) if any(w not in STOP for w in g))
+        # The subject's own words (the content kind and the NAICS domain title) name what the material is, not which
+        # line decides it (R&D on #79), so they never count as a pointer.
+        subject = {_stem(w) for w in re.findall(r"[a-z0-9']+", " ".join(subject_words).lower())}
+        shared = sorted(g for g in _grams(text, LQ_NGRAM) & _grams(material, LQ_NGRAM)
+                        if any(w not in STOP and _stem(w) not in subject for w in g))
         if shared:
             return "frame line_question doesn't point at the answer: the framing repeats '" + " ".join(shared[0]) + "' from the material"
-        common = sorted(_content(text) & _content(material))
+        words = _content(text) - subject
+        # The real leak: a word the framing shares only with the deciding line(s).
+        deciding_lines = [x.strip() for x in deciding if x and x.strip()]
+        if deciding_lines:
+            rest = "\n".join(ln for ln in material.splitlines() if ln.strip() not in deciding_lines)
+            only = sorted((words & _content("\n".join(deciding_lines))) - _content(rest))
+            if only:
+                return f"frame line_question doesn't point at the answer: '{only[0]}' appears only on the deciding line"
+        common = sorted(words & _content(material))
         if len(common) >= LQ_SHARED_WORDS:
             return "frame line_question doesn't point at the answer: the framing uses the material's words " + ", ".join(repr(w) for w in common[:3])
     return None
