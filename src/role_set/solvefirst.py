@@ -46,6 +46,12 @@ MAX_TRIES = 300
 MIN_FACTS = {"underdetermined_with_explicit_set": 3, "tree_with_pruning": 3}
 MIN_FACTS_DEFAULT = 2
 PACK_USES_MAX = 4  # across a batch's plan (R&D, 2026-10-16)
+# The plan-time skeleton floor (R&D on #73): per structure, across the batch and any earlier batches' state, at least
+# 75% of solve-first puzzles have a distinct fact skeleton and none is used more than 3 times. A slot whose skeleton
+# collides is re-seeded, up to RESEED_MAX times, and the count is recorded on the slot.
+SKELETON_DISTINCT_SHARE = 0.75
+SKELETON_USES_MAX = 3
+RESEED_MAX = 30
 LATE_SHARE = 2 / 3  # the answer may appear only in the thinking's final third
 LINE_REF = re.compile(r"\blines?\s+(\d+)(?:\s*(?:,|and|&)\s*(\d+))*", re.IGNORECASE)
 
@@ -305,7 +311,7 @@ def _question(model: dict, structure: str, subject, attr: str) -> str:
     if "claim" in model:
         c = model["claim"]
         word = "earlier" if c[0] == "before" else "later"
-        return f"Is {c[1]}'s {attr} {word} than {c[2]}'s? Name the line that settles it, or say it can't be told."
+        return f"Is {c[1]}'s {attr} {word} than {c[2]}'s? Name the lines that settle it, or say it can't be told."
     asks = model["asks"]
     if "entity_with" in asks:
         return f"Who has {attr} {subject}?"
@@ -384,6 +390,47 @@ def assign(slots: list, packs: dict[str, dict], *, seed: int, table=None) -> Non
                 raise SolveFirstError(f"REFUSED: pack {pick}'s NAICS code {code} is not a subsector in the domain table")
             s.domain = {"code": code, "title": titles.get(code, ""), "pack": pick}
     check_pack_uses(slots)
+
+
+def skeleton_of(locked: Locked) -> str:
+    """The locked model's fact skeleton, as puzzle-check computes it (renamed, order-free), hashed."""
+
+    from role_set.puzzle_check import skeleton
+
+    return hashlib.sha256(skeleton(locked.model).encode("utf-8")).hexdigest()[:16]
+
+
+def lock_skeletons(slots: list, packs: dict[str, dict], *, prior: dict | None = None) -> dict:
+    """Build every solve-first slot's puzzle at plan time and re-seed a slot whose skeleton another slot of its
+    structure already has. Records `b_skeleton` and `b_reseeds` on each slot; refuses the plan when a structure falls
+    below the floor. `prior` is {structure: {skeleton: uses}} from earlier batches (B4's cumulative state). Returns the
+    batch's counts in the same shape."""
+
+    from collections import Counter
+
+    seen: dict[str, Counter] = {k: Counter(v) for k, v in (prior or {}).items()}
+    for s in slots:
+        if s.kind != "B" or s.b_path != "solve_first":
+            continue
+        counts = seen.setdefault(s.structure, Counter())
+        base, reseeds = s.b_seed, 0
+        while True:
+            sk = skeleton_of(generate(s.structure, packs[s.pack], s.b_seed))
+            if counts[sk] == 0 or reseeds >= RESEED_MAX:
+                break
+            reseeds += 1
+            s.b_seed = random.Random(f"reseed:{base}:{reseeds}").randrange(1, 10**9)
+        counts[sk] += 1
+        s.b_skeleton, s.b_reseeds = sk, reseeds
+    for structure, counts in seen.items():
+        total = sum(counts.values())
+        if not total:
+            continue
+        worst = max(counts.values())
+        if len(counts) < SKELETON_DISTINCT_SHARE * total or worst > SKELETON_USES_MAX:
+            raise SolveFirstError(f"REFUSED: {structure} has {len(counts)} distinct skeletons in {total} puzzles (floor "
+                                  f"{SKELETON_DISTINCT_SHARE:.0%}) and its most used is used {worst} times (at most {SKELETON_USES_MAX})")
+    return {k: dict(v) for k, v in seen.items()}
 
 
 def check_pack_uses(slots: list) -> None:

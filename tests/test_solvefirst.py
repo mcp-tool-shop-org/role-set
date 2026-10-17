@@ -193,3 +193,42 @@ def test_glosses_say_each_form_in_words_the_check_accepts():
         solvefirst.gloss(["offset", "a", "b", "slot", 2])
     with pytest.raises(PuzzleError):
         parse_model({"entities": []})
+
+
+def test_the_dag_question_asks_for_the_lines():
+    locked = solvefirst.generate("tree_with_pruning", PACKS["clinic-rota"], 3)
+    assert "Name the lines that settle it" in locked.question
+
+
+def test_the_plan_reseeds_repeated_skeletons_and_holds_the_floor(domain_table: Path):
+    table = domains.load(domain_table)
+    slots = plan_batch(SIDES, seed=9)
+    domains.assign(slots, table, seed=9)
+    solvefirst.assign(slots, PACKS, seed=9, table=table)
+    counts = solvefirst.lock_skeletons(slots, PACKS)
+    locked = [s for s in slots if s.b_path == "solve_first"]
+    assert all(s.b_skeleton and len(s.b_skeleton) == 16 for s in locked)
+    for structure, c in counts.items():
+        assert len(c) == sum(c.values())  # two lessons, two of each: re-seeding keeps them distinct
+    # The slot's recorded seed is the one its puzzle is built from.
+    s = locked[0]
+    assert solvefirst.skeleton_of(solvefirst.generate(s.structure, PACKS[s.pack], s.b_seed)) == s.b_skeleton
+    # Earlier batches count: a skeleton an earlier batch already used is re-seeded away from.
+    prior = {s.structure: {s.b_skeleton: 1}}
+    again = plan_batch(SIDES, seed=9)
+    domains.assign(again, table, seed=9)
+    solvefirst.assign(again, PACKS, seed=9, table=table)
+    solvefirst.lock_skeletons(again, PACKS, prior=prior)
+    twin = next(x for x in again if x.id == s.id)
+    assert twin.b_skeleton != s.b_skeleton and twin.b_reseeds >= 1
+
+
+def test_the_skeleton_floor_refuses_a_thin_structure(domain_table: Path, monkeypatch):
+    table = domains.load(domain_table)
+    slots = plan_batch(SIDES, seed=9)
+    domains.assign(slots, table, seed=9)
+    solvefirst.assign(slots, PACKS, seed=9, table=table)
+    monkeypatch.setattr(solvefirst, "skeleton_of", lambda locked: "same")
+    monkeypatch.setattr(solvefirst, "RESEED_MAX", 2)
+    with pytest.raises(solvefirst.SolveFirstError, match="distinct skeletons"):
+        solvefirst.lock_skeletons(slots, PACKS)
