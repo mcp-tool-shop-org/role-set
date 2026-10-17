@@ -436,3 +436,15 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_STUB", "1")
     start, found = pw.resume_from()
     assert start == 2 and set(found) == set(writers)
+
+
+def test_a_dropped_model_refuses_a_later_request(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    m = pool.get("granite-4.2-30b")
+    m["path"] = str(tmp_path / "granite.gguf")
+    (tmp_path / "granite.gguf").write_bytes(b"x")
+    monkeypatch.setattr(pw, "resources", lambda *a, **k: None)
+    pool.drop("granite-4.2-30b")
+    assert not (tmp_path / "granite.gguf").exists()
+    with pytest.raises(RuntimeError, match="deleted after its last planned use"):
+        pool.serve("granite-4.2-30b")

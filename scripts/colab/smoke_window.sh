@@ -27,7 +27,9 @@ bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
 stop_all() {
   (
-    flock 9
+    # Bounded: the EXIT trap can fire while this script still holds the open lock, and an unbounded wait would never
+    # stop the session (R&D on #89). After 60 s it stops the session anyway.
+    flock -w 60 9 || echo "open lock not free after 60 s; stopping $S anyway"
     echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
     sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
   ) 9>"$OPEN_LOCK"

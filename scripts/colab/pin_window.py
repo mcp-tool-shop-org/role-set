@@ -1157,6 +1157,10 @@ class Pool:
 
     def get(self, name: str) -> dict:
         if name in self.models:
+            if self.models[name].get("dropped"):
+                # Its GGUF went after what the window planned as its last use; serving it now would start llama-server
+                # on a deleted file (R&D on #89).
+                raise RuntimeError(f"{name}: its GGUF was deleted after its last planned use, and a later step asked for it")
             return self.models[name]
         spec = self.by_name[name]
         policy = self.policies.get(name, "q8")
