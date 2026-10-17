@@ -63,7 +63,9 @@ def machine_line() -> dict:
     return {"card": name, "memory": mem, "driver": driver, "compat": False,
             "driver_cuda": sh("nvidia-smi | grep -o 'CUDA Version: [0-9.]*' | cut -d' ' -f3"),
             "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG"), "cores": os.cpu_count(),
-            "disk_free_gb": round(shutil.disk_usage("/content").free / 2**30, 1)}
+            "disk_free_gb": round(shutil.disk_usage("/content").free / 2**30, 1),
+            # The CUDA runtime the build targets; role-set's load_machine requires it (R&D on #77).
+            "runtime": "13.4"}
 
 
 def build() -> dict:
@@ -125,8 +127,9 @@ def smoke(built: dict, model: dict) -> dict:
     """One served completion: the server starts, answers, and we see whether reasoning comes back apart."""
 
     port = 8091
+    env = {**os.environ, "LD_LIBRARY_PATH": ":".join(str(p) for p in _cuda_lib_dirs()) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
-                             "-c", "8192", "--reasoning-format", "deepseek"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                             "-c", "8192", "--reasoning-format", "deepseek"], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, env=env)
     try:
         for _ in range(180):
             try:
@@ -153,6 +156,39 @@ def smoke(built: dict, model: dict) -> dict:
         proc.wait(timeout=60)
 
 
+def pin_libs(binary: str) -> list[dict]:
+    """The CUDA shared libraries the binary loads, copied and hashed into /content/pin/lib (R&D on #77): writers.json's
+    llama_server pins the binary plus this set, because a different cuBLAS can move outputs."""
+
+    lib = WORK / "lib"
+    lib.mkdir(exist_ok=True)
+    env = {**os.environ, "LD_LIBRARY_PATH": ":".join(str(p) for p in _cuda_lib_dirs()) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
+    out = []
+    for line in sh(f"ldd {binary}", env=env).splitlines():
+        if "=>" not in line:
+            continue
+        name, _, rest = line.strip().partition(" => ")
+        path = rest.split(" (")[0].strip()
+        if not path.startswith("/") or not any(k in name for k in ("cuda", "cublas", "cudart", "nvrtc", "nvJitLink")):
+            continue
+        dest = lib / name
+        shutil.copy(path, dest)
+        out.append({"name": name, "source": path, "sha256": sha256(dest), "bytes": dest.stat().st_size})
+    if not out:
+        raise RuntimeError("ldd lists no CUDA library: the binary isn't linked as expected")
+    sh(f"tar -C {WORK} -cf {WORK}/lib.tar lib")
+    return out
+
+
+def _cuda_lib_dirs() -> list:
+    import site
+
+    dirs = []
+    for root in site.getsitepackages():
+        dirs += [p for p in Path(root, "nvidia").glob("*/lib") if p.is_dir()]
+    return dirs
+
+
 def main() -> int:
     WORK.mkdir(parents=True, exist_ok=True)
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
@@ -169,6 +205,7 @@ def main() -> int:
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
         # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
         shutil.copy(built["path"], WORK / "llama-server")
+        result["llama_server"]["libs"] = pin_libs(built["path"])
         result["ok"] = True
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
         result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"

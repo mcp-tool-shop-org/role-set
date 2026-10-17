@@ -30,5 +30,7 @@ echo "exec exit=${PIPESTATUS[0]} wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
 timeout 600 colab download -s "$S" /content/pin/pin-result.json "$OUT/pin-result.json" 2>&1 | tail -1
 timeout 900 colab download -s "$S" /content/pin/llama-server "$OUT/llama-server" 2>&1 | tail -1
+timeout 900 colab download -s "$S" /content/pin/lib.tar "$OUT/lib.tar" 2>&1 | tail -1
 [ -f "$OUT/llama-server" ] && sha256sum "$OUT/llama-server"
+[ -f "$OUT/lib.tar" ] && tar -tf "$OUT/lib.tar"
 echo "end balance $(bal) (start $START)"
