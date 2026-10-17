@@ -198,7 +198,8 @@
       "pin_note": "Not converted yet: llama.cpp's pinned transformers 4.57.6 can't read its tokenizer_config (window 5); it converts in its own env on transformers 5.20.1. Refused until pinned.",
       "registry_also": [
         "gemma-prohibited-use-policy"
-      ]
+      ],
+      "terms_note": "Apache-2.0 card; Google's Gemma prohibited-use policy (registry gemma-prohibited-use-policy) bars only harmful-content categories and doesn't restrict code fixing, evaluation or training on outputs (rnd DESIGN F14)."
     }
   ],
   "critics": [
