@@ -64,11 +64,14 @@ MODELS = [
     # Gemma 4 was saved with transformers 5.5.0.dev0; its tokenizer_config's list-shaped extra_special_tokens breaks
     # llama.cpp's pinned 4.57.6 (window 5), so it converts in its own env, as Muse does.
     {"served_as": "gemma-4-31b-it", "how": "convert", "repo": "google/gemma-4-31B-it",
-     "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475", "env": {"transformers": "5.20.1"}, "tokenizer_check": True},
+     "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
+     "expect_sha256": "e357a45071c2cbbc44b97506dfadc34bac0d5f6592f1d500edfaa9647f01e7bf",
+     "expect_q6k_sha256": "3a72fddfa71a94d3dc0b03b804ee1bd7dfa56881d3284afd74e69651f14f206f"},
     # Pinned in window 5; its 32k KV cache doesn't fit the A100, so it serves on the H100 (R&D, 2026-10-17).
     {"served_as": "deepseek-r1-distill-qwen-32b", "how": "convert", "repo": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
      "revision": "711ad2ea6aa40cfca18895e8aca02ab92df1a746", "tokenizer_check": True,
-     "expect_sha256": "b791775c3bb0d1ab3cd7a73c6760c4ab915680f3587be8a7d29937ca2b9ad24e"},
+     "expect_sha256": "b791775c3bb0d1ab3cd7a73c6760c4ab915680f3587be8a7d29937ca2b9ad24e",
+     "expect_q6k_sha256": "c2cda735fb0f026d33db4734c1466b94cfca9ed8f9a88bab0610bca45687bce5"},
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
@@ -834,6 +837,38 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
     return arms
 
 
+def to_q6k(built: dict, spec: dict, m: dict, result: dict) -> dict:
+    """The writer's Q6_K from its pinned Q8_0, checked against its pinned Q6_K; served as writers.json's '<name>-q6k'."""
+
+    if "llama_quantize" not in result:
+        result["llama_quantize"] = build_quantize(Path(built["src"]))
+    q6 = WORK / f"{spec['served_as']}-Q6_K.gguf"
+    sh(f"{result['llama_quantize']['path']} --allow-requantize {m['path']} {q6} Q6_K", timeout=3600)
+    got = sha256(q6)
+    if spec.get("expect_q6k_sha256") and got != spec["expect_q6k_sha256"]:
+        raise RuntimeError(f"{spec['served_as']}: Q6_K {got[:12]} doesn't reproduce {spec['expect_q6k_sha256'][:12]}")
+    Path(m["path"]).unlink(missing_ok=True)
+    return {**m, "served_as": f"{spec['served_as']}-q6k", "card": m.get("card") or spec["served_as"], "path": str(q6),
+            "gguf_file": q6.name, "gguf_sha256": got, "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
+            "label": f"Q6_K (requantized from pinned Q8_0 {m['gguf_sha256']})"}
+
+
+def choose_quant(built: dict, spec: dict, m: dict, policy: str, result: dict) -> tuple[dict, dict]:
+    """q8: the Q8_0. q6k: the pinned Q6_K. q8_or_q6k: the Q8_0 if it passes the gates (offload N/N, 1 slot x 32768),
+    otherwise the pinned Q6_K (R&D, 2026-10-17). Returns the model to serve and the record of the choice."""
+
+    if policy == "q8":
+        return m, {"policy": policy, "ran": "Q8_0"}
+    if policy == "q6k":
+        return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K"}
+    try:
+        with Served(built, m, m["gguf_sha256"]) as srv:
+            first = srv.starts[-1]
+        return m, {"policy": policy, "ran": "Q8_0", "q8_gates": first}
+    except RuntimeError as e:
+        return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K", "why": str(e)[:400]}
+
+
 def pilot_window(built: dict, result: dict) -> None:
     """PIN_ROLE=pilot (R&D, 2026-10-17): the 20-slot T02 pilot, then its 4 T04 apply twins (the arm's accepted rows as
     --training), for each writer in PIN_PILOT_WRITERS, around one critic (PIN_PILOT_CRITIC). One A100, one model loaded at
@@ -863,23 +898,29 @@ def pilot_window(built: dict, result: dict) -> None:
                        # state, so the shas agree by construction (write refuses a mismatch).
                        "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
+    policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
+    result["quant"] = {}
     models: dict = {}
     for name in [critic_name, *writer_names]:
         spec = by_name[name]
         m = fetch_model(spec, built)
-        models[name] = m
         result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf")})
         if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
             raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
+        if name != critic_name:
+            m, result["quant"][name] = choose_quant(built, spec, m, policies.get(name, "q8"), result)
+        models[name] = m
     critic = models[critic_name]
     critic_srv = Served(built, critic, critic["gguf_sha256"])
-    writers = {n: models[n] for n in writer_names}
-    writer_srv = {n: Served(built, models[n], models[n]["gguf_sha256"]) for n in writer_names}
+    # Each arm is named by what it serves as: '<name>-q6k' for a Q6_K arm, writers.json's labelled entry.
+    writers = {models[n]["served_as"]: models[n] for n in writer_names}
+    writer_srv = {models[n]["served_as"]: Served(built, models[n], models[n]["gguf_sha256"]) for n in writer_names}
+    writer_names = list(writers)
     proxies, result["proxy_configs"] = {}, {}
     for name, m in models.items():
         path, cid, info = j1_card(m, Path("/content/card-values.json"), WORK / "cards-j1")
-        proxies[name] = {"config": str(path), "candidate": cid}
-        result["proxy_configs"][name] = info
+        proxies[m["served_as"]] = {"config": str(path), "candidate": cid}
+        result["proxy_configs"][m["served_as"]] = info
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
 

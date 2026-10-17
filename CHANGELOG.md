@@ -16,6 +16,7 @@ All notable changes to role-set are documented here. The format is based on
   - **critic-control:** role-set runs at a pinned commit, in a uv Python 3.12 env, at the card values. Muse runs at seeds 0 and 1 with `--agreement-with`, Lightning at seed 0.
   - `smoke_window.sh` uploads `PIN_UPLOADS` and passes `PIN_ROLE` and `PIN_ROLESET_COMMIT`.
   - **Slots:** every server runs `--parallel 1`, and the window reads `/props` for the slot count and per-slot context, refusing a per-slot context under 32768. llama-server's default splits the context across several slots, and a long thinking reply would truncate at a quarter of it. Window 5's smoke serves ran that way: their fit holds for 32768 in total, not per slot.
+- **writers.json:** Gemma's Q8_0 is pinned (e357a450…, window 9), and the three labelled Q6_K arms (`qwen3.6-35b-a3b-q6k`, `gemma-4-31b-it-q6k`, `deepseek-r1-distill-qwen-32b-q6k`) are listed with their window-9 pins, each naming its card and its source Q8_0.
 - **The Q6_K window** (`PIN_ROLE=q6k`; R&D, 2026-10-17). It's for an arm that doesn't fit the A100 at Q8_0 when no H100 is available:
   - `llama-quantize` is built from the same 620d2225 tree as its own CPU-only target, with its sha256 pinned and `llama-server` untouched;
   - the model's Q8_0 is rebuilt and checked against its pin (Gemma's Q8_0 is made and recorded);
@@ -29,6 +30,7 @@ All notable changes to role-set are documented here. The format is based on
   - The twins train against each arm's own accepted rows.
   - Readouts and a `pilot-out.tar` of every wave come back. `PIN_DOWNLOADS` names what the window fetches.
   - Dry-run end to end against role-set's mock.
+  - **A quant policy per writer** (`PIN_PILOT_QUANT`, R&D 2026-10-17): `q8`, `q6k`, or `q8_or_q6k`. The last tries the Q8_0 against the gates (offload N/N, 1 slot × 32768) and otherwise uses the pinned Q6_K. A Q6_K must reproduce its pin. The result records which ran and why.
   - **The dataminer** (R&D, 2026-10-17; Mike's standing ask): rnd's logging proxy, installed at a pinned commit, sits between role-set and llama-server on every wave.
     - Each model gets a one-candidate config from its card. The values are unchanged; only `reattach_thinking`, J2's multi-turn transform, is removed.
     - It records every call in abmine's format, with top-5 logprobs, reasoning, timings and truncation, beside each wave.
