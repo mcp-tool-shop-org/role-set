@@ -954,12 +954,65 @@ def pending(wave: dict) -> bool:
     return bool(states.get("awaiting_critique") or states.get("needs_rewrite"))
 
 
-def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict, critic_srv, writer_srv, extra=None,
-                proxies: dict | None = None) -> dict:
-    """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critic: all write waves,
-    the critic once for all, then all rewrites, and so on. Returns each arm's waves and its last directory."""
+class Pool:
+    """The window's models, each set up the first time a wave needs it, and only once (R&D, 2026-10-17, from Argon's
+    reply): a writer just before its own write wave, a critic just before its first critique. A VM reclaimed partway
+    then costs at most the setup in hand, and the arms already written have their calls in job.log. A model that is
+    both a writer and a critic (Muse and Lightning critiquing each other) is fetched once."""
 
-    arms = {name: {"waves": [], "drafts": None, "done": False} for name in writers}
+    def __init__(self, built: dict, result: dict, policies: dict, cards: Path, cards_out: Path):
+        self.built, self.result, self.policies, self.cards, self.cards_out = built, result, policies, cards, cards_out
+        self.by_name = {m["served_as"]: m for m in MODELS}
+        self.models: dict = {}
+        self.srv: dict = {}
+        self.proxies: dict = {}
+
+    def get(self, name: str) -> dict:
+        if name in self.models:
+            return self.models[name]
+        spec = self.by_name[name]
+        policy = self.policies.get(name, "q8")
+        m = fetch_model(spec, self.built, keep_snapshot=policy in ("q6k", "q8_or_q6k"))
+        self.result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
+        if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+            raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
+        m, self.result.setdefault("quant", {})[name] = choose_quant(self.built, spec, m, policy, self.result)
+        path, cid, info = j1_card(m, self.cards, self.cards_out)
+        self.proxies[name] = {"config": str(path), "candidate": cid}
+        self.result.setdefault("proxy_configs", {})[m["served_as"]] = info
+        self.models[name] = m
+        self.srv[name] = Served(self.built, m, m["gguf_sha256"])
+        return m
+
+    def serve(self, name: str) -> "Served":
+        self.get(name)
+        return self.srv[name]
+
+    def proxy(self, name: str) -> dict | None:
+        return self.proxies.get(name)
+
+
+def critics_for(writer_names: list) -> dict:
+    """Each arm's critic: PIN_PILOT_CRITIC for all, with PIN_PILOT_CRITIC_FOR=<writer>=<critic>,... per arm (W3:
+    Lightning and Muse critique each other's arm, the design's own critic rule). role-set refuses a same-family pair."""
+
+    default = os.environ.get("PIN_PILOT_CRITIC", "")
+    over = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_CRITIC_FOR", "").split(",") if "=" in x)
+    out = {n: over.get(n, default) for n in writer_names}
+    missing = [n for n, c in out.items() if not c]
+    if missing:
+        raise RuntimeError(f"no critic for {', '.join(missing)}: set PIN_PILOT_CRITIC or PIN_PILOT_CRITIC_FOR")
+    if any(n == c for n, c in out.items()):
+        raise RuntimeError(f"an arm can't critique itself: {out}")
+    return out
+
+
+def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: dict, pool: Pool, extra=None) -> dict:
+    """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critics: all write
+    waves, then each critic once for the arms it reads, then all rewrites, and so on. Every model is set up the first
+    time it is needed (Pool). Returns each arm's waves and its last directory."""
+
+    arms = {name: {"waves": [], "drafts": None, "done": False} for name in arms_in}
     start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
     calls = resume_calls() if extra is None else {}
     for n, f in resumed.items():
@@ -972,21 +1025,22 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
         if not todo:
             break
         if kind == "critique":
-            with critic_srv:
-                for n in todo:
-                    w = write_wave(rs, common + ["--plan", str(plan)], "critique", base / n / f"w{i}", critic=critic,
-                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(critic.get("served_as")),
-                                   reuse_calls=calls.get(n) if i == start else None)
-                    arms[n]["waves"].append(w)
-                    arms[n]["last"] = run_dir(base / n / f"w{i}")
-                    arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
-                    checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
-                    arms[n]["done"] = w["exit"] != 0 or not pending(w)
+            for c in dict.fromkeys(critic_for[n] for n in todo):  # each critic served once, in the arms' order
+                with pool.serve(c):
+                    for n in [n for n in todo if critic_for[n] == c]:
+                        w = write_wave(rs, common + ["--plan", str(plan)], "critique", base / n / f"w{i}", critic=pool.get(c),
+                                       drafts=arms[n]["drafts"], extra=extra, proxy=pool.proxy(c),
+                                       reuse_calls=calls.get(n) if i == start else None)
+                        arms[n]["waves"].append(w)
+                        arms[n]["last"] = run_dir(base / n / f"w{i}")
+                        arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
+                        checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
+                        arms[n]["done"] = w["exit"] != 0 or not pending(w)
         else:
             for n in todo:
-                with writer_srv[n]:
-                    w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=writers[n],
-                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(n),
+                with pool.serve(n):
+                    w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=pool.get(n),
+                                   drafts=arms[n]["drafts"], extra=extra, proxy=pool.proxy(n),
                                    reuse_calls=calls.get(n) if i == start else None)
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
@@ -1071,14 +1125,14 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
 
 
 def pilot_window(built: dict, result: dict) -> None:
-    """PIN_ROLE=pilot (R&D, 2026-10-17): the 20-slot T02 pilot, then its 4 T04 apply twins (the arm's accepted rows as
-    --training), for each writer in PIN_PILOT_WRITERS, around one critic (PIN_PILOT_CRITIC). One A100, one model loaded at
-    a time, swapped by restart; every start re-checks the GGUF's sha256, the offload and the slots."""
+    """PIN_ROLE=pilot (R&D, 2026-10-17): the T02 pilot (or the screen's slot list), then its T04 apply twins (the arm's
+    accepted rows as --training), for each writer in PIN_PILOT_WRITERS, in that order, each read by its critic
+    (PIN_PILOT_CRITIC, or PIN_PILOT_CRITIC_FOR per arm). One A100, one model loaded at a time, swapped by restart; each
+    model is set up when first needed; every start re-checks the GGUF's sha256, the offload and the slots."""
 
     rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
     result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
     writer_names = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
-    critic_name = os.environ["PIN_PILOT_CRITIC"]
     by_name = {m["served_as"]: m for m in MODELS}
     result["disk_free_gb_before"] = round(shutil.disk_usage("/content").free / 1e9, 1)
     machine_file = WORK / "machine.json"
@@ -1102,29 +1156,14 @@ def pilot_window(built: dict, result: dict) -> None:
                        "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
-    result["quant"] = {}
-    models: dict = {}
-    for name in [critic_name, *writer_names]:
-        spec = by_name[name]
-        policy = policies.get(name, "q8") if name != critic_name else "q8"
-        m = fetch_model(spec, built, keep_snapshot=policy in ("q6k", "q8_or_q6k"))
-        result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
-        if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
-            raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
-        if name != critic_name:
-            m, result["quant"][name] = choose_quant(built, spec, m, policies.get(name, "q8"), result)
-        models[name] = m
-    critic = models[critic_name]
-    critic_srv = Served(built, critic, critic["gguf_sha256"])
-    # Each arm is named by what it serves as: '<name>-q6k' for a Q6_K arm, writers.json's labelled entry.
-    writers = {models[n]["served_as"]: models[n] for n in writer_names}
-    writer_srv = {models[n]["served_as"]: Served(built, models[n], models[n]["gguf_sha256"]) for n in writer_names}
-    writer_names = list(writers)
-    proxies, result["proxy_configs"] = {}, {}
-    for name, m in models.items():
-        path, cid, info = j1_card(m, Path("/content/card-values.json"), WORK / "cards-j1")
-        proxies[m["served_as"]] = {"config": str(path), "candidate": cid}
-        result["proxy_configs"][m["served_as"]] = info
+    critic_for = result["critic_for"] = critics_for(writer_names)
+    for name in [*writer_names, *critic_for.values()]:
+        if name not in by_name:
+            raise RuntimeError(f"{name} isn't in pin_window.MODELS")
+    # Critics run at Q8_0 (R&D, 2026-10-17); a writer's quant policy applies to it as a writer only.
+    for c in set(critic_for.values()) - set(writer_names):
+        policies.pop(c, None)
+    pool = Pool(built, result, policies, Path("/content/card-values.json"), WORK / "cards-j1")
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
 
@@ -1133,7 +1172,7 @@ def pilot_window(built: dict, result: dict) -> None:
     result["arms"] = {}
     try:
         t0 = time.time()
-        pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv, proxies=proxies)
+        pilot = pilot_batch(rs, common, plan, base / "pilot", writer_names, critic_for, pool)
         result["pilot_seconds"] = round(time.time() - t0)
         twins_writers = {}
         for n, a in pilot.items():
@@ -1143,14 +1182,13 @@ def pilot_window(built: dict, result: dict) -> None:
                 result["arms"][n]["funnel_stop"] = a["funnel_stop"]
                 result["arms"][n]["twins"] = {"skipped": f"stopped by the funnel: {a['funnel_stop']}"}
             elif accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
-                twins_writers[n] = writers[n]
+                twins_writers[n] = True
             else:
                 result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
         t1 = time.time()
         for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
             accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
-            tw = pilot_batch(rs, common, twins_plan, base / "twins", {n: twins_writers[n]}, critic, critic_srv,
-                             {n: writer_srv[n]}, extra=["--training", str(accepted)], proxies=proxies)
+            tw = pilot_batch(rs, common, twins_plan, base / "twins", [n], critic_for, pool, extra=["--training", str(accepted)])
             result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
         result["twins_seconds"] = round(time.time() - t1)
         for n in writer_names:
@@ -1160,7 +1198,7 @@ def pilot_window(built: dict, result: dict) -> None:
                     r = subprocess.run([rs["role_set"], "readout", "--run", last], capture_output=True, text=True, timeout=600, cwd=rs["src"])
                     result["arms"][n][part]["readout_exit"] = r.returncode
                     result["arms"][n][part]["readout_tail"] = r.stdout[-2500:]
-        result["serves"] = {"critic": critic_srv.starts, **{n: s.starts for n, s in writer_srv.items()}}
+        result["serves"] = {n: s.starts for n, s in pool.srv.items()}
         result["model_errors"] = sum(1 for n in writer_names for part in ("pilot", "twins")
                                      for w in (result["arms"][n].get(part) or {}).get("waves", []) if w.get("exit"))
     finally:
