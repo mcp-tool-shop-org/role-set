@@ -40,9 +40,9 @@ def pack_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def plan_file(tmp_path: Path) -> Path:
+def plan_file(tmp_path: Path, domain_table: Path) -> Path:
     out = tmp_path / "plan.json"
-    assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out)]) == 0
+    assert main(["plan", "--lessons", "T02", "--seed", "3", "--out", str(out), "--domains", str(domain_table)]) == 0
     return out
 
 
@@ -140,7 +140,7 @@ def test_one_attempt_budget_across_waves(pack_dir: Path, plan_file: Path, tmp_pa
     assert header["waves"][0]["input_sha256"] is None and all(len(x["input_sha256"]) == 64 for x in header["waves"][1:])
 
 
-def test_a_wave_refuses_a_drafts_file_it_cannot_continue(pack_dir: Path, plan_file: Path, tmp_path: Path):
+def test_a_wave_refuses_a_drafts_file_it_cannot_continue(pack_dir: Path, plan_file: Path, tmp_path: Path, domain_table: Path):
     run(_cfg(plan_file, pack_dir, tmp_path / "w0", wave="write"))
     drafts = tmp_path / "w0" / "mock" / waves.DRAFTS_FILE
     with pytest.raises(WriteRefused, match="needs --drafts"):
@@ -153,7 +153,7 @@ def test_a_wave_refuses_a_drafts_file_it_cannot_continue(pack_dir: Path, plan_fi
         run(_cfg(plan_file, pack_dir, tmp_path / "x", wave="rewrite", drafts=drafts))
     # Another plan is another batch.
     other = tmp_path / "plan2.json"
-    assert main(["plan", "--lessons", "T02", "--seed", "4", "--out", str(other)]) == 0
+    assert main(["plan", "--lessons", "T02", "--seed", "4", "--out", str(other), "--domains", str(domain_table)]) == 0
     with pytest.raises(WriteRefused, match="other batch pins.*plan_sha256"):
         run(_cfg(other, pack_dir, tmp_path / "x", wave="critique", drafts=drafts))
     with pytest.raises(WriteRefused, match="other batch pins.*partition"):

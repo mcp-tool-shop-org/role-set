@@ -189,11 +189,26 @@ def _slot_from_brief(text: str) -> dict:
     changes = "changes the verdict" in text
     written = "Write a quiz item" in text
     struct = re.search(r"The thinking pattern is: ([^.]+)\.", text)
+    frame = re.search(r"^Frame: (\w+)\.", text, re.M)
     return {
         "id": f"{lesson}-{kind}", "lesson": lesson, "kind": kind, "verdict": verdict.group(1) if verdict else None,
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
-        "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text,
+        "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
     }
+
+
+def _framing(frame: str | None, t) -> str:
+    """A framing in the slot's frame (BUILD-SPEC B2), from the draft's own made-up words, short enough that no
+    eight-word span repeats across drafts."""
+
+    lead = f"{t(3).title()} {t(4)} {t(5)}"
+    if frame == "question":
+        return f"{lead}: does the statement hold here?"
+    if frame == "situation_then_ask":
+        return f"{lead} sent this in. Check the statement."
+    if frame == "line_question":
+        return f"{lead}: which line settles the statement?"
+    return f"{lead}: check the statement against what is shown."
 
 
 def _material_from(text: str) -> str:
@@ -262,7 +277,7 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     statement = f"The notice says: {second_line}" if verdict == "supported" else ("The desk is closed on Sundays." if verdict == "unsupported" else "The desk sells stamps.")
     deciding = [] if verdict == "cannot_tell" else ([first_line, second_line] if slot.get("multi_line") else [second_line])
     answers[(statement, first_line)] = (verdict, deciding)
-    base = {"framing": f"{t(3).title()} {t(4)} {t(5)}: check the statement against what is shown.", "statement": statement, "deciding": deciding,
+    base = {"framing": _framing(slot.get("frame"), t), "statement": statement, "deciding": deciding,
             "thinking": _salt(THINKING[n % 3], n), "reply": REPLIES[n % 3]}
     if kind == "C":
         flaw = "guess" if verdict != "cannot_tell" else "none"

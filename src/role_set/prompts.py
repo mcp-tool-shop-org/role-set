@@ -10,6 +10,7 @@ import json
 import re
 from pathlib import Path
 
+from role_set.frames import FRAMES
 from role_set.assemble import FLAW_VERDICTS, VERDICTS, slot_flaw
 from role_set.critic import FLAW_DEFINITIONS
 from role_set.plan import Slot
@@ -225,6 +226,12 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
     if step:
         lines.append(f"The step this trait decides, which this item is built around: {step}.")
         lines.append(DEFAULTS_NOTE)
+    if slot.domain:
+        what = "passage" if slot.kind == "A" else "material, the statement and the framing"
+        lines.append(f"Domain: {slot.domain['title']} (NAICS {slot.domain['code']}). Set the {what} in this field of work, "
+                     "with the people, documents and terms it really has; never a famous or implausible subject.")
+    if slot.frame:
+        lines.append(f"Frame: {slot.frame}. {FRAMES[slot.frame]} The words are yours: never a stock opener.")
     if slot.content_kind:
         lines.append(f"The material is a {slot.content_kind.replace('_', ' ')}; it is given below and must be used verbatim.")
     if slot.verdict:

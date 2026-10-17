@@ -65,6 +65,8 @@ class Slot:
     e_type: str | None = None  # "written" or "verdict"
     driven_by: list[str] = field(default_factory=list)
     split: str | None = None  # "apply": asked after each session, never trained (aspire-si#127)
+    domain: dict | None = None  # {"code", "title"[, "escalate"]}: the NAICS 2022 domain the item is set in (BUILD-SPEC B2)
+    frame: str | None = None  # the framing's opening frame (role_set.frames), for C, D and verdict E
 
     def as_dict(self) -> dict:
         return asdict(self)

@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from role_set import __version__, autostart, defects, proven, puzzle_check
+from role_set import __version__, autostart, defects, domains, proven, puzzle_check
 from role_set.cost import PROFILES, estimate
 from role_set.critic_control import (
     FALSE_REFUSAL_CAP,
@@ -70,11 +70,18 @@ def _plan(args: argparse.Namespace) -> int:
         lessons[name] = VERIFIER_SIDES[name]
     try:
         slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
-    except PlanError as e:
-        print(f"REFUSED: {e}", file=sys.stderr)
+        table = None
+        if args.domains:
+            table = domains.load(Path(args.domains))
+            domains.assign(slots, table, seed=args.seed)
+    except (PlanError, domains.DomainTableError) as e:
+        msg = str(e)
+        print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
         return 2
     figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
     out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
+    if table is not None:
+        out["domain_table"] = table.pin()
     Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
     for f in figures:
         print(json.dumps(f))
@@ -271,6 +278,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
     a.add_argument("--apply", action="store_true", help="the apply items (aspire-si#127): five C and five D per lesson, never trained")
+    a.add_argument("--domains", default=None, help="the NAICS 2022 domain table (roles/domains/naics-2022.json): a domain per "
+                                                    "slot with material and a frame per framing, by seed (BUILD-SPEC B2); a real write refuses a plan without them")
     a.set_defaults(func=_plan)
 
     c = sub.add_parser("cost", help="pod hours and dollars for a plan; no model call")

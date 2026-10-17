@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from role_set import proven, waves
+from role_set import domains, proven, waves
 from role_set.assemble import trait_name
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
@@ -166,6 +166,8 @@ def build(cfg: WriteConfig, *, now=time.time):
     """Everything the runner needs, with every refusal raised before a byte is sent."""
 
     slots, sides, plan_sha = load_plan(cfg.plan)
+    if not cfg.mock and any(domains.bears_domain(s) and not s.domain for s in slots):
+        raise WriteRefused("REFUSED: the plan has no domains; plan it with --domains (BUILD-SPEC B2): a real batch sets every item with material in a pinned NAICS domain")
     try:
         manifest = verify(cfg.pack)
     except PackError as e:
