@@ -12,7 +12,7 @@ CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
 here="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log"
+mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log" "$OUT/.retry" "$OUT/.retried"
 JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
 MARGIN="${PIN_CAP_MARGIN:-0.3}"  # units kept back at the cap to fetch the results (R&D, 2026-10-17)
 DL_S="${PIN_DL_TIMEOUT:-300}"
@@ -76,8 +76,16 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
     if [ -f "$OUT/.exec.pid" ]; then
       fetch_log watcher
       # The kernel's IDLE/BUSY beside each fetch: whether a busy session with regular file traffic still gets reclaimed.
-      echo "$(date -u +%T) $(timeout 60 colab status -s "$S" 2>&1 | tr -s ' \n' ' ' | cut -c1-300)" >> "$OUT/status.log"
+      st=$(timeout 60 colab status -s "$S" 2>&1 | tr -s ' \n' ' ' | cut -c1-300)
+      echo "$(date -u +%T) $st" >> "$OUT/status.log"
       size=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
+      # The exec never reached the kernel (windows 11c, 12e: "Connection was lost" at the first command): the kernel
+      # reads IDLE and job.log is absent or empty at the first look. Re-run the exec once on the same session, keeping
+      # its uploads (R&D, 2026-10-17). A second time stalls as before; the job's lock stops a late first exec.
+      if [ ! -f "$OUT/.retried" ] && [ "$size" = 0 ] && echo "$st" | grep -q "Status: IDLE"; then
+        echo "EXEC NEVER STARTED ($S): kernel IDLE, job.log empty; re-running the exec once $(date -u +%T)"
+        touch "$OUT/.retried" "$OUT/.retry"; kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; continue
+      fi
       if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
       if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
         echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
@@ -127,12 +135,18 @@ for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSIO
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
-timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" \
-  > "$OUT/smoke-window.log" 2>&1 &
-EXEC=$!
-echo $EXEC > "$OUT/.exec.pid"
-wait $EXEC
-echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null || echo exec)"
+run_exec() {
+  timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" \
+    >> "$OUT/smoke-window.log" 2>&1 &
+  EXEC=$!
+  echo $EXEC > "$OUT/.exec.pid"
+}
+run_exec
+wait $EXEC; rc=$?
+if [ -f "$OUT/.retry" ]; then  # the watcher saw the exec never start: once more, same session
+  rm -f "$OUT/.retry"; run_exec; wait $EXEC; rc=$?
+fi
+echo "exec exit=$rc wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null || echo exec)"
 # The exit sequence: fetch, then the trap stops the session. The watcher stays up as the cap's ceiling meanwhile.
 [ -f "$OUT/.end" ] || echo exec > "$OUT/.end"
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then

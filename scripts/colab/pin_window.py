@@ -1253,8 +1253,36 @@ def runtime() -> dict:
             "cuda_toolkit": CUDA_TOOLKIT}
 
 
+_JOB_LOCK = None  # held for the kernel's life: a second exec in the same kernel finds it taken
+
+
+def take_job_lock(work: Path):
+    """One job per VM (R&D, 2026-10-17): the window re-runs an exec that never reached the kernel, and a late first exec
+    could still arrive. The job takes an exclusive, non-blocking lock on <work>/job.lock first; a second job finds it held,
+    writes JOB ALREADY RUNNING to job.log and stops. flock belongs to the open file, so this holds within one kernel
+    process too. Returns the open lock file, or None when another job holds it."""
+
+    import fcntl  # noqa: PLC0415 - Linux, where the window runs
+
+    work.mkdir(parents=True, exist_ok=True)
+    fh = (work / "job.lock").open("w")
+    try:
+        fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        fh.close()
+        with (work / "job.log").open("a", encoding="utf-8") as f:
+            f.write(f"JOB ALREADY RUNNING {time.strftime('%H:%M:%S')}: this exec stops; the first job carries on\n")
+        return None
+    return fh
+
+
 def main() -> int:
+    global _JOB_LOCK
     WORK.mkdir(parents=True, exist_ok=True)
+    lock = take_job_lock(WORK)
+    if lock is None:
+        return 0
+    _JOB_LOCK = lock
     out, err = sys.stdout, sys.stderr
     sys.stdout = Tee(out, JOB_LOG)
     sys.stderr = Tee(err, JOB_LOG)

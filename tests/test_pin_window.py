@@ -1,5 +1,6 @@
 """The Colab window script's own rules that run without a VM."""
 
+import os
 import sys
 from pathlib import Path
 
@@ -134,3 +135,13 @@ def test_the_twins_switch(monkeypatch):
     assert pw.twins_enabled()
     monkeypatch.setenv("PIN_PILOT_TWINS", "0")
     assert not pw.twins_enabled()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="fcntl.flock is Linux, where the window runs")
+def test_the_job_lock_lets_one_job_run_per_vm(tmp_path):
+    first = pw.take_job_lock(tmp_path)
+    assert first is not None
+    assert pw.take_job_lock(tmp_path) is None  # a second exec, even in the same process, finds it held
+    assert "JOB ALREADY RUNNING" in (tmp_path / "job.log").read_text(encoding="utf-8")
+    first.close()
+    assert pw.take_job_lock(tmp_path) is not None  # released with its file
