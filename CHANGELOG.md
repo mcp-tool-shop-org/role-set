@@ -27,6 +27,7 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **`tree_with_pruning` draws order and neighbour facts** (`before`, `after`, `adjacent`, `not_adjacent`), from Argon's BUILD-SPEC §9.4 review, finding 9. Before/after alone folded to 3 distinct gate skeletons in 84 seeds, too few for the cumulative skeleton floor across the regeneration. It now gives 70 of 84, at most 5 tries (it was 100 or more). No fact of any form names both claim entities. Only 1 of the 70 matches a `scheduling_with_exclusions` skeleton. Every count uses `puzzle_check.skeleton`, the gates' function. #73's 36 of 84 came from an earlier generator state and can't be reproduced on main. A new test runs the floor over 11 batches with the counts carried forward (about 22 uses per structure, B4's cumulative count).
 - **Gates pinned to aspire-si-gates 1.7.3** (aspire-si 96acdaa), from 1.7.2. Leakage compares the statement field as well as the user turn, and a STaR row refuses think tags.
 - **T09 apply slots draw only unordered content kinds.** `plan --apply` no longer assigns a changelog or a timetable to T09. Those kinds have a line order that carries meaning, and assembly refuses `order_free: true` on them.
 - **The T10 record's hash** moves with those plan and assembly edits. Regenerating the record left all 1,280 builds unchanged.

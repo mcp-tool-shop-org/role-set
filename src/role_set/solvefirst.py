@@ -45,6 +45,7 @@ MAX_TRIES = 300
 # and a dependency claim is decided by a chain of at least three.
 MIN_FACTS = {"underdetermined_with_explicit_set": 3, "tree_with_pruning": 3}
 MIN_FACTS_DEFAULT = 2
+DAG_FORMS = ("before", "after", "adjacent", "not_adjacent")
 PACK_USES_MAX = 4  # across a batch's plan (R&D, 2026-10-16)
 # The plan-time skeleton floor (R&D on #73): per structure, across the batch and any earlier batches' state, at least
 # 75% of solve-first puzzles have a distinct fact skeleton and none is used more than 3 times. A slot whose skeleton
@@ -289,7 +290,9 @@ def _dag(rng, pack):
     claim = [form, a, b, attr]
     holds = pos[a] < pos[b] if form == "before" else pos[a] > pos[b]
     want = "supported" if holds else "unsupported"
-    pool = [r for r in _ordered_pool(sol, ents, attr, order) if r[0] in ("before", "after") and {r[1], r[2]} != {a, b}]
+    # Order and neighbour facts (R&D, 2026-10-17): before/after alone fold to a handful of skeletons (3 in 84 seeds).
+    # No fact of any form names both claim entities, so no single fact decides the claim.
+    pool = [r for r in _ordered_pool(sol, ents, attr, order) if r[0] in DAG_FORMS and {r[1], r[2]} != {a, b}]
 
     def build(facts):
         return _raw(ents, {attr: order}, attr, facts, claim=claim)
