@@ -27,7 +27,7 @@ The answer leg, on kind B's closed answers, was 62.7% combined. The bar is 90%.
 
 The flaw control on 2026-10-11 had 9 of 24. Until a later control passes, a flaw mismatch is logged as advisory.
 
-These figures are for the 2026-10-11 critic, `gemma4:31b`, which is off the proven list. The new critics, Muse-Glimmer and Nemotron 3.5 Lightning, get their own control before any of their checks gate.
+These figures are for the 2026-10-11 critic, `gemma4:31b`, which isn't on `writers.json`. The new critics, Muse-Glimmer and Nemotron 3.5 Lightning, get their own control before any of their checks gate.
 
 ```text
 uv run role-set critic-control --items reviewed.jsonl --critic-endpoint http://127.0.0.1:8081/v1 --critic-model muse-glimmer-30b \
