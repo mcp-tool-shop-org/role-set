@@ -8,9 +8,14 @@
 set -u
 BIN="${1:?usage: smoke_window.sh <llama-server> <out dir>}"
 OUT="${2:?usage: smoke_window.sh <llama-server> <out dir>}"
+if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+  echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
+  exit 2
+fi
 CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
+OPEN_LOCK="${PIN_OPEN_LOCK:-/tmp/colab-window-open.lock}"
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log" "$OUT/.retry" "$OUT/.retried"
 JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
@@ -19,19 +24,23 @@ DL_S="${PIN_DL_TIMEOUT:-300}"
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
+# Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
 stop_all() {
-  echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
-  sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
+  (
+    flock 9
+    echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
+    sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
+  ) 9>"$OPEN_LOCK"
 }
 trap stop_all EXIT
 rate() { colab usage 2>&1 | grep -oP 'rate: \K[0-9.]+'; }
 # Windows on this rig open one at a time: the rate read before, the open and the rate read after hold one lock, so a
 # neighbour opening in between can't land in this window's rate (windows 11a and 11b each counted both sessions).
-exec 9>/tmp/colab-window-open.lock; flock 9
+exec 9>"$OPEN_LOCK"; flock 9
 START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
 GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
-timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
+timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
 sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
@@ -40,7 +49,7 @@ sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 case "${PIN_GPU:-A100}" in A100) GPU_RATE=5.3;; CPU) GPU_RATE=0.08;; *) GPU_RATE="";; esac
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
-flock -u 9
+flock -u 9; exec 9>&-
 # The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
 # stream: that stream stopped reaching the rig in windows 10d and 12a while the job ran on (mistakes #31). It ends the
 # window, through the main script's exit sequence (fetch the results, then stop the session), when:
@@ -134,7 +143,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")

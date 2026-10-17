@@ -18,8 +18,28 @@ from __future__ import annotations
 import base64
 import gzip
 import hashlib
+import json
+import os
 import sys
 from pathlib import Path
+
+
+def is_stub_drafts(data: bytes) -> bool:
+    for line in data.decode("utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            h = json.loads(line)
+        except json.JSONDecodeError:
+            return False
+        if not isinstance(h, dict):
+            return False
+        if h.get("stub") or (h.get("batch_pins") or {}).get("mock"):
+            return True
+        if ((h.get("writer_host") or {}).get("machine") or {}).get("stub"):
+            return True
+        return any(((w.get("pins") or {}).get("machine") or {}).get("stub") for w in (h.get("waves") or []))
+    return False
 
 
 def extract(log: Path, out: Path) -> list[Path]:
@@ -31,6 +51,8 @@ def extract(log: Path, out: Path) -> list[Path]:
             data = gzip.decompress(base64.b64decode(blob))
             if hashlib.sha256(data).hexdigest() != want:
                 raise SystemExit(f"{arm} {wave}: checkpoint doesn't match its sha256")
+            if is_stub_drafts(data) and os.environ.get("PIN_STUB") != "1":
+                raise RuntimeError(f"REFUSED: {arm} {wave} is a STUB checkpoint; set PIN_STUB=1 to extract stub drafts")
             dest = out / wave / f"{arm}.jsonl"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
@@ -58,5 +80,8 @@ def extract(log: Path, out: Path) -> list[Path]:
 if __name__ == "__main__":
     if len(sys.argv) != 4 or sys.argv[1] != "extract":
         raise SystemExit(__doc__)
-    for p in extract(Path(sys.argv[2]), Path(sys.argv[3])):
-        print(p)
+    try:
+        for p in extract(Path(sys.argv[2]), Path(sys.argv[3])):
+            print(p)
+    except RuntimeError as e:
+        raise SystemExit(str(e)) from e

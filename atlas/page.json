@@ -21,6 +21,16 @@
     },
     {
       "doors": 1,
+      "importedBy": [
+        "scripts"
+      ],
+      "importedByTests": [],
+      "kind": "part",
+      "name": "tests",
+      "partLabel": "tests"
+    },
+    {
+      "doors": 1,
       "importedBy": [],
       "importedByTests": [
         "tests"
@@ -42,24 +52,61 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 5,
+      "added": 14,
+      "changed": 7,
       "moved": 0,
-      "parts": 3,
+      "parts": 4,
       "removed": 0
     },
     "items": [
       {
+        "kind": "cycle",
+        "sentence": "scripts now imports tests, which closes the cycle scripts → tests → scripts.",
+        "subjects": [
+          "scripts",
+          "tests"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "roles/domains/naics-2022.json is now also read by scripts/colab/preflight_window.py.",
+        "subjects": [
+          "roles/domains/naics-2022.json",
+          "scripts/colab/preflight_window.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "scripts/colab/ is now read by scripts/colab/preflight_window.py.",
+        "subjects": [
+          "scripts/colab/",
+          "scripts/colab/preflight_window.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "tests/fixtures/card-values.json is now read by tests/test_real_chain.py.",
+        "subjects": [
+          "tests/fixtures/card-values.json",
+          "tests/test_real_chain.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 1 more new writer or reader of a place.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-17; 5 files changed content.",
+        "sentence": "14 files added and 7 changed content, across 4 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "3ae04ec090115ee63ded0b6deb68e86afe888ffb",
-      "generatedAt": "2026-10-17T14:04:31.200Z"
+      "commit": "3aa03240d4f0b506889935c433d65402da675835",
+      "generatedAt": "2026-10-17T15:25:37.067Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -110,7 +157,7 @@
     {
       "a": "src/role_set/cli.py",
       "b": "src/role_set/write.py",
-      "either": 30,
+      "either": 32,
       "partLabels": [
         "src",
         "src"
@@ -120,7 +167,7 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 15
+      "shared": 16
     },
     {
       "a": "src/role_set/generate/recipes.py",
@@ -144,9 +191,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 12 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 4,
-  "commit": "3aa03240d4f0b506889935c433d65402da675835",
+  "commit": "d12bae86a22a82567f98e7f2697f1fddb9b1f300",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (89 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (100 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -161,17 +208,17 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 40
+          "files": 46
         },
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 1
+          "files": 3
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 40
+          "files": 41
         }
       ],
       "runs": [
@@ -234,7 +281,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 34
+          "files": 35
         }
       ],
       "runs": [
@@ -254,6 +301,21 @@
     {
       "from": "scripts",
       "fromTests": false,
+      "to": "src"
+    },
+    {
+      "from": "scripts",
+      "fromTests": false,
+      "to": "tests"
+    },
+    {
+      "from": "tests",
+      "fromTests": true,
+      "to": "scripts"
+    },
+    {
+      "from": "tests",
+      "fromTests": true,
       "to": "src"
     }
   ],
@@ -300,10 +362,11 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-17T15:25:37.067Z",
+  "generatedAt": "2026-10-17T22:24:27.841Z",
   "limits": [
-    "7 writes and 17 reads use paths built at run time and are not named here.",
-    "11 writes and 50 reads go to a path their caller passes, not to this repository.",
+    "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
+    "4 writes and 15 reads use paths built at run time and are not named here.",
+    "27 writes and 68 reads go to a path their caller passes, not to this repository.",
     "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -333,12 +396,12 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 48,
+  "testFiles": 57,
   "testedBy": {
-    "scripts": 2,
-    "src": 39
+    "scripts": 3,
+    "src": 44
   },
-  "unnamedWrites": 7,
+  "unnamedWrites": 4,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],

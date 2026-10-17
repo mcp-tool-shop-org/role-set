@@ -37,7 +37,9 @@ NVCC_VERSION = "13.4.92"  # nvcc, nvvm, crt and the runtime, one release
 CUBLAS_VERSION = "13.8.0.4"
 CUDA_TOOLKIT = "13.4.2 (redistrib 2026-09-16)"
 NVCC_PIP = f"nvidia-cuda-nvcc=={NVCC_VERSION}"
-WORK = Path("/content/pin")
+CONTENT = Path(os.environ.get("PIN_CONTENT") or "/content")
+WORK = Path(os.environ.get("PIN_WORK") or (CONTENT / "pin"))
+HEARTBEAT_S = 300
 MODELS = [
     # name, how, repo, file or None (convert), revision (None = the repo's current main, recorded)
     # The maker's Muse GGUF repo has only Q4 builds (window 1, 2026-10-17), so both are converted here: one binary, every
@@ -84,8 +86,65 @@ MODELS = [
 SERVER_SHA256 = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
 
 
+def stub_mode() -> bool:
+    return os.environ.get("PIN_STUB") == "1"
+
+
+def _disk_target() -> Path:
+    for p in (CONTENT, WORK, Path(".")):
+        if p.exists():
+            return p
+    return Path(".")
+
+
+def _meminfo() -> dict[str, int]:
+    p = Path("/proc/meminfo")
+    if not p.exists():
+        return {"MemAvailable": 0, "MemTotal": 0}
+    mem = dict(ln.split(":", 1) for ln in p.read_text().splitlines() if ":" in ln)
+    return {k: int(mem.get(k, "0 kB").split()[0]) // 1024 for k in ("MemAvailable", "MemTotal")}
+
+
+def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None) -> subprocess.CompletedProcess:
+    """Run a subprocess, writing a heartbeat line to job.log every HEARTBEAT_S while the subprocess lives (Argon #5).
+    Tied to the subprocess wait loop, never a free-running thread, so it stops when the job ends or hangs in Python."""
+
+    hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
+    head = (cmd if isinstance(cmd, str) else " ".join(str(x) for x in cmd)).strip().splitlines()[0][:80]
+    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    t0 = time.time()
+    deadline = t0 + timeout
+    next_hb = t0 + hb_s
+    try:
+        while True:
+            now = time.time()
+            wait = max(0.001, min(deadline - now, next_hb - now))
+            try:
+                out, err = proc.communicate(timeout=wait)
+                return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
+            except subprocess.TimeoutExpired:
+                now = time.time()
+                if now >= deadline:
+                    proc.kill()
+                    out, err = proc.communicate()
+                    raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=err) from None
+                if proc.poll() is None and now >= next_hb:
+                    disk_gb = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
+                    ram_mb = _meminfo()["MemAvailable"]
+                    msg = f"HEARTBEAT pid={proc.pid} elapsed={round(now - t0)}s disk_free_gb={disk_gb} ram_free_mb={ram_mb} cmd={head}"
+                    say(msg)
+                    if not isinstance(sys.stdout, Tee) and JOB_LOG.parent.exists():
+                        with JOB_LOG.open("a", encoding="utf-8") as f:
+                            f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+                    next_hb = now + hb_s
+    finally:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait()
+
+
 def sh(cmd, cwd=None, timeout=3600, env=None) -> str:
-    out = subprocess.run(cmd, shell=True, cwd=cwd, capture_output=True, text=True, timeout=timeout, env=env)
+    out = run_proc(cmd, shell=True, cwd=cwd, timeout=timeout, env=env)
     if out.returncode != 0:
         raise RuntimeError(f"{cmd[:80]}... exit {out.returncode}: {(out.stderr or out.stdout)[-1500:]}")
     return out.stdout.strip()
@@ -134,12 +193,17 @@ def say(msg: str) -> None:
 
 
 def machine_line() -> dict:
+    if stub_mode():
+        return {"card": "STUB (CPU)", "memory": "0 MiB", "driver": "stub", "compat": False,
+                "driver_cuda": "stub", "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG") or "stub-local",
+                "cores": os.cpu_count(), "disk_free_gb": round(shutil.disk_usage(_disk_target()).free / 2**30, 1),
+                "runtime": "13.4", "stub": True}
     gpu = sh("nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader")
     name, mem, driver = [x.strip() for x in gpu.split(",")]
     return {"card": name, "memory": mem, "driver": driver, "compat": False,
             "driver_cuda": sh("nvidia-smi | grep -o 'CUDA Version: [0-9.]*' | cut -d' ' -f3"),
             "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG"), "cores": os.cpu_count(),
-            "disk_free_gb": round(shutil.disk_usage("/content").free / 2**30, 1),
+            "disk_free_gb": round(shutil.disk_usage(_disk_target()).free / 2**30, 1),
             # The CUDA runtime the build targets; role-set's load_machine requires it (R&D on #77).
             "runtime": "13.4"}
 
@@ -197,11 +261,10 @@ def resources(tag: str) -> dict:
     """Disk and RAM at one point of the window, kept in the result (R&D, window 10b: a VM that runs out of either can
     be reclaimed without a clean error)."""
 
-    du = shutil.disk_usage("/content")
-    mem = dict(ln.split(":", 1) for ln in Path("/proc/meminfo").read_text().splitlines() if ":" in ln)
-    kb = lambda k: int(mem.get(k, "0 kB").split()[0])  # noqa: E731
+    du = shutil.disk_usage(_disk_target())
+    mem = _meminfo()
     row = {"at": tag, "time": time.strftime("%H:%M:%S", time.gmtime()), "disk_free_gb": round(du.free / 1e9, 1),
-           "ram_available_mb": kb("MemAvailable") // 1024, "ram_total_mb": kb("MemTotal") // 1024}
+           "ram_available_mb": mem["MemAvailable"], "ram_total_mb": mem["MemTotal"]}
     RESOURCES.append(row)
     say(f"resources {row}")
     return row
@@ -254,6 +317,7 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
             out.update({"snapshot": str(snap), "converter_py": py})
         else:
             shutil.rmtree(snap, ignore_errors=True)
+            resources(f"{spec['served_as']}: after dropping snapshot")
     say(f"hashing {path.name}")
     out.update({"gguf_sha256": sha256(path), "gguf_bytes": path.stat().st_size, "path": str(path)})
     return out
@@ -493,7 +557,7 @@ def _cuda_lib_dirs() -> list:
     return dirs
 
 
-BRIEFS = Path("/content/brief-strings.json")  # uploaded by the window script: 20 writer briefs, 20 critic prompts
+BRIEFS = CONTENT / "brief-strings.json"  # uploaded by the window script: 20 writer briefs, 20 critic prompts
 CRITIC_CTX = 32768
 CRITIC_PORT = 8092
 
@@ -592,13 +656,16 @@ def reference(port: int, model: dict) -> dict:
 def role_set_env(commit: str) -> dict:
     """role-set at a pinned commit, in its own Python 3.12 (role-set needs <3.13; Colab's python is 3.13)."""
 
-    src, venv = Path("/content/role-set"), Path("/content/rs-venv")
+    src, venv = CONTENT / "role-set", CONTENT / "rs-venv"
     if not (src / ".git").exists():
         sh(f"git clone -q https://github.com/mcp-tool-shop-org/role-set {src} && git -C {src} checkout -q {commit}", timeout=600)
-    sh(f"{sys.executable} -m pip install -q uv==0.9.5", timeout=600)
+    uv = shutil.which("uv")
+    if not uv:
+        sh(f"{sys.executable} -m pip install -q uv==0.9.5", timeout=600)
+        uv = f"{sys.executable} -m uv"
     if not (venv / "bin" / "python").exists():
-        sh(f"{sys.executable} -m uv venv -q -p 3.12 {venv}", timeout=900)
-        sh(f"{sys.executable} -m uv pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
+        sh(f"{uv} venv -q -p 3.12 {venv}", timeout=900)
+        sh(f"{uv} pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
     head = sh(f"git -C {src} rev-parse HEAD")
     if head != commit:
         raise RuntimeError(f"role-set is at {head[:12]}, not {commit[:12]}")
@@ -608,15 +675,15 @@ def role_set_env(commit: str) -> dict:
 
 def critic_control(rs: dict, model: dict, machine_file: Path, seed: int, earlier: Path | None) -> dict:
     out = WORK / f"critic-control-{model['served_as']}-s{seed}.json"
-    cmd = [rs["role_set"], "critic-control", "--items", "/content/known-answer-v1.jsonl", "--planted", "10", "--seed", "0",
+    cmd = [rs["role_set"], "critic-control", "--items", str(CONTENT / "known-answer-v1.jsonl"), "--planted", "10", "--seed", "0",
            "--critic-endpoint", f"http://127.0.0.1:{CRITIC_PORT}/v1", "--critic-model", model["served_as"],
            "--critic-gguf-sha256", model["gguf_sha256"], "--llama-server-sha256", SERVER_SHA256,
-           "--machine", str(machine_file), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
+           "--machine", str(machine_file), "--writers", f"{rs['src']}/writers.json", "--cards", str(CONTENT / "card-values.json"),
            "--critic-seed", str(seed), "--out", str(out)]
     if earlier is not None:
         cmd += ["--agreement-with", str(earlier)]
     t0 = time.time()
-    run = subprocess.run(cmd, capture_output=True, text=True, timeout=4 * 3600, cwd=rs["src"])
+    run = run_proc(cmd, timeout=4 * 3600, cwd=rs["src"])
     got = {"seed": seed, "exit": run.returncode, "seconds": round(time.time() - t0), "stdout": run.stdout[-1500:],
            "stderr": run.stderr[-1500:], "out": str(out)}
     if out.exists():
@@ -677,7 +744,10 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
         except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
-            Path(WORK / f"{spec['served_as']}-Q8_0.gguf").unlink(missing_ok=True)
+            g = Path(WORK / f"{spec['served_as']}-Q8_0.gguf")
+            if g.exists():
+                g.unlink(missing_ok=True)
+                resources(f"{spec['served_as']}: after unlinking Q8_0")
         say(f"{spec['served_as']}: {json.dumps({k: rec.get(k) for k in ('reproduced', 'fit', 'brief_check', 'stopped', 'error')})[:600]}")
     result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
 
@@ -723,7 +793,9 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
             for f in (WORK / f"{spec['served_as']}-Q8_0.gguf", WORK / f"{spec['served_as']}-Q6_K.gguf"):
-                f.unlink(missing_ok=True)
+                if f.exists():
+                    f.unlink(missing_ok=True)
+                    resources(f"{spec['served_as']}: after unlinking {f.name}")
         say(f"{spec['served_as']} Q6_K: {json.dumps({k: rec.get(k) for k in ('gguf_sha256', 'stopped', 'error')})}")
     result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
 
@@ -736,15 +808,75 @@ PILOT_WAVES = 6  # write, critique, rewrite, critique, rewrite, critique: the at
 PILOT_WAVES = int(os.environ.get("PIN_PILOT_WAVES") or PILOT_WAVES)
 
 
+_STUB_WRITER = None
+
+
+def _start_stub(name: str, port: int):
+    """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
+
+    global _STUB_WRITER
+    for p in (CONTENT / "role-set" / "src", Path(__file__).resolve().parents[2] / "src",
+              CONTENT / "role-set" / "tests", Path(__file__).resolve().parents[2] / "tests"):
+        if p.exists() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    import stub_llama as stub_mod  # noqa: PLC0415
+    from role_set.mock import MockCritic, MockWriter  # noqa: PLC0415
+
+    if _STUB_WRITER is None:
+        _STUB_WRITER = MockWriter()
+    w = _STUB_WRITER
+    c = MockCritic(answers=w.answers)
+    if "port" in stub_mod.StubLlama.__init__.__code__.co_varnames:
+        return stub_mod.StubLlama(name, name, writer=w, critic=c, port=port)
+    # Fallback when /content/role-set is checked out at an earlier commit before StubLlama gained `port`.
+    orig_srv = stub_mod.ThreadingHTTPServer
+
+    class _BoundServer(orig_srv):
+        allow_reuse_address = True
+
+        def __init__(self, addr, handler):
+            super().__init__((addr[0], port), handler)
+
+    stub_mod.ThreadingHTTPServer = _BoundServer
+    try:
+        s = stub_mod.StubLlama(name, "__critic__", critic=c)
+    finally:
+        stub_mod.ThreadingHTTPServer = orig_srv
+    state = {"apply": False}
+
+    def _route(msgs, seed=0):
+        sys_p = msgs[0].get("content") or "" if msgs else ""
+        usr_p = msgs[-1].get("content") or "" if msgs else ""
+        if "## The trait lesson\n" in usr_p:
+            state["apply"] = "# 4." in usr_p or "## 4." in usr_p or "Lesson T04" in usr_p
+        elif "Lesson T04," in usr_p:
+            state["apply"] = True
+        elif "Lesson T02," in usr_p:
+            state["apply"] = False
+        if "training items" in sys_p or "training item" in sys_p or "everyday material" in sys_p:
+            return w(msgs, seed=seed, slot_id="T04-AP" if state["apply"] else None)
+        return c(msgs, seed=seed)
+
+    s.writer = _route
+    return s
+
+
 class Served:
     """One model's GGUF on disk; each start re-checks its sha256 against the pin, its offload and its slots."""
 
     def __init__(self, built: dict, model: dict, pinned: str):
         self.built, self.model, self.pinned = built, model, pinned
-        self.proc = self.log_fh = None
+        self.proc = self.log_fh = self.stub = None
         self.starts: list = []
 
     def __enter__(self):
+        if stub_mode():
+            t0 = time.time()
+            self.stub = _start_stub(self.model["served_as"], PILOT_PORT)
+            fit = {"offloaded": 1, "layers": 1, "ok": True, "stub": True}
+            sl = {"total_slots": 1, "n_ctx_per_slot": CRITIC_CTX, "ok": True, "stub": True}
+            self.starts.append({"seconds": round(time.time() - t0), "fit": fit, "slots": sl, "stub": True})
+            return self
         got = sha256(Path(self.model["path"]))
         if got != self.pinned:
             raise RuntimeError(f"{self.model['served_as']}: GGUF {got[:12]} isn't the pin {self.pinned[:12]}")
@@ -759,6 +891,10 @@ class Served:
         return self
 
     def __exit__(self, *exc):
+        if self.stub is not None:
+            self.stub.close()
+            self.stub = None
+            return
         stop_server(self.proc, self.log_fh)
 
 
@@ -767,7 +903,7 @@ def install_rnd(commit: str) -> dict:
     fails the window in its first minute. A pip install isn't used: rnd's package list at 9667a32 leaves out
     mcptoolshop_rnd.localbuilders (window 10c failed on that after both conversions)."""
 
-    src = Path("/content/rnd")
+    src = CONTENT / "rnd"
     if not (src / ".git").exists():
         sh(f"git clone -q https://github.com/mcp-tool-shop-org/rnd {src} && git -C {src} checkout -q {commit}", timeout=600)
     head = sh(f"git -C {src} rev-parse HEAD")
@@ -845,7 +981,7 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     cmd += extra or []
     t0 = time.time()
     try:
-        run = subprocess.run(cmd, capture_output=True, text=True, timeout=6 * 3600, cwd=rs["src"])
+        run = run_proc(cmd, timeout=6 * 3600, cwd=rs["src"])
     finally:
         stop.set()
         tail.join(timeout=60)
@@ -911,14 +1047,15 @@ def checkpoint(arm: str, wave_name: str, drafts: Path) -> None:
         print(f"WAVE_CHECKPOINT {arm} {wave_name} {sha256(drafts)} {blob}", flush=True)
 
 
-RESUME_TAR = Path("/content/resume.tar")
+RESUME_TAR = CONTENT / "resume.tar"
 
 
-def unpack_resume(tar: Path = RESUME_TAR) -> Path | None:
+def unpack_resume(tar: Path | None = None) -> Path | None:
     """A resume's drafts arrive as one resume.tar (R&D, from Argon's review: uploads land flat in /content, so drafts and
     call journals with the same <arm>.jsonl name would overwrite each other). It unpacks to /content/resume; set
     PIN_RESUME_DIR to /content/resume/<the wave's directory>."""
 
+    tar = CONTENT / "resume.tar" if tar is None else tar
     if not tar.exists():
         return None
     import tarfile  # noqa: PLC0415
@@ -930,6 +1067,20 @@ def unpack_resume(tar: Path = RESUME_TAR) -> Path | None:
     return dest
 
 
+def is_stub_drafts(data: bytes) -> bool:
+    """Whether a wave-drafts.jsonl header came from a PIN_STUB=1 or --mock run."""
+
+    first = data.splitlines()[0] if data else b""
+    if not first:
+        return False
+    h = json.loads(first)
+    if h.get("stub") or (h.get("batch_pins") or {}).get("mock"):
+        return True
+    if ((h.get("writer_host") or {}).get("machine") or {}).get("stub"):
+        return True
+    return any(((w.get("pins") or {}).get("machine") or {}).get("stub") for w in (h.get("waves") or []))
+
+
 def resume_from() -> tuple[int, dict]:
     """PIN_RESUME_WAVE=<i> and PIN_RESUME_DIR=<dir of <arm>.jsonl>: start a batch after wave i, from those drafts. Each
     drafts file needs its seal, <arm>.jsonl.sha256, beside it (checkpoints.py extract writes both)."""
@@ -938,10 +1089,16 @@ def resume_from() -> tuple[int, dict]:
     if not i:
         return 0, {}
     d = Path(os.environ["PIN_RESUME_DIR"])
+    if not d.exists() and str(d).startswith("/content/"):
+        d = CONTENT / str(d).removeprefix("/content/")
     found = {f.stem: f for f in d.glob("*.jsonl")}
     missing = [n for n, f in found.items() if not f.with_name(f.name + ".sha256").exists()]
     if not found or missing:
         raise RuntimeError(f"PIN_RESUME_DIR {d}: {'no drafts' if not found else 'no seal for ' + ', '.join(missing)}")
+    if not stub_mode():
+        stub_arms = [n for n, f in sorted(found.items()) if is_stub_drafts(f.read_bytes())]
+        if stub_arms:
+            raise RuntimeError(f"REFUSED: PIN_RESUME_DIR {d} has STUB drafts ({', '.join(stub_arms)}); mock drafts can never seed a real resume")
     return int(i) + 1, found
 
 
@@ -950,7 +1107,12 @@ def resume_calls() -> dict:
     first wave this window runs replays each arm's journal and asks the model only for the calls it lacks."""
 
     d = os.environ.get("PIN_RESUME_CALLS_DIR")
-    return {f.stem: f for f in Path(d).glob("*.jsonl")} if d else {}
+    if not d:
+        return {}
+    p = Path(d)
+    if not p.exists() and str(p).startswith("/content/"):
+        p = CONTENT / str(p).removeprefix("/content/")
+    return {f.stem: f for f in p.glob("*.jsonl")}
 
 
 FUNNEL_DROP_SHARE = 0.3  # 6 of the pilot's 20 slots; 3 of the screen's 8 (R&D, 2026-10-17)
@@ -998,11 +1160,20 @@ class Pool:
             return self.models[name]
         spec = self.by_name[name]
         policy = self.policies.get(name, "q8")
-        m = fetch_model(spec, self.built, keep_snapshot=policy in ("q6k", "q8_or_q6k"))
-        self.result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
-        if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
-            raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
-        m, self.result.setdefault("quant", {})[name] = choose_quant(self.built, spec, m, policy, self.result)
+        if stub_mode():
+            quant = "Q6_K" if policy == "q6k" else "Q8_0"
+            served = f"{spec['served_as']}-q6k" if policy == "q6k" else spec["served_as"]
+            sha = (spec.get("expect_q6k_sha256") or spec["expect_sha256"]) if policy == "q6k" else spec["expect_sha256"]
+            m = {"served_as": served, "card": spec.get("card") or spec["served_as"], "repo": spec["repo"],
+                 "how": "stub", "gguf_sha256": sha, "quant": quant, "stub": True}
+            self.result.setdefault("models", []).append(dict(m))
+            self.result.setdefault("quant", {})[name] = {"policy": policy, "ran": quant, "stub": True}
+        else:
+            m = fetch_model(spec, self.built, keep_snapshot=policy in ("q6k", "q8_or_q6k"))
+            self.result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
+            if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+                raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
+            m, self.result.setdefault("quant", {})[name] = choose_quant(self.built, spec, m, policy, self.result)
         path, cid, info = j1_card(m, self.cards, self.cards_out)
         self.proxies[name] = {"config": str(path), "candidate": cid}
         self.result.setdefault("proxy_configs", {})[m["served_as"]] = info
@@ -1016,6 +1187,23 @@ class Pool:
 
     def proxy(self, name: str) -> dict | None:
         return self.proxies.get(name)
+
+    def drop(self, name: str) -> None:
+        """Delete a model's GGUF once no later wave or twin batch in this window needs it, and log resources()."""
+
+        m = self.models.get(name)
+        if not m or m.get("dropped") or m.get("stub"):
+            return
+        p = Path(m["path"]) if m.get("path") else None
+        if p and p != Path("/dev/null") and p.is_file():
+            p.unlink(missing_ok=True)
+        m["dropped"] = True
+        resources(f"{name}: after deleting GGUF")
+
+    def drop_unused(self, needed: set[str]) -> None:
+        for name in list(self.models):
+            if name not in needed:
+                self.drop(name)
 
 
 def critics_for(writer_names: list, families: dict | None = None) -> dict:
@@ -1037,7 +1225,38 @@ def critics_for(writer_names: list, families: dict | None = None) -> dict:
     return out
 
 
-def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: dict, pool: Pool, extra=None) -> dict:
+def _needed_models(arms: dict, critic_for: dict, i: int, left_in_wave: list[str], kind: str,
+                   *, twins_after: bool, later_arms: list[str], finished_batch: bool = False) -> set[str]:
+    needed: set[str] = set()
+    if not finished_batch:
+        if kind == "critique":
+            needed.update(critic_for[n] for n in left_in_wave)
+        else:
+            needed.update(left_in_wave)
+        active = [n for n, a in arms.items() if not a["done"]]
+        if any(j == 0 or j % 2 == 0 for j in range(i + 1, PILOT_WAVES)):
+            needed.update(active)
+        if any(j > 0 and j % 2 == 1 for j in range(i + 1, PILOT_WAVES)):
+            needed.update(critic_for[n] for n in active)
+    twin_arms = list(later_arms)
+    if twins_after:
+        for n, a in arms.items():
+            if a.get("funnel_stop") or any(w.get("exit") for w in a["waves"]):
+                continue
+            if finished_batch or a["done"]:
+                acc = a.get("last") and Path(a["last"]) / "accepted.jsonl"
+                if not (acc and acc.exists() and acc.read_text(encoding="utf-8").strip()):
+                    continue
+            twin_arms.append(n)
+    if PILOT_WAVES >= 1:
+        needed.update(twin_arms)
+    if PILOT_WAVES >= 2:
+        needed.update(critic_for[n] for n in twin_arms if n in critic_for)
+    return needed
+
+
+def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: dict, pool: Pool, extra=None,
+                *, twins_after: bool = False, later_arms: list[str] = ()) -> dict:
     """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critics: all write
     waves, then each critic once for the arms it reads, then all rewrites, and so on. Every model is set up the first
     time it is needed (Pool). Returns each arm's waves and its last directory."""
@@ -1055,6 +1274,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
         if not todo:
             break
         if kind == "critique":
+            done_crit: set[str] = set()
             for c in dict.fromkeys(critic_for[n] for n in todo):  # each critic served once, in the arms' order
                 with pool.serve(c):
                     for n in [n for n in todo if critic_for[n] == c]:
@@ -1066,7 +1286,11 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                         arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
                         checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
                         arms[n]["done"] = w["exit"] != 0 or not pending(w)
+                        done_crit.add(n)
+                left = [n for n in todo if n not in done_crit]
+                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after, later_arms=list(later_arms)))
         else:
+            done_write: set[str] = set()
             for n in todo:
                 with pool.serve(n):
                     w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=pool.get(n),
@@ -1082,6 +1306,11 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                     why = funnel_stop(w, len(json.loads(plan.read_text(encoding="utf-8"))["slots"]))
                     if why:
                         arms[n]["done"], arms[n]["funnel_stop"] = True, why
+                done_write.add(n)
+                left = [x for x in todo if x not in done_write]
+                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after, later_arms=list(later_arms)))
+    pool.drop_unused(_needed_models(arms, critic_for, PILOT_WAVES, [], "done", twins_after=twins_after,
+                                    later_arms=list(later_arms), finished_batch=True))
     return arms
 
 
@@ -1089,17 +1318,21 @@ def drop_snapshot(m: dict) -> None:
     if m.get("snapshot"):
         shutil.rmtree(m["snapshot"], ignore_errors=True)
         m.pop("snapshot", None)
+        resources(f"{m.get('served_as', 'model')}: after dropping snapshot")
 
 
 def to_q6k(built: dict, spec: dict, m: dict, result: dict) -> dict:
     """The writer's Q6_K from a BF16 conversion of the snapshot (R&D, 2026-10-17: never requantized from the Q8_0; the
-    quantize README warns that requantizing can severely reduce quality). Order: BF16 convert, drop the snapshot,
-    BF16 -> Q6_K, drop the BF16. Served as writers.json's '<name>-q6k'."""
+    quantize README warns that requantizing can severely reduce quality). Order: unlink the Q8_0, BF16 convert, drop the
+    snapshot, BF16 -> Q6_K, drop the BF16. Served as writers.json's '<name>-q6k'."""
 
     if not m.get("snapshot"):
         raise RuntimeError(f"{spec['served_as']}: no snapshot kept for the BF16 conversion")
     if "llama_quantize" not in result:
         result["llama_quantize"] = build_quantize(Path(built["src"]))
+    if m.get("path"):
+        Path(m["path"]).unlink(missing_ok=True)
+        resources(f"{spec['served_as']}: after unlinking Q8_0")
     bf16 = WORK / f"{spec['served_as']}-BF16.gguf"
     say(f"converting {spec['served_as']} to BF16 for Q6_K")
     sh(f"{m['converter_py']} {built['src']}/convert_hf_to_gguf.py {m['snapshot']} --outtype bf16 --outfile {bf16}", timeout=3600)
@@ -1113,7 +1346,6 @@ def to_q6k(built: dict, spec: dict, m: dict, result: dict) -> dict:
     got = sha256(q6)
     if spec.get("expect_q6k_sha256") and got != spec["expect_q6k_sha256"]:
         raise RuntimeError(f"{spec['served_as']}: Q6_K {got[:12]} doesn't reproduce {spec['expect_q6k_sha256'][:12]}")
-    Path(m["path"]).unlink(missing_ok=True)
     return {**m, "served_as": f"{spec['served_as']}-q6k", "card": m.get("card") or spec["served_as"], "path": str(q6),
             "gguf_file": q6.name, "gguf_sha256": got, "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
             "bf16_sha256": bf16_sha, "label": f"Q6_K (from BF16 {bf16_sha[:12]}, the same snapshot as pinned Q8_0 {m['gguf_sha256'][:12]})"}
@@ -1185,17 +1417,20 @@ def pilot_window(built: dict, result: dict) -> None:
     (PIN_PILOT_CRITIC, or PIN_PILOT_CRITIC_FOR per arm). One A100, one model loaded at a time, swapped by restart; each
     model is set up when first needed; every start re-checks the GGUF's sha256, the offload and the slots."""
 
+    global PILOT_WAVES
+    if "PIN_PILOT_WAVES" in os.environ:
+        PILOT_WAVES = int(os.environ["PIN_PILOT_WAVES"])
     rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
     result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
     writer_names = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
     by_name = {m["served_as"]: m for m in MODELS}
-    result["disk_free_gb_before"] = round(shutil.disk_usage("/content").free / 1e9, 1)
+    result["disk_free_gb_before"] = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
     machine_file = WORK / "machine.json"
     machine_file.write_text(json.dumps(result["machine"]), encoding="utf-8")
-    pack = Path("/content/pack")
+    pack = CONTENT / "pack"
     if not (pack / "pack.json").exists():
-        pack.mkdir(exist_ok=True)
-        sh(f"tar -xf /content/pack.tar -C {pack}")
+        pack.mkdir(parents=True, exist_ok=True)
+        sh(f"tar -xf {CONTENT / 'pack.tar'} -C {pack}")
     result["pack_verify"] = sh(f"{rs['role_set']} pack verify --pack {pack}", cwd=rs["src"])[-400:]
     base = WORK / "pilot"
     base.mkdir(exist_ok=True)
@@ -1222,8 +1457,9 @@ def pilot_window(built: dict, result: dict) -> None:
     # Critics run at Q8_0 (R&D, 2026-10-17); a writer's quant policy applies to it as a writer only.
     for c in set(critic_for.values()) - set(writer_names):
         policies.pop(c, None)
-    pool = Pool(built, result, policies, Path("/content/card-values.json"), WORK / "cards-j1")
-    common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
+    cards_file = CONTENT / "card-values.json"
+    pool = Pool(built, result, policies, cards_file, WORK / "cards-j1")
+    common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", str(cards_file),
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
 
     # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
@@ -1231,7 +1467,7 @@ def pilot_window(built: dict, result: dict) -> None:
     result["arms"] = {}
     try:
         t0 = time.time()
-        pilot = pilot_batch(rs, common, plan, base / "pilot", writer_names, critic_for, pool)
+        pilot = pilot_batch(rs, common, plan, base / "pilot", writer_names, critic_for, pool, twins_after=twins_enabled())
         result["pilot_seconds"] = round(time.time() - t0)
         twins_writers = {}
         for n, a in pilot.items():
@@ -1247,18 +1483,37 @@ def pilot_window(built: dict, result: dict) -> None:
             else:
                 result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
         t1 = time.time()
-        for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
+        twins_list = list(twins_writers)
+        for idx, n in enumerate(twins_list):  # each arm's twins train against its own accepted rows, so one arm at a time here
             accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
-            tw = pilot_batch(rs, common, twins_plan, base / "twins", [n], critic_for, pool, extra=["--training", str(accepted)])
+            tw = pilot_batch(rs, common, twins_plan, base / "twins", [n], critic_for, pool,
+                             extra=["--training", str(accepted)], later_arms=twins_list[idx + 1:])
             result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
         result["twins_seconds"] = round(time.time() - t1)
         for n in writer_names:
+            if stub_mode():
+                result["arms"][n]["stub"] = True
             for part in ("pilot", "twins"):
+                if stub_mode():
+                    result["arms"][n][part]["stub"] = True
                 last = (result["arms"][n].get(part) or {}).get("last")
                 if last and last != "None" and (Path(last) / "batch-report.json").exists():
-                    r = subprocess.run([rs["role_set"], "readout", "--run", last], capture_output=True, text=True, timeout=600, cwd=rs["src"])
+                    r = run_proc([rs["role_set"], "readout", "--run", last], timeout=600, cwd=rs["src"])
                     result["arms"][n][part]["readout_exit"] = r.returncode
-                    result["arms"][n][part]["readout_tail"] = r.stdout[-2500:]
+                    out_text = r.stdout
+                    if stub_mode():
+                        if not out_text.startswith("# STUB"):
+                            out_text = "# STUB RUN (PIN_STUB=1)\n" + out_text
+                        md_p, js_p = Path(last) / "readout.md", Path(last) / "readout.json"
+                        if md_p.exists() and "STUB" not in md_p.read_text(encoding="utf-8"):
+                            md_p.write_text("# STUB RUN (PIN_STUB=1)\n" + md_p.read_text(encoding="utf-8"), encoding="utf-8")
+                        if js_p.exists():
+                            jd = json.loads(js_p.read_text(encoding="utf-8"))
+                            jd["stub"] = True
+                            js_p.write_text(json.dumps(jd, indent=1), encoding="utf-8")
+                    result["arms"][n][part]["readout_tail"] = out_text[-2500:]
+                elif stub_mode():
+                    result["arms"][n][part].setdefault("readout_tail", "# STUB RUN (PIN_STUB=1)")
         result["serves"] = {n: s.starts for n, s in pool.srv.items()}
         result["model_errors"] = sum(1 for n in writer_names for part in ("pilot", "twins")
                                      for w in (result["arms"][n].get(part) or {}).get("waves", []) if w.get("exit"))
@@ -1274,8 +1529,8 @@ def runtime() -> dict:
     loads; their exact versions are recorded so the library pins can be reproduced."""
 
     sh(f"{sys.executable} -m pip install -q 'nvidia-cuda-runtime=={NVCC_VERSION}' 'nvidia-cublas=={CUBLAS_VERSION}'", timeout=1200)
-    server, uploaded = WORK / "llama-server", Path("/content/llama-server")
-    parts = sorted(Path("/content").glob("llama-server.gz.part*"))
+    server, uploaded = WORK / "llama-server", CONTENT / "llama-server"
+    parts = sorted(CONTENT.glob("llama-server.gz.part*"))
     if parts and not server.exists():
         # The contents API drops a 166 MB upload (window 2, 2026-10-17), so the binary arrives gzipped in 40 MB parts;
         # the sha256 check below is what proves it whole.
@@ -1323,7 +1578,13 @@ def take_job_lock(work: Path):
 
 
 def main() -> int:
-    global _JOB_LOCK
+    global CONTENT, WORK, JOB_LOG, BRIEFS, RESUME_TAR, _JOB_LOCK
+    if "PIN_CONTENT" in os.environ:
+        CONTENT = Path(os.environ["PIN_CONTENT"])
+        BRIEFS, RESUME_TAR = CONTENT / "brief-strings.json", CONTENT / "resume.tar"
+    if "PIN_WORK" in os.environ or "PIN_CONTENT" in os.environ:
+        WORK = Path(os.environ.get("PIN_WORK") or str(CONTENT / "pin"))
+        JOB_LOG = WORK / "job.log"
     WORK.mkdir(parents=True, exist_ok=True)
     lock = take_job_lock(WORK)
     if lock is None:
@@ -1340,6 +1601,9 @@ def main() -> int:
 
 def _main() -> int:
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    if stub_mode():
+        result["stub"] = True
+        say("STUB MODE (PIN_STUB=1): mock writer and critic on StubLlama; NOT A REAL RUN")
     try:
         result["machine"] = machine_line()
         say(f"machine: {result['machine']}")
@@ -1349,9 +1613,12 @@ def _main() -> int:
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
         if role in ("smoke", "critic", "q6k", "pilot"):
-            result["llama_server"] = built = runtime()
-            # The libraries first, so they're pinned even if a model fails later in the window.
-            result["llama_server"]["libs"] = pin_libs(built["path"])
+            if stub_mode() and role == "pilot":
+                result["llama_server"] = built = {"commit": LLAMA_CPP_COMMIT, "sha256": SERVER_SHA256, "path": "stub", "stub": True}
+            else:
+                result["llama_server"] = built = runtime()
+                # The libraries first, so they're pinned even if a model fails later in the window.
+                result["llama_server"]["libs"] = pin_libs(built["path"])
         elif role == "convert":
             src = WORK / "llama.cpp"
             sh(f"git clone -q https://github.com/ggml-org/llama.cpp {src} && git -C {src} checkout -q {LLAMA_CPP_COMMIT}", timeout=900)
@@ -1406,7 +1673,8 @@ def _main() -> int:
                 say(f"{m['served_as']}: {m['smoke']}")
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
-        if role not in ("convert", "smoke"):
+            resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
+        if role not in ("convert", "smoke") and not (stub_mode() and role == "pilot"):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")

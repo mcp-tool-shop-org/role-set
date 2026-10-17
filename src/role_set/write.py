@@ -418,6 +418,8 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
         raise WriteRefused(str(e)) from e
     header.update({"type": "header", "format": waves.FORMAT, "batch_pins": waves.batch_pins(pins),
                    "gates": {"version": gates.version, "sha256": gates.sha256, "closed_form": gates.closed_form}})
+    if cfg.mock or (pins.get("machine") or {}).get("stub"):
+        header["stub"] = True
     if cfg.wave in ("write", "rewrite"):
         header["writer_pins"] = waves.writer_pins(pins)
         header["writer_host"] = {k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")}

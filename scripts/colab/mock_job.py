@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 
 WORK = Path(os.environ.get("PIN_WORK") or "/content/pin")  # PIN_WORK: the fake CLI's VM directory, in tests
+CONTENT = Path(os.environ.get("PIN_CONTENT") or str(WORK.parent))
 _JOB_LOCK = None
 
 
@@ -53,15 +55,37 @@ def main() -> int:
         if not silent:
             print(text, flush=True)
 
-    while time.time() - started < total:
-        n += 1
-        line(f"[{time.strftime('%H:%M:%S')}] mock step {n}")
-        time.sleep(every)
-    result = {"ok": True, "mock": True, "steps": n, "seconds": round(time.time() - started), "silent": silent}
+    extra_res: dict = {}
+    try:
+        if os.environ.get("PIN_PILOT_WRITERS") or os.environ.get("PIN_RESUME_WAVE") or (CONTENT / "resume.tar").exists():
+            here = Path(__file__).resolve().parent
+            if str(here) not in sys.path:
+                sys.path.insert(0, str(here))
+            import pin_window as pw  # noqa: PLC0415
+
+            pw.CONTENT, pw.WORK, pw.RESUME_TAR = CONTENT, WORK, CONTENT / "resume.tar"
+            if os.environ.get("PIN_PILOT_WRITERS"):
+                writers = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
+                policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
+                listed = json.loads((here.parents[1] / "writers.json").read_text(encoding="utf-8"))
+                pw.check_pins(writers, listed, policies)
+            if (CONTENT / "resume.tar").exists() or os.environ.get("PIN_RESUME_WAVE"):
+                unpacked = pw.unpack_resume()
+                start_wave, resumed = pw.resume_from()
+                extra_res["resume_unpacked"] = str(unpacked or "")
+                extra_res["resumed_from"] = {"start_wave": start_wave, "arms": sorted(resumed)}
+        while time.time() - started < total:
+            n += 1
+            line(f"[{time.strftime('%H:%M:%S')}] mock step {n}")
+            time.sleep(every)
+        result = {"ok": True, "mock": True, "steps": n, "seconds": round(time.time() - started), "silent": silent, **extra_res}
+    except Exception as e:  # noqa: BLE001 - reported in pin-result.json before any download
+        result = {"ok": False, "mock": True, "steps": n, "seconds": round(time.time() - started), "silent": silent,
+                  "error": f"{type(e).__name__}: {e}", **extra_res}
     (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
     line("PIN_RESULT " + json.dumps(result))
     time.sleep(float(os.environ.get("PIN_MOCK_HANG_S") or 0))
-    return 0
+    return 0 if result["ok"] else 1
 
 
 if __name__ == "__main__":  # pragma: no cover - runs on the VM

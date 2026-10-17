@@ -2,18 +2,27 @@
 # A fake colab CLI for testing scripts/colab/smoke_window.sh without Colab: one "VM" directory under $FAKE_ST, uploads
 # and downloads that really copy files, `status` reading BUSY while a job runs, and `exec` that runs the real job file
 # (mock_job.py) with its --env settings. FAKE_MODE picks what goes wrong:
-#   normal       the exec runs the job and returns
-#   lostfirst    the first exec loses its connection and hangs with nothing run; the second runs the job
-#   late         the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
-#                remote kernel would); the second runs the job at once
-#   neverstarts  every exec hangs with nothing run
+#   normal          the exec runs the job and returns
+#   neighbourclose  a neighbour session closes between the two rate reads (15.90 -> 10.60), so OWN_RATE falls back to GPU_RATE
+#   lostfirst       the first exec loses its connection and hangs with nothing run; the second runs the job
+#   late            the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
+#                   remote kernel would); the second runs the job at once
+#   neverstarts     every exec hangs with nothing run
 ST=${FAKE_ST:?FAKE_ST}; VM=$ST/vm; mkdir -p "$VM/content/pin"
 cmd=$1; shift
 case "$cmd" in
-  usage) if [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi; echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
+  usage)
+    if [ "${FAKE_MODE:-normal}" = neighbourclose ]; then
+      if [ -f "$ST/open" ]; then r=10.60; else r=15.90; fi
+    elif [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi
+    echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
   new) touch "$ST/open"; echo "[colab] Session READY.";;
   sessions) [ -f "$ST/open" ] && echo "[fake] fake | Hardware: A100"; true;;
-  stop) rm -f "$ST/open"; echo "[colab] Session terminated.";;
+  stop)
+    if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
+      touch "$ST/stopped_under_lock"
+    fi
+    rm -f "$ST/open"; echo "[colab] Session terminated.";;
   status) if ls "$ST"/busy.* >/dev/null 2>&1; then echo "[fake] Status: BUSY (exec(job))"; else echo "[fake] Status: IDLE"; fi;;
   upload) [ "$1" = -s ] && shift 2; mkdir -p "$VM$(dirname "$2")"; cp "$1" "$VM$2"; echo "[colab] Uploaded";;
   download) [ "$1" = -s ] && shift 2
@@ -25,11 +34,11 @@ case "$cmd" in
     job="$ST/job-$n.sh"
     { echo "#!/usr/bin/env bash"; echo "touch '$ST/busy.$n'"
       for e in "${envs[@]}"; do printf 'export %q\n' "$e"; done
-      echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file'"; echo "rm -f '$ST/busy.$n'"; } > "$job"
+      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file'"; echo "rm -f '$ST/busy.$n'"; } > "$job"
     chmod +x "$job"
     lost() { echo "RuntimeError: Connection was lost."; sleep 3600; }
     case "$FAKE_MODE:$n" in
-      normal:*) "$job";;
+      normal:*|neighbourclose:*) "$job";;
       lostfirst:1|neverstarts:*) lost;;
       lostfirst:*) "$job";;
       late:1) setsid bash -c "sleep ${FAKE_LATE_S:-4}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;

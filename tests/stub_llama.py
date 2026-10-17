@@ -11,12 +11,18 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from role_set.mock import MockCritic, MockWriter
 
 
+class _ReuseHTTPServer(ThreadingHTTPServer):
+    allow_reuse_address = True
+
+
 class StubLlama:
-    def __init__(self, writer_model: str, critic_model: str, *, critic: MockCritic | None = None):
+    def __init__(self, writer_model: str, critic_model: str, *, critic: MockCritic | None = None,
+                 writer: MockWriter | None = None, port: int = 0):
         self.writer_model, self.critic_model = writer_model, critic_model
-        self.writer = MockWriter()
+        self.writer = writer or MockWriter()
         self.critic = critic or MockCritic(answers=self.writer.answers)
         self.requests: list[dict] = []
+        self.in_apply = False
         stub = self
 
         class Handler(BaseHTTPRequestHandler):
@@ -26,10 +32,20 @@ class StubLlama:
             def do_POST(self):  # noqa: N802 - http.server's name
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 stub.requests.append(body)
-                if body["model"] == stub.writer_model:
-                    c = stub.writer(body["messages"], seed=body.get("seed") or 0)
+                msgs = body.get("messages") or []
+                system = msgs[0].get("content") or "" if msgs else ""
+                user = msgs[-1].get("content") or "" if msgs else ""
+                if "## The trait lesson\n" in user:
+                    stub.in_apply = "# 4." in user or "## 4." in user or "Lesson T04" in user
+                elif "Lesson T04," in user:
+                    stub.in_apply = True
+                elif "Lesson T02," in user:
+                    stub.in_apply = False
+                is_writer = ("training items" in system or "training item" in system or "everyday material" in system)
+                if body["model"] == stub.writer_model and (body["model"] != stub.critic_model or is_writer):
+                    c = stub.writer(msgs, seed=body.get("seed") or 0, slot_id="T04-AP" if stub.in_apply else None)
                 elif body["model"] == stub.critic_model:
-                    c = stub.critic(body["messages"], seed=body.get("seed") or 0)
+                    c = stub.critic(msgs, seed=body.get("seed") or 0)
                 else:
                     self.send_response(404)
                     self.end_headers()
@@ -43,7 +59,7 @@ class StubLlama:
                 self.end_headers()
                 self.wfile.write(data)
 
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.server = _ReuseHTTPServer(("127.0.0.1", port), Handler)
         self.url = f"http://127.0.0.1:{self.server.server_address[1]}/v1"
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
 
