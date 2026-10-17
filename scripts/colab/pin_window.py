@@ -210,8 +210,8 @@ def smoke(built: dict, model: dict) -> dict:
     server_log = WORK / f"{model['served_as']}-server.log"
     log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed in the finally below
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
-                             "-c", str(ctx), "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh, stderr=subprocess.STDOUT,
-                            text=True, env=env)
+                             "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
+                            stderr=subprocess.STDOUT, text=True, env=env)
     # The model's card kwargs (rnd card-values.json, passed whole in PIN_CARDS_JSON), so a thinking model thinks as it will
     # in the pilot. Sampling stays at temperature 0 and seed 0: this reply is the reference record, not a pilot call.
     kwargs = _card_kwargs(model)
@@ -422,9 +422,11 @@ def start_server(built: dict, model: dict, ctx: int, port: int):
     env = {**os.environ, "LD_LIBRARY_PATH": ":".join(str(p) for p in _cuda_lib_dirs()) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
     server_log = WORK / f"{model['served_as']}-critic-server.log"
     log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed by stop_server
+    # One slot: llama-server's default runs several, and each gets ctx / n_slots, so a long thinking reply would
+    # truncate at a quarter of the context (R&D on the critic window).
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
-                             "-c", str(ctx), "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh, stderr=subprocess.STDOUT,
-                            text=True, env=env)
+                             "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
+                            stderr=subprocess.STDOUT, text=True, env=env)
     for _ in range(180):
         if proc.poll() is not None:
             log_fh.close()
@@ -458,6 +460,16 @@ def all_on_gpu(lines: list[str]) -> dict:
         if m:
             return {"offloaded": int(m.group(1)), "layers": int(m.group(2)), "ok": m.group(1) == m.group(2)}
     return {"offloaded": None, "layers": None, "ok": False, "why": "no 'offloaded N/M layers to GPU' line in the server log"}
+
+
+def slots(port: int, want_ctx: int) -> dict:
+    """The server's slot count and per-slot context, from /props; a per-slot context under the run's is refused."""
+
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/props", timeout=30) as r:  # noqa: S310 - loopback
+        props = json.loads(r.read())
+    per_slot = (props.get("default_generation_settings") or {}).get("n_ctx")
+    return {"total_slots": props.get("total_slots"), "n_ctx_per_slot": per_slot,
+            "ok": isinstance(per_slot, int) and per_slot >= want_ctx}
 
 
 def tokenize_all(port: int, texts: list, want: list) -> dict:
@@ -555,6 +567,10 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
                 rec["fit"] = all_on_gpu(rec["offload_lines"])
                 if not rec["fit"]["ok"]:
                     rec["stopped"] = "not every layer is on the GPU"
+                    continue
+                rec["slots"] = slots(CRITIC_PORT, CRITIC_CTX)
+                if not rec["slots"]["ok"]:
+                    rec["stopped"] = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {CRITIC_CTX}"
                     continue
                 if m.get("tokenizer_hf"):
                     rec["tokenizer"] = tokenizer_check(CRITIC_PORT, m)

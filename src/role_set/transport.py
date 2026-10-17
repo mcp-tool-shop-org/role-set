@@ -19,7 +19,9 @@ from dataclasses import dataclass
 from role_set.guards import require_local_endpoint
 
 BACKOFF_S = (2.0, 8.0, 32.0)
-DEFAULT_TIMEOUT_S = 600.0
+# A 16,384-token thinking reply at about 20-33 tokens a second takes up to about 820 s; the wait must outlast it, so a long
+# reply ends as a truncation, not a transport failure (R&D, 2026-10-17).
+DEFAULT_TIMEOUT_S = 1800.0
 
 
 class TransportError(RuntimeError):
