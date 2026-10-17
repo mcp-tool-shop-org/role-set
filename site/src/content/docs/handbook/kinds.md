@@ -42,6 +42,8 @@ On the 5090, add `--grant` and `--heartbeat`. `write` refuses a critic listed wi
 
 ## The B solver
 
+**Solve-first puzzles** (BUILD-SPEC B3a). For five of the eight structures the model and its answer are made in code before the writer sees the slot. A proving generator picks a hidden assignment, adds true facts until the solver leaves the intended answer, prunes every fact that changes nothing, and tries again on a lookup. The writer gets that locked model, a plain gloss of each line and the fixed key. It writes the puzzle's prose, the thinking and the reply, never the model or the answer. The same check below then runs on its text. Two more rules apply. The `ANSWER_EARLY` gate refuses thinking that pairs what is asked with the answer before its final third. And the thinking must cite every fact line, in any form ("(line 3)", "lines 2 and 4"). Each B slot's pack, one of 42 subject packs with its own NAICS domain, and its seed are fixed by the plan. The receipt records `b_path`, the family, the pack, the seed and the model's sha256. `stopping_problem`, `falsifier_first` and `when_to_stop` are still written freehand.
+
 The solver checks a puzzle the writer has given twice: numbered lines a person can read, and a `model` the code can search. It refuses the draft unless the model is tied to those lines, the Question line names the entity the model asks about, every fact is needed, and the search produces the key. The writer is not asked whether the puzzle has one solution.
 
 The closed rule forms are the ones the solver assigns an arity: `is`, `is_not`, `in`, `not_in`, `same`, `different`, `before`, `after`, `adjacent`, `not_adjacent`, `offset`, `count`, `not`, and `if`. A puzzle outside that set is not checked by being called kind B.

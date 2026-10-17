@@ -80,6 +80,8 @@ class MockWriter:
         if "Write a " in text and "Return only the text" in text:
             n = self._material_n(slot_id)
             return _done(f"Desk hours at {_tag(n, 0).title()}\nThe desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00.")
+        if "## The locked puzzle" in text:
+            return _done(_locked_fields(text))
         slot = _slot_from_brief(text)
         material = _material_from(text)
         slot_key = slot["id"]
@@ -195,6 +197,23 @@ def _slot_from_brief(text: str) -> dict:
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
         "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
     }
+
+
+def _locked_fields(text: str) -> str:
+    """A solve-first slot: the locked model is in the brief, so the mock renders it (mock text only, never data)."""
+
+    import json
+    import re
+
+    from role_set import solvefirst
+
+    model = json.loads(re.search(r"The model, as data:\n(\{.*\})\n", text).group(1))
+    key = re.search(r"The answer key is fixed: (.*)\n", text).group(1)
+    question = re.search(r"and asks: (.*)\n", text).group(1)
+    glosses = {int(n): g for n, g in re.findall(r"^(\d+)\. (.+)$", text.split("in your own words", 1)[1].split("Then a last line", 1)[0], re.M)}
+    locked = solvefirst.Locked(model=model, key=key, question=question, glosses=glosses, structure="", family="", pack="", seed=0,
+                               tries=0, subject=None, keyed=())
+    return json.dumps(solvefirst.render_for_mock(locked))
 
 
 def _framing(frame: str | None, t) -> str:

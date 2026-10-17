@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from role_set import __version__, autostart, defects, domains, proven, puzzle_check
+from role_set import __version__, autostart, defects, domains, proven, puzzle_check, solvefirst
 from role_set.cost import PROFILES, estimate
 from role_set.critic_control import (
     FALSE_REFUSAL_CAP,
@@ -74,7 +74,12 @@ def _plan(args: argparse.Namespace) -> int:
         if args.domains:
             table = domains.load(Path(args.domains))
             domains.assign(slots, table, seed=args.seed)
-    except (PlanError, domains.DomainTableError) as e:
+            # Kind B: a pack and a seed per slot, and the solve-first path for the structures with a generator (B3).
+            packs = solvefirst.load_packs()
+            solvefirst.assign(slots, packs, seed=args.seed, table=table)
+            solvefirst.lock_skeletons(slots, packs)
+            domains.check(slots)
+    except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError) as e:
         msg = str(e)
         print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
         return 2

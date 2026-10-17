@@ -1,0 +1,1984 @@
+{
+ "_provenance": {
+  "writer": "Claude (Claude Code, the Publisher seat)",
+  "added_by": "role-set BUILD-SPEC B3a",
+  "use": "row inputs for solve-first kind B puzzles: the names and values a locked model is built from. Never a training target (the maintainer's specialized-tool ruling, 2026-10-16; Anthropic Help Center 12326764).",
+  "domains": "each pack is set in one NAICS 2022 subsector; the title comes from the pinned domain table"
+ },
+ "packs": [
+  {
+   "id": "clinic-rota",
+   "naics": "621",
+   "entities": [
+    "Ama",
+    "Bodil",
+    "Chen",
+    "Dario",
+    "Efua",
+    "Faris"
+   ],
+   "order": {
+    "name": "appointment",
+    "values": [
+     "8 am",
+     "8.30 am",
+     "9 am",
+     "9.30 am",
+     "10 am",
+     "10.30 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "room",
+     "values": [
+      "the east room",
+      "the west room",
+      "the small office",
+      "the scan room",
+      "the triage bay",
+      "the quiet room"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "intake",
+      "bloods",
+      "dressings",
+      "vaccines",
+      "follow-ups",
+      "phone triage"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "ward-handover",
+   "naics": "622",
+   "entities": [
+    "Grete",
+    "Hamza",
+    "Ines",
+    "Jonah",
+    "Kiri",
+    "Lusine"
+   ],
+   "order": {
+    "name": "handover",
+    "values": [
+     "6 am",
+     "6.15 am",
+     "6.30 am",
+     "6.45 am",
+     "7 am",
+     "7.15 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "ward",
+     "values": [
+      "the cardiac ward",
+      "the renal ward",
+      "the day unit",
+      "the step-down unit",
+      "the surgical ward",
+      "the stroke unit"
+     ]
+    },
+    {
+     "name": "duty",
+     "values": [
+      "drug rounds",
+      "admissions",
+      "discharges",
+      "obs checks",
+      "bed moves",
+      "family calls"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "school-timetable",
+   "naics": "611",
+   "entities": [
+    "Mr Okafor",
+    "Ms Lindqvist",
+    "Mr Haddad",
+    "Ms Petrova",
+    "Mr Quispe",
+    "Ms Rautio"
+   ],
+   "order": {
+    "name": "period",
+    "values": [
+     "period one",
+     "period two",
+     "period three",
+     "period four",
+     "period five",
+     "period six"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "subject",
+     "values": [
+      "chemistry",
+      "geography",
+      "Spanish",
+      "drama",
+      "statistics",
+      "woodwork"
+     ]
+    },
+    {
+     "name": "room",
+     "values": [
+      "the lab",
+      "the library",
+      "the hall",
+      "the studio",
+      "the annexe",
+      "the workshop"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "depot-dispatch",
+   "naics": "484",
+   "entities": [
+    "Sione",
+    "Tamsin",
+    "Uriel",
+    "Vesna",
+    "Wiremu",
+    "Xiadani"
+   ],
+   "order": {
+    "name": "departure",
+    "values": [
+     "4 am",
+     "4.20 am",
+     "4.40 am",
+     "5 am",
+     "5.20 am",
+     "5.40 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "route",
+     "values": [
+      "the coast run",
+      "the ring road",
+      "the mill route",
+      "the airport loop",
+      "the valley run",
+      "the port route"
+     ]
+    },
+    {
+     "name": "load",
+     "values": [
+      "chilled goods",
+      "flat-pack furniture",
+      "timber",
+      "tyres",
+      "paper rolls",
+      "garden supplies"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sorting-office",
+   "naics": "491",
+   "entities": [
+    "Yusra",
+    "Zbigniew",
+    "Aoife",
+    "Bastien",
+    "Calla",
+    "Dmitri"
+   ],
+   "order": {
+    "name": "round",
+    "values": [
+     "round one",
+     "round two",
+     "round three",
+     "round four",
+     "round five",
+     "round six"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "frame",
+     "values": [
+      "frame A",
+      "frame C",
+      "frame E",
+      "frame G",
+      "frame J",
+      "frame L"
+     ]
+    },
+    {
+     "name": "district",
+     "values": [
+      "Hillside",
+      "Old Quay",
+      "Brookfield",
+      "Marsh End",
+      "Kingsmead",
+      "Elm Rise"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "restaurant-prep",
+   "naics": "722",
+   "entities": [
+    "Ebru",
+    "Florin",
+    "Gaukhar",
+    "Hiroshi",
+    "Ifeoma",
+    "Joaquin"
+   ],
+   "order": {
+    "name": "prep slot",
+    "values": [
+     "3 pm",
+     "3.15 pm",
+     "3.30 pm",
+     "3.45 pm",
+     "4 pm",
+     "4.15 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "station",
+     "values": [
+      "the grill",
+      "the pass",
+      "pastry",
+      "the fryer",
+      "cold starters",
+      "the sauce bench"
+     ]
+    },
+    {
+     "name": "dish",
+     "values": [
+      "the risotto",
+      "the flatbreads",
+      "the tart",
+      "the chowder",
+      "the slaw",
+      "the braise"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "hotel-housekeeping",
+   "naics": "721",
+   "entities": [
+    "Kalani",
+    "Ludmila",
+    "Mateus",
+    "Nkechi",
+    "Oskar",
+    "Priya"
+   ],
+   "order": {
+    "name": "start",
+    "values": [
+     "7.30 am",
+     "7.45 am",
+     "8 am",
+     "8.15 am",
+     "8.30 am",
+     "8.45 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "floor",
+     "values": [
+      "the ground floor",
+      "the mezzanine",
+      "the garden wing",
+      "the tower rooms",
+      "the spa level",
+      "the attic suites"
+     ]
+    },
+    {
+     "name": "job",
+     "values": [
+      "linen",
+      "minibars",
+      "deep cleans",
+      "turn-downs",
+      "lost property",
+      "inspections"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "repair-shop",
+   "naics": "811",
+   "entities": [
+    "Quentin",
+    "Rukmini",
+    "Soren",
+    "Thandiwe",
+    "Ulla",
+    "Viktor"
+   ],
+   "order": {
+    "name": "booking",
+    "values": [
+     "9.15 am",
+     "10.15 am",
+     "11.15 am",
+     "12.15 pm",
+     "1.15 pm",
+     "2.15 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "bay",
+     "values": [
+      "the front bay",
+      "the back bay",
+      "the lift",
+      "the paint booth",
+      "the tyre bay",
+      "the wash bay"
+     ]
+    },
+    {
+     "name": "job",
+     "values": [
+      "brake pads",
+      "a timing belt",
+      "an MOT",
+      "a clutch",
+      "wipers",
+      "a battery"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "grocery-shift",
+   "naics": "445",
+   "entities": [
+    "Wanjiru",
+    "Xavier",
+    "Yerlan",
+    "Zuzana",
+    "Abebe",
+    "Brigid"
+   ],
+   "order": {
+    "name": "shift",
+    "values": [
+     "5 am",
+     "6 am",
+     "7 am",
+     "8 am",
+     "9 am",
+     "10 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "aisle",
+     "values": [
+      "produce",
+      "dairy",
+      "bakery",
+      "frozen",
+      "tins",
+      "household"
+     ]
+    },
+    {
+     "name": "duty",
+     "values": [
+      "restocking",
+      "price checks",
+      "date rotation",
+      "the deli counter",
+      "click and collect",
+      "the tills"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "lettings-office",
+   "naics": "531",
+   "entities": [
+    "Ciaran",
+    "Delphine",
+    "Emeka",
+    "Fenna",
+    "Gustavo",
+    "Hyun-woo"
+   ],
+   "order": {
+    "name": "viewing",
+    "values": [
+     "11 am",
+     "11.30 am",
+     "12 pm",
+     "12.30 pm",
+     "1 pm",
+     "1.30 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "property",
+     "values": [
+      "the corner flat",
+      "the mews house",
+      "the studio",
+      "the loft",
+      "the bungalow",
+      "the maisonette"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "a check-in",
+      "an inventory",
+      "a gas safety visit",
+      "a key handover",
+      "a damp survey",
+      "a rent review"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "office-cleaning",
+   "naics": "561",
+   "entities": [
+    "Ilse",
+    "Jamal",
+    "Keziah",
+    "Lorenzo",
+    "Mireille",
+    "Nnamdi"
+   ],
+   "order": {
+    "name": "visit",
+    "values": [
+     "6 pm",
+     "6.30 pm",
+     "7 pm",
+     "7.30 pm",
+     "8 pm",
+     "8.30 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "client",
+     "values": [
+      "the law firm",
+      "the dentist",
+      "the call centre",
+      "the gallery",
+      "the print shop",
+      "the charity"
+     ]
+    },
+    {
+     "name": "kit",
+     "values": [
+      "the floor buffer",
+      "the steam cleaner",
+      "the window pole",
+      "the carpet extractor",
+      "the trolley",
+      "the hoover"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "leisure-centre",
+   "naics": "713",
+   "entities": [
+    "Odile",
+    "Pavel",
+    "Qiu",
+    "Rosalind",
+    "Santiago",
+    "Tove"
+   ],
+   "order": {
+    "name": "class",
+    "values": [
+     "5 pm",
+     "5.45 pm",
+     "6.30 pm",
+     "7.15 pm",
+     "8 pm",
+     "8.45 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "studio",
+     "values": [
+      "the main pool",
+      "the sports hall",
+      "studio one",
+      "the climbing wall",
+      "the squash court",
+      "the dance studio"
+     ]
+    },
+    {
+     "name": "session",
+     "values": [
+      "aqua fit",
+      "five-a-side",
+      "pilates",
+      "bouldering",
+      "circuits",
+      "salsa"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "orchard-harvest",
+   "naics": "111",
+   "entities": [
+    "Ugne",
+    "Vikram",
+    "Wilhelmina",
+    "Ximena",
+    "Yasir",
+    "Zelda"
+   ],
+   "order": {
+    "name": "pick",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "block",
+     "values": [
+      "the north block",
+      "the river block",
+      "the hill block",
+      "the old block",
+      "the nursery block",
+      "the barn block"
+     ]
+    },
+    {
+     "name": "crop",
+     "values": [
+      "pears",
+      "plums",
+      "quinces",
+      "cherries",
+      "damsons",
+      "russets"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "bakery-line",
+   "naics": "311",
+   "entities": [
+    "Agnieszka",
+    "Babajide",
+    "Coralie",
+    "Desmond",
+    "Elif",
+    "Fintan"
+   ],
+   "order": {
+    "name": "bake",
+    "values": [
+     "2 am",
+     "2.40 am",
+     "3.20 am",
+     "4 am",
+     "4.40 am",
+     "5.20 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "oven",
+     "values": [
+      "the deck oven",
+      "the rack oven",
+      "the stone oven",
+      "the tunnel oven",
+      "the combi",
+      "the proving cabinet"
+     ]
+    },
+    {
+     "name": "batch",
+     "values": [
+      "sourdough",
+      "baguettes",
+      "rye",
+      "brioche",
+      "focaccia",
+      "bagels"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "film-unit",
+   "naics": "512",
+   "entities": [
+    "Giedre",
+    "Horatio",
+    "Isolde",
+    "Jovan",
+    "Kaveh",
+    "Leilani"
+   ],
+   "order": {
+    "name": "call",
+    "values": [
+     "6.30 am",
+     "7 am",
+     "7.30 am",
+     "8 am",
+     "8.30 am",
+     "9 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "location",
+     "values": [
+      "the pier",
+      "the warehouse",
+      "the chapel",
+      "the rooftop",
+      "the tram depot",
+      "the allotments"
+     ]
+    },
+    {
+     "name": "department",
+     "values": [
+      "lighting",
+      "sound",
+      "props",
+      "costume",
+      "camera",
+      "make-up"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "consultancy-desk",
+   "naics": "541",
+   "entities": [
+    "Marisol",
+    "Niamh",
+    "Olumide",
+    "Pernille",
+    "Rasmus",
+    "Sakura"
+   ],
+   "order": {
+    "name": "meeting",
+    "values": [
+     "9 am",
+     "10 am",
+     "11 am",
+     "2 pm",
+     "3 pm",
+     "4 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "client",
+     "values": [
+      "the brewery",
+      "the council",
+      "the museum",
+      "the shipyard",
+      "the bank",
+      "the hospice"
+     ]
+    },
+    {
+     "name": "brief",
+     "values": [
+      "a site survey",
+      "a tender",
+      "a budget review",
+      "a staff audit",
+      "a risk report",
+      "a launch plan"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "dairy-parlour",
+   "naics": "112",
+   "entities": [
+    "Aksel",
+    "Berit",
+    "Cosmin",
+    "Dunya",
+    "Eamon",
+    "Fumiko"
+   ],
+   "order": {
+    "name": "milking",
+    "values": [
+     "4.30 am",
+     "5 am",
+     "5.30 am",
+     "6 am",
+     "6.30 am",
+     "7 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "herd",
+     "values": [
+      "the Friesians",
+      "the Jerseys",
+      "the heifers",
+      "the dry cows",
+      "the calves",
+      "the Ayrshires"
+     ]
+    },
+    {
+     "name": "job",
+     "values": [
+      "teat dipping",
+      "feed mixing",
+      "yard scraping",
+      "hoof checks",
+      "calf feeding",
+      "bulk tank checks"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "forestry-crew",
+   "naics": "113",
+   "entities": [
+    "Gwilym",
+    "Halldora",
+    "Ilan",
+    "Jurgita",
+    "Kofi",
+    "Liesel"
+   ],
+   "order": {
+    "name": "start",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "compartment",
+     "values": [
+      "Larch Hill",
+      "Beech Hanger",
+      "Fern Gully",
+      "Pine Ridge",
+      "Oak Bottom",
+      "Ash Spinney"
+     ]
+    },
+    {
+     "name": "work",
+     "values": [
+      "thinning",
+      "replanting",
+      "fence repair",
+      "ride mowing",
+      "deer counts",
+      "drain clearing"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "fishing-harbour",
+   "naics": "114",
+   "entities": [
+    "Magnus",
+    "Nadia",
+    "Ottilie",
+    "Pedro",
+    "Rahel",
+    "Steinar"
+   ],
+   "order": {
+    "name": "tide",
+    "values": [
+     "3.10 am",
+     "4.25 am",
+     "5.40 am",
+     "6.55 am",
+     "8.10 am",
+     "9.25 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "boat",
+     "values": [
+      "the Kestrel",
+      "the Morning Star",
+      "the Tern",
+      "the Halcyon",
+      "the Puffin",
+      "the Sea Holly"
+     ]
+    },
+    {
+     "name": "catch",
+     "values": [
+      "crab",
+      "mackerel",
+      "whelks",
+      "pollock",
+      "langoustine",
+      "sprats"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "water-works",
+   "naics": "221",
+   "entities": [
+    "Tadeo",
+    "Ulrike",
+    "Vanessa",
+    "Wendell",
+    "Yaroslav",
+    "Zainab"
+   ],
+   "order": {
+    "name": "inspection",
+    "values": [
+     "7 am",
+     "7.40 am",
+     "8.20 am",
+     "9 am",
+     "9.40 am",
+     "10.20 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "site",
+     "values": [
+      "the reservoir",
+      "the pumping station",
+      "the filter beds",
+      "the booster tank",
+      "the intake",
+      "the sludge lagoon"
+     ]
+    },
+    {
+     "name": "check",
+     "values": [
+      "chlorine levels",
+      "pump vibration",
+      "valve seals",
+      "turbidity",
+      "alarm tests",
+      "flow meters"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "electrical-contractor",
+   "naics": "238",
+   "entities": [
+    "Arjun",
+    "Benedikta",
+    "Casimir",
+    "Dalia",
+    "Erno",
+    "Freya"
+   ],
+   "order": {
+    "name": "visit",
+    "values": [
+     "8 am",
+     "9.30 am",
+     "11 am",
+     "12.30 pm",
+     "2 pm",
+     "3.30 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "site",
+     "values": [
+      "the school kitchen",
+      "the vet surgery",
+      "the bakery unit",
+      "the chapel hall",
+      "the boathouse",
+      "the cycle shop"
+     ]
+    },
+    {
+     "name": "job",
+     "values": [
+      "a consumer unit",
+      "emergency lighting",
+      "an EV charger",
+      "a fire alarm",
+      "PAT testing",
+      "rewiring"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "brewery-cellar",
+   "naics": "312",
+   "entities": [
+    "Gideon",
+    "Hanne",
+    "Ivo",
+    "Jolene",
+    "Kemal",
+    "Lotte"
+   ],
+   "order": {
+    "name": "brew",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "vessel",
+     "values": [
+      "the mash tun",
+      "fermenter two",
+      "the copper",
+      "the bright tank",
+      "fermenter five",
+      "the hop back"
+     ]
+    },
+    {
+     "name": "beer",
+     "values": [
+      "the porter",
+      "the pale ale",
+      "the saison",
+      "the stout",
+      "the lager",
+      "the mild"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "sawmill-yard",
+   "naics": "321",
+   "entities": [
+    "Mattias",
+    "Nomvula",
+    "Orla",
+    "Piotr",
+    "Ragna",
+    "Sefton"
+   ],
+   "order": {
+    "name": "run",
+    "values": [
+     "6 am",
+     "7.15 am",
+     "8.30 am",
+     "9.45 am",
+     "11 am",
+     "12.15 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "saw",
+     "values": [
+      "the band saw",
+      "the edger",
+      "the gang saw",
+      "the resaw",
+      "the chop saw",
+      "the planer"
+     ]
+    },
+    {
+     "name": "timber",
+     "values": [
+      "Douglas fir",
+      "larch",
+      "oak",
+      "spruce",
+      "cedar",
+      "sweet chestnut"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "print-works",
+   "naics": "323",
+   "entities": [
+    "Tilde",
+    "Umberto",
+    "Valeska",
+    "Wynn",
+    "Ysolde",
+    "Zoltan"
+   ],
+   "order": {
+    "name": "job slot",
+    "values": [
+     "9 am",
+     "9.45 am",
+     "10.30 am",
+     "11.15 am",
+     "12 pm",
+     "12.45 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "press",
+     "values": [
+      "the Heidelberg",
+      "the risograph",
+      "the litho press",
+      "the digital press",
+      "the letterpress",
+      "the folder"
+     ]
+    },
+    {
+     "name": "order",
+     "values": [
+      "wedding invites",
+      "a gig poster",
+      "menus",
+      "annual reports",
+      "seed packets",
+      "zine covers"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "metal-fab-shop",
+   "naics": "332",
+   "entities": [
+    "Abdi",
+    "Brigitta",
+    "Conall",
+    "Dorota",
+    "Eero",
+    "Fatou"
+   ],
+   "order": {
+    "name": "bench slot",
+    "values": [
+     "7.30 am",
+     "8.15 am",
+     "9 am",
+     "9.45 am",
+     "10.30 am",
+     "11.15 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "machine",
+     "values": [
+      "the press brake",
+      "the plasma cutter",
+      "the TIG set",
+      "the lathe",
+      "the guillotine",
+      "the pillar drill"
+     ]
+    },
+    {
+     "name": "part",
+     "values": [
+      "gate hinges",
+      "balustrades",
+      "brackets",
+      "a stair stringer",
+      "flue covers",
+      "bike racks"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "furniture-workshop",
+   "naics": "337",
+   "entities": [
+    "Gaspard",
+    "Hedda",
+    "Imogen",
+    "Jarrah",
+    "Kasimir",
+    "Linnea"
+   ],
+   "order": {
+    "name": "finish",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "bench",
+     "values": [
+      "the joinery bench",
+      "the veneer press",
+      "the spray room",
+      "the assembly bay",
+      "the turning lathe",
+      "the upholstery table"
+     ]
+    },
+    {
+     "name": "piece",
+     "values": [
+      "a dresser",
+      "a rocking chair",
+      "a desk",
+      "a blanket box",
+      "a sideboard",
+      "a bed frame"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "garden-centre",
+   "naics": "444",
+   "entities": [
+    "Mehmet",
+    "Noelani",
+    "Osric",
+    "Paulina",
+    "Radek",
+    "Sunniva"
+   ],
+   "order": {
+    "name": "delivery",
+    "values": [
+     "8 am",
+     "9 am",
+     "10 am",
+     "11 am",
+     "12 pm",
+     "1 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "area",
+     "values": [
+      "the glasshouse",
+      "the aquatics room",
+      "the tool aisle",
+      "the bedding tables",
+      "the timber yard",
+      "the cafe terrace"
+     ]
+    },
+    {
+     "name": "stock",
+     "values": [
+      "seed potatoes",
+      "pond pumps",
+      "compost",
+      "fence panels",
+      "bird feeders",
+      "bulbs"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "pharmacy-counter",
+   "naics": "456",
+   "entities": [
+    "Teodor",
+    "Usha",
+    "Valentin",
+    "Winifred",
+    "Yannick",
+    "Zofia"
+   ],
+   "order": {
+    "name": "rota slot",
+    "values": [
+     "8.30 am",
+     "10 am",
+     "11.30 am",
+     "1 pm",
+     "2.30 pm",
+     "4 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "counter",
+     "values": [
+      "the dispensary",
+      "the consultation room",
+      "the front till",
+      "the delivery desk",
+      "the stock room",
+      "the photo kiosk"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "blister packs",
+      "flu jabs",
+      "repeat scripts",
+      "stock takes",
+      "returns",
+      "home deliveries"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "record-and-book-shop",
+   "naics": "459",
+   "entities": [
+    "Anselm",
+    "Beatrix",
+    "Cormac",
+    "Desiree",
+    "Ewan",
+    "Fiorella"
+   ],
+   "order": {
+    "name": "shift",
+    "values": [
+     "10 am",
+     "11 am",
+     "12 pm",
+     "1 pm",
+     "2 pm",
+     "3 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "section",
+     "values": [
+      "vinyl",
+      "sheet music",
+      "poetry",
+      "maps",
+      "comics",
+      "the second-hand shelves"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "pricing",
+      "the window display",
+      "online orders",
+      "special orders",
+      "the listening booth",
+      "the signing table"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "bus-depot",
+   "naics": "485",
+   "entities": [
+    "Gabor",
+    "Hatice",
+    "Isak",
+    "Jacinta",
+    "Kwame",
+    "Lucia"
+   ],
+   "order": {
+    "name": "pull-out",
+    "values": [
+     "5.05 am",
+     "5.20 am",
+     "5.35 am",
+     "5.50 am",
+     "6.05 am",
+     "6.20 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "route",
+     "values": [
+      "the 12",
+      "the 27",
+      "the 40",
+      "the 51",
+      "the 63",
+      "the 88"
+     ]
+    },
+    {
+     "name": "vehicle",
+     "values": [
+      "the electric double-decker",
+      "the hybrid",
+      "the minibus",
+      "the single-decker",
+      "the low-floor",
+      "the coach"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "scenic-tours",
+   "naics": "487",
+   "entities": [
+    "Mariam",
+    "Nils",
+    "Ofelia",
+    "Pradeep",
+    "Rosamund",
+    "Silvan"
+   ],
+   "order": {
+    "name": "departure",
+    "values": [
+     "9 am",
+     "10.30 am",
+     "12 pm",
+     "1.30 pm",
+     "3 pm",
+     "4.30 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "tour",
+     "values": [
+      "the canal cruise",
+      "the steam railway",
+      "the cliff walk",
+      "the lighthouse trip",
+      "the vineyard tour",
+      "the castle run"
+     ]
+    },
+    {
+     "name": "guide kit",
+     "values": [
+      "the headsets",
+      "the umbrellas",
+      "the medical bag",
+      "the binoculars",
+      "the tablet",
+      "the megaphone"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "courier-hub",
+   "naics": "492",
+   "entities": [
+    "Tamar",
+    "Uchenna",
+    "Vilja",
+    "Wolfgang",
+    "Yetunde",
+    "Zakir"
+   ],
+   "order": {
+    "name": "wave",
+    "values": [
+     "6 am",
+     "6.45 am",
+     "7.30 am",
+     "8.15 am",
+     "9 am",
+     "9.45 am"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "van",
+     "values": [
+      "the white Transit",
+      "the e-van",
+      "the cargo bike",
+      "the Luton",
+      "the Sprinter",
+      "the trike"
+     ]
+    },
+    {
+     "name": "zone",
+     "values": [
+      "the old town",
+      "the business park",
+      "the harbour",
+      "the university",
+      "the retail park",
+      "the villages"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "warehouse-dock",
+   "naics": "493",
+   "entities": [
+    "Alonso",
+    "Birgit",
+    "Cyrus",
+    "Dagny",
+    "Emrys",
+    "Farida"
+   ],
+   "order": {
+    "name": "bay slot",
+    "values": [
+     "1 pm",
+     "1.40 pm",
+     "2.20 pm",
+     "3 pm",
+     "3.40 pm",
+     "4.20 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "dock",
+     "values": [
+      "dock one",
+      "dock three",
+      "dock five",
+      "dock seven",
+      "dock nine",
+      "dock eleven"
+     ]
+    },
+    {
+     "name": "pallet",
+     "values": [
+      "bottled water",
+      "flat-pack desks",
+      "paint tins",
+      "dog food",
+      "printer paper",
+      "tiles"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "telecom-field",
+   "naics": "517",
+   "entities": [
+    "Gerlinde",
+    "Hassan",
+    "Isra",
+    "Jasper",
+    "Kalinda",
+    "Lev"
+   ],
+   "order": {
+    "name": "job",
+    "values": [
+     "8 am",
+     "9.15 am",
+     "10.30 am",
+     "11.45 am",
+     "1 pm",
+     "2.15 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "site",
+     "values": [
+      "the mast on the hill",
+      "the exchange",
+      "the street cabinet",
+      "the business park",
+      "the hospital roof",
+      "the fibre hub"
+     ]
+    },
+    {
+     "name": "fault",
+     "values": [
+      "a dead line",
+      "slow broadband",
+      "a cut cable",
+      "dropped calls",
+      "a power alarm",
+      "a damp joint"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "town-library",
+   "naics": "519",
+   "entities": [
+    "Malachy",
+    "Nerys",
+    "Oyelaran",
+    "Pia",
+    "Rafferty",
+    "Sigrun"
+   ],
+   "order": {
+    "name": "desk hour",
+    "values": [
+     "9 am",
+     "10 am",
+     "11 am",
+     "12 pm",
+     "1 pm",
+     "2 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "room",
+     "values": [
+      "the reading room",
+      "the local history room",
+      "the children's corner",
+      "the study pods",
+      "the archive",
+      "the makerspace"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "shelving",
+      "the toddler session",
+      "inter-library loans",
+      "the coding club",
+      "the census help desk",
+      "book repairs"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "recycling-depot",
+   "naics": "562",
+   "entities": [
+    "Tobiah",
+    "Ursula",
+    "Viggo",
+    "Wenona",
+    "Yuri",
+    "Zenaida"
+   ],
+   "order": {
+    "name": "collection",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "skip",
+     "values": [
+      "the glass bank",
+      "the metal skip",
+      "the garden waste bay",
+      "the textile bank",
+      "the wood skip",
+      "the electricals cage"
+     ]
+    },
+    {
+     "name": "round",
+     "values": [
+      "the estates",
+      "the high street",
+      "the farms",
+      "the schools",
+      "the flats",
+      "the industrial estate"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "care-home",
+   "naics": "623",
+   "entities": [
+    "Adaeze",
+    "Bjorn",
+    "Cerys",
+    "Dawit",
+    "Esme",
+    "Fergal"
+   ],
+   "order": {
+    "name": "round",
+    "values": [
+     "7 am",
+     "9 am",
+     "11 am",
+     "1 pm",
+     "3 pm",
+     "5 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "wing",
+     "values": [
+      "the garden wing",
+      "the lilac wing",
+      "the river wing",
+      "the willow wing",
+      "the orchard wing",
+      "the sunroom wing"
+     ]
+    },
+    {
+     "name": "task",
+     "values": [
+      "medication",
+      "mobility exercises",
+      "the tea trolley",
+      "family calls",
+      "the memory group",
+      "hair washes"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "food-bank",
+   "naics": "624",
+   "entities": [
+    "Giorgos",
+    "Hiba",
+    "Iain",
+    "Jun",
+    "Kerensa",
+    "Lamar"
+   ],
+   "order": {
+    "name": "session",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "point",
+     "values": [
+      "the church hall",
+      "the community cafe",
+      "the school gym",
+      "the mobile van",
+      "the sports club",
+      "the library annexe"
+     ]
+    },
+    {
+     "name": "role",
+     "values": [
+      "sorting tins",
+      "the welcome desk",
+      "driving",
+      "fresh produce",
+      "the advice table",
+      "packing parcels"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "touring-theatre",
+   "naics": "711",
+   "entities": [
+    "Morwenna",
+    "Nikolai",
+    "Oona",
+    "Prakash",
+    "Rhiannon",
+    "Saul"
+   ],
+   "order": {
+    "name": "call",
+    "values": [
+     "5 pm",
+     "5.30 pm",
+     "6 pm",
+     "6.30 pm",
+     "7 pm",
+     "7.30 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "venue",
+     "values": [
+      "the Corn Exchange",
+      "the Lyceum",
+      "the Drill Hall",
+      "the Playhouse",
+      "the Assembly Rooms",
+      "the Tithe Barn"
+     ]
+    },
+    {
+     "name": "crew job",
+     "values": [
+      "the fly ropes",
+      "the lighting desk",
+      "the props table",
+      "quick changes",
+      "the follow spot",
+      "front of house"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "county-museum",
+   "naics": "712",
+   "entities": [
+    "Thea",
+    "Ulf",
+    "Vida",
+    "Wilbur",
+    "Yasmin",
+    "Zephyr"
+   ],
+   "order": {
+    "name": "tour",
+    "values": [
+     "10 am",
+     "10.45 am",
+     "11.30 am",
+     "12.15 pm",
+     "1 pm",
+     "1.45 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "gallery",
+     "values": [
+      "the Roman gallery",
+      "the textile room",
+      "the natural history hall",
+      "the toy gallery",
+      "the costume store",
+      "the map room"
+     ]
+    },
+    {
+     "name": "duty",
+     "values": [
+      "the school group",
+      "the object handling cart",
+      "the audio guides",
+      "condition checks",
+      "the gift shop",
+      "the lost child point"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "laundry-and-salon",
+   "naics": "812",
+   "entities": [
+    "Anouk",
+    "Bram",
+    "Chiara",
+    "Deniz",
+    "Elodie",
+    "Florian"
+   ],
+   "order": {
+    "name": "appointment",
+    "values": [
+     "9 am",
+     "9.40 am",
+     "10.20 am",
+     "11 am",
+     "11.40 am",
+     "12.20 pm"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "station",
+     "values": [
+      "the press",
+      "chair two",
+      "the washers",
+      "the nail bar",
+      "the colour bench",
+      "the folding table"
+     ]
+    },
+    {
+     "name": "service",
+     "values": [
+      "a balayage",
+      "alterations",
+      "duvets",
+      "a gel set",
+      "a beard trim",
+      "dry cleaning"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "community-association",
+   "naics": "813",
+   "entities": [
+    "Godfrey",
+    "Hanna",
+    "Ishaan",
+    "Jovana",
+    "Kaito",
+    "Leocadia"
+   ],
+   "order": {
+    "name": "meeting",
+    "values": [
+     "Monday",
+     "Tuesday",
+     "Wednesday",
+     "Thursday",
+     "Friday",
+     "Saturday"
+    ]
+   },
+   "kinds": [
+    {
+     "name": "venue",
+     "values": [
+      "the scout hut",
+      "the parish room",
+      "the boxing club",
+      "the allotment shed",
+      "the youth centre",
+      "the bowls pavilion"
+     ]
+    },
+    {
+     "name": "item",
+     "values": [
+      "the summer fete",
+      "the litter pick",
+      "the newsletter",
+      "the grant bid",
+      "the repair cafe",
+      "the carol concert"
+     ]
+    }
+   ]
+  }
+ ]
+}
