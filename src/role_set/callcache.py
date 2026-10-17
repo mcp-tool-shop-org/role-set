@@ -6,6 +6,11 @@ key and the completion, whatever its finish reason (a truncated call is kept as 
 the journal holds them, and asks the model only for the rest. The wave's own logic runs again over the same
 completions, so every state it builds (accept order, spent framings, the andon) comes out as one uninterrupted run
 would make it. A call the cap cut off never reached the journal, so its slot runs again.
+
+The replay is exact at --concurrency 1, the default and what every Colab window runs: the spent framings a prompt carries
+depend on the order slots are accepted, and only one at a time fixes that order. At a higher concurrency a request can
+differ from the cut run's and is simply asked again; the result's unused_from_reuse then counts the journaled calls left
+over, and the window script reports any as a warning.
 """
 
 from __future__ import annotations

@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shutil
 import subprocess
@@ -825,6 +826,12 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         got["result"] = json.loads(run.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
         got["stdout"] = run.stdout[-1500:]
+    # A replay is exact at concurrency 1, role-set's default, which this window never changes; journaled calls left
+    # unused mean the resumed wave asked for something the cut one didn't, so its drafts aren't the cut run's.
+    unused = ((got.get("result") or {}).get("calls") or {}).get("unused_from_reuse") or 0
+    if reuse_calls is not None and unused:
+        got["replay_warning"] = f"{unused} journaled calls went unused: the resumed wave diverged from the cut one"
+        say(f"WARNING {arm} {label}: {got['replay_warning']}")
     return got
 
 
@@ -890,15 +897,19 @@ def resume_calls() -> dict:
     return {f.stem: f for f in Path(d).glob("*.jsonl")} if d else {}
 
 
-def funnel_stop(wave: dict) -> str | None:
-    """R&D's funnel (2026-10-17), thresholds set before any result: after w0 an arm stops at 6+ of 20 slots dropped, a
-    failed warm-up or a halted cell."""
+FUNNEL_DROP_SHARE = 0.3  # 6 of the pilot's 20 slots; 3 of the screen's 8 (R&D, 2026-10-17)
+
+
+def funnel_stop(wave: dict, slots: int = 20) -> str | None:
+    """R&D's funnel (2026-10-17), thresholds set before any result: after w0 an arm stops at 30% or more of its slots
+    dropped (6 of 20, 3 of 8), a failed warm-up or a halted cell."""
 
     if wave.get("exit") and not wave.get("result"):
         return f"w0 exited {wave['exit']} with no result"
     r = wave.get("result") or {}
-    if (r.get("dropped") or 0) >= 6:
-        return f"{r['dropped']} slots dropped at w0 (threshold 6)"
+    limit = max(1, math.ceil(FUNNEL_DROP_SHARE * slots - 1e-9))
+    if (r.get("dropped") or 0) >= limit:
+        return f"{r['dropped']} of {slots} slots dropped at w0 (threshold {limit})"
     if r.get("halted"):
         return f"halted at w0: {r['halted']}"
     if r.get("lesson_halts"):
@@ -954,7 +965,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
                 arms[n]["done"] = w["exit"] != 0
                 # ---- (9) the funnel, on the pilot's first write wave only
                 if i == 0 and extra is None:
-                    why = funnel_stop(w)
+                    why = funnel_stop(w, len(json.loads(plan.read_text(encoding="utf-8"))["slots"]))
                     if why:
                         arms[n]["done"], arms[n]["funnel_stop"] = True, why
     return arms
