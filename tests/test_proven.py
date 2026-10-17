@@ -152,7 +152,9 @@ def test_the_committed_list_records_its_terms_and_its_pins():
     # Every writer has a critic of another family on the list.
     for w in listed.writers.values():
         assert families - {w["family"]}, w["served_as"]
-    # The server is pinned (window 1); a pinned arm loads only its own GGUF; an unconverted one is refused.
+    # The server is pinned (window 1); a pinned arm loads only its own GGUF; an unconverted one is refused. The labelled
+    # Q6_K arms carry their own pins and name their card.
+    assert listed.writers["deepseek-r1-distill-qwen-32b-q6k"]["card"] == "deepseek-r1-distill-qwen-32b"
     assert listed.server["cuda"] == "13.4" and listed.server["commit"].startswith("620d2225")
     assert proven.require_server(listed.server, listed.server["sha256"])["sha256"] == listed.server["sha256"]
     with pytest.raises(GuardError, match="rebuild or re-pin"):
@@ -160,4 +162,4 @@ def test_the_committed_list_records_its_terms_and_its_pins():
     lightning = listed.critics["nemotron-3.5-lightning-30b-a3b"]
     assert proven.require_pinned(lightning, lightning["gguf_sha256"])["revision"].startswith("a9904d24")
     with pytest.raises(GuardError, match="not pinned yet"):
-        proven.require_pinned(listed.writers["gemma-4-31b-it"], SHA_W)
+        proven.require_pinned(listed.writers["nemotron-3-ultra-550b-a55b"], SHA_W)  # a pod writer, not converted yet
