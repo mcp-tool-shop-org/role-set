@@ -47,6 +47,18 @@ flock -u 9
 # - own spend reaches the cap less MARGIN, the units kept back to fetch the results.
 # Colab dropping the session ends the exec at once, with nothing to fetch. At the cap itself the session stops whatever
 # is under way: the cap is the ceiling.
+# job.log comes down to job.log.part and replaces the local copy only when the fetch exited 0 and the new copy is no
+# smaller (R&D, 2026-10-17): a fetch that dies partway, a VM reclaimed mid-transfer or the timeout, can't truncate the
+# one local copy of the checkpoint lines, which is the case they are kept for.
+fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and the exit sequence's never collide
+  local part="$OUT/job.log.part.${1:-x}" new old
+  rm -f "$part"
+  timeout "$DL_S" colab download -s "$S" /content/pin/job.log "$part" > "$OUT/.fetch.out" 2>&1 || { rm -f "$part"; return 1; }
+  grep -qi "fail\|error" "$OUT/.fetch.out" && { rm -f "$part"; return 1; }
+  [ -f "$part" ] || return 1
+  new=$(stat -c %s "$part"); old=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
+  if [ "$new" -ge "$old" ]; then mv -f "$part" "$OUT/job.log"; else rm -f "$part"; return 1; fi
+}
 ( seen=0; size0=-1; grew=0; ended=""
   end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; }
   while sleep "${PIN_WATCH_S:-120}"; do
@@ -55,12 +67,16 @@ flock -u 9
     if awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>=c)}'; then
       echo "CAP CEILING (own spend $spent of $CAP_UNITS): stopping now $(date -u +%T)"; end_window cap; stop_all; exit 0
     fi
-    [ -n "$ended" ] && continue  # the exit sequence is under way in the main script; only the ceiling is watched now
+    # The exit sequence is under way in the main script: only the ceiling is watched now.
+    [ -n "$ended" ] && continue
+    [ -f "$OUT/.end" ] && continue
     if ! colab sessions 2>&1 | grep -q "^\[$S\]"; then
       echo "SESSION GONE ($S) $(date -u +%T)"; end_window gone; exit 0
     fi
     if [ -f "$OUT/.exec.pid" ]; then
-      timeout "$DL_S" colab download -s "$S" /content/pin/job.log "$OUT/job.log" > /dev/null 2>&1
+      fetch_log watcher
+      # The kernel's IDLE/BUSY beside each fetch: whether a busy session with regular file traffic still gets reclaimed.
+      echo "$(date -u +%T) $(timeout 60 colab status -s "$S" 2>&1 | tr -s ' \n' ' ' | cut -c1-300)" >> "$OUT/status.log"
       size=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
       if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
       if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
@@ -118,11 +134,14 @@ echo $EXEC > "$OUT/.exec.pid"
 wait $EXEC
 echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null || echo exec)"
 # The exit sequence: fetch, then the trap stops the session. The watcher stays up as the cap's ceiling meanwhile.
+[ -f "$OUT/.end" ] || echo exec > "$OUT/.end"
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
-  for f in job.log ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
+  fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
+  for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
     timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
   done
 fi
 kill "$WATCH" 2>/dev/null
+rm -f "$OUT"/job.log.part.*
 grep -h "^PIN_RESULT" "$OUT/job.log" "$OUT/smoke-window.log" 2>/dev/null | head -1 | cut -c1-600
 echo "end balance $(bal) (start $START)"
