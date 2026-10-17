@@ -60,7 +60,7 @@ timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" --env "PIN
   > "$OUT/smoke-window.log" 2>&1
 echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
-for f in pin-result.json lib.tar generations.jsonl; do
+for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
   timeout 900 colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
 done
 grep -h "PIN_RESULT" "$OUT/smoke-window.log" | cut -c1-600

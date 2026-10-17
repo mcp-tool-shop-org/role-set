@@ -23,6 +23,12 @@ All notable changes to role-set are documented here. The format is based on
   - the arm is labelled Q6_K on its receipt.
   - The smoke serve now reports `fit` and `slots` too.
 - **llama-server starts with `--log-verbosity 4`.** libllama's load lines, including 'offloaded N/M layers to GPU', are TRACE-level at 620d2225 and were dropped at the default 3, so window 7 read no fit line and stopped both critics. The window now waits for the line and keeps the server log's tail in its result.
+- **The pilot window** (`PIN_ROLE=pilot`; R&D, 2026-10-17). One or more writer arms run around one critic on one A100, swapping models by restart. Each start re-checks the GGUF's sha256 against its pin, plus the offload and the slots.
+  - The pilot and its twins are planned on the VM from the pinned role-set (`plan --pilot` and `--pilot-twins`), and the pack is uploaded and verified (aspire-si b141cf6).
+  - The waves interleave around the critic: every arm's write wave, then the critic once for all, then the rewrites. A batch ends on a critique, within the attempt budget.
+  - The twins train against each arm's own accepted rows.
+  - Readouts and a `pilot-out.tar` of every wave come back. `PIN_DOWNLOADS` names what the window fetches.
+  - Dry-run end to end against role-set's mock.
 - **The cap counts a window's own spend:** the account's usage rate after its session opens, less the rate before, times its own runtime. The account balance counted a neighbour's spend too, and window 8 was cut off that way. Qwen3.6's Q6_K must reproduce window 8's 61deb1f7….
 - **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
 - **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.

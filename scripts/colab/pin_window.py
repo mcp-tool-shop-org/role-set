@@ -680,6 +680,176 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
     result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
 
 
+PILOT_PORT = 8093
+PILOT_PARTITION = "trial:j1-wave1"
+PILOT_WAVES = 6  # write, critique, rewrite, critique, rewrite, critique: the attempt budget (3) ends here, on a critique
+
+
+class Served:
+    """One model's GGUF on disk; each start re-checks its sha256 against the pin, its offload and its slots."""
+
+    def __init__(self, built: dict, model: dict, pinned: str):
+        self.built, self.model, self.pinned = built, model, pinned
+        self.proc = self.log_fh = None
+        self.starts: list = []
+
+    def __enter__(self):
+        got = sha256(Path(self.model["path"]))
+        if got != self.pinned:
+            raise RuntimeError(f"{self.model['served_as']}: GGUF {got[:12]} isn't the pin {self.pinned[:12]}")
+        t0 = time.time()
+        self.proc, self.log_fh, log = start_server(self.built, self.model, CRITIC_CTX, PILOT_PORT)
+        wait_for_log(log)
+        fit, sl = all_on_gpu(_offload_lines(log)), slots(PILOT_PORT, CRITIC_CTX)
+        self.starts.append({"seconds": round(time.time() - t0), "fit": fit, "slots": sl})
+        if not fit["ok"] or not sl["ok"]:
+            stop_server(self.proc, self.log_fh)
+            raise RuntimeError(f"{self.model['served_as']}: fit {fit} slots {sl}; the arm stops")
+        return self
+
+    def __exit__(self, *exc):
+        stop_server(self.proc, self.log_fh)
+
+
+def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | None = None, critic: dict | None = None,
+               drafts: Path | None = None, extra: list | None = None) -> dict:
+    cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
+    if writer is not None:
+        cmd += ["--endpoint", f"http://127.0.0.1:{PILOT_PORT}/v1", "--model", writer["served_as"],
+                "--writer-gguf-sha256", writer["gguf_sha256"]]
+    if critic is not None:
+        cmd += ["--critic-endpoint", f"http://127.0.0.1:{PILOT_PORT}/v1", "--critic-model", critic["served_as"],
+                "--critic-gguf-sha256", critic["gguf_sha256"]]
+    if drafts is not None:
+        cmd += ["--drafts", str(drafts)]
+    cmd += extra or []
+    t0 = time.time()
+    run = subprocess.run(cmd, capture_output=True, text=True, timeout=6 * 3600, cwd=rs["src"])
+    got = {"wave": wave, "out": str(out), "exit": run.returncode, "seconds": round(time.time() - t0), "stderr": run.stderr[-1500:]}
+    try:
+        got["result"] = json.loads(run.stdout.strip().splitlines()[-1])
+    except (IndexError, json.JSONDecodeError):
+        got["stdout"] = run.stdout[-1500:]
+    return got
+
+
+def run_dir(out: Path) -> Path:
+    """Where role-set wrote a wave: the --out directory itself, or its mock/ or rehearsal/ subdirectory."""
+
+    for d in (out, out / "mock", out / "rehearsal"):
+        if (d / "wave-drafts.jsonl").exists():
+            return d
+    return out
+
+
+def pending(wave: dict) -> bool:
+    states = ((wave.get("result") or {}).get("states")) or {}
+    return bool(states.get("awaiting_critique") or states.get("needs_rewrite"))
+
+
+def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict, critic_srv, writer_srv, extra=None) -> dict:
+    """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critic: all write waves,
+    the critic once for all, then all rewrites, and so on. Returns each arm's waves and its last directory."""
+
+    arms = {name: {"waves": [], "drafts": None, "done": False} for name in writers}
+    for i in range(PILOT_WAVES):
+        kind = "write" if i == 0 else ("critique" if i % 2 else "rewrite")
+        todo = [n for n, a in arms.items() if not a["done"]]
+        if not todo:
+            break
+        if kind == "critique":
+            with critic_srv:
+                for n in todo:
+                    w = write_wave(rs, common + ["--plan", str(plan)], "critique", base / n / f"w{i}", critic=critic,
+                                   drafts=arms[n]["drafts"], extra=extra)
+                    arms[n]["waves"].append(w)
+                    arms[n]["last"] = run_dir(base / n / f"w{i}")
+                    arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
+                    arms[n]["done"] = w["exit"] != 0 or not pending(w)
+        else:
+            for n in todo:
+                with writer_srv[n]:
+                    w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=writers[n],
+                                   drafts=arms[n]["drafts"], extra=extra)
+                arms[n]["waves"].append(w)
+                arms[n]["last"] = run_dir(base / n / f"w{i}")
+                arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
+                arms[n]["done"] = w["exit"] != 0
+    return arms
+
+
+def pilot_window(built: dict, result: dict) -> None:
+    """PIN_ROLE=pilot (R&D, 2026-10-17): the 20-slot T02 pilot, then its 4 T04 apply twins (the arm's accepted rows as
+    --training), for each writer in PIN_PILOT_WRITERS, around one critic (PIN_PILOT_CRITIC). One A100, one model loaded at
+    a time, swapped by restart; every start re-checks the GGUF's sha256, the offload and the slots."""
+
+    rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    writer_names = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
+    critic_name = os.environ["PIN_PILOT_CRITIC"]
+    by_name = {m["served_as"]: m for m in MODELS}
+    result["disk_free_gb_before"] = round(shutil.disk_usage("/content").free / 1e9, 1)
+    machine_file = WORK / "machine.json"
+    machine_file.write_text(json.dumps(result["machine"]), encoding="utf-8")
+    pack = Path("/content/pack")
+    if not (pack / "pack.json").exists():
+        pack.mkdir(exist_ok=True)
+        sh(f"tar -xf /content/pack.tar -C {pack}")
+    result["pack_verify"] = sh(f"{rs['role_set']} pack verify --pack {pack}", cwd=rs["src"])[-400:]
+    base = WORK / "pilot"
+    base.mkdir(exist_ok=True)
+    plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
+    domains = f"{rs['src']}/roles/domains/naics-2022.json"
+    sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
+    sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
+    result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan)}
+
+    models: dict = {}
+    for name in [critic_name, *writer_names]:
+        spec = by_name[name]
+        m = fetch_model(spec, built)
+        models[name] = m
+        result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf")})
+        if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+            raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
+    critic = models[critic_name]
+    critic_srv = Served(built, critic, critic["gguf_sha256"])
+    writers = {n: models[n] for n in writer_names}
+    writer_srv = {n: Served(built, models[n], models[n]["gguf_sha256"]) for n in writer_names}
+    common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
+              "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
+
+    t0 = time.time()
+    pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv)
+    result["pilot_seconds"] = round(time.time() - t0)
+    result["arms"] = {}
+    twins_writers = {}
+    for n, a in pilot.items():
+        accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
+        result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
+        if accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
+            twins_writers[n] = writers[n]
+        else:
+            result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
+    t1 = time.time()
+    for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
+        accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
+        tw = pilot_batch(rs, common, twins_plan, base / "twins", {n: twins_writers[n]}, critic, critic_srv,
+                         {n: writer_srv[n]}, extra=["--training", str(accepted)])
+        result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
+    result["twins_seconds"] = round(time.time() - t1)
+    for n in writer_names:
+        for part in ("pilot", "twins"):
+            last = (result["arms"][n].get(part) or {}).get("last")
+            if last and last != "None" and (Path(last) / "batch-report.json").exists():
+                r = subprocess.run([rs["role_set"], "readout", "--run", last], capture_output=True, text=True, timeout=600, cwd=rs["src"])
+                result["arms"][n][part]["readout_exit"] = r.returncode
+                result["arms"][n][part]["readout_tail"] = r.stdout[-2500:]
+    result["serves"] = {"critic": critic_srv.starts, **{n: s.starts for n, s in writer_srv.items()}}
+    sh(f"tar -C {WORK} -cf {WORK}/pilot-out.tar pilot")
+    result["model_errors"] = sum(1 for n in writer_names for part in ("pilot", "twins")
+                                 for w in (result["arms"][n].get(part) or {}).get("waves", []) if w.get("exit"))
+
+
 def runtime() -> dict:
     """PIN_ROLE=smoke: no build. The uploaded window-1 binary, checked by sha256, with the CUDA 13.4 runtime wheels it
     loads; their exact versions are recorded so the library pins can be reproduced."""
@@ -721,7 +891,7 @@ def main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic", "q6k"):
+        if role in ("smoke", "critic", "q6k", "pilot"):
             result["llama_server"] = built = runtime()
             # The libraries first, so they're pinned even if a model fails later in the window.
             result["llama_server"]["libs"] = pin_libs(built["path"])
@@ -744,6 +914,9 @@ def main() -> int:
             specs = []
         elif role == "q6k":
             q6k_window(built, specs, result)
+            specs = []
+        elif role == "pilot":
+            pilot_window(built, result)
             specs = []
         else:
             result["models"] = []

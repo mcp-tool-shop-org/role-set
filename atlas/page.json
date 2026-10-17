@@ -28,28 +28,46 @@
       "kind": "part",
       "name": "scripts",
       "partLabel": "scripts"
+    },
+    {
+      "kind": "place",
+      "readers": [
+        "scripts"
+      ],
+      "target": "roles/domains/naics-2022.json",
+      "writers": [
+        "scripts"
+      ]
     }
   ],
   "changes": {
     "fileCounts": {
       "added": 0,
-      "changed": 4,
+      "changed": 3,
       "moved": 0,
-      "parts": 3,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "roles/domains/naics-2022.json is now also read by scripts/colab/pin_window.py.",
+        "subjects": [
+          "roles/domains/naics-2022.json",
+          "scripts/colab/pin_window.py"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-17; 4 files changed content.",
+        "sentence": "3 files changed content, across 2 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "cd53bc0932bad72fcc4a54cf640d9644027c0f67",
-      "generatedAt": "2026-10-17T10:24:33.220Z"
+      "commit": "9898dee66f1212034b49ffab00414ce5357f9aa3",
+      "generatedAt": "2026-10-17T10:36:20.282Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -134,7 +152,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 11 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 4,
-  "commit": "9898dee66f1212034b49ffab00414ce5357f9aa3",
+  "commit": "42af19c06081b19337e0504e98a48a1ee6e4f1eb",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (89 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -290,10 +308,10 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-17T10:36:20.282Z",
+  "generatedAt": "2026-10-17T12:44:56.829Z",
   "limits": [
     "6 writes and 14 reads use paths built at run time and are not named here.",
-    "11 writes and 45 reads go to a path their caller passes, not to this repository.",
+    "11 writes and 47 reads go to a path their caller passes, not to this repository.",
     "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -329,14 +347,7 @@
     "src": 39
   },
   "unnamedWrites": 6,
-  "unread": [
-    {
-      "place": "roles/domains/naics-2022.json",
-      "writers": [
-        "scripts/naics_table.py"
-      ]
-    }
-  ],
+  "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],
   "untested": [],
