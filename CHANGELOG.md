@@ -37,6 +37,7 @@ All notable changes to role-set are documented here. The format is based on
     - Each wave's result carries the file's sha256 and its summary: calls, truncations, thinking and output tokens, wall time.
     - Checked locally: role-set's transport → proxy → a stub server.
 - **The cap counts a window's own spend:** the account's usage rate after its session opens, less the rate before, times its own runtime. The account balance counted a neighbour's spend too, and window 8 was cut off that way. Qwen3.6's Q6_K must reproduce window 8's 61deb1f7….
+- **A dropped session ends the window.** The watcher checks `colab sessions` every two minutes and ends the exec once the session is gone. Window 10b's VM vanished mid-download and the exec waited on nothing. Every `PIN_*` variable reaches the VM too.
 - **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
 - **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.
 

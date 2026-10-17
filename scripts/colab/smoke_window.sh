@@ -12,7 +12,7 @@ CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
 here="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$OUT"
+mkdir -p "$OUT"; rm -f "$OUT/.exec.pid"
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
@@ -30,7 +30,13 @@ sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
-( while sleep 120; do spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
+# The watcher also ends the exec when Colab has dropped the session: window 10b's VM vanished mid-download and the exec
+# would have waited out its wall time on nothing.
+( while sleep 120; do
+    if ! colab sessions 2>&1 | grep -q "^\\[$S\\]"; then
+      echo "SESSION GONE ($S) $(date -u +%T)"; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; exit 0
+    fi
+    spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
     awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>c)}' && { echo "CAP REACHED (own spend $spent of $CAP_UNITS)"; stop_all; exit 0; }; done ) &
 WATCH=$!
 # The binary goes up gzipped in 40 MB parts, each retried; a part that never lands ends the window (the trap stops the VM).
@@ -64,7 +70,10 @@ for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSIO
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
 timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$here/pin_window.py" --timeout "$WALL_S" \
-  > "$OUT/smoke-window.log" 2>&1
+  > "$OUT/smoke-window.log" 2>&1 &
+EXEC=$!
+echo $EXEC > "$OUT/.exec.pid"
+wait $EXEC
 echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
 for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
