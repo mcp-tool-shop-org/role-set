@@ -114,6 +114,8 @@ The writers are Nemotron 3 Ultra 550B, DeepSeek-R1-0528, Nemotron 3.5 Super 120B
 
 Models are served by llama.cpp's `llama-server`, built with CUDA 13.4, at Q8_0. A listed model is refused until it's pinned: its repo revision, GGUF file and the file's sha256. The wave script hashes the GGUF and the `llama-server` binary before launch, and the run refuses any drift from the list. Every receipt records the partition (`production` or `trial:<name>`), both models' family, revision and GGUF hash, the server's commit and hash, and the CUDA machine line.
 
+**Card values.** The writer and the critic each run at their maker's documented settings, read from rnd's `experiments/local-builders/card-values.json` with `--cards` (the file J2 reads, so a model runs the same in both). Every sampling key and the chat-template settings go on every call, including the disabled values, so `llama-server`'s own defaults never reach a model. The server runs at a 32,768-token context and a reply may use 16,384, since every model with a thinking mode thinks. R1-Distill's system text is folded into its user turn, as its card asks. A writer is matched to its card by its `card` id in `writers.json`, or by its served name. Receipts record the file's sha256, the candidate and exactly what was sent, for the writer and the critic. A real `write` or `critic-control` without `--cards` is refused.
+
 A step runs only inside a grant unless its machine line names a Colab VM or a pod: `--grant` and a heartbeat file modified under 60 seconds ago. A line that names the rig needs them whatever its card says. The heartbeat file is not opened. `--mock` loads nothing.
 
 ## Pilots

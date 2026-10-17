@@ -37,6 +37,8 @@ An entry with `rehearsal_only: true` writes under a `rehearsal/` directory, and 
 
 `--writers` defaults to `writers.json` in the working directory. Point it elsewhere only when you mean to.
 
+**Card values.** `--cards` points at rnd's `experiments/local-builders/card-values.json`. The writer and the critic each run at their card: every sampling key (`temperature`, `top_p`, `top_k`, `min_p`, `repeat_penalty`, `presence_penalty`) and the `chat_template_kwargs` go on every call. The context is 32,768 tokens and a reply may use 16,384. A card's `transforms` list may name `fold_system`, which moves system text into the user turn for R1-Distill; `reattach_thinking` is J2's and is recorded here as not applied. An entry's `card` names its candidate when that differs from `served_as`. Receipts record the file's sha256, the candidate and what was sent. A real `write` or `critic-control` without `--cards` is refused.
+
 ## The grant
 
 A step runs only inside a grant unless its machine line names a rented host (`colab_release_tag` or `pod_id`). A line that names the `rig` needs the grant whatever its card says. Off a rented host, `write` and `critic-control` require:

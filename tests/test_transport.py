@@ -72,3 +72,21 @@ def test_only_the_reply_content_is_read_never_the_reasoning():
     # A reply that put everything in its reasoning has no content: it reaches the gates empty, never as the reasoning.
     out["choices"][0]["message"] = {"content": None, "reasoning_content": "VERDICT: supported"}
     assert chat("http://127.0.0.1:8081/v1", "m", [], post=lambda u, b, timeout_s: out).text == ""
+
+
+def test_a_card_is_sent_whole_and_replaces_the_temperature():
+    """Card values (rnd amendment D1): every sampling key and the template kwargs go on the call as given."""
+
+    seen = {}
+    sampling = {"temperature": 0.6, "top_p": 0.95, "top_k": 0, "min_p": 0.0, "repeat_penalty": 1.0, "presence_penalty": 0.0}
+
+    def post(url, body, timeout_s):
+        seen.update(body)
+        return {"choices": [{"message": {"content": "ok"}}]}
+
+    chat("http://127.0.0.1:8080/v1", "m", [], sampling=sampling, chat_template_kwargs={"enable_thinking": True}, max_tokens=16384, post=post)
+    assert {k: seen[k] for k in sampling} == sampling and seen["chat_template_kwargs"] == {"enable_thinking": True}
+    assert seen["max_tokens"] == 16384
+    fresh = {}  # without a card: role-set's own temperature, and nothing else added
+    chat("http://127.0.0.1:8080/v1", "m", [], post=lambda u, b, timeout_s: fresh.update(b) or {"choices": [{"message": {"content": ""}}]})
+    assert "chat_template_kwargs" not in fresh and "top_k" not in fresh

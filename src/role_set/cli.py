@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from role_set import __version__, autostart, defects, domains, exclusion, proven, puzzle_check, solvefirst
+from role_set import __version__, autostart, cards, defects, domains, exclusion, proven, puzzle_check, solvefirst
 from role_set.cost import PROFILES, estimate
 from role_set.critic_control import (
     FALSE_REFUSAL_CAP,
@@ -177,7 +177,7 @@ def _closed_form_arg(text: str | None) -> dict | None:
 def _write(args: argparse.Namespace) -> int:
     cfg = WriteConfig(
         plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
-        writers_file=Path(args.writers), critic_endpoint=args.critic_endpoint, critic_model=args.critic_model,
+        writers_file=Path(args.writers), cards=Path(args.cards) if args.cards else None, critic_endpoint=args.critic_endpoint, critic_model=args.critic_model,
         grant=args.grant, heartbeat=Path(args.heartbeat) if args.heartbeat else None, concurrency=args.concurrency,
         mock=args.mock, no_critic=args.no_critic,
         pool=Path(args.pool) if args.pool else None,
@@ -260,13 +260,16 @@ def _critic_control(args: argparse.Namespace) -> int:
             require_heartbeat(Path(args.heartbeat), time.time())
         endpoint, model, c_pins = resolve_critic(listed, args.critic_model, args.critic_endpoint, args.critic_gguf_sha256,
                                                  allow_comparison=True)
+        card_set, card_sha = cards.load(Path(args.cards))
+        c_card = cards.select(card_set, listed.critics[model], model)
     except (GatesUnavailable, GuardError) as e:
         print(e, file=sys.stderr)
         return 2
     rows = load_rows([Path(p) for p in args.items])
     log: list = []
-    critic = critic_caller(endpoint, model)
-    who = {"critic_model": model, "critic_pins": c_pins, "llama_server": server, "machine": machine, "grant": args.grant}
+    critic = critic_caller(endpoint, model, c_card)
+    who = {"critic_model": model, "critic_pins": c_pins, "critic_card": cards.pins(c_card, card_sha), "llama_server": server,
+           "machine": machine, "grant": args.grant}
 
     if args.trait_leg or args.answer_leg:
         # The legs R&D set bars for (2026-10-11), in one grant: the trait each reviewed item teaches, three calls
@@ -381,6 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--llama-server-sha256", required=True, help="the llama-server binary's sha256, measured by the wave script")
     cc.add_argument("--machine", required=True, help="the wave script's CUDA machine line (JSON)")
     cc.add_argument("--writers", default="writers.json")
+    cc.add_argument("--cards", required=True, help="rnd's card-values.json: the critic runs at its card's settings, as in a run")
     cc.add_argument("--grant", default=None, help="the Publisher's grant, required unless the machine line names a Colab VM or a pod")
     cc.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file, required on the rig (mtime only)")
     cc.add_argument("--out", default="critic-control.json")
@@ -403,6 +407,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--endpoint", default=None, help="the writer's llama-server, http://127.0.0.1:<port>/v1 (local, or offrig's or Colab's tunnel)")
     w.add_argument("--model", default=None, help="a served name from writers.json's writers")
     w.add_argument("--writers", default="writers.json")
+    w.add_argument("--cards", default=None, help="rnd's experiments/local-builders/card-values.json: every writer runs at its card's "
+                                                 "sampling and chat-template settings, sent whole on every call")
     w.add_argument("--writer-gguf-sha256", default=None, help="the writer GGUF's sha256, measured by the wave script")
     w.add_argument("--critic-endpoint", default=None, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
     w.add_argument("--critic-model", default=None, help="a served name from writers.json's critics, of another family")

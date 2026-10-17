@@ -75,14 +75,21 @@ def chat(
     temperature: float = 0.7,
     seed: int | None = None,
     max_tokens: int = 3500,
+    sampling: dict | None = None,
+    chat_template_kwargs: dict | None = None,
     timeout_s: float = DEFAULT_TIMEOUT_S,
     post=post_with_retries,
     clock=time.monotonic,
 ) -> Completion:
-    """One chat completion against an OpenAI-compatible /v1 endpoint (SGLang on the pod)."""
+    """One chat completion against an OpenAI-compatible /v1 endpoint (llama-server). `sampling`, a card's values,
+    replaces `temperature` and is sent whole; `chat_template_kwargs` goes to the server's template."""
 
     url = require_local_endpoint(endpoint).rstrip("/") + "/chat/completions"
     body: dict = {"model": model, "messages": messages, "temperature": temperature, "max_tokens": max_tokens}
+    if sampling:
+        body.update(sampling)
+    if chat_template_kwargs:
+        body["chat_template_kwargs"] = dict(chat_template_kwargs)
     if seed is not None:
         body["seed"] = seed
     t0 = clock()
