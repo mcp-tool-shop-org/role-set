@@ -1111,6 +1111,13 @@ def choose_quant(built: dict, spec: dict, m: dict, policy: str, result: dict) ->
         return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K", "why": str(e)[:400]}
 
 
+def twins_enabled() -> bool:
+    """PIN_PILOT_TWINS=0 leaves the twins for a later window, for the arms that go on (R&D, 2026-10-17: the screen is
+    w0 and its critique for every arm; rewrites and twins only for the arms that pass)."""
+
+    return os.environ.get("PIN_PILOT_TWINS", "1") != "0"
+
+
 def screen_plan(plan: Path, var: str) -> list[str] | None:
     """The w0 screen's frozen slot list (R&D, 2026-10-17): the same slot ids for every arm, set in the window config.
     The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads."""
@@ -1187,6 +1194,8 @@ def pilot_window(built: dict, result: dict) -> None:
             if a.get("funnel_stop"):
                 result["arms"][n]["funnel_stop"] = a["funnel_stop"]
                 result["arms"][n]["twins"] = {"skipped": f"stopped by the funnel: {a['funnel_stop']}"}
+            elif not twins_enabled():
+                result["arms"][n]["twins"] = {"skipped": "PIN_PILOT_TWINS=0: twins wait for the arms that go on"}
             elif accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
                 twins_writers[n] = True
             else:
