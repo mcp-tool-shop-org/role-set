@@ -35,7 +35,10 @@ timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { echo "no ${PI
 sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
-OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
+# A neighbour closing between the two reads can make the difference 0 or less: then take the runtime's own known rate,
+# not the whole account's (R&D, from Argon's review; the account rate would stop this window early).
+case "${PIN_GPU:-A100}" in A100) GPU_RATE=5.3;; CPU) GPU_RATE=0.08;; *) GPU_RATE="";; esac
+OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
 flock -u 9
 # The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
@@ -152,7 +155,7 @@ echo "exec exit=$rc wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/nul
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
   f0=$(date +%s)
   fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
-  for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
+  for f in ${PIN_DOWNLOADS:-pin-result.json pilot-out.tar lib.tar generations.jsonl}; do
     timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
   done
   # The exit sequence's fetch time, the measure for PIN_CAP_MARGIN.
