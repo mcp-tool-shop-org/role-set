@@ -210,6 +210,7 @@ def smoke(built: dict, model: dict) -> dict:
     server_log = WORK / f"{model['served_as']}-server.log"
     log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed in the finally below
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
+                             "--log-verbosity", str(LOAD_LOG_VERBOSITY),
                              "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
                             stderr=subprocess.STDOUT, text=True, env=env)
     # The model's card kwargs (rnd card-values.json, passed whole in PIN_CARDS_JSON), so a thinking model thinks as it will
@@ -267,6 +268,7 @@ def smoke(built: dict, model: dict) -> dict:
                   "top": [[[t.get("token"), t.get("logprob")] for t in (s.get("top_logprobs") or [])] for s in steps]}
         with open(WORK / "generations.jsonl", "a", encoding="utf-8") as f:
             f.write(json.dumps(record) + "\n")
+        wait_for_log(server_log)
         tok = tokenizer_check(port, model) if model.get("tokenizer_hf") else None
         # Amendment E1's thinking split: reasoning comes back apart, and no thinking tag is left in the content.
         content = msg.get("content") or ""
@@ -277,6 +279,7 @@ def smoke(built: dict, model: dict) -> dict:
                 "logprob_steps": len(steps), "top5_ok": bool(steps) and all(len(s.get("top_logprobs") or []) == 5 for s in steps),
                 "ctx": ctx, "peak_vram_mib": peak["mib"], "total_vram_mib": peak.get("total_mib"), "max_tokens": max_tokens,
                 "offload_lines": _offload_lines(server_log), "fit": all_on_gpu(_offload_lines(server_log)),
+                "server_log_tail": log_tail(server_log),
                 "slots": slots(port, ctx),
                 "chat_template_kwargs": kwargs,
                 "thinking_split": {"reasoning_nonempty": bool((msg.get("reasoning_content") or "").strip()), "tags_in_content": tags,
@@ -289,6 +292,24 @@ def smoke(built: dict, model: dict) -> dict:
 
 
 SMOKE_MAX_TOKENS = 2048
+
+
+# libllama's INFO lines ("offloaded N/M layers to GPU") map to verbosity 4 (TRACE) in common/log.cpp at 620d2225, and
+# llama-server's default threshold is 3, so they were dropped: window 7 read no load line and stopped both critics.
+# 4 shows them without the debug flood of -v (5).
+LOAD_LOG_VERBOSITY = 4
+
+
+def wait_for_log(server_log: Path, needle: str = "layers to GPU", timeout_s: int = 60) -> None:
+    for _ in range(timeout_s):
+        if server_log.exists() and needle in server_log.read_text(encoding="utf-8", errors="replace"):
+            return
+        time.sleep(1)
+
+
+def log_tail(server_log: Path, n: int = 60) -> list[str]:
+    text = server_log.read_text(encoding="utf-8", errors="replace") if server_log.exists() else ""
+    return [ln[:240] for ln in text.splitlines() if ln.strip()][-n:]
 
 
 def _offload_lines(server_log: Path) -> list[str]:
@@ -426,6 +447,7 @@ def start_server(built: dict, model: dict, ctx: int, port: int):
     # One slot: llama-server's default runs several, and each gets ctx / n_slots, so a long thinking reply would
     # truncate at a quarter of the context (R&D on the critic window).
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
+                             "--log-verbosity", str(LOAD_LOG_VERBOSITY),
                              "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
                             stderr=subprocess.STDOUT, text=True, env=env)
     for _ in range(180):
@@ -564,7 +586,9 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
             rec["reproduced"] = True
             proc, log_fh, server_log = start_server(built, m, CRITIC_CTX, CRITIC_PORT)
             try:
+                wait_for_log(server_log)
                 rec["offload_lines"] = _offload_lines(server_log)
+                rec["server_log_tail"] = log_tail(server_log)
                 rec["fit"] = all_on_gpu(rec["offload_lines"])
                 if not rec["fit"]["ok"]:
                     rec["stopped"] = "not every layer is on the GPU"
