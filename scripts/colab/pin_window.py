@@ -145,6 +145,7 @@ def smoke(built: dict, model: dict) -> dict:
         else:
             raise RuntimeError("llama-server never came up: " + (proc.stderr.read()[-800:] if proc.stderr else ""))
         body = json.dumps({"model": model["served_as"], "temperature": 0, "seed": 0, "max_tokens": 256,
+                           "logprobs": True, "top_logprobs": 5,
                            "messages": [{"role": "user", "content": "In two sentences, say what a changelog is for."}]}).encode()
         t0 = time.time()
         req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
@@ -153,8 +154,16 @@ def smoke(built: dict, model: dict) -> dict:
         secs = time.time() - t0
         msg = reply["choices"][0]["message"]
         toks = (reply.get("usage") or {}).get("completion_tokens") or 0
+        # The dataminer record (rnd abmine's format): the first check that llama-server's logprobs come back usable.
+        steps = ((reply["choices"][0].get("logprobs") or {}).get("content")) or []
+        record = {"type": "result", "arm": model["served_as"], "prompt": "pin-smoke-0",
+                  "tokens": [s.get("token") for s in steps],
+                  "top": [[[t.get("token"), t.get("logprob")] for t in (s.get("top_logprobs") or [])] for s in steps]}
+        with open(WORK / "generations.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(record) + "\n")
         return {"ok": bool((msg.get("content") or "").strip()), "tokens_per_s": round(toks / secs, 1) if secs else None,
-                "reasoning_content": bool(msg.get("reasoning_content")), "content_head": (msg.get("content") or "")[:120]}
+                "reasoning_content": bool(msg.get("reasoning_content")), "content_head": (msg.get("content") or "")[:120],
+                "logprob_steps": len(steps), "top5_ok": bool(steps) and all(len(s.get("top_logprobs") or []) == 5 for s in steps)}
     finally:
         proc.terminate()
         proc.wait(timeout=60)

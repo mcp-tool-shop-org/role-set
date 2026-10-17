@@ -43,6 +43,7 @@ echo "both done, wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
 timeout 900 colab download -s pinb /content/pin/llama-server "$OUT/llama-server" 2>&1 | tail -1
 timeout 900 colab download -s pinb /content/pin/lib.tar "$OUT/lib.tar" 2>&1 | tail -1
+timeout 300 colab download -s pinb /content/pin/generations.jsonl "$OUT/generations.jsonl" 2>&1 | tail -1
 [ -f "$OUT/llama-server" ] && sha256sum "$OUT/llama-server"
 grep -h "PIN_RESULT" "$OUT"/*/pin-window.log | cut -c1-400
 echo "end balance $(bal) (start $START)"
