@@ -99,7 +99,7 @@
       "confidence": "low",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 18,
+      "qualifyingSourceCommits": 21,
       "rebaseline": null
     },
     {
@@ -153,7 +153,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 68,
+      "qualifyingSourceCommits": 69,
       "rebaseline": null
     }
   ],
@@ -191,8 +191,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 50,
-        "lines": 254,
+        "commits": 52,
+        "lines": 257,
         "path": "CHANGELOG.md"
       },
       {
@@ -266,8 +266,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 36,
-        "lines": 691,
+        "commits": 37,
+        "lines": 706,
         "path": "atlas/README.md"
       },
       {
@@ -276,18 +276,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 36,
-        "lines": 2274,
+        "commits": 37,
+        "lines": 2302,
         "path": "atlas/page.json"
       },
       {
-        "commits": 36,
-        "lines": 5184,
+        "commits": 37,
+        "lines": 5250,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 36,
-        "lines": 14826,
+        "commits": 37,
+        "lines": 14915,
         "path": "atlas/structure.json"
       },
       {
@@ -371,8 +371,8 @@
         "path": "roles/verifier/sources.json"
       },
       {
-        "commits": 10,
-        "lines": 1161,
+        "commits": 13,
+        "lines": 1318,
         "path": "scripts/colab/pin_window.py"
       },
       {
@@ -386,8 +386,8 @@
         "path": "scripts/colab/pin_window_split.sh"
       },
       {
-        "commits": 5,
-        "lines": 81,
+        "commits": 7,
+        "lines": 105,
         "path": "scripts/colab/smoke_window.sh"
       },
       {
@@ -956,8 +956,8 @@
         "path": "tests/test_prompts_critic.py"
       },
       {
-        "commits": 3,
-        "lines": 195,
+        "commits": 4,
+        "lines": 201,
         "path": "tests/test_proven.py"
       },
       {
@@ -1021,8 +1021,8 @@
         "path": "uv.lock"
       },
       {
-        "commits": 7,
-        "lines": 399,
+        "commits": 8,
+        "lines": 460,
         "path": "writers.json"
       }
     ]
@@ -1031,51 +1031,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-17T14:04:31.200Z",
+  "generatedAt": "2026-10-17T15:25:37.067Z",
   "generatedFrom": {
-    "commit": "3ae04ec090115ee63ded0b6deb68e86afe888ffb"
+    "commit": "3aa03240d4f0b506889935c433d65402da675835"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 36,
-      "shared": 36,
+      "either": 37,
+      "shared": 37,
       "strength": 1
     },
     {
@@ -1173,16 +1173,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-17T08:49:49-04:00",
+    "headDate": "2026-10-17T11:17:24-04:00",
     "inScopeFiles": 172,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 94,
+    "qualifyingCommits": 100,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-20T12:49:49.000Z",
+    "since": "2026-04-20T15:17:24.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

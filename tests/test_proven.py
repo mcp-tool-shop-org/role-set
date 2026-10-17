@@ -152,9 +152,11 @@ def test_the_committed_list_records_its_terms_and_its_pins():
     # Every writer has a critic of another family on the list.
     for w in listed.writers.values():
         assert families - {w["family"]}, w["served_as"]
-    # The server is pinned (window 1); a pinned arm loads only its own GGUF; an unconverted one is refused. The labelled
-    # Q6_K arms carry their own pins and name their card.
-    assert listed.writers["deepseek-r1-distill-qwen-32b-q6k"]["card"] == "deepseek-r1-distill-qwen-32b"
+    # The server is pinned (window 1); a pinned arm loads only its own GGUF; an unconverted one is refused. Window 9's
+    # requantized Q6_K entries are retired (R&D, 2026-10-17): kept in the file as history, never loaded.
+    raw = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
+    assert {e["served_as"] for e in raw["retired"]} == {"qwen3.6-35b-a3b-q6k", "gemma-4-31b-it-q6k", "deepseek-r1-distill-qwen-32b-q6k"}
+    assert not {e["served_as"] for e in raw["retired"]} & set(listed.writers)
     assert listed.server["cuda"] == "13.4" and listed.server["commit"].startswith("620d2225")
     assert proven.require_server(listed.server, listed.server["sha256"])["sha256"] == listed.server["sha256"]
     with pytest.raises(GuardError, match="rebuild or re-pin"):

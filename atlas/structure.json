@@ -165,7 +165,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "d85e15dff84c129a7ad7940d72262430e10b21dffa36b8f9c0378839efaee292",
+          "hash": "6470d0ba9b39ee3e7a3c54003fe1e500158c8c59bf15256f41b44a2facd1fc01",
           "path": "CHANGELOG.md"
         },
         {
@@ -233,7 +233,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "441838a0dcc736250d1d3d07427b91a1200c0c32f5fe16bfbacd48e591c767f7",
+          "hash": "2ecbb9e325e7c6c10f6e00ff09be43c5ab236829f51d6732a8d9ffdb1a18f148",
           "path": "writers.json"
         }
       ],
@@ -248,7 +248,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 10,
+      "dynamicReads": 11,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 6,
@@ -260,11 +260,14 @@
             "all_on_gpu",
             "build",
             "build_quantize",
+            "checkpoint",
             "choose_quant",
             "converter_python",
             "critic_control",
             "critic_window",
+            "drop_snapshot",
             "fetch_model",
+            "funnel_stop",
             "generations_summary",
             "hf_revision",
             "hf_token_ids",
@@ -279,6 +282,8 @@
             "pin_libs",
             "q6k_window",
             "reference",
+            "resources",
+            "resume_from",
             "role_set_env",
             "run_dir",
             "runtime",
@@ -314,145 +319,160 @@
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 174
+              "line": 192
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 235
+              "line": 257
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 244
+              "line": 266
             },
             {
               "in": "smoke",
               "kind": "except",
-              "line": 250
+              "line": 272
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 253
+              "line": 275
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 340
+              "line": 362
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 377
+              "line": 399
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 427
+              "line": 449
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 461
+              "line": 483
             },
             {
               "in": "start_server",
               "kind": "except",
-              "line": 466
+              "line": 488
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 470
+              "line": 492
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 549
+              "line": 571
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 622
+              "line": 644
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 677
+              "line": 689
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 702
+              "line": 714
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 710
+              "line": 722
+            },
+            {
+              "in": "install_rnd",
+              "kind": "raise",
+              "line": 739
             },
             {
               "in": "write_wave",
               "kind": "except",
-              "line": 789
+              "line": 810
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 849
+              "line": 925
+            },
+            {
+              "in": "to_q6k",
+              "kind": "raise",
+              "line": 940
             },
             {
               "in": "choose_quant",
               "kind": "except",
-              "line": 868
+              "line": 961
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 909
+              "line": 1003
+            },
+            {
+              "in": "pilot_window",
+              "kind": "except",
+              "line": 1059
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 973
+              "line": 1077
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 977
+              "line": 1081
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 984
+              "line": 1088
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 1016
+              "line": 1120
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 1034
+              "line": 1138
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 1050
+              "line": 1154
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 1052
+              "line": 1156
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 1064
+              "line": 1168
             }
           ],
-          "hash": "71ad1b9d7a46a7ab3d54f3bb9c29e7357a8639806e1d99fa7c832c7beadbecac",
+          "hash": "71d4b66290d6269dc02bdec0869a81af762478315f238696e86def74d2287bf3",
           "path": "scripts/colab/pin_window.py"
         },
         {
@@ -464,7 +484,7 @@
           "path": "scripts/colab/pin_window_split.sh"
         },
         {
-          "hash": "b816affc2125fa48bcbe95bda2f0cbe2eccff88b89ebd86a9a700ab6597144b3",
+          "hash": "960e6baa1c3e2f8904b9e0c80afd1e233340e8f6eba2b772b4e97b702b781643",
           "path": "scripts/colab/smoke_window.sh"
         },
         {
@@ -680,14 +700,14 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 6,
+          "reads": 8,
           "where": [
             "caller"
           ],
           "writes": 1
         }
       ],
-      "outsideReads": 6,
+      "outsideReads": 8,
       "outsideWrites": 1,
       "role": "code",
       "testRunners": [
@@ -6480,7 +6500,7 @@
             "test_the_llama_server_binary_is_pinned",
             "test_the_machine_line"
           ],
-          "hash": "fd8257d0b9a6411eba867d1b80b63bbaca255db0f73423723421fd3bc1386888",
+          "hash": "e7b3c881ac4c5e179f673e0c4e70751bfa79edd726bfbc79aa374999fec2e326",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/proven.py",
@@ -7347,7 +7367,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "3ae04ec090115ee63ded0b6deb68e86afe888ffb",
+    "commit": "3aa03240d4f0b506889935c433d65402da675835",
     "tracked": 167
   },
   "landings": [

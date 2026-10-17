@@ -57,8 +57,8 @@ MODELS = [
     {"served_as": "qwen3.6-35b-a3b", "how": "convert", "repo": "Qwen/Qwen3.6-35B-A3B",
      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0", "tokenizer_check": True,
      "expect_sha256": "b7c0c8eb16a54af29e87845d187969f99ecbbf79cd47cc198be8890d109dc164",
-     # Window 8's Q6_K (a partial log only): the rerun must reproduce it from the pinned Q8_0 (R&D, 2026-10-17).
-     "expect_q6k_sha256": "61deb1f7862709b62692d76ca510a669affeeb4c63e59de72d7aa901b638a4fe"},
+     # Window 8 and 9's Q6_K was requantized from the Q8_0; retired 2026-10-17 (R&D), kept as history, never checked.
+     "retired_q6k_sha256": "61deb1f7862709b62692d76ca510a669affeeb4c63e59de72d7aa901b638a4fe"},
     {"served_as": "granite-4.2-30b", "how": "convert", "repo": "ibm-granite/granite-4.2-30b",
      "revision": "9e668ce1c538387ef24d3644e9b0606647762636", "tokenizer_check": True},
     # Gemma 4 was saved with transformers 5.5.0.dev0; its tokenizer_config's list-shaped extra_special_tokens breaks
@@ -66,12 +66,12 @@ MODELS = [
     {"served_as": "gemma-4-31b-it", "how": "convert", "repo": "google/gemma-4-31B-it",
      "revision": "842da3794eaa0b77d5f08bae87a17459d91ff475", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
      "expect_sha256": "e357a45071c2cbbc44b97506dfadc34bac0d5f6592f1d500edfaa9647f01e7bf",
-     "expect_q6k_sha256": "3a72fddfa71a94d3dc0b03b804ee1bd7dfa56881d3284afd74e69651f14f206f"},
+     "retired_q6k_sha256": "3a72fddfa71a94d3dc0b03b804ee1bd7dfa56881d3284afd74e69651f14f206f"},
     # Pinned in window 5; its 32k KV cache doesn't fit the A100, so it serves on the H100 (R&D, 2026-10-17).
     {"served_as": "deepseek-r1-distill-qwen-32b", "how": "convert", "repo": "deepseek-ai/DeepSeek-R1-Distill-Qwen-32B",
      "revision": "711ad2ea6aa40cfca18895e8aca02ab92df1a746", "tokenizer_check": True,
      "expect_sha256": "b791775c3bb0d1ab3cd7a73c6760c4ab915680f3587be8a7d29937ca2b9ad24e",
-     "expect_q6k_sha256": "c2cda735fb0f026d33db4734c1466b94cfca9ed8f9a88bab0610bca45687bce5"},
+     "retired_q6k_sha256": "c2cda735fb0f026d33db4734c1466b94cfca9ed8f9a88bab0610bca45687bce5"},
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
@@ -177,7 +177,7 @@ def resources(tag: str) -> dict:
 RESOURCES: list = []
 
 
-def fetch_model(spec: dict, built: dict) -> dict:
+def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
     from huggingface_hub import HfApi, hf_hub_download, snapshot_download  # noqa: PLC0415
 
     rev = spec.get("revision") or hf_revision(spec["repo"])
@@ -217,7 +217,10 @@ def fetch_model(spec: dict, built: dict) -> dict:
                                                            "python": py, "env": spec.get("env") or "llama.cpp requirements"}})
     if spec["how"] != "maker_gguf":
         resources(f"{spec['served_as']}: after conversion")
-        shutil.rmtree(snap, ignore_errors=True)
+        if keep_snapshot:  # a Q6_K may still be needed: it's made from a BF16 conversion of this snapshot
+            out.update({"snapshot": str(snap), "converter_py": py})
+        else:
+            shutil.rmtree(snap, ignore_errors=True)
     say(f"hashing {path.name}")
     out.update({"gguf_sha256": sha256(path), "gguf_bytes": path.stat().st_size, "path": str(path)})
     return out
@@ -661,29 +664,19 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
     """PIN_ROLE=q6k: each model's Q8_0 rebuilt and checked against its pin (Gemma's is made and recorded), quantized to
     Q6_K with the pinned llama-quantize, hashed, and served at 32768 with its fit and slots read. A labelled arm."""
 
-    quant = result["llama_quantize"] = build_quantize(Path(built["src"]))
     result["models"] = []
     for spec in specs:
         rec: dict = {"served_as": spec["served_as"], "quant": "Q6_K"}
         result["models"].append(rec)
         try:
-            m = fetch_model(spec, built)
+            m = fetch_model(spec, built, keep_snapshot=True)
             rec["q8_0"] = {"gguf_sha256": m["gguf_sha256"], "gguf_bytes": m["gguf_bytes"], "revision": m["revision"],
                            "converter": m.get("converter"), "pinned": spec.get("expect_sha256")}
             if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
                 rec["stopped"] = f"Q8_0 {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
                 continue
-            q6 = WORK / f"{spec['served_as']}-Q6_K.gguf"
-            say(f"quantizing {spec['served_as']} to Q6_K")
-            sh(f"{quant['path']} --allow-requantize {m['path']} {q6} Q6_K", timeout=3600)
-            Path(m["path"]).unlink(missing_ok=True)
-            m6 = {**{k: v for k, v in m.items() if k not in ("converter",)}, "path": str(q6), "gguf_file": q6.name,
-                  "gguf_sha256": sha256(q6), "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
-                  "quantized_from": m["gguf_sha256"],
-                  # Requantized from our Q8_0, not from BF16: a little more loss, accepted because the disk can't hold
-                  # the snapshot, a BF16 GGUF and the Q8_0 at once (R&D, 2026-10-17). Every receipt carries the label.
-                  "label": f"Q6_K (requantized from pinned Q8_0 {m['gguf_sha256']})"}
-            rec.update({k: v for k, v in m6.items() if k not in ("path", "tokenizer_hf")})
+            m6 = to_q6k(built, spec, m, result)
+            rec.update({k: v for k, v in m6.items() if k not in ("path", "tokenizer_hf", "converter_py")})
             if spec.get("expect_q6k_sha256"):
                 rec["q6k_reproduced"] = m6["gguf_sha256"] == spec["expect_q6k_sha256"]
                 if not rec["q6k_reproduced"]:
@@ -828,6 +821,46 @@ def run_dir(out: Path) -> Path:
     return out
 
 
+def checkpoint(arm: str, wave_name: str, drafts: Path) -> None:
+    """The wave's drafts, printed as one line, so they reach the rig's log as soon as the wave ends (R&D, 2026-10-17:
+    a dropped VM loses minutes, not the window). `checkpoints.py extract` turns the lines back into files."""
+
+    import base64  # noqa: PLC0415
+    import gzip  # noqa: PLC0415
+
+    if drafts.exists():
+        blob = base64.b64encode(gzip.compress(drafts.read_bytes())).decode()
+        print(f"WAVE_CHECKPOINT {arm} {wave_name} {sha256(drafts)} {blob}", flush=True)
+
+
+def resume_from() -> tuple[int, dict]:
+    """PIN_RESUME_WAVE=<i> and PIN_RESUME_DIR=<dir of <arm>.jsonl>: start a batch after wave i, from those drafts."""
+
+    i = os.environ.get("PIN_RESUME_WAVE")
+    if not i:
+        return 0, {}
+    d = Path(os.environ["PIN_RESUME_DIR"])
+    return int(i) + 1, {f.stem: f for f in d.glob("*.jsonl")}
+
+
+def funnel_stop(wave: dict) -> str | None:
+    """R&D's funnel (2026-10-17), thresholds set before any result: after w0 an arm stops at 6+ of 20 slots dropped, a
+    failed warm-up or a halted cell."""
+
+    if wave.get("exit") and not wave.get("result"):
+        return f"w0 exited {wave['exit']} with no result"
+    r = wave.get("result") or {}
+    if (r.get("dropped") or 0) >= 6:
+        return f"{r['dropped']} slots dropped at w0 (threshold 6)"
+    if r.get("halted"):
+        return f"halted at w0: {r['halted']}"
+    if r.get("lesson_halts"):
+        return f"cell halt at w0: {r['lesson_halts']}"
+    if r.get("warmup_failed") or r.get("warmups_failed"):
+        return "warm-up failed"
+    return None
+
+
 def pending(wave: dict) -> bool:
     states = ((wave.get("result") or {}).get("states")) or {}
     return bool(states.get("awaiting_critique") or states.get("needs_rewrite"))
@@ -839,7 +872,12 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
     the critic once for all, then all rewrites, and so on. Returns each arm's waves and its last directory."""
 
     arms = {name: {"waves": [], "drafts": None, "done": False} for name in writers}
-    for i in range(PILOT_WAVES):
+    start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
+    for n, f in resumed.items():
+        if n in arms:
+            arms[n]["drafts"] = f
+            arms[n]["resumed_after_wave"] = start - 1
+    for i in range(start, PILOT_WAVES):
         kind = "write" if i == 0 else ("critique" if i % 2 else "rewrite")
         todo = [n for n, a in arms.items() if not a["done"]]
         if not todo:
@@ -852,6 +890,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
                     arms[n]["waves"].append(w)
                     arms[n]["last"] = run_dir(base / n / f"w{i}")
                     arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
+                    checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
                     arms[n]["done"] = w["exit"] != 0 or not pending(w)
         else:
             for n in todo:
@@ -861,24 +900,48 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
                 arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
+                checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
                 arms[n]["done"] = w["exit"] != 0
+                # ---- (9) the funnel, on the pilot's first write wave only
+                if i == 0 and extra is None:
+                    why = funnel_stop(w)
+                    if why:
+                        arms[n]["done"], arms[n]["funnel_stop"] = True, why
     return arms
 
 
-def to_q6k(built: dict, spec: dict, m: dict, result: dict) -> dict:
-    """The writer's Q6_K from its pinned Q8_0, checked against its pinned Q6_K; served as writers.json's '<name>-q6k'."""
+def drop_snapshot(m: dict) -> None:
+    if m.get("snapshot"):
+        shutil.rmtree(m["snapshot"], ignore_errors=True)
+        m.pop("snapshot", None)
 
+
+def to_q6k(built: dict, spec: dict, m: dict, result: dict) -> dict:
+    """The writer's Q6_K from a BF16 conversion of the snapshot (R&D, 2026-10-17: never requantized from the Q8_0; the
+    quantize README warns that requantizing can severely reduce quality). Order: BF16 convert, drop the snapshot,
+    BF16 -> Q6_K, drop the BF16. Served as writers.json's '<name>-q6k'."""
+
+    if not m.get("snapshot"):
+        raise RuntimeError(f"{spec['served_as']}: no snapshot kept for the BF16 conversion")
     if "llama_quantize" not in result:
         result["llama_quantize"] = build_quantize(Path(built["src"]))
+    bf16 = WORK / f"{spec['served_as']}-BF16.gguf"
+    say(f"converting {spec['served_as']} to BF16 for Q6_K")
+    sh(f"{m['converter_py']} {built['src']}/convert_hf_to_gguf.py {m['snapshot']} --outtype bf16 --outfile {bf16}", timeout=3600)
+    resources(f"{spec['served_as']}: after BF16 conversion")
+    drop_snapshot(m)
     q6 = WORK / f"{spec['served_as']}-Q6_K.gguf"
-    sh(f"{result['llama_quantize']['path']} --allow-requantize {m['path']} {q6} Q6_K", timeout=3600)
+    sh(f"{result['llama_quantize']['path']} {bf16} {q6} Q6_K", timeout=3600)
+    bf16_sha = sha256(bf16)
+    bf16.unlink(missing_ok=True)
+    resources(f"{spec['served_as']}: after Q6_K")
     got = sha256(q6)
     if spec.get("expect_q6k_sha256") and got != spec["expect_q6k_sha256"]:
         raise RuntimeError(f"{spec['served_as']}: Q6_K {got[:12]} doesn't reproduce {spec['expect_q6k_sha256'][:12]}")
     Path(m["path"]).unlink(missing_ok=True)
     return {**m, "served_as": f"{spec['served_as']}-q6k", "card": m.get("card") or spec["served_as"], "path": str(q6),
             "gguf_file": q6.name, "gguf_sha256": got, "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
-            "label": f"Q6_K (requantized from pinned Q8_0 {m['gguf_sha256']})"}
+            "bf16_sha256": bf16_sha, "label": f"Q6_K (from BF16 {bf16_sha[:12]}, the same snapshot as pinned Q8_0 {m['gguf_sha256'][:12]})"}
 
 
 def choose_quant(built: dict, spec: dict, m: dict, policy: str, result: dict) -> tuple[dict, dict]:
@@ -886,12 +949,14 @@ def choose_quant(built: dict, spec: dict, m: dict, policy: str, result: dict) ->
     otherwise the pinned Q6_K (R&D, 2026-10-17). Returns the model to serve and the record of the choice."""
 
     if policy == "q8":
+        drop_snapshot(m)
         return m, {"policy": policy, "ran": "Q8_0"}
     if policy == "q6k":
         return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K"}
     try:
         with Served(built, m, m["gguf_sha256"]) as srv:
             first = srv.starts[-1]
+        drop_snapshot(m)
         return m, {"policy": policy, "ran": "Q8_0", "q8_gates": first}
     except RuntimeError as e:
         return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K", "why": str(e)[:400]}
@@ -931,8 +996,9 @@ def pilot_window(built: dict, result: dict) -> None:
     models: dict = {}
     for name in [critic_name, *writer_names]:
         spec = by_name[name]
-        m = fetch_model(spec, built)
-        result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf")})
+        policy = policies.get(name, "q8") if name != critic_name else "q8"
+        m = fetch_model(spec, built, keep_snapshot=policy in ("q6k", "q8_or_q6k"))
+        result.setdefault("models", []).append({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
         if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
             raise RuntimeError(f"{name}: GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}")
         if name != critic_name:
@@ -963,7 +1029,10 @@ def pilot_window(built: dict, result: dict) -> None:
         for n, a in pilot.items():
             accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
             result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
-            if accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
+            if a.get("funnel_stop"):
+                result["arms"][n]["funnel_stop"] = a["funnel_stop"]
+                result["arms"][n]["twins"] = {"skipped": f"stopped by the funnel: {a['funnel_stop']}"}
+            elif accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
                 twins_writers[n] = writers[n]
             else:
                 result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}

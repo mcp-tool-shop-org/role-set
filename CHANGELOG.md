@@ -31,6 +31,11 @@ All notable changes to role-set are documented here. The format is based on
   - Readouts and a `pilot-out.tar` of every wave come back. `PIN_DOWNLOADS` names what the window fetches.
   - Dry-run end to end against role-set's mock.
   - **A quant policy per writer** (`PIN_PILOT_QUANT`, R&D 2026-10-17): `q8`, `q6k`, or `q8_or_q6k`. The last tries the Q8_0 against the gates (offload N/N, 1 slot × 32768) and otherwise uses the pinned Q6_K. A Q6_K must reproduce its pin. The result records which ran and why.
+  - **R&D's rulings on Argon's process consult** (2026-10-17):
+    - **Q6_K from BF16:** a Q6_K is built from a BF16 conversion of the snapshot, never requantized from the Q8_0 (llama.cpp's quantize README warns that requantizing can severely reduce quality). The order is snapshot → Q8_0 (pinned) → BF16 → drop the snapshot → Q6_K → drop the BF16, with resources logged at each step. Window 9's three requantized pins are retired in writers.json's `retired` list.
+    - **Checkpoints:** each wave's drafts are printed as a `WAVE_CHECKPOINT` line, `scripts/colab/checkpoints.py extract` recovers them, and `PIN_RESUME_WAVE` / `PIN_RESUME_DIR` resume a dropped window.
+    - **The funnel:** after w0, an arm stops at 6+ drops, a failed warm-up or a halted cell, and skips its twins.
+    - **Local preflight:** `scripts/colab/preflight_window.py` runs a window's setup on the rig first, the same way the VM does: role-set installed with uv into Python 3.12, rnd from a clone, the pack, the plans, the proxy configs, and mock waves.
   - **The dataminer** (R&D, 2026-10-17; Mike's standing ask): rnd's logging proxy, installed at a pinned commit, sits between role-set and llama-server on every wave.
     - Each model gets a one-candidate config from its card. The values are unchanged; only `reattach_thinking`, J2's multi-turn transform, is removed.
     - It records every call in abmine's format, with top-5 logprobs, reasoning, timings and truncation, beside each wave.
