@@ -16,6 +16,12 @@ All notable changes to role-set are documented here. The format is based on
   - **critic-control:** role-set runs at a pinned commit, in a uv Python 3.12 env, at the card values. Muse runs at seeds 0 and 1 with `--agreement-with`, Lightning at seed 0.
   - `smoke_window.sh` uploads `PIN_UPLOADS` and passes `PIN_ROLE` and `PIN_ROLESET_COMMIT`.
   - **Slots:** every server runs `--parallel 1`, and the window reads `/props` for the slot count and per-slot context, refusing a per-slot context under 32768. llama-server's default splits the context across several slots, and a long thinking reply would truncate at a quarter of it. Window 5's smoke serves ran that way: their fit holds for 32768 in total, not per slot.
+- **The Q6_K window** (`PIN_ROLE=q6k`; R&D, 2026-10-17). It's for an arm that doesn't fit the A100 at Q8_0 when no H100 is available:
+  - `llama-quantize` is built from the same 620d2225 tree as its own CPU-only target, with its sha256 pinned and `llama-server` untouched;
+  - the model's Q8_0 is rebuilt and checked against its pin (Gemma's Q8_0 is made and recorded);
+  - it's quantized to Q6_K (`--allow-requantize`), hashed, and served at 32768, recording the fit and slots;
+  - the arm is labelled Q6_K on its receipt.
+  - The smoke serve now reports `fit` and `slots` too.
 - **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
 - **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.
 

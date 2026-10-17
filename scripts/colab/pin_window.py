@@ -276,7 +276,8 @@ def smoke(built: dict, model: dict) -> dict:
                 "reasoning_content": bool(msg.get("reasoning_content")), "content_head": (msg.get("content") or "")[:120],
                 "logprob_steps": len(steps), "top5_ok": bool(steps) and all(len(s.get("top_logprobs") or []) == 5 for s in steps),
                 "ctx": ctx, "peak_vram_mib": peak["mib"], "total_vram_mib": peak.get("total_mib"), "max_tokens": max_tokens,
-                "offload_lines": _offload_lines(server_log),
+                "offload_lines": _offload_lines(server_log), "fit": all_on_gpu(_offload_lines(server_log)),
+                "slots": slots(port, ctx),
                 "chat_template_kwargs": kwargs,
                 "thinking_split": {"reasoning_nonempty": bool((msg.get("reasoning_content") or "").strip()), "tags_in_content": tags,
                                    "ok": bool((msg.get("reasoning_content") or "").strip()) and not tags}}
@@ -597,6 +598,54 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
     result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
 
 
+def build_quantize(src: Path) -> dict:
+    """llama-quantize from the pinned tree as its own CPU-only target, so the pinned llama-server is untouched."""
+
+    build = src / "build-quantize"
+    sh(f"cmake -S {src} -B {build} -DGGML_CUDA=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release", timeout=900)
+    sh(f"cmake --build {build} --target llama-quantize -j {os.cpu_count() or 4}", timeout=1800)
+    path = build / "bin" / "llama-quantize"
+    return {"path": str(path), "sha256": sha256(path), "commit": sh(f"git -C {src} rev-parse HEAD"),
+            "cmake": sh("cmake --version").splitlines()[0], "cc": sh("cc --version").splitlines()[0]}
+
+
+def q6k_window(built: dict, specs: list, result: dict) -> None:
+    """PIN_ROLE=q6k: each model's Q8_0 rebuilt and checked against its pin (Gemma's is made and recorded), quantized to
+    Q6_K with the pinned llama-quantize, hashed, and served at 32768 with its fit and slots read. A labelled arm."""
+
+    quant = result["llama_quantize"] = build_quantize(Path(built["src"]))
+    result["models"] = []
+    for spec in specs:
+        rec: dict = {"served_as": spec["served_as"], "quant": "Q6_K"}
+        result["models"].append(rec)
+        try:
+            m = fetch_model(spec, built)
+            rec["q8_0"] = {"gguf_sha256": m["gguf_sha256"], "gguf_bytes": m["gguf_bytes"], "revision": m["revision"],
+                           "converter": m.get("converter"), "pinned": spec.get("expect_sha256")}
+            if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+                rec["stopped"] = f"Q8_0 {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
+                continue
+            q6 = WORK / f"{spec['served_as']}-Q6_K.gguf"
+            say(f"quantizing {spec['served_as']} to Q6_K")
+            sh(f"{quant['path']} --allow-requantize {m['path']} {q6} Q6_K", timeout=3600)
+            Path(m["path"]).unlink(missing_ok=True)
+            m6 = {**{k: v for k, v in m.items() if k not in ("converter",)}, "path": str(q6), "gguf_file": q6.name,
+                  "gguf_sha256": sha256(q6), "gguf_bytes": q6.stat().st_size, "quant": "Q6_K",
+                  "quantized_from": m["gguf_sha256"]}
+            rec.update({k: v for k, v in m6.items() if k not in ("path", "tokenizer_hf")})
+            m6["smoke"] = smoke(built, m6)
+            rec["smoke"] = m6["smoke"]
+            if not (rec["smoke"].get("fit") or {}).get("ok") or not (rec["smoke"].get("slots") or {}).get("ok"):
+                rec["stopped"] = "the Q6_K doesn't fit the card at 32768 with every layer on the GPU and one full slot"
+        except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
+            rec["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            for f in (WORK / f"{spec['served_as']}-Q8_0.gguf", WORK / f"{spec['served_as']}-Q6_K.gguf"):
+                f.unlink(missing_ok=True)
+        say(f"{spec['served_as']} Q6_K: {json.dumps({k: rec.get(k) for k in ('gguf_sha256', 'stopped', 'error')})}")
+    result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
+
+
 def runtime() -> dict:
     """PIN_ROLE=smoke: no build. The uploaded window-1 binary, checked by sha256, with the CUDA 13.4 runtime wheels it
     loads; their exact versions are recorded so the library pins can be reproduced."""
@@ -638,7 +687,7 @@ def main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic"):
+        if role in ("smoke", "critic", "q6k"):
             result["llama_server"] = built = runtime()
             # The libraries first, so they're pinned even if a model fails later in the window.
             result["llama_server"]["libs"] = pin_libs(built["path"])
@@ -648,7 +697,7 @@ def main() -> int:
             built = {"commit": LLAMA_CPP_COMMIT, "src": str(src)}
         else:
             result["llama_server"] = built = build()
-        specs = MODELS if role in ("all", "smoke", "critic") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+        specs = MODELS if role in ("all", "smoke", "critic", "q6k") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:
@@ -658,6 +707,9 @@ def main() -> int:
             result["only"] = only
         if role == "critic":
             critic_window(built, specs, result)
+            specs = []
+        elif role == "q6k":
+            q6k_window(built, specs, result)
             specs = []
         else:
             result["models"] = []
