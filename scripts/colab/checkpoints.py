@@ -34,7 +34,10 @@ def extract(log: Path, out: Path) -> list[Path]:
             dest = out / wave / f"{arm}.jsonl"
             dest.parent.mkdir(parents=True, exist_ok=True)
             dest.write_bytes(data)
-            written.append(dest)
+            # The seal a wave reads beside its drafts file (waves.read): the hash just checked, so a resume can use it.
+            seal = dest.with_name(dest.name + ".sha256")
+            seal.write_text(f"{want}  {dest.name}\n", encoding="utf-8", newline="\n")
+            written += [dest, seal]
         elif line.startswith("CALL_CHECKPOINT "):
             parts = line.split(" ", 3)
             if len(parts) != 4:

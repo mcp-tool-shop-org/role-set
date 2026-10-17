@@ -407,7 +407,7 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     run_pins = dict(pins)
     if cfg.wave == "critique":
         # A receipt names the writer that wrote the draft and the host it ran on, beside this wave's critic.
-        run_pins.update({**(header_in.get("writer_pins") or {}), "writer_host": header_in.get("writer_host")})
+        run_pins.update({**waves.header_writer_pins(header_in), "writer_host": header_in.get("writer_host")})
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)

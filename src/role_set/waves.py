@@ -47,12 +47,24 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _is_writer_pin(k: str) -> bool:
+    # The writer's card (cards.pins: card_*, cards_sha256) is the writer's, like its GGUF: a critique wave loads no
+    # writer, so it has no card pins to match. Window 12b's critique was refused when they were counted as batch pins.
+    return k.startswith(("writer_", "card_")) or k == "cards_sha256"
+
+
 def batch_pins(pins: dict) -> dict:
-    return {k: v for k, v in pins.items() if k not in WAVE_LOCAL and not k.startswith(("writer_", "critic_"))}
+    return {k: v for k, v in pins.items() if k not in WAVE_LOCAL and not _is_writer_pin(k) and not k.startswith("critic_")}
 
 
 def writer_pins(pins: dict) -> dict:
-    return {k: v for k, v in pins.items() if k.startswith("writer_")}
+    return {k: v for k, v in pins.items() if _is_writer_pin(k)}
+
+
+def header_writer_pins(header: dict) -> dict:
+    """The drafts' writer pins, including card pins that a header written before 2026-10-17 kept among its batch pins."""
+
+    return {**writer_pins(header.get("batch_pins") or {}), **(header.get("writer_pins") or {})}
 
 
 # ---- the drafts file ----------------------------------------------------------------------------------------
@@ -98,7 +110,7 @@ def write(path: Path, header: dict, drafts: list[dict]) -> str:
 def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
     """The batch pins must match in every wave; the writer pins too in a rewrite wave."""
 
-    have, want = header.get("batch_pins") or {}, batch_pins(pins)
+    have, want = batch_pins(header.get("batch_pins") or {}), batch_pins(pins)
     diff = sorted(k for k in set(have) | set(want) if have.get(k) != want.get(k))
     if diff:
         raise WaveError(f"REFUSED: the drafts were written under other batch pins ({', '.join(diff)}); a wave continues only its own batch")
@@ -106,7 +118,7 @@ def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
     if (g.get("version"), g.get("sha256")) != (gates.version, gates.sha256):
         raise WaveError(f"REFUSED: the drafts were checked by gates {g.get('version')}; this wave has {gates.version}")
     if wave == "rewrite":
-        have_w, want_w = header.get("writer_pins") or {}, writer_pins(pins)
+        have_w, want_w = header_writer_pins(header), writer_pins(pins)
         diff = sorted(k for k in set(have_w) | set(want_w) if have_w.get(k) != want_w.get(k))
         if diff:
             raise WaveError(f"REFUSED: a rewrite continues the drafts' own writer; these pins differ: {', '.join(diff)}")
