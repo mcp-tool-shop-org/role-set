@@ -56,7 +56,9 @@ MODELS = [
     # Window 5 pinned it on the A100 with an unproven fit; window 6 (H100) reconverts it, so the hash checks determinism.
     {"served_as": "qwen3.6-35b-a3b", "how": "convert", "repo": "Qwen/Qwen3.6-35B-A3B",
      "revision": "995ad96eacd98c81ed38be0c5b274b04031597b0", "tokenizer_check": True,
-     "expect_sha256": "b7c0c8eb16a54af29e87845d187969f99ecbbf79cd47cc198be8890d109dc164"},
+     "expect_sha256": "b7c0c8eb16a54af29e87845d187969f99ecbbf79cd47cc198be8890d109dc164",
+     # Window 8's Q6_K (a partial log only): the rerun must reproduce it from the pinned Q8_0 (R&D, 2026-10-17).
+     "expect_q6k_sha256": "61deb1f7862709b62692d76ca510a669affeeb4c63e59de72d7aa901b638a4fe"},
     {"served_as": "granite-4.2-30b", "how": "convert", "repo": "ibm-granite/granite-4.2-30b",
      "revision": "9e668ce1c538387ef24d3644e9b0606647762636", "tokenizer_check": True},
     # Gemma 4 was saved with transformers 5.5.0.dev0; its tokenizer_config's list-shaped extra_special_tokens breaks
@@ -660,6 +662,11 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
                   # the snapshot, a BF16 GGUF and the Q8_0 at once (R&D, 2026-10-17). Every receipt carries the label.
                   "label": f"Q6_K (requantized from pinned Q8_0 {m['gguf_sha256']})"}
             rec.update({k: v for k, v in m6.items() if k not in ("path", "tokenizer_hf")})
+            if spec.get("expect_q6k_sha256"):
+                rec["q6k_reproduced"] = m6["gguf_sha256"] == spec["expect_q6k_sha256"]
+                if not rec["q6k_reproduced"]:
+                    rec["stopped"] = f"Q6_K {m6['gguf_sha256'][:12]} doesn't reproduce {spec['expect_q6k_sha256'][:12]}"
+                    continue
             m6["smoke"] = smoke(built, m6)
             rec["smoke"] = m6["smoke"]
             if not (rec["smoke"].get("fit") or {}).get("ok") or not (rec["smoke"].get("slots") or {}).get("ok"):

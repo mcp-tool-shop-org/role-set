@@ -15,18 +15,23 @@ here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
-# Stops this window's own session only: another window (or a probe) may be running beside it. The cap watcher reads
-# the account balance, so a neighbour's spend counts against this window's cap too; that only stops it sooner.
+# Stops this window's own session only: another window (or a probe) may be running beside it.
 stop_all() {
   echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
   sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
 }
 trap stop_all EXIT
-START=$(bal); echo "start balance $START $(date -u +%FT%TZ)"
+rate() { colab usage 2>&1 | grep -oP 'rate: \K[0-9.]+'; }
+START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
 timeout 300 colab new --gpu "${PIN_GPU:-A100}" -s "$S" 2>&1 | tail -2 || { echo "no A100 assigned"; exit 2; }
 sleep 15; colab usage 2>&1 | grep -E "rate|assign"
-( while sleep 120; do now=$(bal); awk -v s="$START" -v n="$now" -v c="$CAP_UNITS" 'BEGIN{exit !(s-n>c)}' && { echo "CAP REACHED ($START -> $now)"; stop_all; exit 0; }; done ) &
+# The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
+# its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
+OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
+echo "own rate $OWN_RATE/hr"
+( while sleep 120; do spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
+    awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>c)}' && { echo "CAP REACHED (own spend $spent of $CAP_UNITS)"; stop_all; exit 0; }; done ) &
 WATCH=$!
 # The binary goes up gzipped in 40 MB parts, each retried; a part that never lands ends the window (the trap stops the VM).
 UP="$OUT/upload"; mkdir -p "$UP"; rm -f "$UP"/llama-server.gz*
