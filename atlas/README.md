@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-17 from commit 390e777 by Atlas 1.24.0.
+Mapped at 2026-10-17 from commit cd53bc0 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,10 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (89 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-17 (1ac66e8)
+## What changed since 2026-10-17 (390e777)
 
-Nothing structural changed since 2026-10-17; 1 file added, 1 removed and 6 changed content.
+- CHANGELOG.md is now read by tests/test_assemble.py, tests/test_harvest_exemplars.py and tests/test_write.py.
+- 1 file added and 3 changed content, across 2 parts.
 
 ## What comes in
 
@@ -76,7 +77,7 @@ No two parts export a helper that looks alike.
 
 ## Hand-authored
 
-People write .github/, assets/, docs/, the repository root and site/; 4 writes with paths built at run time may land here.
+People write .github/, assets/, docs/, the repository root and site/; 6 writes with paths built at run time may land here.
 
 ## Where to start
 
@@ -86,7 +87,7 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 4 writes and 11 reads use paths built at run time and are not named here.
+- 6 writes and 15 reads use paths built at run time and are not named here.
 - 11 writes and 44 reads go to a path their caller passes, not to this repository.
 - 7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.
 - 9 reads go to the directory the command is run in, not to this repository.

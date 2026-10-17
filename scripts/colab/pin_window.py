@@ -47,7 +47,8 @@ MODELS = [
     # Muse was saved with transformers 5.15.0.dev0 (tokenizer class TokenizersBackend), which llama.cpp's pinned
     # 4.57.6 lacks (window 2): its own env on the latest release, and its tokenizer checked id by id against the GGUF.
     {"served_as": "muse-glimmer-30b", "how": "convert", "repo": "meta-models/Muse-Glimmer-30B",
-     "revision": "a4e59da52a7bc87ae7251dd5545c0dd437c44b68", "env": {"transformers": "5.20.1"}, "tokenizer_check": True},
+     "revision": "a4e59da52a7bc87ae7251dd5545c0dd437c44b68", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
+     "expect_sha256": "c321320a81f177362f3ddf3c199edff097ab88d10b19a13eab7f606f5ffc4e74"},
     # The pilot's other arms (R&D, 2026-10-17), at the revisions J2's card-values.json read, so one GGUF serves J1 and J2.
     # Classic tokenizer classes, so llama.cpp's own requirements; each tokenizer is still checked id by id.
     {"served_as": "qwen3.8-27b", "how": "convert", "repo": "Qwen/Qwen3.8-27B",
@@ -179,6 +180,11 @@ def fetch_model(spec: dict, built: dict) -> dict:
         sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=3600)
         if spec.get("tokenizer_check"):
             out["tokenizer_hf"] = hf_token_ids(py, snap)
+        if spec.get("brief_check") and BRIEFS.exists():
+            # The pilot's own prompts, encoded by the maker's tokenizer before the snapshot goes (R&D, window 4 ruling).
+            briefs = json.loads(BRIEFS.read_text(encoding="utf-8"))
+            out["brief_texts"] = briefs["writer"] + briefs["critic"]
+            out["brief_hf"] = hf_token_ids(py, snap, out["brief_texts"], "brief-strings-hf.json")
         # The converter's environment, so the Q8_0 hash can be reproduced (R&D on #77).
         freeze = sh(f"{py} -m pip freeze")
         gguf_file = sh(f"{py} -c \"import gguf; print(gguf.__file__)\"")
@@ -345,11 +351,12 @@ def converter_python(spec: dict, built: dict) -> str:
     return py
 
 
-def hf_token_ids(py: str, snap: Path) -> list:
-    """The maker's tokenizer (from the snapshot, in the converter's env) on TOKENIZER_STRINGS, no special tokens."""
+def hf_token_ids(py: str, snap: Path, texts: list | None = None, name: str = "tokenizer-strings.json") -> list:
+    """The maker's tokenizer (from the snapshot, in the converter's env) on `texts` (TOKENIZER_STRINGS by default), no
+    special tokens."""
 
-    strings = WORK / "tokenizer-strings.json"
-    strings.write_text(json.dumps(TOKENIZER_STRINGS, ensure_ascii=False), encoding="utf-8")
+    strings = WORK / name
+    strings.write_text(json.dumps(TOKENIZER_STRINGS if texts is None else texts, ensure_ascii=False), encoding="utf-8")
     code = ("import json,sys; from transformers import AutoTokenizer; "
             f"t = AutoTokenizer.from_pretrained('{snap}'); "
             f"s = json.load(open('{strings}', encoding='utf-8')); "
@@ -404,6 +411,176 @@ def _cuda_lib_dirs() -> list:
     return dirs
 
 
+BRIEFS = Path("/content/brief-strings.json")  # uploaded by the window script: 20 writer briefs, 20 critic prompts
+CRITIC_CTX = 32768
+CRITIC_PORT = 8092
+
+
+def start_server(built: dict, model: dict, ctx: int, port: int):
+    """llama-server for one model, its log in a file; waits until healthy and fails at once if the server exits."""
+
+    env = {**os.environ, "LD_LIBRARY_PATH": ":".join(str(p) for p in _cuda_lib_dirs()) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
+    server_log = WORK / f"{model['served_as']}-critic-server.log"
+    log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed by stop_server
+    proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
+                             "-c", str(ctx), "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh, stderr=subprocess.STDOUT,
+                            text=True, env=env)
+    for _ in range(180):
+        if proc.poll() is not None:
+            log_fh.close()
+            raise RuntimeError(f"llama-server exited ({proc.returncode}): " + server_log.read_text(encoding="utf-8", errors="replace")[-800:])
+        try:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=5) as r:  # noqa: S310 - loopback
+                if r.status == 200:
+                    return proc, log_fh, server_log
+        except Exception:  # noqa: BLE001 - starting up
+            time.sleep(5)
+    proc.terminate()
+    log_fh.close()
+    raise RuntimeError("llama-server never came up: " + server_log.read_text(encoding="utf-8", errors="replace")[-800:])
+
+
+def stop_server(proc, log_fh) -> None:
+    proc.terminate()
+    try:
+        proc.wait(timeout=60)
+    finally:
+        log_fh.close()
+
+
+def all_on_gpu(lines: list[str]) -> dict:
+    """Whether llama-server put every layer on the GPU, read from its 'offloaded N/M layers to GPU' line."""
+
+    import re
+
+    for ln in lines:
+        m = re.search(r"offloaded (\d+)/(\d+) layers to GPU", ln)
+        if m:
+            return {"offloaded": int(m.group(1)), "layers": int(m.group(2)), "ok": m.group(1) == m.group(2)}
+    return {"offloaded": None, "layers": None, "ok": False, "why": "no 'offloaded N/M layers to GPU' line in the server log"}
+
+
+def tokenize_all(port: int, texts: list, want: list) -> dict:
+    mism = []
+    for i, (text, ids) in enumerate(zip(texts, want)):
+        req = urllib.request.Request(f"http://127.0.0.1:{port}/tokenize", data=json.dumps({"content": text, "add_special": False}).encode(),
+                                     headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=120) as r:  # noqa: S310 - loopback
+            got = json.loads(r.read())["tokens"]
+        if got != ids:
+            first = next((k for k, (a, b) in enumerate(zip(got, ids)) if a != b), min(len(got), len(ids)))
+            mism.append({"i": i, "first_difference_at": first, "hf_len": len(ids), "gguf_len": len(got),
+                         "hf": ids[max(0, first - 3):first + 5], "gguf": got[max(0, first - 3):first + 5]})
+    return {"strings": len(texts), "match": not mism, "mismatches": mism[:10]}
+
+
+def reference(port: int, model: dict) -> dict:
+    """The replay fingerprint at window 4's exact request (no kwargs, temperature 0, seed 0, 2048 tokens)."""
+
+    body = json.dumps({"model": model["served_as"], "temperature": 0, "seed": 0, "max_tokens": SMOKE_MAX_TOKENS,
+                       "logprobs": True, "top_logprobs": 5,
+                       "messages": [{"role": "user", "content": "In two sentences, say what a changelog is for."}]}).encode()
+    req = urllib.request.Request(f"http://127.0.0.1:{port}/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=900) as r:  # noqa: S310 - loopback
+        reply = json.loads(r.read())
+    steps = ((reply["choices"][0].get("logprobs") or {}).get("content")) or []
+    record = {"type": "result", "arm": model["served_as"], "prompt": "pin-smoke-0", "reference": True, "rerecorded": True,
+              "cublas": CUBLAS_VERSION, "cuda_toolkit": CUDA_TOOLKIT, "max_tokens": SMOKE_MAX_TOKENS,
+              "tokens": [s.get("token") for s in steps],
+              "top": [[[t.get("token"), t.get("logprob")] for t in (s.get("top_logprobs") or [])] for s in steps]}
+    with open(WORK / "generations.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(record) + "\n")
+    return {"steps": len(steps), "finish_reason": reply["choices"][0].get("finish_reason"),
+            "top5_ok": bool(steps) and all(len(s.get("top_logprobs") or []) == 5 for s in steps)}
+
+
+def role_set_env(commit: str) -> dict:
+    """role-set at a pinned commit, in its own Python 3.12 (role-set needs <3.13; Colab's python is 3.13)."""
+
+    src, venv = Path("/content/role-set"), Path("/content/rs-venv")
+    if not (src / ".git").exists():
+        sh(f"git clone -q https://github.com/mcp-tool-shop-org/role-set {src} && git -C {src} checkout -q {commit}", timeout=600)
+    sh(f"{sys.executable} -m pip install -q uv==0.9.5", timeout=600)
+    if not (venv / "bin" / "python").exists():
+        sh(f"{sys.executable} -m uv venv -q -p 3.12 {venv}", timeout=900)
+        sh(f"{sys.executable} -m uv pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
+    head = sh(f"git -C {src} rev-parse HEAD")
+    if head != commit:
+        raise RuntimeError(f"role-set is at {head[:12]}, not {commit[:12]}")
+    return {"commit": head, "src": str(src), "role_set": str(venv / "bin" / "role-set"),
+            "python": sh(f"{venv}/bin/python -c \"import sys; print(sys.version.split()[0])\"")}
+
+
+def critic_control(rs: dict, model: dict, machine_file: Path, seed: int, earlier: Path | None) -> dict:
+    out = WORK / f"critic-control-{model['served_as']}-s{seed}.json"
+    cmd = [rs["role_set"], "critic-control", "--items", "/content/known-answer-v1.jsonl", "--planted", "10", "--seed", "0",
+           "--critic-endpoint", f"http://127.0.0.1:{CRITIC_PORT}/v1", "--critic-model", model["served_as"],
+           "--critic-gguf-sha256", model["gguf_sha256"], "--llama-server-sha256", SERVER_SHA256,
+           "--machine", str(machine_file), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
+           "--critic-seed", str(seed), "--out", str(out)]
+    if earlier is not None:
+        cmd += ["--agreement-with", str(earlier)]
+    t0 = time.time()
+    run = subprocess.run(cmd, capture_output=True, text=True, timeout=4 * 3600, cwd=rs["src"])
+    got = {"seed": seed, "exit": run.returncode, "seconds": round(time.time() - t0), "stdout": run.stdout[-1500:],
+           "stderr": run.stderr[-1500:], "out": str(out)}
+    if out.exists():
+        got["result"] = json.loads(out.read_text(encoding="utf-8"))
+    return got
+
+
+def critic_window(built: dict, specs: list, result: dict) -> None:
+    """PIN_ROLE=critic (R&D, 2026-10-17): each critic reconverted and checked against its pin, its offload read, Muse's
+    pilot-prompt tokenizer check and replay fingerprint, then role-set's critic-control at the card values. Any check
+    that fails stops that model before critic-control; the next model still runs."""
+
+    rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    machine_file = WORK / "machine.json"
+    machine_file.write_text(json.dumps(result["machine"]), encoding="utf-8")
+    seeds = {"muse-glimmer-30b": [0, 1], "nemotron-3.5-lightning-30b-a3b": [0]}
+    result["models"] = []
+    for spec in specs:
+        rec: dict = {"served_as": spec["served_as"]}
+        result["models"].append(rec)
+        try:
+            m = fetch_model({**spec, "brief_check": spec["served_as"] == "muse-glimmer-30b"}, built)
+            rec.update({k: v for k, v in m.items() if k not in ("path", "brief_texts", "brief_hf", "tokenizer_hf")})
+            if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+                rec["stopped"] = f"GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
+                continue
+            rec["reproduced"] = True
+            proc, log_fh, server_log = start_server(built, m, CRITIC_CTX, CRITIC_PORT)
+            try:
+                rec["offload_lines"] = _offload_lines(server_log)
+                rec["fit"] = all_on_gpu(rec["offload_lines"])
+                if not rec["fit"]["ok"]:
+                    rec["stopped"] = "not every layer is on the GPU"
+                    continue
+                if m.get("tokenizer_hf"):
+                    rec["tokenizer"] = tokenizer_check(CRITIC_PORT, m)
+                if m.get("brief_hf"):
+                    rec["brief_check"] = tokenize_all(CRITIC_PORT, m["brief_texts"], m["brief_hf"])
+                    rec["reference"] = reference(CRITIC_PORT, m)
+                    if not rec["brief_check"]["match"]:
+                        rec["stopped"] = "a pilot prompt tokenizes differently (R&D: any mismatch blocks)"
+                        continue
+                runs, earlier = [], None
+                for s in seeds.get(spec["served_as"], [0]):
+                    say(f"critic-control {spec['served_as']} seed {s}")
+                    r = critic_control(rs, m, machine_file, s, earlier)
+                    runs.append(r)
+                    earlier = Path(r["out"]) if "result" in r else None
+                rec["critic_control"] = runs
+            finally:
+                stop_server(proc, log_fh)
+        except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
+            rec["error"] = f"{type(e).__name__}: {e}"
+        finally:
+            Path(WORK / f"{spec['served_as']}-Q8_0.gguf").unlink(missing_ok=True)
+        say(f"{spec['served_as']}: {json.dumps({k: rec.get(k) for k in ('reproduced', 'fit', 'brief_check', 'stopped', 'error')})[:600]}")
+    result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
+
+
 def runtime() -> dict:
     """PIN_ROLE=smoke: no build. The uploaded window-1 binary, checked by sha256, with the CUDA 13.4 runtime wheels it
     loads; their exact versions are recorded so the library pins can be reproduced."""
@@ -445,7 +622,7 @@ def main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role == "smoke":
+        if role in ("smoke", "critic"):
             result["llama_server"] = built = runtime()
             # The libraries first, so they're pinned even if a model fails later in the window.
             result["llama_server"]["libs"] = pin_libs(built["path"])
@@ -455,7 +632,7 @@ def main() -> int:
             built = {"commit": LLAMA_CPP_COMMIT, "src": str(src)}
         else:
             result["llama_server"] = built = build()
-        specs = MODELS if role in ("all", "smoke") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+        specs = MODELS if role in ("all", "smoke", "critic") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:
@@ -463,7 +640,11 @@ def main() -> int:
             if not specs:
                 raise RuntimeError(f"PIN_ONLY names no model: {only}")
             result["only"] = only
-        result["models"] = []
+        if role == "critic":
+            critic_window(built, specs, result)
+            specs = []
+        else:
+            result["models"] = []
         for spec in specs:
             if role == "smoke":
                 # Each model is independent here: a failure is recorded with its model and the next one still runs.

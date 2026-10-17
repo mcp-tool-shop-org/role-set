@@ -165,6 +165,10 @@
           "path": ".python-version"
         },
         {
+          "hash": "78c53accf5e3e430e9ad2ae8342de4c3c74ac7981d8a951c840ea863fdf0bacf",
+          "path": "CHANGELOG.md"
+        },
+        {
           "hash": "4670c1c5e4f27c0c89c4949509d7705f9cccc516eab9c5a104b11562232b7458",
           "path": "CONTRIBUTORS.md"
         },
@@ -229,7 +233,7 @@
           "path": "uv.lock"
         },
         {
-          "hash": "64dc959a1e45a4d3b8a41bdb676dc346adaf1b357cba86fbde2d130bb72773a8",
+          "hash": "0f457d232546fb870544edfda7ed319cac4aa6aafc72c65d015e48f4e9d09a2d",
           "path": "writers.json"
         }
       ],
@@ -244,128 +248,161 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 5,
+      "dynamicReads": 9,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
-      "dynamicWrites": 3,
+      "dynamicWrites": 5,
       "entryPoints": [],
       "externals": 0,
       "files": [
         {
           "exports": [
+            "all_on_gpu",
             "build",
             "converter_python",
+            "critic_control",
+            "critic_window",
             "fetch_model",
             "hf_revision",
             "hf_token_ids",
             "machine_line",
             "main",
             "pin_libs",
+            "reference",
+            "role_set_env",
             "runtime",
             "say",
             "sh",
             "sha256",
             "smoke",
+            "start_server",
+            "stop_server",
+            "tokenize_all",
             "tokenizer_check"
           ],
           "failurePaths": [
             {
               "in": "sh",
               "kind": "raise",
-              "line": 81
+              "line": 82
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 121
+              "line": 122
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 125
+              "line": 126
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 168
+              "line": 169
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 223
+              "line": 229
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 232
-            },
-            {
-              "in": "smoke",
-              "kind": "except",
               "line": 238
             },
             {
               "in": "smoke",
+              "kind": "except",
+              "line": 244
+            },
+            {
+              "in": "smoke",
               "kind": "raise",
-              "line": 241
+              "line": 247
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 307
+              "line": 313
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 344
+              "line": 350
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 393
+              "line": 400
+            },
+            {
+              "in": "start_server",
+              "kind": "raise",
+              "line": 431
+            },
+            {
+              "in": "start_server",
+              "kind": "except",
+              "line": 436
+            },
+            {
+              "in": "start_server",
+              "kind": "raise",
+              "line": 440
+            },
+            {
+              "in": "role_set_env",
+              "kind": "raise",
+              "line": 509
+            },
+            {
+              "in": "critic_window",
+              "kind": "except",
+              "line": 576
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 421
+              "line": 598
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 425
+              "line": 602
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 432
+              "line": 609
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 464
+              "line": 641
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 472
+              "line": 653
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 488
+              "line": 669
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 490
+              "line": 671
             },
             {
               "in": "main",
               "kind": "except",
-              "line": 502
+              "line": 683
             }
           ],
-          "hash": "6cfe767d3d204a4c7b7457f88b80401c997b0910dee227dcaf4f76b2c39113ed",
+          "hash": "40bdfb45afd1ff481f1c2784c2e2c0dd25d688fff7fe3da8e0b4c47c1f839ec1",
           "path": "scripts/colab/pin_window.py"
         },
         {
@@ -377,7 +414,7 @@
           "path": "scripts/colab/pin_window_split.sh"
         },
         {
-          "hash": "0f84c035fa52109037af81a0a09365ef1e964e268ba4bd79d40faec6e06bc5f8",
+          "hash": "a9317a4c8141fe197de8dbfa0fccdf2018a8c72e5bfea7a62b54359df1b01b53",
           "path": "scripts/colab/smoke_window.sh"
         },
         {
@@ -7260,10 +7297,34 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "390e7778e97b866ecca0d7e2e62a98870d8a414f",
-    "tracked": 166
+    "commit": "cd53bc0932bad72fcc4a54cf640d9644027c0f67",
+    "tracked": 167
   },
   "landings": [
+    {
+      "readers": [
+        {
+          "by": "tests/test_assemble.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_harvest_exemplars.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_write.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "CHANGELOG.md",
+      "writers": []
+    },
     {
       "readers": [
         {
@@ -7791,6 +7852,17 @@
         }
       ],
       "target": "tests/fixtures/t12_round3_must_refuse.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/colab/pin_window.py",
+          "call": "literal",
+          "confidence": "weak"
+        }
+      ],
+      "target": "writers.json",
       "writers": []
     }
   ],

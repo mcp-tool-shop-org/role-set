@@ -8,6 +8,14 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **The critic-control window** (`PIN_ROLE=critic` in `scripts/colab/pin_window.py`; R&D, 2026-10-17). On one A100, each critic is handled in turn, and a failed check stops that critic before critic-control. The next one still runs.
+  - **The pin:** Muse and Lightning are reconverted and must reproduce their pins (c321320a…, 5bea2069…).
+  - **The fit:** llama-server's log is read for 'offloaded N/N layers to GPU'.
+  - **Muse's tokenizer:** the pilot's own 20 writer briefs and 20 critic prompts are checked id by id against llama-server's `/tokenize`, and any mismatch blocks.
+  - **Muse's fingerprint:** its replay reference is re-recorded at window 4's request.
+  - **critic-control:** role-set runs at a pinned commit, in a uv Python 3.12 env, at the card values. Muse runs at seeds 0 and 1 with `--agreement-with`, Lightning at seed 0.
+  - `smoke_window.sh` uploads `PIN_UPLOADS` and passes `PIN_ROLE` and `PIN_ROLESET_COMMIT`.
+
 - **The pins from the Colab windows, and the pilot's eight arms** (BUILD-SPEC B6; R&D, 2026-10-17).
   - `llama_server` is pinned: llama.cpp 620d2225, binary b4659b3f…, built with nvcc 13.4.92, its three CUDA libraries hashed.
   - Pinned at Q8_0 with revision, file and sha256: Lightning (reproduced three times), Muse (tokenizer 49/50, with the Devanagari case recorded and accepted for English rows on a brief check), Bolt (NVIDIA's GGUF), Qwen3.8 and Granite (both fit the A100), Qwen3.6 (fit unproven) and R1-Distill (doesn't fit the A100 at 32768). The last two run on an H100 or as labelled Q6_K arms.
