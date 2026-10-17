@@ -111,12 +111,17 @@ def test_the_plan_counts_earlier_skeletons(domain_table: Path, pack_dir: Path, t
     plan1 = _plan(tmp_path, domain_table, "T02", 3)
     run(WriteConfig(plan=plan1, pack=pack_dir, out=tmp_path / "o1", mock=True))
     state_path = tmp_path / "o1" / "mock" / exclusion.FILE
-    # The same lesson and seed again, now against the state: every solve-first slot must re-seed.
+    # The same lesson and seed again, now against the state: no solve-first skeleton repeats an earlier batch's (the
+    # least-used packs come first now, so most differ by pack; a collision would re-seed).
     (tmp_path / "x").mkdir()
     again = _plan(tmp_path / "x", domain_table, "T02", 3, "--exclusion-state", str(state_path))
     plan = json.loads(again.read_text(encoding="utf-8"))
+    earlier = exclusion.load(state_path)
     locked = [s for s in plan["slots"] if s.get("b_path") == "solve_first"]
-    assert locked and all(s["b_reseeds"] >= 1 for s in locked)
+    assert locked and all(s["b_skeleton"] not in earlier.skeletons.get(s["structure"], {}) for s in locked)
+    # And the packs the first batch used are dealt last.
+    first_packs = set(earlier.packs)
+    assert first_packs and not first_packs & {s["pack"] for s in plan["slots"] if s.get("pack")}
     assert plan["exclusion_state_sha256"] == exclusion.load(state_path).sha256
 
 
@@ -146,3 +151,52 @@ def test_only_a_clean_batch_enters_the_state(domain_table: Path, pack_dir: Path,
     assert result["accepted"] > 0 and result["batch_check"] != "clean"
     assert result["exclusion_state"] is None and not (tmp_path / "o" / "mock" / exclusion.FILE).exists()
 
+
+
+def test_pack_uses_count_across_batches(domain_table: Path):
+    """Argon §9.4 #10: a pack is used at most PACK_USES_MAX times across the regeneration, counted through B4's state;
+    the least-used packs are dealt first."""
+
+    from role_set import domains, solvefirst
+    from role_set.plan import Slot, plan_batch
+
+    packs = solvefirst.load_packs()
+    table = domains.load(domain_table)
+    sides = {"T02": ("quotes the source", "stops at the source")}
+    # Every pack but a few is already at the cap: the batch draws only from those left.
+    left = sorted(packs)[:16]
+    prior = {p: solvefirst.PACK_USES_MAX for p in packs if p not in left}
+    slots = plan_batch(sides, seed=5)
+    domains.assign(slots, table, seed=5)
+    solvefirst.assign(slots, packs, seed=5, table=table, prior=prior)
+    assert {s.pack for s in slots if s.kind == "B"} <= set(left)
+    # A pack over the cap with the earlier batches counted is refused.
+    b = next(s for s in slots if s.kind == "B")
+    with pytest.raises(solvefirst.SolveFirstError, match="across the regeneration"):
+        solvefirst.check_pack_uses(slots, {b.pack: solvefirst.PACK_USES_MAX})
+    # The state counts the packs of accepted B slots.
+    s1 = Slot(id="T02-B-01", lesson="T02", kind="B", side="x", tier=1, structure="constraint_grid", pack="clinic-rota")
+    new = exclusion.with_batch(exclusion.State(), "b1", [{"id": "T02-B-01", "kind": "B"}], {}, [s1])
+    assert new.packs == {"clinic-rota": 1}
+    assert exclusion.with_batch(new, "b2", [{"id": "T02-B-01", "kind": "B"}], {}, [s1]).packs == {"clinic-rota": 2}
+
+
+def test_a_skeleton_an_earlier_batch_used_is_reseeded_away_from(domain_table: Path, tmp_path: Path):
+    """R&D on #81: once packs repeat, a plan can meet an earlier batch's skeleton; the plan re-seeds, records it, and
+    nothing repeats the prior. Forced here with a state that holds the first plan's skeletons but no pack counts, so the
+    second plan is dealt the same packs."""
+
+    plan1 = json.loads(_plan(tmp_path, domain_table, "T02", 3).read_text(encoding="utf-8"))
+    locked1 = [s for s in plan1["slots"] if s.get("b_path") == "solve_first"]
+    skeletons: dict = {}
+    for s in locked1:
+        skeletons.setdefault(s["structure"], {})[s["b_skeleton"]] = 1
+    state = tmp_path / "skeletons-only.json"
+    exclusion.save(exclusion.State(batches=["earlier"], skeletons=skeletons), state)
+    (tmp_path / "x").mkdir()
+    plan2 = json.loads(_plan(tmp_path / "x", domain_table, "T02", 3, "--exclusion-state", str(state)).read_text(encoding="utf-8"))
+    locked2 = {s["id"]: s for s in plan2["slots"] if s.get("b_path") == "solve_first"}
+    # Same packs as the first plan, so every slot met its own earlier skeleton and re-seeded.
+    assert all(locked2[s["id"]]["pack"] == s["pack"] for s in locked1)
+    assert all(s["b_reseeds"] >= 1 for s in locked2.values())
+    assert all(s["b_skeleton"] not in skeletons[s["structure"]] for s in locked2.values())

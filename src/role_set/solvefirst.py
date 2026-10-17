@@ -354,12 +354,16 @@ def generate(structure: str, pack: dict, seed: int) -> Locked:
 
 
 # ---- the plan: a pack and a seed for every solve-first B slot ----------------------------------------------------
-def assign(slots: list, packs: dict[str, dict], *, seed: int, table=None) -> None:
+def assign(slots: list, packs: dict[str, dict], *, seed: int, table=None, prior: dict | None = None) -> None:
     """Every B slot gets a pack (distinct within a lesson, dealt evenly across the batch) and a seed; a solve-first
     structure also gets `b_path`. The pack's NAICS code is the slot's domain, titled from the table when one is given.
-    A pack used more than PACK_USES_MAX times across the plan is refused."""
+    A pack is used at most PACK_USES_MAX times across the regeneration: `prior` is B4's {pack: uses} from earlier
+    batches, and the least-used packs are dealt first."""
+
+    from collections import Counter
 
     rng = random.Random(f"packs:{seed}")
+    earlier, dealt = dict(prior or {}), Counter()
     deck: list[str] = []
     titles = {e["code"]: e["title"] for e in table.subsectors} if table is not None else {}
     lessons: list[str] = []
@@ -372,18 +376,22 @@ def assign(slots: list, packs: dict[str, dict], *, seed: int, table=None) -> Non
         taken = {x.domain["code"] for x in slots if x.lesson == lesson and x.kind != "B" and x.domain}
 
         def free(p):
-            return p not in used and packs[p]["naics"] not in taken
+            # Cumulative across batches (Argon §9.4 #10): earlier batches' uses (B4's state) plus this plan's.
+            return p not in used and packs[p]["naics"] not in taken and earlier.get(p, 0) + dealt[p] < PACK_USES_MAX
 
         for s in (x for x in slots if x.lesson == lesson and x.kind == "B"):
             pick = next((p for p in deck if free(p)), None)
             if pick is None:
+                # Least-used packs first, so uses stay level across the whole regeneration.
                 fresh = sorted(packs)
                 rng.shuffle(fresh)
+                fresh.sort(key=lambda p: earlier.get(p, 0) + dealt[p])
                 deck += fresh
                 pick = next((p for p in deck if free(p)), None)
             if pick is None:
                 raise SolveFirstError(f"REFUSED: {lesson} has no free pack left")
             deck.remove(pick)
+            dealt[pick] += 1
             used.add(pick)
             s.pack = pick
             s.b_seed = random.Random(f"bseed:{seed}:{s.id}").randrange(1, 10**9)
@@ -392,7 +400,7 @@ def assign(slots: list, packs: dict[str, dict], *, seed: int, table=None) -> Non
             if table is not None and code not in titles:
                 raise SolveFirstError(f"REFUSED: pack {pick}'s NAICS code {code} is not a subsector in the domain table")
             s.domain = {"code": code, "title": titles.get(code, ""), "pack": pick}
-    check_pack_uses(slots)
+    check_pack_uses(slots, earlier)
 
 
 def skeleton_of(locked: Locked) -> str:
@@ -436,13 +444,14 @@ def lock_skeletons(slots: list, packs: dict[str, dict], *, prior: dict | None = 
     return {k: dict(v) for k, v in seen.items()}
 
 
-def check_pack_uses(slots: list) -> None:
+def check_pack_uses(slots: list, prior: dict | None = None) -> None:
     from collections import Counter
 
     uses = Counter(s.pack for s in slots if getattr(s, "pack", None))
-    over = {p: n for p, n in uses.items() if n > PACK_USES_MAX}
+    over = {p: n + (prior or {}).get(p, 0) for p, n in uses.items() if n + (prior or {}).get(p, 0) > PACK_USES_MAX}
     if over:
-        raise SolveFirstError(f"REFUSED: packs used more than {PACK_USES_MAX} times across the batch: {over}")
+        raise SolveFirstError(f"REFUSED: packs used more than {PACK_USES_MAX} times across the regeneration (earlier "
+                              f"batches plus this one): {over}")
     for lesson in {s.lesson for s in slots}:
         mine = [s.pack for s in slots if s.lesson == lesson and getattr(s, "pack", None)]
         if len(set(mine)) != len(mine):

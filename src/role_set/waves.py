@@ -188,6 +188,9 @@ def preload(runner: Runner, drafts: list[dict]) -> None:
             runner.avoid.append(framing)
     for d in drafts:
         runner.avoid.extend(x for x in d.get("spent") or [] if x not in runner.avoid)
+    # The earlier waves' counts carry over, so the last wave's report is the batch's (Argon §9.4 #8).
+    runner.status.accepted += len(done)
+    runner.status.dropped += sum(1 for d in drafts if d["state"] == "dropped")
 
 
 # ---- the waves ----------------------------------------------------------------------------------------------
@@ -355,6 +358,8 @@ def finish(runner: Runner, wave: str, drafts: list[dict], out_dir: Path) -> str 
             batch_check = f"REFUSED: {e}"
         runner._log("batch_check", result=batch_check, lessons=whole)
     runner.batch_check = batch_check
+    if pending == 0:
+        write_batch(drafts, out_dir)
     counts = Counter(d["state"] for d in drafts)
     report = {
         "wave": wave, "pending": pending, "states": dict(sorted(counts.items())), "batch_check": batch_check,
@@ -364,6 +369,30 @@ def finish(runner: Runner, wave: str, drafts: list[dict], out_dir: Path) -> str 
     }
     (out_dir / "batch-report.json").write_text(json.dumps(report, indent=1), encoding="utf-8")
     return batch_check
+
+
+def write_batch(drafts: list[dict], out_dir: Path) -> None:
+    """The whole batch's data, in the wave that leaves nothing pending (Argon §9.4 #8): every accepted row in the order
+    it was accepted, across all waves, with its receipt and, for a kind B row, its `.models.jsonl` line. These replace
+    the wave's own files, so one folder holds the batch the store ingests."""
+
+    from role_set.runner import models_line  # noqa: PLC0415
+
+    done = sorted((d for d in drafts if d["state"] == "accepted"), key=lambda d: d["accepted_seq"])
+    rows, receipts, models = [], [], []
+    for d in done:
+        line = json.dumps(d["row"], ensure_ascii=False)
+        rows.append(line)
+        if d.get("receipt") is not None:
+            receipts.append(json.dumps(d["receipt"], ensure_ascii=False))
+        if d["slot"]["kind"] == "B" and d.get("model") is not None:
+            models.append(json.dumps(models_line(d["row"]["id"], d["slot"].get("structure"), line, d["model"]), ensure_ascii=False))
+    for name, lines in (("accepted.jsonl", rows), ("receipts.jsonl", receipts), ("accepted.models.jsonl", models)):
+        path = out_dir / name
+        if lines:
+            path.write_text("".join(x + "\n" for x in lines), encoding="utf-8", newline="\n")
+        else:
+            path.unlink(missing_ok=True)
 
 
 # ---- the mock's answers -------------------------------------------------------------------------------------

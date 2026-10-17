@@ -38,10 +38,11 @@ class State:
     skeletons: dict = field(default_factory=dict)  # structure -> {skeleton: uses}
     domains: dict = field(default_factory=dict)  # NAICS code -> uses
     frames: dict = field(default_factory=dict)  # frame -> uses
+    packs: dict = field(default_factory=dict)  # kind B pack id -> uses, so PACK_USES_MAX holds across batches (Argon §9.4 #10)
 
     def body(self) -> dict:
         return {"format": FORMAT, "batches": self.batches, "rows": self.rows, "models": self.models,
-                "skeletons": self.skeletons, "domains": self.domains, "frames": self.frames}
+                "skeletons": self.skeletons, "domains": self.domains, "frames": self.frames, "packs": self.packs}
 
     @property
     def sha256(self) -> str:
@@ -65,14 +66,14 @@ def load(path: Path | None) -> State:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError) as e:
         raise ExclusionError(f"REFUSED: cannot read the exclusion state ({type(e).__name__})") from e
-    body = {k: data.get(k) for k in ("format", "batches", "rows", "models", "skeletons", "domains", "frames")}
+    body = {k: data.get(k) for k in ("format", "batches", "rows", "models", "skeletons", "domains", "frames", "packs")}
     if body["format"] != FORMAT:
         raise ExclusionError(f"REFUSED: {path.name} is not an exclusion state ({FORMAT})")
     if data.get("sha256") != _digest(body):
         raise ExclusionError(f"REFUSED: {path.name}'s sha256 doesn't match its contents; it was edited or damaged")
     return State(batches=list(body["batches"]), rows=list(body["rows"]), models=dict(body["models"]),
                  skeletons={k: dict(v) for k, v in body["skeletons"].items()}, domains=dict(body["domains"]),
-                 frames=dict(body["frames"]))
+                 frames=dict(body["frames"]), packs=dict(body["packs"] or {}))
 
 
 def save(state: State, path: Path) -> str:
@@ -91,7 +92,8 @@ def with_batch(state: State, batch_id: str, rows: list[dict], models: dict, slot
     ids = {r.get("id") for r in rows}
     new = State(batches=[*state.batches, batch_id], rows=[*state.rows, *rows],
                 models={**state.models, **{k: v for k, v in models.items() if k in ids}},
-                skeletons={k: dict(v) for k, v in state.skeletons.items()}, domains=dict(state.domains), frames=dict(state.frames))
+                skeletons={k: dict(v) for k, v in state.skeletons.items()}, domains=dict(state.domains), frames=dict(state.frames),
+                packs=dict(state.packs))
     accepted = ids
     for s in slots:
         if s.id not in accepted:
@@ -103,4 +105,6 @@ def with_batch(state: State, batch_id: str, rows: list[dict], models: dict, slot
             new.domains[s.domain["code"]] = new.domains.get(s.domain["code"], 0) + 1
         if s.frame:
             new.frames[s.frame] = new.frames.get(s.frame, 0) + 1
+        if s.kind == "B" and getattr(s, "pack", None):
+            new.packs[s.pack] = new.packs.get(s.pack, 0) + 1
     return new

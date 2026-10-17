@@ -188,6 +188,15 @@ SUGGESTIONS = {
 }
 
 
+def models_line(row_id: str, structure: str | None, line: str, model: dict) -> dict:
+    """One `.models.jsonl` line, as `puzzle-check --stamp` writes it: the row's id, structure and model, and the
+    sha256 of the row's line exactly as written to the data file."""
+
+    from role_set.puzzle_check import row_sha256  # noqa: PLC0415 - puzzle_check imports the runner's neighbours
+
+    return {"id": row_id, "structure": structure, "model": model, "row_sha256": row_sha256(line)}
+
+
 class RunHalted(RuntimeError):
     """The andon fired. The run stops and reports; the pod is the human's to shut down."""
 
@@ -965,8 +974,14 @@ class Runner:
             locked = self._locked.get(slot.id)
             receipt["b"] = locked.receipt() if locked is not None else {"b_path": slot.b_path or "freehand", "pack": slot.pack}
         self.receipts[slot.id] = receipt
+        line = json.dumps(row, ensure_ascii=False)
         with (self.out_dir / "accepted.jsonl").open("a", encoding="utf-8") as f:
-            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            f.write(line + "\n")
+        if slot.kind == "B" and row.get("id") in self.models:
+            # The gates' sidecar (Argon §9.4 #8): an apply batch's --training reads B models from it, each line's
+            # row_sha256 the stamp of the row exactly as written above.
+            with (self.out_dir / "accepted.models.jsonl").open("a", encoding="utf-8") as f:
+                f.write(json.dumps(models_line(row["id"], slot.structure, line, self.models[row["id"]]), ensure_ascii=False) + "\n")
         with (self.out_dir / "receipts.jsonl").open("a", encoding="utf-8") as f:
             f.write(json.dumps(receipt, ensure_ascii=False) + "\n")
         # One file for the key-check: each accepted row beside the critic checks it passed through (R&D, pilot 2).
