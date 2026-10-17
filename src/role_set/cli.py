@@ -13,6 +13,7 @@ from role_set.critic_control import (
     FALSE_REFUSAL_CAP,
     answer_leg,
     cases_from_rows,
+    run_agreement,
     load_rows,
     plant_errors,
     run_control,
@@ -299,9 +300,12 @@ def _critic_control(args: argparse.Namespace) -> int:
     cases = cases_from_rows(rows)
     planted = plant_errors(cases, args.planted, seed=args.seed)
 
-    report = run_control(gates, critic, cases, planted=planted, log=log.append)
+    report = run_control(gates, critic, cases, planted=planted, log=log.append, seed=args.critic_seed, concurrency=args.concurrency)
     out = {**who, "gates": {"version": gates.version, "sha256": gates.sha256},
            "cap": FALSE_REFUSAL_CAP, "report": report.as_dict(), "missed_plants": log}
+    if args.agreement_with:
+        earlier = json.loads(Path(args.agreement_with).read_text(encoding="utf-8"))
+        out["agreement"] = run_agreement(earlier["report"], out["report"])
     Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
     print(json.dumps({k: v for k, v in out["report"].items() if k not in ("false_refusal_detail", "flaw_misses")}))
     return 0 if out["report"]["usable_as_critic"] else 2
@@ -377,7 +381,10 @@ def build_parser() -> argparse.ArgumentParser:
     cc = sub.add_parser("critic-control", help="the critic's known-answer control on reviewed items plus planted errors; needs a grant")
     cc.add_argument("--items", nargs="+", required=True, help="reviewed aspire-si data files (jsonl)")
     cc.add_argument("--planted", type=int, default=20)
-    cc.add_argument("--seed", type=int, default=0)
+    cc.add_argument("--seed", type=int, default=0, help="the planted-error draw")
+    cc.add_argument("--critic-seed", type=int, default=0, help="the critic's sampling seed; a second run at another seed "
+                                                                "measures run-to-run agreement")
+    cc.add_argument("--agreement-with", default=None, help="an earlier run's output: report how often the verdicts differ, item by item")
     cc.add_argument("--critic-endpoint", required=True, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
     cc.add_argument("--critic-model", required=True, help="a served name from writers.json's critics")
     cc.add_argument("--critic-gguf-sha256", required=True, help="the critic GGUF's sha256, measured by the wave script")
@@ -391,7 +398,7 @@ def build_parser() -> argparse.ArgumentParser:
     cc.add_argument("--trait-leg", action="store_true", help="run only the trait leg: three calls per reviewed item against R&D's bar")
     cc.add_argument("--answer-leg", action="store_true", help="run the kind-B answer leg: closed answers against the reviewed keys, bar 90%%")
     cc.add_argument("--pack", help="the synced role pack (for --trait-leg's trait names)")
-    cc.add_argument("--concurrency", type=int, default=1, help="parallel critic calls for --trait-leg (match OLLAMA_NUM_PARALLEL)")
+    cc.add_argument("--concurrency", type=int, default=1, help="parallel critic calls (match llama-server's --parallel slots)")
     cc.set_defaults(func=_critic_control)
 
     h = sub.add_parser("harvest", help="real excerpts from pinned, licence-checked repos into a local pool")

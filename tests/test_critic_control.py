@@ -2,7 +2,7 @@ import json
 import types
 from pathlib import Path
 
-from role_set.critic_control import Case, cases_from_rows, load_rows, plant_errors, run_control
+from role_set.critic_control import Case, cases_from_rows, load_rows, plant_errors, run_agreement, run_control
 from role_set.gates import Gates
 
 MATERIAL = "Desk hours\nThe desk is open on Sundays from 10:00 to 14:00.\n"
@@ -41,7 +41,7 @@ class _Critic:
         self.noisy = set(noisy)
         self.calls = 0
 
-    def __call__(self, messages):
+    def __call__(self, messages, **_):
         self.calls += 1
         text = messages[-1]["content"]
         system = messages[0]["content"]
@@ -90,10 +90,37 @@ def test_void_answers_are_asked_again_and_counted():
         def __init__(self):
             self.n = 0
 
-        def __call__(self, messages):
+        def __call__(self, messages, **_):
             self.n += 1
             return types.NamespaceType(text="I cannot say.") if False else types.SimpleNamespace(text="I cannot say.")
 
     case = Case("x", "D", MATERIAL, "The desk is open on Sundays.", "supported", ["Desk hours"])
     rep = run_control(_gates(), Void(), [case])
     assert rep.voids == 2 and len(rep.false_refusals) == 1 and rep.false_refusals[0]["code"] == "VOID"
+
+
+def test_runs_record_each_item_at_their_seed_and_agreement_compares_them():
+    """R&D, 2026-10-17: a sampling critic runs twice at different seeds; the per-item verdicts give run-to-run
+    agreement. Concurrency doesn't change the report's order or counts."""
+
+    cases = cases_from_rows(_rows())
+    planted = plant_errors(cases, 2, seed=1)
+    seen = []
+
+    class Seeded(_Critic):
+        def __call__(self, messages, seed=0, **kw):
+            seen.append(seed)
+            return super().__call__(messages)
+
+    a = run_control(_gates(), Seeded(), cases, planted=planted, seed=0).as_dict()
+    b = run_control(_gates(), Seeded(noisy={"The desk opens on Sundays at 10:00."}), cases, planted=planted, seed=1, concurrency=3).as_dict()
+    assert a["seed"] == 0 and b["seed"] == 1
+    assert [r["item"] for r in a["per_item"]] == [r["item"] for r in b["per_item"]] == [c.item_id for c in cases + planted]
+    assert a["per_item"][0]["flaw_ok"] is True and a["per_item"][-1]["planted"] is True
+    agree = run_agreement(a, b)
+    # The noisy statement is T02-E-07's, so its planted copy (same statement) differs too: reported apart.
+    assert agree["unplanted"] == {"items": 3, "differ": 1, "rate": 0.333, "differing": ["T02-E-07"]}
+    planted_differ = [r["item"] for r in a["per_item"] if r["planted"] and r["item"].startswith("T02-E-07")]
+    assert agree["planted"]["items"] == 2 and agree["planted"]["differing"] == planted_differ and agree["seeds"] == [0, 1]
+    # Spaced seeds: run 0 asks at 0..1 (and 500 for a flaw), run 1 at 1000..1001 (and 1500).
+    assert set(seen) <= {0, 1, 500, 1000, 1001, 1500} and {0, 1000} <= set(seen)

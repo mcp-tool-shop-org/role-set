@@ -32,22 +32,22 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 11,
+      "added": 2,
+      "changed": 4,
       "moved": 0,
-      "parts": 4,
+      "parts": 3,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-17; 11 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-17; 2 files added and 4 changed content.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "141a6c70b4746aad4a2e890ce2c1cb867dfbecaf",
-      "generatedAt": "2026-10-17T07:21:13.623Z"
+      "commit": "b9d53c09265bcd3dad8646fe7a68fd4689ee3856",
+      "generatedAt": "2026-10-17T08:16:54.822Z"
     },
     "unchanged": true
   },
@@ -100,7 +100,7 @@
     {
       "a": "src/role_set/cli.py",
       "b": "src/role_set/write.py",
-      "either": 28,
+      "either": 29,
       "partLabels": [
         "src",
         "src"
@@ -110,7 +110,7 @@
         "src"
       ],
       "relation": "inside",
-      "shared": 14
+      "shared": 15
     },
     {
       "a": "src/role_set/generate/recipes.py",
@@ -131,12 +131,12 @@
   "changesTogetherNote": [
     "4 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 10 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 11 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 4,
-  "commit": "b9d53c09265bcd3dad8646fe7a68fd4689ee3856",
+  "commit": "1ac66e85a526db331788638ab33363eb47f3a01d",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (87 files), shell (4), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (89 files), shell (4), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -151,7 +151,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 39
+          "files": 40
         },
         {
           "boundary": "scripts",
@@ -161,7 +161,7 @@
         {
           "boundary": "src",
           "depth": 1,
-          "files": 39
+          "files": 40
         }
       ],
       "runs": [
@@ -224,7 +224,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 33
+          "files": 34
         }
       ],
       "runs": [
@@ -290,10 +290,10 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-17T08:16:54.822Z",
+  "generatedAt": "2026-10-17T10:02:47.691Z",
   "limits": [
     "2 writes and 8 reads use paths built at run time and are not named here.",
-    "11 writes and 41 reads go to a path their caller passes, not to this repository.",
+    "11 writes and 43 reads go to a path their caller passes, not to this repository.",
     "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
     "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -317,16 +317,16 @@
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
     "src/role_set/cli.py",
-    "src/role_set/domains.py",
-    "src/role_set/plan.py"
+    "src/role_set/cards.py",
+    "src/role_set/guards.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 47,
+  "testFiles": 48,
   "testedBy": {
     "scripts": 2,
-    "src": 38
+    "src": 39
   },
   "unnamedWrites": 2,
   "unread": [
