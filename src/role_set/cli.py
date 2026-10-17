@@ -27,7 +27,8 @@ from role_set.guards import (
 from role_set.harvest import harvest
 from role_set.ingest import IngestError, ingest, interview_questions
 from role_set.pack import PackError, sync, verify
-from role_set.plan import PlanError, check_plan, plan_apply_batch, plan_batch
+from role_set.plan import (PILOT_LESSON, PILOT_TWIN_LESSON, PlanError, check_plan, plan_apply_batch, plan_batch, plan_pilot,
+                            plan_pilot_twins)
 from role_set.prompts import load_pack
 from role_set.readout import readout
 from role_set.store import counts, open_store, void_round
@@ -57,11 +58,26 @@ VERIFIER_SIDES = {
     "T11": ("makes acceptances earn their place", "doesn't reject by default"),
     "T12": ("checks the version and the date", "a matching version speaks to the statement"),
     "T15": ("gives the answer and stops", "takes the steps a hard case needs"),
+    # The pilot's apply-twin lesson. Provenance (B9): R&D ruling 2026-10-17, Claude-written prompt text, never a target.
+    # The trait is lesson 4's own opening (trait lessons draft §4, aspire-si 0801513); the counterweight is R&D-ruled,
+    # not quoted from the pack, which states none: its converse, consistent with T11 and T14.
+    "T04": ("says cannot_tell when the material doesn't settle it", "still commits when the material does"),
 }
 
 
 def _plan(args: argparse.Namespace) -> int:
     lessons = {}
+    if args.pilot or args.pilot_twins:
+        # The wave pilot (R&D, 2026-10-17): its own composition, so it takes no --lessons and no --apply, and it needs
+        # the domain table (a real write refuses a plan without domains). Its T04 apply twins are a second batch.
+        if args.apply or args.lessons or not args.domains or (args.pilot and args.pilot_twins):
+            print("REFUSED: --pilot (T02) and --pilot-twins (T04 apply) plan themselves: give --domains, one of the two, "
+                  "and no --lessons or --apply", file=sys.stderr)
+            return 2
+        args.lessons = PILOT_LESSON if args.pilot else PILOT_TWIN_LESSON
+    if not args.lessons:
+        print("REFUSED: --lessons is required (or --pilot)", file=sys.stderr)
+        return 2
     for name in args.lessons.split(","):
         name = name.strip()
         if name not in VERIFIER_SIDES:
@@ -69,7 +85,12 @@ def _plan(args: argparse.Namespace) -> int:
             return 2
         lessons[name] = VERIFIER_SIDES[name]
     try:
-        slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
+        if args.pilot:
+            slots = plan_pilot(lessons, seed=args.seed, solve_first=solvefirst.SOLVE_FIRST)
+        elif args.pilot_twins:
+            slots = plan_pilot_twins(lessons, seed=args.seed)
+        else:
+            slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
         table = None
         if args.domains:
             table = domains.load(Path(args.domains))
@@ -84,8 +105,16 @@ def _plan(args: argparse.Namespace) -> int:
         msg = str(e)
         print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
         return 2
-    figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
+    if args.pilot:
+        # Reported, not enforced: twenty slots can't hold a forty-slot lesson's floors.
+        figures = [_pilot_figures([s for s in slots if s.lesson == PILOT_LESSON])]
+    elif args.pilot_twins:
+        figures = []
+    else:
+        figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
     out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
+    if args.pilot or args.pilot_twins:
+        out["pilot"] = True
     if table is not None:
         out["domain_table"] = table.pin()
         out["exclusion_state_sha256"] = prior.sha256
@@ -94,6 +123,13 @@ def _plan(args: argparse.Namespace) -> int:
         print(json.dumps(f))
     print(f"wrote {len(slots)} slots to {args.out}")
     return 0
+
+
+def _pilot_figures(slots: list) -> dict:
+    try:
+        return {"lesson": PILOT_LESSON, "pilot": True, **check_plan(slots)}
+    except PlanError as e:
+        return {"lesson": PILOT_LESSON, "pilot": True, "floors_not_met": str(e)}
 
 
 def _cost(args: argparse.Namespace) -> int:
@@ -282,7 +318,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("plan", help="fix every slot for a batch; no model call")
     a.add_argument("--role", default="verifier")
-    a.add_argument("--lessons", required=True, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--lessons", default=None, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--pilot", action="store_true", help="the 20-slot wave pilot (T02: A4 B5 C4 D4 E3); its T04 apply twins are "
+                                                        "--pilot-twins; floors reported, not enforced; write needs a trial: partition")
+    a.add_argument("--pilot-twins", action="store_true", help="the pilot's 2 C and 2 D T04 apply twins, a batch of their own, "
+                                                              "written after the pilot with its accepted rows as --training")
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
     a.add_argument("--apply", action="store_true", help="the apply items (aspire-si#127): five C and five D per lesson, never trained")

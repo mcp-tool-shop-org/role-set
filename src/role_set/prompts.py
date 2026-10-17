@@ -11,7 +11,7 @@ import re
 from pathlib import Path
 
 from role_set.frames import FRAMES
-from role_set.assemble import FLAW_VERDICTS, VERDICTS, slot_flaw
+from role_set.assemble import FLAW_VERDICTS, SILENT_NEEDED, VERDICTS, slot_flaw
 from role_set.critic import FLAW_DEFINITIONS
 from role_set.plan import Slot
 from role_set.trait_steps import DEFAULTS_NOTE, trait_step
@@ -257,6 +257,15 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
             lines.append("The material must be silent on the statement: it neither shows it nor rules it out.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
+    # The apply twins (aspire-si#137): assembly requires these fields, and no prompt asked for them, so every such apply
+    # item dropped (found by the pilot's mock run, 2026-10-17).
+    if slot.split == "apply" and slot.lesson in SILENT_NEEDED and slot.verdict != "cannot_tell":
+        lines.append("Add silent_without_deciding: true if removing the deciding lines leaves the material silent on the "
+                     "statement (neither showing it nor ruling it out), false otherwise. Its twin is this item with those "
+                     "lines removed.")
+    if slot.split == "apply" and slot.lesson == "T09":
+        lines.append("Add order_free: true if reversing the order of the material's lines can't change the verdict, false "
+                     "otherwise. Its twin is this item with the lines reversed.")
     if slot.kind == "C":
         # The pilot's writer was never told which flaw the slot plants, so its trace and the assembled verdict disagreed.
         flaw = slot_flaw(slot)

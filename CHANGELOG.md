@@ -27,6 +27,17 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **The wave pilot, from BUILD-SPEC §9.2 and Argon's §9.4 review, findings 7 and 19 (composition ruled by R&D).**
+  - **`role-set plan --pilot`:** 20 T02 slots (A 4; B 5, one per solve-first structure; C 4 and D 4 with one two-turn D and no half of a contrast pair; E 3: 2 written, 1 verdict). The floors are reported, not enforced. A pilot write needs a `trial:` partition, refuses `--exemplar-*` (B7's receipt check isn't needed until batch 2), and never enters the exclusion state.
+  - **`role-set plan --pilot-twins`:** the pilot's 2 C and 2 D decided T04 apply items, a batch of their own, written after the pilot with its accepted rows as `--training`, so the leakage check runs for real (R&D: "the pilot can't stand in for the full run").
+  - **T04's sides** join `VERIFIER_SIDES`: R&D's ruling, Claude-written prompt text; the trait is lesson 4's own opening, the counterweight R&D-ruled.
+  - **Lookup cap 0 for solve-first slots** (finding 7): their generator retries on any lookup, so a lookup there is a defect. Freehand keeps `LOOKUP_CAP`.
+  - **A rewrite wave rebuilds the writer's spent list** from the drafts and the exclusion state (finding 7), as an inline retry sees it.
+- **Apply items can be written.** Found by the pilot's mock run:
+  - no prompt asked for `silent_without_deciding` (T01, T04, T14) or `order_free` (T09), which assembly requires, so every such apply item dropped. Apply briefs now ask for them;
+  - the gates' `check_item` refuses apply rows (never trained), and the runner called it on every row. Gates are pinned to **aspire-si-gates 1.7.5** (aspire-si#165, `39a84a8`), and the runner calls `check_apply_item` for `split: apply` slots.
+- **The mock writer** names any lesson's trait in its warm-up, and sets the twin flag when the brief asks for it.
+
 - **Run guards, from Argon's BUILD-SPEC §9.4 review, findings 1, 2, 6 and 15.**
   - `--no-critic` is refused on partition `production` and in a critique wave: every counted row has its second reader.
   - A critique wave looks up the drafts' writer in `writers.json`. It refuses one that isn't listed and pins that differ (a blank family, a re-pinned GGUF), and it takes the family that bars a same-family critic from the list, never from the header.

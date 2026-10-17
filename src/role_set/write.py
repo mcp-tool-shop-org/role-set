@@ -208,13 +208,22 @@ def build(cfg: WriteConfig, *, now=time.time):
         raise WriteRefused(f"REFUSED: this plan's batch {plan_sha[:16]} is already in the exclusion state; a rerun starts "
                            "from the state before it")
     # The plan was made against one exclusion state; the run checks against the same one (Argon §9.4 #15).
-    planned = json.loads(cfg.plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")
+    plan_data = json.loads(cfg.plan.read_text(encoding="utf-8"))
+    planned = plan_data.get("exclusion_state_sha256")
     if planned and planned != prior.sha256:
         raise WriteRefused(f"REFUSED: the plan was made against exclusion state {planned[:12]}, and --exclusion-state is "
                            f"{prior.sha256[:12]}; pass the state the plan was made from")
     # A batch pin: every wave of the batch checks against the same earlier batches.
     pins["exclusion_state_sha256"] = prior.sha256
     pins["exclusion_batches"] = len(prior.batches)
+    # The wave pilot (R&D, 2026-10-17): trial rows only, no exemplars (B7's receipt check isn't needed until batch 2),
+    # and it never enters the exclusion state.
+    pins["pilot"] = bool(plan_data.get("pilot"))
+    if pins["pilot"]:
+        if cfg.exemplar_repo or cfg.exemplar_commit or cfg.exemplar_files or cfg.exemplar_exclude:
+            raise WriteRefused("REFUSED: a pilot plan runs without exemplars; drop the --exemplar-* arguments")
+        if not cfg.mock and not (cfg.partition or "").startswith("trial:"):
+            raise WriteRefused("REFUSED: a pilot plan writes only to a trial:<name> partition")
     uses_writer = cfg.wave != "critique"
     uses_critic = cfg.wave in ("inline", "critique") and not cfg.no_critic
 
@@ -415,6 +424,8 @@ def _leave_state(cfg: WriteConfig, prior, runner, slots, *, halted) -> str | Non
     # Only a batch whose batch check came back clean enters the state (R&D on #75): a refused batch, or one with
     # halted cells (whose batch check doesn't run), leaves its rows out, so they can't steer later batches.
     if halted or not getattr(runner, "accepted", None) or getattr(runner, "batch_check", None) != "clean":
+        return None
+    if runner.pins.get("pilot"):  # a pilot's rows are trial rows: they never steer a real batch
         return None
     batch_id = runner.pins.get("plan_sha256", "")[:16]
     new = exclusion.with_batch(prior, batch_id, runner.accepted, runner.models, slots)

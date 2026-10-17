@@ -280,3 +280,57 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int) -> list[Slot]:
 def plan_apply_batch(lessons: dict[str, tuple[str, str]], *, seed: int) -> list[Slot]:
     return [s for name, sides in lessons.items() for s in plan_apply(name, sides, seed=seed)]
 
+
+# ---- the wave pilot (BUILD-SPEC §9.2, PLAN.md §7; composition ruled by R&D, 2026-10-17) ----------------------------
+PILOT_LESSON = "T02"
+PILOT_TWIN_LESSON = "T04"  # its apply rule is silent_without_deciding, the twin Argon's review exercised
+PILOT_COUNTS = {"A": 4, "B": 5, "C": 4, "D": 4, "E": 3}
+PILOT_TWINS = {"C": 2, "D": 2}
+
+
+def plan_pilot(sides: dict[str, tuple[str, str]], *, seed: int, solve_first: tuple[str, ...]) -> list[Slot]:
+    """The 20-slot wave pilot, from one full T02 lesson plan: A 4; B 5, one per solve-first structure; C 4 and D 4 (one
+    two-turn D, no half of a contrast pair); E 3 (2 written, 1 verdict). A pilot's lesson floors are reported, not
+    enforced: 20 slots can't hold a 40-slot lesson's shares. Its apply twins are a batch of their own
+    (plan_pilot_twins), written after it with its accepted rows as --training (R&D, 2026-10-17)."""
+
+    full = plan_lesson(PILOT_LESSON, sides[PILOT_LESSON], seed=seed)
+    by_kind = {k: [s for s in full if s.kind == k] for k in KINDS}
+    picked: list[Slot] = by_kind["A"][:PILOT_COUNTS["A"]]
+    b = [s for s in by_kind["B"] if s.structure in solve_first]
+    if len(b) != PILOT_COUNTS["B"]:
+        raise PlanError(f"the pilot needs one B slot per solve-first structure; the lesson plan has {len(b)}")
+    picked += b
+    for kind in ("C", "D"):
+        pool = [s for s in by_kind[kind] if s.pair is None]
+        if kind == "D":
+            two = next((s for s in pool if s.two_turn), None)
+            if two is None:
+                raise PlanError("the pilot needs a two-turn D slot; the lesson plan has none outside a pair")
+            pool = [two] + [s for s in pool if s is not two and not s.two_turn]
+        # Spread the verdicts: one of each first, then the rest in plan order.
+        mix: list[Slot] = []
+        for v in VERDICTS:
+            mix += [s for s in pool if s.verdict == v][:1]
+        mix += [s for s in pool if s not in mix]
+        if kind == "D":
+            mix = [two] + [s for s in mix if s is not two]
+        picked += mix[:PILOT_COUNTS[kind]]
+    e = by_kind["E"]
+    picked += [s for s in e if s.e_type == "written"][:2] + [s for s in e if s.e_type == "verdict"][:1]
+    return picked
+
+
+def plan_pilot_twins(sides: dict[str, tuple[str, str]], *, seed: int) -> list[Slot]:
+    """The pilot's apply twins: 2 C and 2 D decided T04 apply items, whose twin drops the deciding lines. Written after
+    the pilot, with the pilot's own accepted T02 rows as --training, so the leakage check runs for real."""
+
+    twins = [s for s in plan_apply(PILOT_TWIN_LESSON, sides[PILOT_TWIN_LESSON], seed=seed) if s.verdict != "cannot_tell"]
+    picked: list[Slot] = []
+    for kind, n in PILOT_TWINS.items():
+        got = [s for s in twins if s.kind == kind][:n]
+        if len(got) != n:
+            raise PlanError(f"the pilot needs {n} decided {PILOT_TWIN_LESSON} {kind} apply items")
+        picked += got
+    return picked
+

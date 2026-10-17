@@ -24,6 +24,7 @@ def _gates(refuse_ids=(), against=None, role_words=()):
             raise ValueError(f"refused {row['id']}")
 
     m.check_item = check_item
+    m.check_apply_item = check_item  # gates 1.7.5: apply rows have their own check; the fake treats them alike
     m.models_seen = []
 
     def check_against(row, accepted, models=None):
