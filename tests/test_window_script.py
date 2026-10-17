@@ -119,6 +119,15 @@ def test_smoke_window_refuses_pin_stub_on_any_gpu_runtime():
         assert not (tmp / f"st-{gpu}" / "open").exists()
 
 
+def test_a_late_first_exec_that_takes_the_lock_first_runs_the_only_job():
+    # Argon's race: exec #1 arrives after the IDLE read and before the retry's job; the retry must wait, not stop the VM.
+    rig, job, out = _window("latefirstwins", extra={"FAKE_LATE_S": "1.5", "FAKE_SECOND_DELAY_S": "2"})
+    assert rig.count("EXEC NEVER STARTED") == 1, rig
+    assert job.count("mock step 1\n") == 1 and job.count("PIN_RESULT") == 1, job
+    assert "JOB ALREADY RUNNING: this exec waits" in job, job
+    assert (out / "pin-result.json").exists() and "STALL" not in rig, rig
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0
     for name, fn in list(globals().items()):

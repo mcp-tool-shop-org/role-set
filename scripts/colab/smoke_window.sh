@@ -51,6 +51,8 @@ sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 case "${PIN_GPU:-A100}" in A100) GPU_RATE=5.3;; CPU) GPU_RATE=0.08;; *) GPU_RATE="";; esac
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
+# This window's token: the job writes it into pin-result.json, and a second exec stops only on this window's result.
+export PIN_JOB_TOKEN="$S-$T_OPEN"
 flock -u 9; exec 9>&-
 # The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
 # stream: that stream stopped reaching the rig in windows 10d and 12a while the job ran on (mistakes #31). It ends the

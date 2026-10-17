@@ -1,6 +1,7 @@
 """The Colab window script's own rules that run without a VM."""
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -159,7 +160,7 @@ def test_check_pins_refuses_a_missing_or_different_pin_before_any_download():
     listed = {"writers": [{"served_as": "deepseek-r1-distill-qwen-32b",
                            "gguf_sha256": next(m["expect_sha256"] for m in pw.MODELS if m["served_as"] == "deepseek-r1-distill-qwen-32b")}],
               "critics": []}
-    with pytest.raises(RuntimeError, match="no deepseek-r1-distill-qwen-32b-q6k"):
+    with pytest.raises(RuntimeError, match="deepseek-r1-distill-qwen-32b-q6k: MODELS None vs writers.json None"):
         pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
 
 
@@ -455,3 +456,93 @@ def test_the_repo_root_without___file__(monkeypatch):
     assert pw._repo_root() == Path(pw.__file__).resolve().parents[2]
     monkeypatch.delitem(pw.__dict__, "__file__")
     assert pw._repo_root() == pw.CONTENT / "role-set"
+
+
+# ---- Browser Argon's v2 re-review (2026-10-17)
+
+LINUX = pytest.mark.skipif(os.name == "nt", reason="process groups and flock are Linux, where the window runs")
+
+
+@LINUX
+def test_run_proc_timeout_kills_the_shells_children_too():
+    import time as _t
+
+    t0 = _t.time()
+    with pytest.raises(subprocess.TimeoutExpired):
+        pw.run_proc("sleep 30 & sleep 30; wait", shell=True, timeout=1)
+    assert _t.time() - t0 < 20  # the old kill left the children holding the pipes, and the wait never returned
+
+
+@LINUX
+def test_the_job_lock_stops_on_this_windows_result_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("PIN_JOB_TOKEN", "pinw-1")
+    (tmp_path / "pin-result.json").write_text('{"job_token": "pinw-1"}', encoding="utf-8")
+    assert pw.take_job_lock(tmp_path) is None  # this window's result is written: a later exec stops
+    (tmp_path / "pin-result.json").write_text('{"job_token": "another-window"}', encoding="utf-8")
+    fh = pw.take_job_lock(tmp_path)
+    assert fh is not None  # a stale result from another run never makes a real job skip itself
+    fh.close()
+
+
+@LINUX
+def test_a_second_exec_waits_for_the_first_then_stops_or_runs(tmp_path, monkeypatch):
+    import threading
+
+    monkeypatch.setenv("PIN_JOB_TOKEN", "pinw-2")
+    first = pw.take_job_lock(tmp_path)
+    got = {}
+    t = threading.Thread(target=lambda: got.setdefault("second", pw.take_job_lock(tmp_path)))
+    t.start()
+    t.join(1.0)
+    assert t.is_alive()  # the second waits while the first job runs
+    (tmp_path / "pin-result.json").write_text('{"job_token": "pinw-2"}', encoding="utf-8")
+    first.close()
+    t.join(5)
+    assert got["second"] is None  # the first finished this window: the second stops
+    (tmp_path / "pin-result.json").unlink()
+    first = pw.take_job_lock(tmp_path)
+    t = threading.Thread(target=lambda: got.__setitem__("third", pw.take_job_lock(tmp_path)))
+    t.start()
+    first.close()  # the first died without a result for this window
+    t.join(5)
+    assert got["third"] is not None  # so the waiting exec runs the job
+    got["third"].close()
+    log = (tmp_path / "job.log").read_text(encoding="utf-8")
+    assert "JOB ALREADY RUNNING: this exec waits" in log and "JOB ALREADY DONE: the first job finished" in log
+
+
+def test_twins_skip_an_arm_with_a_failed_wave(tmp_path, monkeypatch):
+    monkeypatch.delenv("PIN_PILOT_TWINS", raising=False)
+    (tmp_path / "accepted.jsonl").write_text("{}\n", encoding="utf-8")
+    ok = {"waves": [{"exit": 0}, {"exit": 0}], "last": str(tmp_path)}
+    assert pw.twins_skip_reason(ok) is None
+    assert pw.twins_skip_reason({**ok, "waves": [{"exit": 0}, {"exit": 2}]}) == "a pilot wave exited non-zero"
+    assert "funnel" in pw.twins_skip_reason({**ok, "funnel_stop": "3 of 8"})
+
+
+def test_a_resumed_batch_runs_only_the_arms_it_has_drafts_for(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    A, B, M = "granite-4.2-30b", "nemotron-3.5-bolt-74b-a9b", "muse-glimmer-30b"
+    d = tmp_path / "resume"
+    d.mkdir()
+    (d / f"{A}.jsonl").write_text("{}\n", encoding="utf-8")
+    (d / f"{A}.jsonl.sha256").write_text(f"x  {A}.jsonl\n", encoding="utf-8")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "0")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(d))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [A, B], {A: M, B: M}, pool)
+    assert [e for e in events if e[0] == "critique"] == [("critique", A, M)]  # B has nothing to critique
+    assert "no drafts in PIN_RESUME_DIR" in arms[B]["not_resumed"]
+
+
+def test_check_pins_compares_the_q6k_pin(monkeypatch):
+    listed = {"writers": [{"served_as": "deepseek-r1-distill-qwen-32b",
+                           "gguf_sha256": next(m["expect_sha256"] for m in pw.MODELS if m["served_as"] == "deepseek-r1-distill-qwen-32b")},
+                          {"served_as": "deepseek-r1-distill-qwen-32b-q6k", "gguf_sha256": "6" * 64}], "critics": []}
+    with pytest.raises(RuntimeError, match="deepseek-r1-distill-qwen-32b-q6k: MODELS None"):
+        pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
+    r1 = next(m for m in pw.MODELS if m["served_as"] == "deepseek-r1-distill-qwen-32b")
+    monkeypatch.setitem(r1, "expect_q6k_sha256", "7" * 64)
+    with pytest.raises(RuntimeError, match="MODELS 777777777777 vs writers.json 666666666666"):
+        pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
+    monkeypatch.setitem(r1, "expect_q6k_sha256", "6" * 64)
+    pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})

@@ -43,5 +43,9 @@ case "$cmd" in
       lostfirst:*) "$job";;
       late:1) setsid bash -c "sleep ${FAKE_LATE_S:-4}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
       late:*) "$job";;
+      # latefirstwins: the first exec's job arrives just after the watcher's IDLE read and takes the lock; the retry's
+      # job arrives later, waits for it, and stops on this window's result.
+      latefirstwins:1) setsid bash -c "sleep ${FAKE_LATE_S:-1.5}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
+      latefirstwins:*) sleep "${FAKE_SECOND_DELAY_S:-2}"; "$job";;
     esac;;
 esac

@@ -105,13 +105,26 @@ def _meminfo() -> dict[str, int]:
     return {k: int(mem.get(k, "0 kB").split()[0]) // 1024 for k in ("MemAvailable", "MemTotal")}
 
 
+def _signal_group(proc, sig) -> None:
+    """Signal a child started with start_new_session=True and everything it spawned: under `sh -c`, killing the shell
+    alone leaves its children holding the output pipes, and the wait after the kill never returns (Argon, v2 re-review)."""
+
+    import signal as _signal  # noqa: PLC0415
+
+    try:
+        os.killpg(proc.pid, sig if sig is not None else _signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
 def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None) -> subprocess.CompletedProcess:
     """Run a subprocess, writing a heartbeat line to job.log every HEARTBEAT_S while the subprocess lives (Argon #5).
     Tied to the subprocess wait loop, never a free-running thread, so it stops when the job ends or hangs in Python."""
 
     hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
     head = (cmd if isinstance(cmd, str) else " ".join(str(x) for x in cmd)).strip().splitlines()[0][:80]
-    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env)
+    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+                            start_new_session=True)
     t0 = time.time()
     deadline = t0 + timeout
     next_hb = t0 + hb_s
@@ -125,8 +138,11 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
             except subprocess.TimeoutExpired:
                 now = time.time()
                 if now >= deadline:
-                    proc.kill()
-                    out, err = proc.communicate()
+                    _signal_group(proc, None)
+                    try:
+                        out, err = proc.communicate(timeout=30)
+                    except subprocess.TimeoutExpired:
+                        out, err = "", ""
                     raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=err) from None
                 if proc.poll() is None and now >= next_hb:
                     disk_gb = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
@@ -139,8 +155,11 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
                     next_hb = now + hb_s
     finally:
         if proc.poll() is None:
-            proc.kill()
-            proc.wait()
+            _signal_group(proc, None)
+            try:
+                proc.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                pass
 
 
 def sh(cmd, cwd=None, timeout=3600, env=None) -> str:
@@ -336,7 +355,7 @@ def smoke(built: dict, model: dict) -> dict:
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
                              "--log-verbosity", str(LOAD_LOG_VERBOSITY),
                              "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
-                            stderr=subprocess.STDOUT, text=True, env=env)
+                            stderr=subprocess.STDOUT, text=True, env=env, start_new_session=True)
     # The model's card kwargs (rnd card-values.json, passed whole in PIN_CARDS_JSON), so a thinking model thinks as it will
     # in the pilot. Sampling stays at temperature 0 and seed 0: this reply is the reference record, not a pilot call.
     kwargs = _card_kwargs(model)
@@ -410,7 +429,7 @@ def smoke(built: dict, model: dict) -> dict:
                                    "ok": bool((msg.get("reasoning_content") or "").strip()) and not tags}}
     finally:
         stop.set()
-        proc.terminate()
+        _signal_group(proc, 15)
         proc.wait(timeout=60)
         log_fh.close()
 
@@ -573,7 +592,7 @@ def start_server(built: dict, model: dict, ctx: int, port: int):
     proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
                              "--log-verbosity", str(LOAD_LOG_VERBOSITY),
                              "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
-                            stderr=subprocess.STDOUT, text=True, env=env)
+                            stderr=subprocess.STDOUT, text=True, env=env, start_new_session=True)
     for _ in range(180):
         if proc.poll() is not None:
             log_fh.close()
@@ -584,15 +603,18 @@ def start_server(built: dict, model: dict, ctx: int, port: int):
                     return proc, log_fh, server_log
         except Exception:  # noqa: BLE001 - starting up
             time.sleep(5)
-    proc.terminate()
+    _signal_group(proc, 15)
     log_fh.close()
     raise RuntimeError("llama-server never came up: " + server_log.read_text(encoding="utf-8", errors="replace")[-800:])
 
 
 def stop_server(proc, log_fh) -> None:
-    proc.terminate()
+    _signal_group(proc, 15)
     try:
         proc.wait(timeout=60)
+    except subprocess.TimeoutExpired:
+        _signal_group(proc, None)
+        proc.wait(timeout=30)
     finally:
         log_fh.close()
 
@@ -1279,6 +1301,10 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
         if n in arms:
             arms[n]["drafts"] = f
             arms[n]["resumed_after_wave"] = start - 1
+    if start > 0:
+        for n, a in arms.items():  # listed in PIN_PILOT_WRITERS but no drafts to resume: it can't run wave `start`
+            if n not in resumed:
+                a["done"], a["not_resumed"] = True, f"no drafts in PIN_RESUME_DIR for wave {start}"
     for i in range(start, PILOT_WAVES):
         kind = "write" if i == 0 else ("critique" if i % 2 else "rewrite")
         todo = [n for n, a in arms.items() if not a["done"]]
@@ -1399,10 +1425,28 @@ def check_pins(names: list, listed: dict, policies: dict) -> None:
         mine, theirs = (by_name.get(n) or {}).get("expect_sha256"), listed_pins.get(n)
         if not mine or mine != theirs:
             bad.append(f"{n}: MODELS {str(mine)[:12]} vs writers.json {str(theirs)[:12]}")
-        if policies.get(n) in ("q6k", "q8_or_q6k") and f"{n}-q6k" not in listed_pins:
-            bad.append(f"{n}: policy {policies[n]} but writers.json has no {n}-q6k")
+        if policies.get(n) in ("q6k", "q8_or_q6k"):
+            mine6, theirs6 = (by_name.get(n) or {}).get("expect_q6k_sha256"), listed_pins.get(f"{n}-q6k")
+            if not mine6 or mine6 != theirs6:
+                bad.append(f"{n}-q6k: MODELS {str(mine6)[:12]} vs writers.json {str(theirs6)[:12]}")
     if bad:
         raise RuntimeError("pins don't agree, nothing downloaded: " + "; ".join(bad))
+
+
+def twins_skip_reason(a: dict) -> str | None:
+    """Why an arm gets no twins, or None when it does. The same arms _needed_models keeps a writer for, so a twin batch
+    never asks for a writer the pool has deleted (Argon, v2 re-review)."""
+
+    if a.get("funnel_stop"):
+        return f"stopped by the funnel: {a['funnel_stop']}"
+    if not twins_enabled():
+        return "PIN_PILOT_TWINS=0: twins wait for the arms that go on"
+    if any(w.get("exit") for w in a.get("waves") or []):
+        return "a pilot wave exited non-zero"
+    accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
+    if not (accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip()):
+        return "the pilot accepted no rows to train the twins against"
+    return None
 
 
 def screen_plan(plan: Path, var: str) -> list[str] | None:
@@ -1482,17 +1526,14 @@ def pilot_window(built: dict, result: dict) -> None:
         result["pilot_seconds"] = round(time.time() - t0)
         twins_writers = {}
         for n, a in pilot.items():
-            accepted = a.get("last") and Path(a["last"]) / "accepted.jsonl"
             result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
             if a.get("funnel_stop"):
                 result["arms"][n]["funnel_stop"] = a["funnel_stop"]
-                result["arms"][n]["twins"] = {"skipped": f"stopped by the funnel: {a['funnel_stop']}"}
-            elif not twins_enabled():
-                result["arms"][n]["twins"] = {"skipped": "PIN_PILOT_TWINS=0: twins wait for the arms that go on"}
-            elif accepted and accepted.exists() and accepted.read_text(encoding="utf-8").strip():
-                twins_writers[n] = True
+            why = twins_skip_reason(a)
+            if why:
+                result["arms"][n]["twins"] = {"skipped": why}
             else:
-                result["arms"][n]["twins"] = {"skipped": "the pilot accepted no rows to train the twins against"}
+                twins_writers[n] = True
         t1 = time.time()
         twins_list = list(twins_writers)
         for idx, n in enumerate(twins_list):  # each arm's twins train against its own accepted rows, so one arm at a time here
@@ -1565,31 +1606,52 @@ def runtime() -> dict:
             "cuda_toolkit": CUDA_TOOLKIT}
 
 
-_JOB_LOCK = None  # held for the kernel's life: a second exec in the same kernel finds it taken
-
-
 def take_job_lock(work: Path):
-    """One job per VM (R&D, 2026-10-17): the window re-runs an exec that never reached the kernel, and a late first exec
-    could still arrive. The job takes an exclusive, non-blocking lock on <work>/job.lock first; a second job finds it held,
-    writes JOB ALREADY RUNNING to job.log and stops. flock belongs to the open file, so this holds within one kernel
-    process too. Returns the open lock file, or None when another job holds it."""
+    """One job per VM, per window (R&D, 2026-10-17; fixed after Browser Argon's v2 re-review).
+
+    The window re-runs an exec that never reached the kernel, so a late first exec can still arrive. The job takes an
+    exclusive flock on <work>/job.lock for its own life and releases it when it ends (main's finally). A second job:
+    - finds this window's result already written (pin-result.json carrying this window's PIN_JOB_TOKEN): it stops;
+    - finds the lock held: it waits for the first job to end, then stops if that job wrote this window's result, or runs
+      if it didn't (the first died without one).
+    A pin-result.json from another run, with another token, never makes a real job skip itself. The lock used to live in a
+    module global held for the kernel's life; `colab exec -f` re-runs the whole file in the kernel's globals, which
+    rebound it to None and released the lock (Argon). Returns the open lock file, or None when this job must stop."""
 
     import fcntl  # noqa: PLC0415 - Linux, where the window runs
 
     work.mkdir(parents=True, exist_ok=True)
+
+    def done_here() -> bool:
+        token = os.environ.get("PIN_JOB_TOKEN")
+        try:
+            return bool(token) and json.loads((work / "pin-result.json").read_text(encoding="utf-8")).get("job_token") == token
+        except (OSError, ValueError):
+            return False
+
+    def note(text: str) -> None:
+        with (work / "job.log").open("a", encoding="utf-8") as f:
+            f.write(f"{text} {time.strftime('%H:%M:%S')}\n")
+
+    if done_here():
+        note("JOB ALREADY DONE: this window's result is written; this exec stops")
+        return None
     fh = (work / "job.lock").open("w")
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
-        fh.close()
-        with (work / "job.log").open("a", encoding="utf-8") as f:
-            f.write(f"JOB ALREADY RUNNING {time.strftime('%H:%M:%S')}: this exec stops; the first job carries on\n")
-        return None
+        note("JOB ALREADY RUNNING: this exec waits for it")
+        fcntl.flock(fh, fcntl.LOCK_EX)  # until the first job ends
+        if done_here():
+            fh.close()
+            note("JOB ALREADY DONE: the first job finished this window; this exec stops")
+            return None
+        note("JOB ALREADY RUNNING ended with no result for this window: this exec runs the job")
     return fh
 
 
 def main() -> int:
-    global CONTENT, WORK, JOB_LOG, BRIEFS, RESUME_TAR, _JOB_LOCK
+    global CONTENT, WORK, JOB_LOG, BRIEFS, RESUME_TAR
     if "PIN_CONTENT" in os.environ:
         CONTENT = Path(os.environ["PIN_CONTENT"])
         BRIEFS, RESUME_TAR = CONTENT / "brief-strings.json", CONTENT / "resume.tar"
@@ -1600,7 +1662,6 @@ def main() -> int:
     lock = take_job_lock(WORK)
     if lock is None:
         return 0
-    _JOB_LOCK = lock
     out, err = sys.stdout, sys.stderr
     sys.stdout = Tee(out, JOB_LOG)
     sys.stderr = Tee(err, JOB_LOG)
@@ -1608,10 +1669,11 @@ def main() -> int:
         return _main()
     finally:
         sys.stdout, sys.stderr = out, err
+        lock.close()  # the job's own life: a later exec in this kernel waits on it, then reads this window's result
 
 
 def _main() -> int:
-    result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+    result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "job_token": os.environ.get("PIN_JOB_TOKEN")}
     if stub_mode():
         result["stub"] = True
         say("STUB MODE (PIN_STUB=1): mock writer and critic on StubLlama; NOT A REAL RUN")
