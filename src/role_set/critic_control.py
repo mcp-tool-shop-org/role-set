@@ -137,14 +137,15 @@ def _ask(gates: Gates, critic, case: Case, seed: int) -> dict:
     out: dict = {"voids": 0, "flaw": None}
     v = None
     for ask in range(2):
-        c = critic(verdict_messages(case.material, case.statement), seed=seed + ask)
+        # Each run's seeds are spaced apart, so run 0's re-ask never shares run 1's first seed (R&D on #85).
+        c = critic(verdict_messages(case.material, case.statement), seed=seed * 1000 + ask)
         v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material)
         if v.code != "VOID":
             break
         out["voids"] += 1
     out["v"] = v
     if not case.planted and case.kind == "C" and case.flaw and case.checker_trace and case.checker_verdict:
-        c = critic(flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict), seed=seed)
+        c = critic(flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict), seed=seed * 1000 + 500)
         out["flaw"] = compare_flaw(c.text, case.flaw)
     return out
 
@@ -191,14 +192,19 @@ def run_control(gates: Gates, critic, cases: list[Case], *, planted: list[Case] 
 
 
 def run_agreement(a: dict, b: dict) -> dict:
-    """Two runs' per-item lists: how often the critic's verdict differs between them, item by item."""
+    """Two runs' per-item lists: how often the critic's verdict differs between them, item by item, with the unplanted
+    items (where R&D's bar sits) and the planted ones reported apart."""
 
     left = {r["item"]: r for r in a["per_item"]}
     right = {r["item"]: r for r in b["per_item"]}
     shared = sorted(set(left) & set(right))
-    differ = [i for i in shared if left[i]["critic_verdict"] != right[i]["critic_verdict"]]
-    return {"items": len(shared), "differ": len(differ), "rate": round(len(differ) / len(shared), 3) if shared else None,
-            "differing": differ, "seeds": [a.get("seed"), b.get("seed")]}
+
+    def part(ids):
+        differ = [i for i in ids if left[i]["critic_verdict"] != right[i]["critic_verdict"]]
+        return {"items": len(ids), "differ": len(differ), "rate": round(len(differ) / len(ids), 3) if ids else None, "differing": differ}
+
+    return {"unplanted": part([i for i in shared if not left[i]["planted"]]), "planted": part([i for i in shared if left[i]["planted"]]),
+            "seeds": [a.get("seed"), b.get("seed")]}
 
 
 def load_rows(paths: list[Path]) -> list[dict]:

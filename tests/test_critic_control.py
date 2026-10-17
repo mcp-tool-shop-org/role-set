@@ -114,10 +114,13 @@ def test_runs_record_each_item_at_their_seed_and_agreement_compares_them():
 
     a = run_control(_gates(), Seeded(), cases, planted=planted, seed=0).as_dict()
     b = run_control(_gates(), Seeded(noisy={"The desk opens on Sundays at 10:00."}), cases, planted=planted, seed=1, concurrency=3).as_dict()
-    assert {0, 1} <= set(seen) and a["seed"] == 0 and b["seed"] == 1
+    assert a["seed"] == 0 and b["seed"] == 1
     assert [r["item"] for r in a["per_item"]] == [r["item"] for r in b["per_item"]] == [c.item_id for c in cases + planted]
     assert a["per_item"][0]["flaw_ok"] is True and a["per_item"][-1]["planted"] is True
     agree = run_agreement(a, b)
-    # The noisy statement is T02-E-07's, so its planted copy (same statement) differs too.
-    expect = [i for i in (r["item"] for r in a["per_item"]) if i.startswith("T02-E-07")]
-    assert agree["items"] == 5 and agree["differing"] == sorted(expect) and agree["differ"] == len(expect) and agree["seeds"] == [0, 1]
+    # The noisy statement is T02-E-07's, so its planted copy (same statement) differs too: reported apart.
+    assert agree["unplanted"] == {"items": 3, "differ": 1, "rate": 0.333, "differing": ["T02-E-07"]}
+    planted_differ = [r["item"] for r in a["per_item"] if r["planted"] and r["item"].startswith("T02-E-07")]
+    assert agree["planted"]["items"] == 2 and agree["planted"]["differing"] == planted_differ and agree["seeds"] == [0, 1]
+    # Spaced seeds: run 0 asks at 0..1 (and 500 for a flaw), run 1 at 1000..1001 (and 1500).
+    assert set(seen) <= {0, 1, 500, 1000, 1001, 1500} and {0, 1000} <= set(seen)
