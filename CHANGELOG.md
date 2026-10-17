@@ -27,6 +27,12 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **Run guards, from Argon's BUILD-SPEC §9.4 review, findings 1, 2, 6 and 15.**
+  - `--no-critic` is refused on partition `production` and in a critique wave: every counted row has its second reader.
+  - A critique wave looks up the drafts' writer in `writers.json`. It refuses one that isn't listed and pins that differ (a blank family, a re-pinned GGUF), and it takes the family that bars a same-family critic from the list, never from the header.
+  - A critique or rewrite wave refuses drafts whose slots don't match the plan's, in order: a truncated, reordered or padded file is refused even when resealed.
+  - A run refuses an `--exclusion-state` other than the one its plan was made against. The plan records `exclusion_state_sha256`, and a batch is replanned against the state it runs with.
+
 - **`tree_with_pruning` draws order and neighbour facts** (`before`, `after`, `adjacent`, `not_adjacent`), from Argon's BUILD-SPEC §9.4 review, finding 9. Before/after alone folded to 3 distinct gate skeletons in 84 seeds, too few for the cumulative skeleton floor across the regeneration. It now gives 70 of 84, at most 5 tries (it was 100 or more). No fact of any form names both claim entities. Only 1 of the 70 matches a `scheduling_with_exclusions` skeleton. Every count uses `puzzle_check.skeleton`, the gates' function. #73's 36 of 84 came from an earlier generator state and can't be reproduced on main. A new test runs the floor over 11 batches with the counts carried forward (about 22 uses per structure, B4's cumulative count).
 - **Text checks tightened, from Argon's BUILD-SPEC §9.4 review, findings 11–13.**
   - **Solve-first puzzles are checked strictly** (`check_puzzle(..., strict=True)` when the model is locked):
