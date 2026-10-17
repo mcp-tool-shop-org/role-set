@@ -29,6 +29,11 @@ All notable changes to role-set are documented here. The format is based on
   - The twins train against each arm's own accepted rows.
   - Readouts and a `pilot-out.tar` of every wave come back. `PIN_DOWNLOADS` names what the window fetches.
   - Dry-run end to end against role-set's mock.
+  - **The dataminer** (R&D, 2026-10-17; Mike's standing ask): rnd's logging proxy, installed at a pinned commit, sits between role-set and llama-server on every wave.
+    - Each model gets a one-candidate config from its card. The values are unchanged; only `reattach_thinking`, J2's multi-turn transform, is removed.
+    - It records every call in abmine's format, with top-5 logprobs, reasoning, timings and truncation, beside each wave.
+    - Each wave's result carries the file's sha256 and its summary: calls, truncations, thinking and output tokens, wall time.
+    - Checked locally: role-set's transport → proxy → a stub server.
 - **The cap counts a window's own spend:** the account's usage rate after its session opens, less the rate before, times its own runtime. The account balance counted a neighbour's spend too, and window 8 was cut off that way. Qwen3.6's Q6_K must reproduce window 8's 61deb1f7….
 - **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
 - **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.

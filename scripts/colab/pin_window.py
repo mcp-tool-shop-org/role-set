@@ -711,21 +711,76 @@ class Served:
         stop_server(self.proc, self.log_fh)
 
 
+def install_rnd(commit: str) -> dict:
+    """rnd at a pinned commit, for its logging proxy (stdlib only), into this interpreter."""
+
+    sh(f"{sys.executable} -m pip install -q 'mcptoolshop-rnd @ git+https://github.com/mcp-tool-shop-org/rnd@{commit}'", timeout=900)
+    from importlib.metadata import version  # noqa: PLC0415
+
+    return {"commit": commit, "version": version("mcptoolshop-rnd")}
+
+
+def j1_card(model: dict, cards_path: Path, out_dir: Path) -> tuple[Path, str, dict]:
+    """The model's card-values entry as a one-candidate file for the proxy, values unchanged. reattach_thinking is
+    J2's multi-turn transform and doesn't apply in J1 (R&D, 2026-10-17), so it is the one thing removed."""
+
+    cid = model.get("card") or model["served_as"]
+    entry = next(c for c in json.loads(cards_path.read_text(encoding="utf-8"))["candidates"] if c["candidate"] == cid)
+    j1 = {**entry, "transforms": [x for x in entry.get("transforms") or [] if x != "reattach_thinking"]}
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"{cid}.json"
+    path.write_text(json.dumps({"candidates": [j1]}, ensure_ascii=False, indent=1), encoding="utf-8")
+    return path, cid, {"candidate": cid, "removed": sorted(set(entry.get("transforms") or []) - set(j1["transforms"])),
+                       "sha256": sha256(path)}
+
+
+def generations_summary(path: Path) -> dict:
+    """What the dataminer saw in one wave: calls, truncations, thinking and output tokens, call wall time."""
+
+    rows = [json.loads(x) for x in path.read_text(encoding="utf-8").splitlines() if x.strip()] if path.exists() else []
+    res = [r for r in rows if r.get("kind") == "result"]
+    return {"calls": len(res), "refused": sum(1 for r in rows if r.get("kind") != "result"),
+            "truncated": sum(1 for r in res if r.get("truncated")),
+            "thinking_tokens": sum(r.get("thinking_tokens") or 0 for r in res),
+            "output_tokens": sum(r.get("output_tokens") or 0 for r in res),
+            "wall_s": round(sum(r.get("wall_time_s") or 0 for r in res), 1),
+            "sha256": sha256(path) if path.exists() else None}
+
+
 def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | None = None, critic: dict | None = None,
-               drafts: Path | None = None, extra: list | None = None) -> dict:
+               drafts: Path | None = None, extra: list | None = None, proxy: dict | None = None) -> dict:
+    """One role-set wave. With `proxy` ({config, candidate}), rnd's logging proxy sits between role-set and llama-server
+    and writes this wave's generation records beside the wave directory."""
+
+    gen = out.parent / f"generations-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
+    px = None
+    endpoint = f"http://127.0.0.1:{PILOT_PORT}/v1"
+    if proxy is not None:
+        from mcptoolshop_rnd.localbuilders.proxy import LoggingProxyServer, ProxyState  # noqa: PLC0415
+
+        state = ProxyState(upstream_url=f"http://127.0.0.1:{PILOT_PORT}", config=proxy["config"], candidate=proxy["candidate"],
+                           # J1 has no per-task caps. The wall is also the proxy's upstream timeout, so it stays a
+                           # finite 24 h (10**9 s overflows a C timeval).
+                           generations_path=gen, max_calls=10**6, wall_limit_s=86400)
+        px = LoggingProxyServer(state).start()
+        endpoint = px.openai_base_url
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
     if writer is not None:
-        cmd += ["--endpoint", f"http://127.0.0.1:{PILOT_PORT}/v1", "--model", writer["served_as"],
-                "--writer-gguf-sha256", writer["gguf_sha256"]]
+        cmd += ["--endpoint", endpoint, "--model", writer["served_as"], "--writer-gguf-sha256", writer["gguf_sha256"]]
     if critic is not None:
-        cmd += ["--critic-endpoint", f"http://127.0.0.1:{PILOT_PORT}/v1", "--critic-model", critic["served_as"],
-                "--critic-gguf-sha256", critic["gguf_sha256"]]
+        cmd += ["--critic-endpoint", endpoint, "--critic-model", critic["served_as"], "--critic-gguf-sha256", critic["gguf_sha256"]]
     if drafts is not None:
         cmd += ["--drafts", str(drafts)]
     cmd += extra or []
     t0 = time.time()
-    run = subprocess.run(cmd, capture_output=True, text=True, timeout=6 * 3600, cwd=rs["src"])
+    try:
+        run = subprocess.run(cmd, capture_output=True, text=True, timeout=6 * 3600, cwd=rs["src"])
+    finally:
+        if px is not None:
+            px.close()
     got = {"wave": wave, "out": str(out), "exit": run.returncode, "seconds": round(time.time() - t0), "stderr": run.stderr[-1500:]}
+    if proxy is not None:
+        got["generations"] = {"path": str(gen), **generations_summary(gen)}
     try:
         got["result"] = json.loads(run.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
@@ -747,7 +802,8 @@ def pending(wave: dict) -> bool:
     return bool(states.get("awaiting_critique") or states.get("needs_rewrite"))
 
 
-def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict, critic_srv, writer_srv, extra=None) -> dict:
+def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict, critic_srv, writer_srv, extra=None,
+                proxies: dict | None = None) -> dict:
     """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critic: all write waves,
     the critic once for all, then all rewrites, and so on. Returns each arm's waves and its last directory."""
 
@@ -761,7 +817,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
             with critic_srv:
                 for n in todo:
                     w = write_wave(rs, common + ["--plan", str(plan)], "critique", base / n / f"w{i}", critic=critic,
-                                   drafts=arms[n]["drafts"], extra=extra)
+                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(critic.get("served_as")))
                     arms[n]["waves"].append(w)
                     arms[n]["last"] = run_dir(base / n / f"w{i}")
                     arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
@@ -770,7 +826,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
             for n in todo:
                 with writer_srv[n]:
                     w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=writers[n],
-                                   drafts=arms[n]["drafts"], extra=extra)
+                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(n))
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
                 arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
@@ -784,6 +840,7 @@ def pilot_window(built: dict, result: dict) -> None:
     a time, swapped by restart; every start re-checks the GGUF's sha256, the offload and the slots."""
 
     rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
     writer_names = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
     critic_name = os.environ["PIN_PILOT_CRITIC"]
     by_name = {m["served_as"]: m for m in MODELS}
@@ -801,7 +858,10 @@ def pilot_window(built: dict, result: dict) -> None:
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
     sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
-    result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan)}
+    result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
+                       # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
+                       # state, so the shas agree by construction (write refuses a mismatch).
+                       "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
     models: dict = {}
     for name in [critic_name, *writer_names]:
@@ -815,11 +875,16 @@ def pilot_window(built: dict, result: dict) -> None:
     critic_srv = Served(built, critic, critic["gguf_sha256"])
     writers = {n: models[n] for n in writer_names}
     writer_srv = {n: Served(built, models[n], models[n]["gguf_sha256"]) for n in writer_names}
+    proxies, result["proxy_configs"] = {}, {}
+    for name, m in models.items():
+        path, cid, info = j1_card(m, Path("/content/card-values.json"), WORK / "cards-j1")
+        proxies[name] = {"config": str(path), "candidate": cid}
+        result["proxy_configs"][name] = info
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", "/content/card-values.json",
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
 
     t0 = time.time()
-    pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv)
+    pilot = pilot_batch(rs, common, plan, base / "pilot", writers, critic, critic_srv, writer_srv, proxies=proxies)
     result["pilot_seconds"] = round(time.time() - t0)
     result["arms"] = {}
     twins_writers = {}
@@ -834,7 +899,7 @@ def pilot_window(built: dict, result: dict) -> None:
     for n in twins_writers:  # each arm's twins train against its own accepted rows, so one arm at a time here
         accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
         tw = pilot_batch(rs, common, twins_plan, base / "twins", {n: twins_writers[n]}, critic, critic_srv,
-                         {n: writer_srv[n]}, extra=["--training", str(accepted)])
+                         {n: writer_srv[n]}, extra=["--training", str(accepted)], proxies=proxies)
         result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
     result["twins_seconds"] = round(time.time() - t1)
     for n in writer_names:
