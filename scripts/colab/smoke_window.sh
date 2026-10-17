@@ -22,6 +22,9 @@ stop_all() {
 }
 trap stop_all EXIT
 rate() { colab usage 2>&1 | grep -oP 'rate: \K[0-9.]+'; }
+# Windows on this rig open one at a time: the rate read before, the open and the rate read after hold one lock, so a
+# neighbour opening in between can't land in this window's rate (windows 11a and 11b each counted both sessions).
+exec 9>/tmp/colab-window-open.lock; flock 9
 START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
 timeout 300 colab new --gpu "${PIN_GPU:-A100}" -s "$S" 2>&1 | tail -2 || { echo "no A100 assigned"; exit 2; }
@@ -30,6 +33,7 @@ sleep 15; colab usage 2>&1 | grep -E "rate|assign"
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
+flock -u 9
 # The watcher also ends the exec when Colab has dropped the session: window 10b's VM vanished mid-download and the exec
 # would have waited out its wall time on nothing.
 ( while sleep 120; do
