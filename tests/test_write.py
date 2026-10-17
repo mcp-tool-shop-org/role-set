@@ -236,3 +236,17 @@ def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_fil
     monkeypatch.setattr(w, "Runner", Stub)
     result = run(cfg)
     assert seen["out_dir"].name == "rehearsal" and result["rehearsal"] is True
+
+
+def test_no_critic_never_runs_on_production(tmp_path: Path, monkeypatch):
+    """Argon §9.4 #1: every counted row has its second reader."""
+
+    from role_set.guards import GuardError
+
+    cfg = WriteConfig(plan=tmp_path / "p.json", pack=tmp_path, out=tmp_path / "o", no_critic=True, partition="production")
+    # The guard sits right after the partition is read; it refuses before any model is resolved.
+    import role_set.write as w
+
+    with pytest.raises((WriteRefused, GuardError), match="--no-critic never runs on partition production"):
+        w._require_critic_policy(cfg, "production")
+    w._require_critic_policy(WriteConfig(plan=tmp_path, pack=tmp_path, out=tmp_path, no_critic=True), "trial:x")
