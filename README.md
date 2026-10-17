@@ -68,7 +68,7 @@ Kind B puzzles used to be written freehand and then checked. Now code builds the
 | `readout` | Reports one run per lesson and kind, passing or failing, from the directory that holds `batch-report.json`. |
 | `critic-control` | Measures a critic on reviewed items, on its llama-server. Needs the critic's GGUF and server hashes and the machine line, plus a grant and a heartbeat file off a rented host. `--trait-leg` and `--answer-leg` run those legs. |
 | `ingest` / `store` | Records receipts into the store, with the firewall at the door. `store status` reports counts. `store void` appends a void. |
-| `pilot-auto` | The 2026-10-11 pilots' paid launcher. Its script names the pilots' Qwen and Gemma pins, which are off the proven list, so `write` refuses it. |
+| `pilot-auto` | The 2026-10-11 pilots' paid launcher. Its script names the pilots' Qwen and Gemma pins, which aren't on `writers.json`, so `write` refuses it. |
 | `puzzle-check` | Runs the kind B solver over data files and their `.models.jsonl` sidecars, and refuses a repeated fact skeleton. |
 
 ```text
@@ -108,9 +108,9 @@ Every accepted receipt carries the plan hash and the pack hash. When the run use
 
 ## Models
 
-`writers.json` is the proven list. A model is on it only when its maker's own documentation allows training on its outputs, and each entry carries that proof: the page's URL, the clause quoted, the date it was read, and its `registry_id` in rnd's licence registry (`licences/registry.json`). An entry without its proof is refused when the list loads. A name not on the list is refused, and so is a name containing `cloud`.
+`writers.json` is the writer list. A use is allowed unless a clause in the maker's licence or terms restricts it; silence is not a restriction. Each entry records the terms search: the page's URL, the date it was read, who read it, its `registry_id` in rnd's licence registry (`licences/registry.json`), and its training verdict (`allowed`, `conditions` or `barred`). An entry without that record, or whose verdict is `barred`, is refused when the list loads. A name not on the list is refused, and so is a name containing `cloud`.
 
-The writers are Nemotron 3 Ultra 550B, DeepSeek-R1-0528, Nemotron 3.5 Super 120B, Nemotron 3.5 Bolt 74B (NVIDIA's own 24GB quantization-aware build), Muse-Glimmer-30B and Nemotron 3.5 Lightning 30B. The critics are Muse-Glimmer-30B and Nemotron 3.5 Lightning. A critic of the writer's own family is refused. The Qwen, Gemma and Granite entries the 2026-10-11 pilots used are gone: their licences are silent on outputs, which isn't proof.
+The writers are Nemotron 3 Ultra 550B, DeepSeek-R1-0528, Nemotron 3.5 Super 120B, Nemotron 3.5 Bolt 74B (NVIDIA's own 24GB quantization-aware build), Muse-Glimmer-30B and Nemotron 3.5 Lightning 30B. The critics are Muse-Glimmer-30B and Nemotron 3.5 Lightning. A critic of the writer's own family is refused. The Qwen, Gemma and Granite models the 2026-10-11 pilots used aren't listed now. Their Apache-2.0 licences don't restrict outputs, so they're eligible again; adding one waits for the writer pick.
 
 Models are served by llama.cpp's `llama-server`, built with CUDA 13.4, at Q8_0. A listed model is refused until it's pinned: its repo revision, GGUF file and the file's sha256. The wave script hashes the GGUF and the `llama-server` binary before launch, and the run refuses any drift from the list. Every receipt records the partition (`production` or `trial:<name>`), both models' family, revision and GGUF hash, the server's commit and hash, and the CUDA machine line.
 

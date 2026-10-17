@@ -14,8 +14,8 @@ SHA_S = "5" * 64
 def entry(name: str, family: str, sha: str | None = None, **extra) -> dict:
     return {"served_as": name, "family": family, "repo": f"maker/{name}", "revision": "r1" if sha else None,
             "gguf_file": f"{name}-Q8_0.gguf" if sha else None, "gguf_sha256": sha, "quant": "Q8_0", "licence": "OpenMDW-1.1",
-            "proof_url": f"https://huggingface.co/maker/{name}", "proof_clause": "\"any use ... of any outputs\"",
-            "proof_date": "2026-10-16", "checked_by": "R&D, 2026-10-16", "registry_id": "openmdw-1.1", **extra}
+            "terms_url": f"https://huggingface.co/maker/{name}", "terms_date": "2026-10-16", "checked_by": "R&D, 2026-10-16",
+            "registry_id": "openmdw-1.1", "training": "allowed", **extra}
 
 
 def proven_file(tmp_path: Path, *, writers=None, critics=None, server=None) -> Path:
@@ -35,19 +35,19 @@ def test_the_list_loads_with_every_proof_and_hashes_itself(tmp_path: Path):
     assert len(listed.sha256) == 64 and listed.server["commit"] == "b6000"
 
 
-@pytest.mark.parametrize("field", proven.PROOF_FIELDS)
-def test_an_entry_without_any_proof_field_is_refused(tmp_path: Path, field: str):
+@pytest.mark.parametrize("field", proven.TERMS_FIELDS)
+def test_an_entry_without_any_terms_field_is_refused(tmp_path: Path, field: str):
     bad = entry("big-writer", "nemotron", SHA_W)
     bad[field] = ""
     with pytest.raises(GuardError, match=f"no {field}"):
         proven.load(proven_file(tmp_path, writers=[bad]))
 
 
-def test_proof_shape_name_cloud_and_duplicates_are_refused(tmp_path: Path):
+def test_terms_shape_name_cloud_and_duplicates_are_refused(tmp_path: Path):
     with pytest.raises(GuardError, match="live https"):
-        proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_url="http://example.org/card")]))
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", terms_url="http://example.org/card")]))
     with pytest.raises(GuardError, match="YYYY-MM-DD"):
-        proven.load(proven_file(tmp_path, writers=[entry("w", "x", proof_date="last week")]))
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", terms_date="last week")]))
     with pytest.raises(GuardError, match="registry id"):
         proven.load(proven_file(tmp_path, writers=[entry("w", "x", registry_id="OpenMDW 1.1")]))
     with pytest.raises(GuardError, match="no served_as"):
@@ -69,8 +69,23 @@ def test_an_unpinned_model_and_a_drifted_gguf_are_refused():
     with pytest.raises(GuardError, match="differs from the pinned"):
         proven.require_pinned(entry("w", "x", SHA_W), "b" * 64)
     pins = proven.require_pinned(entry("w", "x", SHA_W), SHA_W.upper())
-    assert pins["gguf_sha256"] == SHA_W and pins["family"] == "x" and pins["proof_url"].startswith("https://")
-    assert pins["registry_id"] == "openmdw-1.1"
+    assert pins["gguf_sha256"] == SHA_W and pins["family"] == "x" and pins["terms_url"].startswith("https://")
+    assert pins["registry_id"] == "openmdw-1.1" and pins["training"] == "allowed"
+
+
+def test_only_a_barring_clause_refuses_a_model(tmp_path: Path):
+    """The 2026-10-17 rule: a use is allowed unless a clause restricts it. Silence lists the model (no quote that grants
+    the use is asked for); `barred` refuses it; `conditions` lists it with the conditions written out."""
+
+    listed = proven.load(proven_file(tmp_path, writers=[entry("silent", "x", SHA_W)]))
+    assert "silent" in listed.writers and "terms_note" not in listed.writers["silent"]
+    with pytest.raises(GuardError, match="bar training"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", training="barred", restriction="no distilling Outputs")]))
+    with pytest.raises(GuardError, match="no conditions"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", training="conditions")]))
+    assert "w" in proven.load(proven_file(tmp_path, writers=[entry("w", "x", training="conditions", conditions="credit the maker")])).writers
+    with pytest.raises(GuardError, match="one of allowed"):
+        proven.load(proven_file(tmp_path, writers=[entry("w", "x", training="proven")]))
 
 
 def test_the_llama_server_binary_is_pinned():

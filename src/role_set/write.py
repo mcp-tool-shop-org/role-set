@@ -1,7 +1,7 @@
 """`role-set write`: the runner wired to the real writer and critic, or to the mocks for CI.
 
 Refused before anything is sent: an endpoint off the loopback, a model not on
-the proven list or listed without its proof, weights or a llama-server binary
+the writer list or listed without its terms record, weights or a llama-server binary
 that differ from their pins, a critic of the writer's own family, a missing
 partition or machine line, a step off a rented host (Colab or a pod) without a
 grant or with a stale watchdog heartbeat, a pack that has drifted from its manifest, a missing gates

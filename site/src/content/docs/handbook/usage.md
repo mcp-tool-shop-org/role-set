@@ -88,7 +88,7 @@ The report is per lesson and kind, for a run that passed and for a run that fail
 
 ## pilot-auto
 
-This was the 2026-10-11 pilots' paid path. Its script still names the pilots' Qwen writer and Gemma critic, which are off the proven list, so `write` refuses it until the wave scripts replace it. The tests do not call it against a live endpoint. CI uses `write --mock`.
+This was the 2026-10-11 pilots' paid path. Its script still names the pilots' Qwen writer and Gemma critic, which aren't on `writers.json`, so `write` refuses it until the wave scripts replace it. The tests do not call it against a live endpoint. CI uses `write --mock`.
 
 ```text
 uv run role-set pilot-auto <port> <grant> <HH:MM UTC> <work directory>

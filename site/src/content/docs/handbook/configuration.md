@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: The proven model list, the pins a run must match, and the role pack a run is allowed to serve.
+description: The writer list, the pins a run must match, and the role pack a run is allowed to serve.
 sidebar:
   order: 6
 ---
@@ -9,7 +9,7 @@ Two files decide what a run is allowed to call, and what text it is allowed to s
 
 ## writers.json
 
-The file is the proven list. A model is on it only when its maker's own documentation allows training on its outputs. A name that is not on it is refused, and a name that contains `cloud` is refused even if someone adds it.
+The file is the writer list. A use is allowed unless a clause in the maker's licence or terms restricts it; silence is not a restriction. A name that is not on it is refused, and a name that contains `cloud` is refused even if someone adds it.
 
 Every entry needs its proof, and the list is refused when it loads if any entry lacks one:
 
@@ -17,9 +17,9 @@ Every entry needs its proof, and the list is refused when it loads if any entry 
 |---|---|
 | `family` | The model family, for the critic check |
 | `licence` | The licence the maker's card names |
-| `proof_url` | The maker's live page (`https://`) |
-| `proof_clause` | The clause, quoted |
-| `proof_date` | The day it was read, `YYYY-MM-DD` |
+| `terms_url` | The maker's live page (`https://`) |
+| `terms_date` | The day it was read, `YYYY-MM-DD` |
+| `training` | The registry's verdict on training with its outputs: `allowed`, `conditions` (with `conditions` written out) or `barred` (refused) |
 | `checked_by` | Who read it |
 | `registry_id` | Its record in rnd's licence registry (`licences/registry.json`), carried onto every receipt |
 

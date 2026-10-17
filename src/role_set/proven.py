@@ -1,8 +1,9 @@
 """The proven-model list (`writers.json`) and the pins a wave must match (BUILD-SPEC B6).
 
-A model is listed only when its maker's own documentation allows training on its outputs: the live URL, the exact
-clause and the date it was read (the maintainer's proof rule, 2026-10-16). An entry without its proof is refused
-when the list loads, so a run never starts on an unproven model. A listed model is still refused until its weights
+A use is allowed unless a clause in the maker's licence or terms restricts it (the maintainer's rule, 2026-10-17:
+silence is not a restriction). Each entry records the search: the terms page, the day it was read, who read it, its
+record in rnd's licence registry, and the training verdict. An entry without that record, or whose verdict is
+`barred`, is refused when the list loads. A listed model is still refused until its weights
 are pinned: the repo revision, the GGUF file and that file's sha256. The wave script hashes the GGUF and the
 llama-server binary before launch and passes the hashes in; any drift from the list refuses the run before a byte
 is sent. A critic of the writer's own family is refused.
@@ -18,7 +19,10 @@ from pathlib import Path
 
 from role_set.guards import CLOUD_MARKERS, GuardError
 
-PROOF_FIELDS = ("family", "licence", "proof_url", "proof_clause", "proof_date", "checked_by", "registry_id")
+TERMS_FIELDS = ("family", "licence", "terms_url", "terms_date", "checked_by", "registry_id", "training")
+# The registry's verdicts for training on the model's outputs. `conditions` needs the conditions written out;
+# `barred` is refused, with the clause that bars it.
+TRAINING_VERDICTS = ("allowed", "conditions", "barred")
 PIN_FIELDS = ("repo", "revision", "gguf_file", "gguf_sha256")
 SERVER_FIELDS = ("commit", "sha256")
 MACHINE_FIELDS = ("driver", "compat", "runtime", "card")
@@ -26,7 +30,7 @@ PARTITION_RE = re.compile(r"production|trial:[a-z0-9][a-z0-9-]*")
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
 # The id of the entry's record in rnd's licence registry (rnd licences/registry.json), where the page text is
-# snapshotted and every quoted clause re-found.
+# snapshotted and any restricting clause quoted.
 REGISTRY_ID_RE = re.compile(r"[a-z0-9][a-z0-9.-]*")
 
 
@@ -43,35 +47,42 @@ def _text(entry: dict, field: str) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
-def require_proof(entry: dict, where: str) -> dict:
-    """Every proof field present and well formed, and no cloud tag."""
+def require_terms(entry: dict, where: str) -> dict:
+    """The terms search recorded and well formed, a verdict that allows training, and no cloud tag."""
 
     name = _text(entry, "served_as")
     if not name:
         raise GuardError(f"REFUSED: a {where} entry has no served_as")
     if any(m in name.lower() for m in CLOUD_MARKERS):
         raise GuardError(f"REFUSED: cloud model tags are never used ({name})")
-    missing = [f for f in PROOF_FIELDS if not _text(entry, f)]
+    missing = [f for f in TERMS_FIELDS if not _text(entry, f)]
     if missing:
-        raise GuardError(f"REFUSED: {name} has no {', '.join(missing)}; a model is listed only with its maker's proof")
-    if not _text(entry, "proof_url").startswith("https://"):
-        raise GuardError(f"REFUSED: {name}'s proof_url must be the maker's live https page")
-    if not DATE_RE.fullmatch(_text(entry, "proof_date")):
-        raise GuardError(f"REFUSED: {name}'s proof_date must be YYYY-MM-DD, the day the clause was read")
+        raise GuardError(f"REFUSED: {name} has no {', '.join(missing)}; a model is listed with the record of its terms search")
+    if not _text(entry, "terms_url").startswith("https://"):
+        raise GuardError(f"REFUSED: {name}'s terms_url must be the maker's live https page")
+    if not DATE_RE.fullmatch(_text(entry, "terms_date")):
+        raise GuardError(f"REFUSED: {name}'s terms_date must be YYYY-MM-DD, the day the terms were read")
+    verdict = _text(entry, "training")
+    if verdict not in TRAINING_VERDICTS:
+        raise GuardError(f"REFUSED: {name}'s training verdict must be one of {', '.join(TRAINING_VERDICTS)}")
+    if verdict == "barred":
+        raise GuardError(f"REFUSED: {name}'s terms bar training on its outputs ({_text(entry, 'restriction') or 'see its registry record'})")
+    if verdict == "conditions" and not _text(entry, "conditions"):
+        raise GuardError(f"REFUSED: {name}'s training verdict is conditions, but no conditions are written out")
     if not REGISTRY_ID_RE.fullmatch(_text(entry, "registry_id")):
         raise GuardError(f"REFUSED: {name}'s registry_id must be an rnd licence registry id, like openmdw-1.1")
     return entry
 
 
 def load(path: Path) -> ProvenList:
-    """The list, with every entry's proof checked. A duplicate name is refused."""
+    """The list, with every entry's terms record checked. A duplicate name is refused."""
 
     raw = path.read_bytes()
     data = json.loads(raw.decode("utf-8"))
     out: dict[str, dict[str, dict]] = {"writers": {}, "critics": {}}
     for where in ("writers", "critics"):
         for entry in data.get(where, []):
-            require_proof(entry, where[:-1])
+            require_terms(entry, where[:-1])
             name = entry["served_as"].strip()
             if name in out[where]:
                 raise GuardError(f"REFUSED: {name} is listed twice among the {where}")
@@ -96,7 +107,8 @@ def require_pinned(entry: dict, measured_sha256: str | None) -> dict:
     if got != pinned:
         raise GuardError(f"REFUSED: {name}'s GGUF {got[:12]} differs from the pinned {pinned[:12]}; re-check and re-pin")
     return {"family": entry["family"], "repo": entry["repo"], "revision": entry["revision"], "gguf_file": entry["gguf_file"],
-            "gguf_sha256": pinned, "licence": entry["licence"], "proof_url": entry["proof_url"], "registry_id": entry["registry_id"]}
+            "gguf_sha256": pinned, "licence": entry["licence"], "terms_url": entry["terms_url"], "registry_id": entry["registry_id"],
+            "training": entry["training"]}
 
 
 def require_server(server: dict, measured_sha256: str | None) -> dict:
