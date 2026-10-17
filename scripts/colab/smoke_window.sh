@@ -36,9 +36,26 @@ echo "own rate $OWN_RATE/hr"
 flock -u 9
 # The watcher also ends the exec when Colab has dropped the session: window 10b's VM vanished mid-download and the exec
 # would have waited out its wall time on nothing.
-( while sleep 120; do
+# It also watches the job make progress (R&D, 2026-10-17, after window 11c's exec hung on a lost connection with nothing
+# running on the VM): no line in the exec's log within 10 minutes of the exec starting, or none for 20 minutes after
+# that, closes the window's own session and records a stall. Every finished model call prints a line, and the slowest
+# silent step (a conversion) takes about 12 minutes.
+( seen=0; size0=-1; grew=0
+  while sleep "${PIN_WATCH_S:-120}"; do
     if ! colab sessions 2>&1 | grep -q "^\\[$S\\]"; then
       echo "SESSION GONE ($S) $(date -u +%T)"; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; exit 0
+    fi
+    if [ -f "$OUT/.exec.pid" ]; then
+      now=$(date +%s); size=$(stat -c %s "$OUT/smoke-window.log" 2>/dev/null || echo 0)
+      if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
+      started=$(stat -c %Y "$OUT/.exec.pid")
+      stalled=""
+      [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="no line in the 10 minutes after the exec started"
+      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-1200}" ] && stalled="no new line for 20 minutes"
+      if [ -n "$stalled" ]; then
+        echo "STALL ($S): $stalled $(date -u +%T)" | tee "$OUT/stall.txt"
+        kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; stop_all; exit 0
+      fi
     fi
     spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
     awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>c)}' && { echo "CAP REACHED (own spend $spent of $CAP_UNITS)"; stop_all; exit 0; }; done ) &
@@ -69,7 +86,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
