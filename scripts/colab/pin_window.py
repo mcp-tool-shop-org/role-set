@@ -698,6 +698,9 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
 PILOT_PORT = 8093
 PILOT_PARTITION = "trial:j1-wave1"
 PILOT_WAVES = 6  # write, critique, rewrite, critique, rewrite, critique: the attempt budget (3) ends here, on a critique
+# The w0 screen (R&D, 2026-10-17: the pilot as designed costs 147-175 units): PIN_PILOT_WAVES=2 runs the first write and
+# its critique, on the frozen slot lists in PIN_PILOT_SLOT_IDS and PIN_PILOT_TWIN_IDS.
+PILOT_WAVES = int(os.environ.get("PIN_PILOT_WAVES") or PILOT_WAVES)
 
 
 class Served:
@@ -772,7 +775,8 @@ def generations_summary(path: Path) -> dict:
 
 
 def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | None = None, critic: dict | None = None,
-               drafts: Path | None = None, extra: list | None = None, proxy: dict | None = None) -> dict:
+               drafts: Path | None = None, extra: list | None = None, proxy: dict | None = None,
+               reuse_calls: Path | None = None) -> dict:
     """One role-set wave. With `proxy` ({config, candidate}), rnd's logging proxy sits between role-set and llama-server
     and writes this wave's generation records beside the wave directory."""
 
@@ -789,6 +793,16 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         px = LoggingProxyServer(state).start()
         endpoint = px.openai_base_url
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
+    # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
+    # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
+    arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
+    journal = out.parent / f"calls-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
+    cmd += ["--call-journal", str(journal)]
+    if reuse_calls is not None:
+        cmd += ["--reuse-calls", str(reuse_calls)]
+    stop = threading.Event()
+    tail = threading.Thread(target=stream_calls, args=(journal, arm, label, stop), daemon=True)
+    tail.start()
     if writer is not None:
         cmd += ["--endpoint", endpoint, "--model", writer["served_as"], "--writer-gguf-sha256", writer["gguf_sha256"]]
     if critic is not None:
@@ -800,6 +814,8 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     try:
         run = subprocess.run(cmd, capture_output=True, text=True, timeout=6 * 3600, cwd=rs["src"])
     finally:
+        stop.set()
+        tail.join(timeout=60)
         if px is not None:
             px.close()
     got = {"wave": wave, "out": str(out), "exit": run.returncode, "seconds": round(time.time() - t0), "stderr": run.stderr[-1500:]}
@@ -810,6 +826,29 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     except (IndexError, json.JSONDecodeError):
         got["stdout"] = run.stdout[-1500:]
     return got
+
+
+def stream_calls(journal: Path, arm: str, label: str, stop: threading.Event) -> None:
+    """Each new line of a wave's call journal, printed as `CALL_CHECKPOINT <arm> <label> <base64 gzip line>` as soon as
+    it is written; `checkpoints.py extract` turns them back into the journal. A torn last line waits for its newline."""
+
+    import base64  # noqa: PLC0415
+    import gzip  # noqa: PLC0415
+
+    pos = 0
+    while True:
+        last = stop.is_set()
+        if journal.exists():
+            with journal.open("rb") as f:
+                f.seek(pos)
+                data = f.read()
+            end = data.rfind(b"\n") + 1
+            for line in data[:end].splitlines():
+                print(f"CALL_CHECKPOINT {arm} {label} {base64.b64encode(gzip.compress(line)).decode()}", flush=True)
+            pos += end
+        if last:
+            return
+        stop.wait(5)
 
 
 def run_dir(out: Path) -> Path:
@@ -843,6 +882,14 @@ def resume_from() -> tuple[int, dict]:
     return int(i) + 1, {f.stem: f for f in d.glob("*.jsonl")}
 
 
+def resume_calls() -> dict:
+    """PIN_RESUME_CALLS_DIR=<dir of <arm>.jsonl call journals>: the wave a dropped window was in when it stopped. The
+    first wave this window runs replays each arm's journal and asks the model only for the calls it lacks."""
+
+    d = os.environ.get("PIN_RESUME_CALLS_DIR")
+    return {f.stem: f for f in Path(d).glob("*.jsonl")} if d else {}
+
+
 def funnel_stop(wave: dict) -> str | None:
     """R&D's funnel (2026-10-17), thresholds set before any result: after w0 an arm stops at 6+ of 20 slots dropped, a
     failed warm-up or a halted cell."""
@@ -873,6 +920,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
 
     arms = {name: {"waves": [], "drafts": None, "done": False} for name in writers}
     start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
+    calls = resume_calls() if extra is None else {}
     for n, f in resumed.items():
         if n in arms:
             arms[n]["drafts"] = f
@@ -886,7 +934,8 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
             with critic_srv:
                 for n in todo:
                     w = write_wave(rs, common + ["--plan", str(plan)], "critique", base / n / f"w{i}", critic=critic,
-                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(critic.get("served_as")))
+                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(critic.get("served_as")),
+                                   reuse_calls=calls.get(n) if i == start else None)
                     arms[n]["waves"].append(w)
                     arms[n]["last"] = run_dir(base / n / f"w{i}")
                     arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
@@ -896,7 +945,8 @@ def pilot_batch(rs, common, plan: Path, base: Path, writers: dict, critic: dict,
             for n in todo:
                 with writer_srv[n]:
                     w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=writers[n],
-                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(n))
+                                   drafts=arms[n]["drafts"], extra=extra, proxy=(proxies or {}).get(n),
+                                   reuse_calls=calls.get(n) if i == start else None)
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
                 arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
@@ -962,6 +1012,23 @@ def choose_quant(built: dict, spec: dict, m: dict, policy: str, result: dict) ->
         return to_q6k(built, spec, m, result), {"policy": policy, "ran": "Q6_K", "why": str(e)[:400]}
 
 
+def screen_plan(plan: Path, var: str) -> list[str] | None:
+    """The w0 screen's frozen slot list (R&D, 2026-10-17): the same slot ids for every arm, set in the window config.
+    The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads."""
+
+    ids = [x.strip() for x in os.environ.get(var, "").split(",") if x.strip()]
+    if not ids:
+        return None
+    data = json.loads(plan.read_text(encoding="utf-8"))
+    have = {s["id"] for s in data["slots"]}
+    missing = [i for i in ids if i not in have]
+    if missing:
+        raise RuntimeError(f"{var}: {', '.join(missing)} not in {plan.name}")
+    data["slots"] = [s for s in data["slots"] if s["id"] in ids]
+    plan.write_text(json.dumps(data, indent=1), encoding="utf-8")
+    return ids
+
+
 def pilot_window(built: dict, result: dict) -> None:
     """PIN_ROLE=pilot (R&D, 2026-10-17): the 20-slot T02 pilot, then its 4 T04 apply twins (the arm's accepted rows as
     --training), for each writer in PIN_PILOT_WRITERS, around one critic (PIN_PILOT_CRITIC). One A100, one model loaded at
@@ -986,6 +1053,8 @@ def pilot_window(built: dict, result: dict) -> None:
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
     sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
+    result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
+                        "waves": PILOT_WAVES}
     result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
                        # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
                        # state, so the shas agree by construction (write refuses a mismatch).

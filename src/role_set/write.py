@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from role_set import cards, domains, exclusion, proven, waves
+from role_set import callcache, cards, domains, exclusion, proven, waves
 from role_set.assemble import trait_name
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
@@ -91,6 +91,8 @@ class WriteConfig:
     wave: str = "inline"  # inline, or one of write, critique, rewrite (BUILD-SPEC B1)
     exclusion_state: Path | None = None  # earlier batches' exclusion-state.json (BUILD-SPEC B4); None for the first batch
     drafts: Path | None = None  # a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl
+    call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
+    reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
 
 
 def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
@@ -329,6 +331,10 @@ def require_rehearsal_dir(out: Path, pins: dict) -> None:
 def run(cfg: WriteConfig, *, now=time.time) -> dict:
     slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup = build(cfg, now=now)
     out = output_dir(cfg.out, pins, mock=cfg.mock)
+    # Every finished call is journaled as it returns; a resume replays an earlier journal (R&D, 2026-10-17).
+    journal = callcache.CallJournal(cfg.call_journal or out / callcache.JOURNAL_FILE,
+                                    callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
+    writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
     excerpts = load_pool(cfg.pool) if cfg.pool else None
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
@@ -351,7 +357,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
             raise WriteRefused(str(e)) from e
     training, training_models = _training(cfg, slots, gates, pins)
     if cfg.wave != "inline":
-        return _run_wave(cfg, slots, pack, trait_names, gates, writer, critic, pins, out, excerpts, exemplars, stuck, training, training_models)
+        return {**_run_wave(cfg, slots, pack, trait_names, gates, writer, critic, pins, out, excerpts, exemplars, stuck, training, training_models),
+                "calls": journal.summary()}
     pins.pop("_mock_answers", None)
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
@@ -381,6 +388,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         "mock": cfg.mock,
         "slots": len(slots),
         "outcomes": len(outcomes),
+        "calls": journal.summary(),
     }
 
 
