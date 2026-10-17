@@ -7,7 +7,7 @@ import json
 import sys
 from pathlib import Path
 
-from role_set import __version__, autostart, defects, domains, proven, puzzle_check, solvefirst
+from role_set import __version__, autostart, defects, domains, exclusion, proven, puzzle_check, solvefirst
 from role_set.cost import PROFILES, estimate
 from role_set.critic_control import (
     FALSE_REFUSAL_CAP,
@@ -77,9 +77,10 @@ def _plan(args: argparse.Namespace) -> int:
             # Kind B: a pack and a seed per slot, and the solve-first path for the structures with a generator (B3).
             packs = solvefirst.load_packs()
             solvefirst.assign(slots, packs, seed=args.seed, table=table)
-            solvefirst.lock_skeletons(slots, packs)
+            prior = exclusion.load(Path(args.exclusion_state) if args.exclusion_state else None)
+            solvefirst.lock_skeletons(slots, packs, prior=prior.skeletons)
             domains.check(slots)
-    except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError) as e:
+    except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError, exclusion.ExclusionError) as e:
         msg = str(e)
         print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
         return 2
@@ -87,6 +88,7 @@ def _plan(args: argparse.Namespace) -> int:
     out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
     if table is not None:
         out["domain_table"] = table.pin()
+        out["exclusion_state_sha256"] = prior.sha256
     Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
     for f in figures:
         print(json.dumps(f))
@@ -152,6 +154,7 @@ def _write(args: argparse.Namespace) -> int:
         partition=args.partition, machine=Path(args.machine) if args.machine else None,
         writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
         server_sha256=args.llama_server_sha256, wave=args.wave, drafts=Path(args.drafts) if args.drafts else None,
+        exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
     )
     try:
         result = run_write(cfg)
@@ -283,6 +286,7 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--seed", type=int, default=0)
     a.add_argument("--out", default="plan.json")
     a.add_argument("--apply", action="store_true", help="the apply items (aspire-si#127): five C and five D per lesson, never trained")
+    a.add_argument("--exclusion-state", default=None, help="earlier batches' exclusion-state.json: the skeleton floor counts them (BUILD-SPEC B4)")
     a.add_argument("--domains", default=None, help="the NAICS 2022 domain table (roles/domains/naics-2022.json): a domain per "
                                                     "slot with material and a frame per framing, by seed (BUILD-SPEC B2); a real write refuses a plan without them")
     a.set_defaults(func=_plan)
@@ -369,6 +373,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--wave", choices=("inline", "write", "critique", "rewrite"), default="inline",
                    help="inline runs writer and critic together; write, critique and rewrite run one model each, with "
                         "wave-drafts.jsonl between them (BUILD-SPEC B1)")
+    w.add_argument("--exclusion-state", default=None, help="earlier batches' exclusion-state.json; the run checks against their rows and "
+                                                           "writes the state it leaves beside its own (BUILD-SPEC B4)")
     w.add_argument("--drafts", default=None, help="a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl")
     w.add_argument("--grant", default=None, help="the Publisher's grant id, required unless the machine line names a Colab VM or a pod")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")

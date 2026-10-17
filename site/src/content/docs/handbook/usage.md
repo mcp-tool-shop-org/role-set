@@ -57,6 +57,10 @@ Run `critique` and `rewrite` in turn until the result shows no draft `awaiting_c
 - **The batch check runs in the wave that leaves nothing pending.** It's skipped when the andon stopped any cell, as inline.
 - **`--mock` covers every wave.** CI checks that a mock batch split into waves accepts the same rows, with the same receipts apart from the wave fields, as one inline run.
 
+### Across batches
+
+`--exclusion-state` takes the `exclusion-state.json` the previous batch left. The run checks every draft against the rows earlier batches accepted, as well as its own, so no material, opening or framing comes back in a later batch. When it finishes, it writes the updated state beside its rows. A plan already in the state is refused, so a rerun starts from the state before it. `role-set plan --exclusion-state` makes the puzzle-skeleton floor count earlier batches too.
+
 ### Where the files go
 
 | You passed | Directory |
