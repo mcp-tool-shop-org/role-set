@@ -262,6 +262,8 @@ def test_the_floor_holds_across_the_whole_regeneration(domain_table: Path):
         c = prior[structure]
         assert sum(c.values()) >= 21, (structure, sum(c.values()))
         assert len(c) >= solvefirst.SKELETON_DISTINCT_SHARE * sum(c.values()) and max(c.values()) <= solvefirst.SKELETON_USES_MAX
+
+
 def test_answer_early_reads_clauses_and_lets_candidate_lists_through():
     """Argon §9.4 #12: a negation covers only its own clause, and a clause still naming a rival answer is weighing
     candidates, not stating one."""
