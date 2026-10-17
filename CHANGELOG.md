@@ -16,6 +16,7 @@ All notable changes to role-set are documented here. The format is based on
   - **critic-control:** role-set runs at a pinned commit, in a uv Python 3.12 env, at the card values. Muse runs at seeds 0 and 1 with `--agreement-with`, Lightning at seed 0.
   - `smoke_window.sh` uploads `PIN_UPLOADS` and passes `PIN_ROLE` and `PIN_ROLESET_COMMIT`.
   - **Slots:** every server runs `--parallel 1`, and the window reads `/props` for the slot count and per-slot context, refusing a per-slot context under 32768. llama-server's default splits the context across several slots, and a long thinking reply would truncate at a quarter of it. Window 5's smoke serves ran that way: their fit holds for 32768 in total, not per slot.
+- **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
 - **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.
 
 - **The pins from the Colab windows, and the pilot's eight arms** (BUILD-SPEC B6; R&D, 2026-10-17).

@@ -15,8 +15,10 @@ here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
+# Stops this window's own session only: another window (or a probe) may be running beside it. The cap watcher reads
+# the account balance, so a neighbour's spend counts against this window's cap too; that only stops it sooner.
 stop_all() {
-  for s in $(colab sessions 2>&1 | grep -oP '^\[\K[^]]+'); do echo "stopping $s"; colab stop -s "$s" 2>&1 | tail -1; done
+  echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
   sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
 }
 trap stop_all EXIT
