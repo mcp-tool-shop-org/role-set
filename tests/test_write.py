@@ -46,7 +46,7 @@ def test_mock_write_runs_a_whole_lesson_through_the_cli(pack_dir: Path, plan_fil
     receipt = json.loads((tmp_path / "o" / "mock" / "receipts.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert receipt["mock"] is True and receipt["pack_commit"] == "abc1234" and receipt["plan_sha256"]
     # The pinned aspire-si-gates passed every item and the finished lesson: the real gates, not the stand-in.
-    assert receipt["gates"]["version"] == "1.7.4" and result["batch_check"] == "clean"
+    assert receipt["gates"]["version"] == "1.7.5" and result["batch_check"] == "clean"
     # The closed-form settings the run used, resolved by the pinned gates: their defaults, as no --closed-form was given.
     assert receipt["gates"]["closed_form"]["carry"] == "paraphrase"
 

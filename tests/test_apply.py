@@ -52,7 +52,7 @@ def test_assemble_builds_an_apply_slot_the_gates_refuse_as_training():
     from role_set.gates import load_gates
 
     gates = load_gates()
-    assert gates.version == "1.7.4"
+    assert gates.version == "1.7.5"
     slot = _d_slot()
     row = assemble(slot, "t", BASE, NOTICE)
     assert row["split"] == "apply" and "-AP-" in row["id"]

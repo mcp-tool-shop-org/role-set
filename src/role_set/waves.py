@@ -241,8 +241,36 @@ def _critique_one(runner: Runner, d: dict) -> dict:
     return record(st, "needs_rewrite")
 
 
+AVOID_HEADER = "## Do not use these framings or phrases; they are spent\n"
+PROMPT_TAIL = "\n\nReturn the JSON object now."
+
+
+def refresh_avoid(messages: list[dict], avoid: list[str]) -> list[dict]:
+    """The writer's first prompt with its spent list rebuilt from what the batch has spent since (Argon §9.4 #7): a
+    rewrite wave sees the framings accepted in the critique wave and the exclusion state, as an inline retry would."""
+
+    out = [dict(m) for m in messages]
+    for m in out:
+        if m.get("role") != "user":
+            continue
+        text = m["content"]
+        block = AVOID_HEADER + "\n".join(f"- {a}" for a in avoid) if avoid else ""
+        at = text.find(AVOID_HEADER)
+        if at >= 0:
+            end = text.find("\n\n", at + len(AVOID_HEADER))
+            end = len(text) if end < 0 else end
+            m["content"] = text[:at] + block + text[end:] if block else (text[:at].rstrip("\n") + text[end:])
+        elif block:
+            m["content"] = (text[: -len(PROMPT_TAIL)] + "\n\n" + block + PROMPT_TAIL if text.endswith(PROMPT_TAIL)
+                            else text + "\n\n" + block)
+        break
+    return out
+
+
 def _rewrite_one(runner: Runner, d: dict) -> dict:
-    return _write_one(runner, state_of(d))
+    st = state_of(d)
+    st.messages = refresh_avoid(st.messages, list(runner.avoid[-60:]))
+    return _write_one(runner, st)
 
 
 def _each(runner: Runner, items: list, fn, *, halted_state) -> list[dict]:

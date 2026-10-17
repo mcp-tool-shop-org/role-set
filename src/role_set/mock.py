@@ -76,7 +76,15 @@ class MockWriter:
         else:
             refused = 0
         if "In your own words: the trait's main point" in text:
-            return _done('{"main_point": "the source decides and I quote it", "counterweight": "stop at the source once it settles the claim", "deciding_case": "a changelog line settles a version claim"}')
+            # The lesson's own heading names the trait, so any lesson's warm-up passes (the pilot's T04 twins).
+            import json
+            import re
+
+            head = re.search(r"## The trait lesson\n#+\s*(?:\d+\.\s*)?([^\n]+)", text)
+            named = head.group(1).strip() if head else "the source decides"
+            return _done(json.dumps({"main_point": f"{named}: the source decides and I quote it",
+                                     "counterweight": "stop at the source once it settles the claim",
+                                     "deciding_case": "a changelog line settles a version claim"}))
         if "Write a " in text and "Return only the text" in text:
             n = self._material_n(slot_id)
             return _done(f"Desk hours at {_tag(n, 0).title()}\nThe desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00.")
@@ -196,6 +204,7 @@ def _slot_from_brief(text: str) -> dict:
         "id": f"{lesson}-{kind}", "lesson": lesson, "kind": kind, "verdict": verdict.group(1) if verdict else None,
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
         "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
+        "silent_flag": "Add silent_without_deciding" in text,
     }
 
 
@@ -298,6 +307,9 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     answers[(statement, first_line)] = (verdict, deciding)
     base = {"framing": _framing(slot.get("frame"), t), "statement": statement, "deciding": deciding,
             "thinking": _salt(THINKING[n % 3], n), "reply": REPLIES[n % 3]}
+    if slot.get("silent_flag") and deciding:
+        # The brief asks for the twin flag (T01, T04, T14 apply items); the mock's material is silent without its line.
+        base["silent_without_deciding"] = True
     if kind == "C":
         flaw = "guess" if verdict != "cannot_tell" else "none"
         trace = _salt(f"The other checker skimmed and answered from memory on {statement}", n)
@@ -328,6 +340,7 @@ def mock_gates(closed_form=None):
     m = types.SimpleNamespace()
     m.DataError = ValueError
     m.check_item = lambda row: None
+    m.check_apply_item = lambda row: None
     m.check_against = lambda row, accepted, models=None: []
     m.load_models = lambda data_path: {}
     m.check_batch = lambda rows, models=None, **kw: None

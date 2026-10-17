@@ -37,6 +37,13 @@ from role_set.transport import TransportError
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 # A B puzzle whose asked answer follows from its 'is' facts alone is a lookup, not a puzzle: one per lesson (R&D, PR H).
 LOOKUP_CAP = 1
+# A solve-first generator retries on any lookup, so a lookup on a locked puzzle is a defect: its cap is 0 (Argon §9.4 #7,
+# R&D 2026-10-17). Freehand slots keep LOOKUP_CAP.
+LOOKUP_CAP_SOLVE_FIRST = 0
+
+
+def lookup_cap(slot) -> int:
+    return LOOKUP_CAP_SOLVE_FIRST if getattr(slot, "b_path", None) == "solve_first" else LOOKUP_CAP
 LOOKUP_FULL = "the asked answer follows from direct facts alone, a lookup, and this lesson already has its one; make the answer need elimination"
 ANDON_DROP_SHARE = 0.20
 ANDON_MIN_ATTEMPTS = 10  # the share means nothing on a handful of slots; the per-lesson cap covers a run's start
@@ -808,7 +815,7 @@ class Runner:
                 early = solvefirst.answer_early(locked, str(fields.get("thinking") or ""))
                 if early:
                     refusal = self._refusal("ANSWER_EARLY", early)
-            if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+            if refusal is None and lookup and self.lookups.get(slot.lesson, 0) >= lookup_cap(slot):
                 refusal = self._refusal("PUZZLE", LOOKUP_FULL)
             # A B trace that circles is refused, not just recorded (R&D on #29: pilot 2's T03-B-01 circled and passed).
             if refusal is None and self.stuck is not None:
@@ -843,7 +850,8 @@ class Runner:
                 refusal = self._refusal("SPENT", spent)
         if refusal is None:
             try:
-                self.gates.check_item(row)
+                # An apply item is never trained, so check_item refuses it; it has its own check (gates 1.7.5).
+                (self.gates.check_apply_item if slot.split == "apply" else self.gates.check_item)(row)
             except self.gates.error_type() as e:
                 refusal = self._refusal("GATE", str(e))
         if refusal is None:
@@ -902,7 +910,7 @@ class Runner:
                 return self._refusal("AGAINST", f"{code}: {msg}")
             if stamp:
                 return self._refusal("REPLY_OPENING", stamp)
-            if cand.lookup and self.lookups.get(slot.lesson, 0) >= LOOKUP_CAP:
+            if cand.lookup and self.lookups.get(slot.lesson, 0) >= lookup_cap(slot):
                 # Read again under the lock: two in-flight B slots of one lesson both passed the first read.
                 return self._refusal("PUZZLE", LOOKUP_FULL)
             if slot.kind == "B":

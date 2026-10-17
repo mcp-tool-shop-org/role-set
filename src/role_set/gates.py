@@ -49,6 +49,14 @@ class Gates:
         else:
             self.module.check_item(row, closed_form=self.closed_form)  # type: ignore[attr-defined]
 
+    def check_apply_item(self, row: dict) -> None:
+        """An apply item's checks (gates 1.7.5): check_item's content and shape checks, without its never-trained
+        refusal, plus the apply rules (split apply and an -AP- id, C or D, one turn, the lesson's twin field)."""
+        if self.closed_form is None:
+            self.module.check_apply_item(row)  # type: ignore[attr-defined]
+        else:
+            self.module.check_apply_item(row, closed_form=self.closed_form)  # type: ignore[attr-defined]
+
     def check_against(self, row: dict, accepted: list[dict], *, models: dict) -> list:
         """The gates' one-at-a-time check. `models` is the {id: model} map of sidecar models for the row and the
         accepted rows: every kind B row needs one (ModelsMissing otherwise)."""
