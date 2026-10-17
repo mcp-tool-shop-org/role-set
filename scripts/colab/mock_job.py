@@ -2,7 +2,9 @@
 
 It does what pin_window.py does for the rig's watcher, with no model: it appends a line to /content/pin/job.log every
 PIN_MOCK_EVERY_S seconds for PIN_MOCK_S seconds, then writes pin-result.json and its PIN_RESULT line. With
-PIN_MOCK_SILENT=1 it prints nothing to the exec's stream, so the rig can only follow the job through job.log.
+PIN_MOCK_SILENT=1 it prints nothing to the exec's stream, so the rig can only follow the job through job.log. With
+PIN_MOCK_HANG_S it then waits that long before returning, as an exec that never comes back: the rig must end the window
+from the PIN_RESULT line in job.log.
 """
 
 from __future__ import annotations
@@ -36,6 +38,7 @@ def main() -> int:
     result = {"ok": True, "mock": True, "steps": n, "seconds": round(time.time() - started), "silent": silent}
     (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
     line("PIN_RESULT " + json.dumps(result))
+    time.sleep(float(os.environ.get("PIN_MOCK_HANG_S") or 0))
     return 0
 
 

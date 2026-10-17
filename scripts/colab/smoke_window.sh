@@ -136,10 +136,13 @@ echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null
 # The exit sequence: fetch, then the trap stops the session. The watcher stays up as the cap's ceiling meanwhile.
 [ -f "$OUT/.end" ] || echo exec > "$OUT/.end"
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
+  f0=$(date +%s)
   fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
   for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
     timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
   done
+  # The exit sequence's fetch time, the measure for PIN_CAP_MARGIN.
+  echo "exit fetch took $(( $(date +%s) - f0 ))s"
 fi
 kill "$WATCH" 2>/dev/null
 rm -f "$OUT"/job.log.part.*
