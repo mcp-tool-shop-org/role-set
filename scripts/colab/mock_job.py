@@ -17,6 +17,18 @@ from pathlib import Path
 
 WORK = Path(os.environ.get("PIN_WORK") or "/content/pin")  # PIN_WORK: the fake CLI's VM directory, in tests
 CONTENT = Path(os.environ.get("PIN_CONTENT") or str(WORK.parent))
+
+
+def take_token_file() -> None:
+    """As pin_window.take_token: the private repo's token file, read once and deleted; only its length is logged."""
+
+    p = CONTENT.parent / "dev" / "shm" / "hf.token"  # the fake CLI's VM root is PIN_CONTENT's parent
+    if p.exists():
+        n = len(p.read_text(encoding="utf-8").strip())
+        p.unlink()
+        WORK.mkdir(parents=True, exist_ok=True)
+        with (WORK / "job.log").open("a", encoding="utf-8") as f:
+            f.write(f"TOKEN FILE READ ({n} chars) and deleted\n")
 # The same window-scoped lock as pin_window.take_job_lock (copied: the mock runs alone on the VM).
 def take_job_lock(work: Path):
     """One job per VM, per window (R&D, 2026-10-17; fixed after Browser Argon's v2 re-review).
@@ -67,6 +79,7 @@ def main() -> int:
     lock = take_job_lock(WORK)
     if lock is None:
         return 0
+    take_token_file()
     try:
         return _run()
     finally:

@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -211,7 +212,13 @@ def say(msg: str) -> None:
     print(f"[{time.strftime('%H:%M:%S')}] {msg}", flush=True)
 
 
-def machine_line() -> dict:
+def machine_line(cpu_ok: bool = False) -> dict:
+    if cpu_ok and not shutil.which("nvidia-smi"):
+        # A CPU runtime converting GGUFs (R&D, 2026-10-18): no card, nothing served; the converter's output is the same
+        # bytes on any host, which the pin check proves.
+        return {"card": "CPU", "memory": "0 MiB", "driver": "none", "compat": False, "driver_cuda": "none",
+                "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG"), "cores": os.cpu_count(),
+                "disk_free_gb": round(shutil.disk_usage(_disk_target()).free / 2**30, 1), "runtime": "none", "cpu": True}
     if stub_mode():
         return {"card": "STUB (CPU)", "memory": "0 MiB", "driver": "stub", "compat": False,
                 "driver_cuda": "stub", "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG") or "stub-local",
@@ -292,7 +299,245 @@ def resources(tag: str) -> dict:
 RESOURCES: list = []
 
 
+# ---- pre-built GGUFs in the studio's private repo (R&D, 2026-10-18: licences cleared for private derivatives) ----------
+# A CPU window (PIN_ROLE=prebuild) converts one model, and uploads it only if its Q8_0 byte-matches the model's
+# expect_sha256. An A100 pilot window with PIN_GGUF_REPO and PIN_GGUF_REVISION downloads every model it needs before
+# any wave, checks each against the same pin, and then has no token left. The token reaches the VM only as a file the
+# rig uploads to RAM-backed /dev/shm, outside /content and every tar (R&D, from Argon): never a command line, never the
+# environment, never a persisted file. The job reads it once at its very start, whatever the role, deletes the file and
+# keeps the value only in _TOKEN until the one step that uses it is done. It goes to the Hub only as a token= argument
+# (an explicit token= isn't written to ~/.cache/huggingface). If a token ever shows up in a persisted file, the receipts
+# README's compensator applies (Mike revokes it).
+HOSTED: dict = {}  # served_as -> {"path", "sha256"} of a GGUF this window took from the private repo
+TOKEN_PATH = Path("/dev/shm/hf.token")
+_TOKEN: str | None = None  # the value, between the job's start and the step that uses it
+# Licences stated only in a model card (Gemma 4 and Granite 4.2 ship no LICENSE file): one vendored copy of the text,
+# pinned, so an upload needs no network for it and the text can't drift (R&D, 2026-10-18). Source:
+# https://www.apache.org/licenses/LICENSE-2.0.txt, fetched 2026-10-18.
+LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30")}
+DISK_MARGIN_GB = 20  # R&D: a window's peak plus this must fit the VM's free disk
+
+
+def token_file() -> Path:
+    return TOKEN_PATH
+
+
+def read_token_file(needed: bool) -> None:
+    """At the job's very start, whatever the role: the file is read into _TOKEN and deleted, and the Hub's environment
+    variables are dropped. A window that won't use it (needed False) keeps nothing."""
+
+    global _TOKEN
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):  # never left where a subprocess or a later step could read one
+        os.environ.pop(k, None)
+    p = token_file()
+    if not p.exists():
+        _TOKEN = None
+        return
+    try:
+        value = p.read_text(encoding="utf-8").strip() or None
+    finally:
+        p.unlink(missing_ok=True)
+    _TOKEN = value if needed else None
+    if not needed:
+        say("a token file reached a window that doesn't use it: deleted, not kept")
+
+
+def take_token() -> str | None:
+    """The token, handed to the one step that uses it, and forgotten here."""
+
+    global _TOKEN
+    tok, _TOKEN = _TOKEN, None
+    return tok
+
+
+def hosted_name(served_as: str) -> str:
+    return f"{served_as}/{served_as}-Q8_0.gguf"
+
+
+def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
+    """Every Q8_0 the window will serve, from the private repo at its pinned commit, before any wave (R&D: the token is
+    gone before a wave runs). Each file must equal its expect_sha256, or the window stops before any model is served."""
+
+    repo, rev = os.environ.get("PIN_GGUF_REPO"), os.environ.get("PIN_GGUF_REVISION")
+    if not repo:
+        take_token()  # nothing to download: a token kept anyway is forgotten, never carried through the waves
+        return
+    if not rev or len(rev) != 40:
+        raise RuntimeError("PIN_GGUF_REPO needs PIN_GGUF_REVISION, the repo's full commit sha")
+    token = take_token()
+    if token is None:
+        raise RuntimeError("PIN_GGUF_REPO is set, but no token file reached the VM")
+    from huggingface_hub import HfApi, hf_hub_download  # noqa: PLC0415
+
+    try:
+        # Every file first, then the disk check, then the downloads (R&D): the window's whole set plus the margin must fit
+        # the free disk, or it stops before any download.
+        todo = [n for n in names if by_name[n]["how"] == "convert" and n not in HOSTED]
+        sizes = {i.path: i.size for i in HfApi(token=token).get_paths_info(repo, [hosted_name(n) for n in todo], revision=rev)}
+        missing = [hosted_name(n) for n in todo if not sizes.get(hosted_name(n))]
+        if missing:
+            raise RuntimeError(f"{repo}@{rev[:12]} doesn't hold {', '.join(missing)}; nothing downloaded")
+        need_gb = sum(sizes[hosted_name(n)] for n in todo) / 1e9
+        free_gb = shutil.disk_usage(_disk_target()).free / 1e9
+        result["hosted_disk"] = {"need_gb": round(need_gb, 1), "free_gb": round(free_gb, 1), "margin_gb": DISK_MARGIN_GB}
+        if need_gb + DISK_MARGIN_GB > free_gb:
+            raise RuntimeError(f"the pre-built GGUFs need {need_gb:.1f} GB + {DISK_MARGIN_GB} GB margin; {free_gb:.1f} GB free")
+        for n in names:
+            spec = by_name[n]
+            if spec["how"] != "convert" or n in HOSTED:
+                continue
+            resources(f"{n}: before hosted download")
+            say(f"downloading {n}'s pre-built Q8_0 from the studio's repo")
+            path = Path(hf_hub_download(repo, hosted_name(n), revision=rev, token=token, local_dir=WORK / "hosted"))
+            got = sha256(path)
+            if got != spec["expect_sha256"]:
+                path.unlink(missing_ok=True)
+                raise RuntimeError(f"{n}: the hosted GGUF {got[:12]} isn't its pin {spec['expect_sha256'][:12]}")
+            HOSTED[n] = {"path": path, "sha256": got}
+    finally:
+        token = None  # noqa: F841 - dropped before any wave runs
+    result["hosted"] = {"repo": repo, "revision": rev, "models": {n: v["sha256"] for n, v in HOSTED.items()}}
+    resources("after hosted downloads")
+
+
+CARD_LICENCE_SRC = """
+def card_licence(card):
+    \"\"\"The `license:` field of a model card's YAML front matter.\"\"\"
+
+    if not card.exists():
+        return None
+    lines = card.read_text(encoding="utf-8").splitlines()
+    if not lines or lines[0].strip() != "---":
+        return None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line.startswith("license:"):
+            return line.split(":", 1)[1].strip().strip("'\\"")
+    return None
+"""
+exec(CARD_LICENCE_SRC)  # defines card_licence here; the upload child execs the same text
+
+
+# The upload runs in a fresh interpreter (R&D, 2026-10-18, window 13i): for a model without `env`, converter_python
+# pip-installs llama.cpp's requirements into this very interpreter mid-job, which replaced huggingface_hub on disk after
+# it was imported, and the upload's later imports failed (ImportError XetAuthorizationError). A child process sees one
+# consistent huggingface_hub, whatever is on disk. Every check runs in the child, in this order: the repo is private, its
+# card names a licence, the model's card names the same one, the licence files are staged; then the upload.
+UPLOAD_CHILD = r"""
+import hashlib, json, shutil, sys
+from pathlib import Path
+cfg = json.loads(sys.stdin.readline())
+token = cfg.pop("token")
+exec(cfg["card_licence_src"])
+
+
+def refuse(why):
+    raise RuntimeError("REFUSED: " + why)
+
+
+out = {}
+try:
+    import huggingface_hub
+    from huggingface_hub import HfApi, hf_hub_download
+    out["hub_version"] = getattr(huggingface_hub, "__version__", None)
+    api = HfApi(token=token)
+    token = None
+    repo, stage = cfg["repo"], Path(cfg["stage"])
+    info = api.repo_info(repo)
+    if not info.private:
+        refuse(repo + " is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
+    card = getattr(info, "card_data", None) or {}
+    repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
+    if not repo_licence:
+        refuse(repo + "'s card names no licence; set it before any model goes in")
+    stage.mkdir(parents=True, exist_ok=True)
+    shutil.move(cfg["gguf"], stage / cfg["gguf_name"])
+    listed = HfApi().list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
+    legal = [f for f in listed if "/" not in f and f.upper().startswith(("LICENSE", "LICENCE", "NOTICE"))]
+    for f in legal + (["README.md"] if "README.md" in listed else []):
+        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"]))
+        shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
+    licence = card_licence(stage / "UPSTREAM-CARD.md")
+    if licence != repo_licence:
+        # The repo's label is true only if every file in it is under that licence: Lightning (OpenMDW-1.1) and any
+        # other licence go elsewhere, never here.
+        refuse(cfg["upstream"] + "'s card licence is " + repr(licence) + "; " + repo + " holds " + repo_licence + " models only")
+    if not any(f.upper().startswith(("LICENSE", "LICENCE")) for f in legal):
+        # Gemma 4 and Granite 4.2 state Apache-2.0 in the card and ship no LICENSE file: the vendored text, pinned.
+        fallback = cfg["fallback"].get(licence)
+        if not fallback:
+            refuse(cfg["upstream"] + " has no LICENSE file and its card's licence " + repr(licence) + " has no known text")
+        data = Path(fallback[0]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != fallback[1]:
+            refuse("the vendored licence text isn't its pinned sha256")
+        (stage / "LICENSE").write_bytes(data)
+    (stage / "README.md").write_text(cfg["readme"].replace("{licence}", str(licence)), encoding="utf-8")
+    done = api.upload_folder(repo_id=repo, folder_path=str(stage), path_in_repo=cfg["path_in_repo"],
+                             commit_message=cfg["commit_message"])
+    out.update(ok=True, commit=getattr(done, "oid", None), licence=licence, files=sorted(x.name for x in stage.iterdir()))
+except BaseException as e:  # every failure is reported, then a non-zero exit
+    out.update(ok=False, error=type(e).__name__ + ": " + str(e)[:1000])
+print("UPLOAD_RESULT " + json.dumps(out), flush=True)
+sys.exit(0 if out.get("ok") else 1)
+"""
+UPLOAD_CHILD_ENV: dict = {}  # tests point the child at a stand-in huggingface_hub (PYTHONPATH) here
+TOKEN_SHAPE_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
+
+
+def upload_hosted(spec: dict, m: dict, result: dict) -> None:
+    """A prebuild window's one model, uploaded to the private repo with its upstream licence files and model card and a
+    README naming its source, revision, converter and pin (R&D's licence conditions). Only after its pin matched. The
+    work runs in UPLOAD_CHILD; the token goes to it on stdin only, never argv or the environment."""
+
+    repo = os.environ["PIN_GGUF_REPO"]
+    token = take_token()
+    if token is None:
+        raise RuntimeError("a prebuild needs the write token's file; none reached the VM")
+    stage = WORK / "upload" / spec["served_as"]
+    fallback = {}
+    for name, (fname, pinned) in LICENCE_FALLBACK.items():
+        here = Path(globals().get("__file__") or (CONTENT / "pin_window.py")).resolve().parent
+        found = [x for x in (here / "licences" / fname, CONTENT / fname) if x.exists()]
+        if found:
+            fallback[name] = [str(found[0]), pinned]
+    cfg = {"repo": repo, "stage": str(stage), "gguf": m["path"], "gguf_name": Path(hosted_name(spec["served_as"])).name,
+           "upstream": spec["repo"], "revision": m["revision"], "legal_dir": str(WORK / "upstream-legal" / spec["served_as"]),
+           "fallback": fallback, "path_in_repo": spec["served_as"], "card_licence_src": CARD_LICENCE_SRC,
+           "commit_message": f"{spec['served_as']} Q8_0 {m['gguf_sha256'][:12]} from {spec['repo']}@{m['revision'][:12]}",
+           "readme": (f"# {spec['served_as']} Q8_0 (private, studio use only)\n\n"
+                      f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
+                      "- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
+                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
+                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n")}
+    env = {k: v for k, v in os.environ.items() if k not in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")}
+    env.update(UPLOAD_CHILD_ENV)
+    stdin = json.dumps({**cfg, "token": token}) + "\n"
+    token = None  # noqa: F841 - the child has it now; this process keeps none
+    try:
+        child = subprocess.run([sys.executable, "-c", UPLOAD_CHILD], input=stdin, capture_output=True, text=True,
+                               env=env, timeout=7200)
+    finally:
+        stdin = None  # noqa: F841
+        shutil.rmtree(stage, ignore_errors=True)  # one model per step: gone before the next download
+    out, err = TOKEN_SHAPE_RE.sub("[token]", child.stdout or ""), TOKEN_SHAPE_RE.sub("[token]", child.stderr or "")
+    lines = [x for x in out.splitlines() if x.startswith("UPLOAD_RESULT ")]
+    res = json.loads(lines[-1].removeprefix("UPLOAD_RESULT ")) if lines else {}
+    if child.returncode != 0 or not res.get("ok"):
+        raise RuntimeError(f"the upload child exited {child.returncode}: {res.get('error') or err[-1500:]}")
+    result["uploaded"] = {"repo": repo, "path": hosted_name(spec["served_as"]), "sha256": m["gguf_sha256"],
+                          "commit": res.get("commit"), "licence": res.get("licence"), "files": res.get("files"),
+                          "hub_version": res.get("hub_version")}
+
+
 def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
+    if spec["served_as"] in HOSTED:  # taken from the private repo before any wave, and already checked against its pin
+        h = HOSTED[spec["served_as"]]
+        out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": spec.get("revision"), "card": spec.get("card")}
+        out.update({"gguf_source": f"pre-built, {os.environ.get('PIN_GGUF_REPO')}@{(os.environ.get('PIN_GGUF_REVISION') or '')[:12]}",
+                    "gguf_file": Path(h["path"]).name, "gguf_sha256": h["sha256"], "gguf_bytes": Path(h["path"]).stat().st_size,
+                    "path": str(h["path"])})
+        return out
     from huggingface_hub import HfApi, hf_hub_download, snapshot_download  # noqa: PLC0415
 
     rev = spec.get("revision") or hf_revision(spec["repo"])
@@ -1415,7 +1660,8 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
                 arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
                 checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
-                arms[n]["done"] = w["exit"] != 0
+                # Nothing left to critique (every slot dropped, R&D on 13b) ends the arm, as the critique branch does.
+                arms[n]["done"] = w["exit"] != 0 or not pending(w)
                 # ---- (9) the funnel, on the pilot's first write wave only
                 if i == 0 and extra is None:
                     why = funnel_stop(w, len(json.loads(plan.read_text(encoding="utf-8"))["slots"]))
@@ -1592,6 +1838,10 @@ def pilot_window(built: dict, result: dict) -> None:
     for c in set(critic_for.values()) - set(writer_names):
         policies.pop(c, None)
     cards_file = CONTENT / "card-values.json"
+    # Pre-built GGUFs (PIN_GGUF_REPO): all of them before any wave, so the token is gone before a wave runs. Q8_0 only;
+    # a Q6_K policy still converts here.
+    prefetch_hosted([n for n in dict.fromkeys([*writer_names, *critic_for.values()]) if policies.get(n, "q8") == "q8"],
+                    by_name, result)
     pool = Pool(built, result, policies, cards_file, WORK / "cards-j1")
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", str(cards_file),
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
@@ -1753,11 +2003,21 @@ def main() -> int:
 
 def _main() -> int:
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "job_token": os.environ.get("PIN_JOB_TOKEN")}
+    # The private repo's token: read once, here, before anything else runs (R&D, from Argon). Only a prebuild, or a
+    # pilot window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
+    role0 = os.environ.get("PIN_ROLE", "all")
+    needs_token = role0 == "prebuild" or (role0 == "pilot" and bool(os.environ.get("PIN_GGUF_REPO")))
+    if needs_token and not token_file().parent.is_dir():
+        result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"
+        (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
+        return 1
+    read_token_file(needed=needs_token)
     if stub_mode():
         result["stub"] = True
         say("STUB MODE (PIN_STUB=1): mock writer and critic on StubLlama; NOT A REAL RUN")
     try:
-        result["machine"] = machine_line()
+        result["machine"] = machine_line(cpu_ok=os.environ.get("PIN_ROLE") in ("convert", "prebuild"))
         say(f"machine: {result['machine']}")
         # Split windows run side by side (Mike, 2026-10-16): PIN_ROLE=build builds the server and pins and smokes
         # the maker GGUFs; PIN_ROLE=convert only converts and hashes (no CUDA build, so no smoke; the build VM's
@@ -1771,13 +2031,19 @@ def _main() -> int:
                 result["llama_server"] = built = runtime()
                 # The libraries first, so they're pinned even if a model fails later in the window.
                 result["llama_server"]["libs"] = pin_libs(built["path"])
-        elif role == "convert":
+        elif role in ("convert", "prebuild"):
             src = WORK / "llama.cpp"
             sh(f"git clone -q https://github.com/ggml-org/llama.cpp {src} && git -C {src} checkout -q {LLAMA_CPP_COMMIT}", timeout=900)
             built = {"commit": LLAMA_CPP_COMMIT, "src": str(src)}
         else:
             result["llama_server"] = built = build()
         specs = MODELS if role in ("all", "smoke", "critic", "q6k") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+        if role == "prebuild" and len([x for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]) != 1:
+            raise RuntimeError("PIN_ROLE=prebuild converts one model per window: set PIN_ONLY to exactly one")
+        if role == "prebuild":
+            unpinned = [m["served_as"] for m in specs if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
+            if unpinned:  # byte-match or don't host means nothing without a pin to match (R&D)
+                raise RuntimeError(f"REFUSED: {', '.join(unpinned)} has no expect_sha256; a prebuild needs a pin to match")
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:
@@ -1814,6 +2080,8 @@ def _main() -> int:
                 # A pin that doesn't reproduce never serves: it goes to R&D first (andon).
                 m["smoke"] = {"ok": False, "error": f"GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}; not served"}
                 result["model_errors"] = result.get("model_errors", 0) + 1
+            elif role == "prebuild":
+                upload_hosted(spec, m, result)
             elif role != "convert":
                 try:
                     m["smoke"] = smoke(built, m)
@@ -1826,7 +2094,7 @@ def _main() -> int:
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
-        if role not in ("convert", "smoke") and not (stub_mode() and role == "pilot"):
+        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role == "pilot"):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")

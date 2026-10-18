@@ -12,6 +12,23 @@ if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
   exit 2
 fi
+if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
+  # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
+  # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
+  echo "REFUSED: a ${PIN_GPU:-A100} window with the VM gate on needs PIN_GATE_MIN_DISK_GB (its peak + 20 GB)" >&2
+  exit 2
+fi
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  # Scoped tokens only (R&D, 2026-10-18): a pilot window reads with HF_TOKEN_GGUF_READ, a prebuild writes with
+  # HF_TOKEN_GGUF_WRITE, each fine-grained to the one private repo. The account-wide HF_TOKEN never goes to a VM.
+  # Checked before any VM is asked for; presence only, never the value.
+  case "${PIN_ROLE:-}:$PIN_HF_TOKEN_FROM" in
+    pilot:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE) ;;
+    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE)"; exit 2;;
+  esac
+  tokvar=$PIN_HF_TOKEN_FROM
+  [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
+fi
 CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
@@ -25,7 +42,9 @@ export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
 # Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
+TOKF=""  # the rig-side token file, if this window sends one: removed in the trap too, so a crash can't leave it
 stop_all() {
+  [ -n "$TOKF" ] && rm -f "$TOKF"
   (
     # Bounded: the EXIT trap can fire while this script still holds the open lock, and an unbounded wait would never
     # stop the session (R&D on #89). After 60 s it stops the session anyway.
@@ -42,8 +61,30 @@ exec 9>"$OPEN_LOCK"; flock 9
 START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
 GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
-timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
-sleep 15; colab usage 2>&1 | grep -E "rate|assign"
+# PIN_HIGH_MEM=1 asks for the high-memory shape (a CPU conversion needs it: 8 cores and 52 GB against the default's 2 and
+# 12 GB, measured 2026-10-18).
+[ "${PIN_HIGH_MEM:-0}" = 1 ] && GPU_ARGS+=(--high-mem)
+# The VM health gate (Mike and R&D, 2026-10-18): before anything is uploaded, vm_gate.py reads the card, disk, RAM and
+# the pipe to Hugging Face; a VM that fails, or whose first exec dies or times out (windows 11c and 12e lost 5.7 units
+# to first-exec deaths after the upload), is stopped and a fresh one asked for, up to PIN_GATE_TRIES. Each attempt is a
+# row in gate.jsonl (readings only, no identity data). It catches VMs that are bad at the start; drops and hangs later
+# in the run are the resume path's and checkpoints.py's. PIN_GATE=0 skips it.
+GATE_TRIES="${PIN_GATE_TRIES:-3}"; GATE_S="${PIN_GATE_TIMEOUT_S:-180}"
+GATE_ENV=(--env "PIN_GATE_GPU=$([ "${PIN_GPU:-A100}" = CPU ] && echo 0 || echo 1)")
+for v in $(compgen -e | grep '^PIN_GATE_' | grep -v -E '^PIN_GATE_(TRIES|TIMEOUT_S|GPU)$'); do GATE_ENV+=(--env "$v=${!v}"); done
+for try in $(seq 1 "$GATE_TRIES"); do
+  timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1 | tail -2 || { flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
+  sleep 15
+  [ "${PIN_GATE:-1}" = 0 ] && break
+  line=$(timeout "$GATE_S" colab exec -s "$S" "${GATE_ENV[@]}" -f "$here/vm_gate.py" --timeout "$GATE_S" 2>&1 | grep -m1 '^VM_GATE ')
+  row=${line#VM_GATE }; [ -n "$line" ] || row='{"ok": false, "why": ["the gate exec died or timed out before it printed"]}'
+  printf '{"try": %s, "gpu": "%s", "gate": %s}\n' "$try" "${PIN_GPU:-A100}" "$row" >> "$OUT/gate.jsonl"
+  if printf '%s' "$row" | grep -q '"ok": true'; then echo "VM gate passed (try $try)"; break; fi
+  echo "VM gate rejected try $try: $(printf '%s' "$row" | grep -o '"why": \[[^]]*\]')"
+  colab stop -s "$S" 2>&1 | tail -1; sleep 5
+  if [ "$try" = "$GATE_TRIES" ]; then flock -u 9; exec 9>&-; echo "VM GATE: no healthy ${PIN_GPU:-A100} in $GATE_TRIES tries"; exit 4; fi
+done
+colab usage 2>&1 | grep -E "rate|assign"
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
 # A neighbour closing between the two reads can make the difference 0 or less: then take the runtime's own known rate,
@@ -143,11 +184,30 @@ for f in ${PIN_UPLOADS:-}; do
   [ "$ok" = 1 ] || { echo "UPLOAD FAILED: $(basename "$f")"; exit 3; }
   echo "uploaded $(basename "$f") $(sha256sum "$f" | cut -c1-16)"
 done
+# The private GGUF repo's token (R&D, 2026-10-18), only for a window that names one: PIN_HF_TOKEN_FROM is the name of
+# the rig's environment variable Mike set (the read token for a pilot window, the write token for a prebuild). It goes
+# over as a file, written owner-only and deleted here at once: never on a command line, never through --env, never in a
+# log. The job reads it once, deletes it and drops it before any wave. It goes up only after the VM gate passed, so a
+# rejected VM never receives it. If the job dies before reading it, the file stays at /dev/shm/hf.token on a VM that
+# this script is stopping anyway (the EXIT trap); nothing fetches it back. On the VM it goes to RAM-backed /dev/shm,
+# outside /content and every tar.
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  tokvar=$PIN_HF_TOKEN_FROM
+  TOKF=$(mktemp); chmod 600 "$TOKF"; printf '%s' "${!tokvar}" > "$TOKF"; tf=$TOKF
+  ok=0
+  for try in 1 2 3; do
+    if timeout 120 colab upload -s "$S" "$tf" /dev/shm/hf.token 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
+    sleep 5
+  done
+  rm -f "$tf"; TOKF=""
+  [ "$ok" = 1 ] || { echo "UPLOAD FAILED: the token file"; exit 3; }
+  echo "uploaded the token file (owner-only, deleted on the rig)"
+fi
 t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
