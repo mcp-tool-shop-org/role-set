@@ -1,27 +1,27 @@
 # role-set: how it works
 
-Mapped at 2026-10-17 from commit 5a7490b by Atlas 1.24.0.
+Mapped at 2026-10-18 from commit 05becc8 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (100 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (106 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-17 (d12bae8)
+## What changed since 2026-10-18 (462ea6a)
 
-Nothing structural changed since 2026-10-17; 1 file changed content.
+Nothing structural changed since 2026-10-18; 3 files changed content.
 
 ## What comes in
 
-1. **CI.** On a pull request to main; on a push to main touching 9 paths; or by hand. Runs tests/.
+1. **CI.** On a pull request; on a push to main touching 10 paths; or by hand. Runs tests/.
 2. **Deploy site to GitHub Pages.** On a push to main touching 2 paths; or by hand. Runs site/astro.config.mjs and site/src/.
 3. **role-set** (a command people run). Runs src/role_set/cli.py.
 
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (3 files) and src (41 files).
+2. That reaches scripts (4 files) and src (42 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -52,7 +52,7 @@ CI writes nothing this map can see.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 12 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 14 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -88,10 +88,10 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
-- 4 writes and 15 reads use paths built at run time and are not named here.
-- 27 writes and 68 reads go to a path their caller passes, not to this repository.
+- 4 writes and 21 reads use paths built at run time and are not named here.
+- 31 writes and 74 reads go to a path their caller passes, not to this repository.
+- 11 reads go to the directory the command is run in, not to this repository.
 - 7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.
-- 9 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.
