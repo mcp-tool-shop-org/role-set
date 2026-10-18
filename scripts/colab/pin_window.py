@@ -2030,6 +2030,9 @@ def rescore_window(built: dict, result: dict) -> None:
     rescore-out.tar holds the manifest, rescore.json, rescore-report.json, the rescore's log and the critic's server
     log; pin-result.json carries critic_card and the input shas."""
 
+    # No token is sent to a rescore window; it records the same five-place check as every window (R&D on #95).
+    take_token()
+    check_token_clean(result)
     rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
     result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
     critic = os.environ["PIN_RESCORE_CRITIC"]

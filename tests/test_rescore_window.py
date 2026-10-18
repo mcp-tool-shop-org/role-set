@@ -35,6 +35,10 @@ def vm(tmp_path, monkeypatch):
     monkeypatch.setattr(pw, "say", lambda *a: None)
     monkeypatch.setattr(pw, "CUT_AT", None)
     monkeypatch.delenv("PIN_DEADLINE", raising=False)
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm-hf.token")  # absent: no token reaches a rescore window
+    monkeypatch.setattr(pw, "_TOKEN", None)
     (tmp_path / "pin").mkdir()
     (tmp_path / "pack").mkdir()
     (tmp_path / "pack" / "pack.json").write_text("{}", encoding="utf-8")
@@ -106,6 +110,7 @@ def test_the_critic_is_set_up_then_served_then_the_rescore_runs_on_the_checked_i
     assert cmd[cmd.index("--runs") + 1] == str(root / "pilot-out-12f.tar")
     assert cmd[cmd.index("--drafts") + 1] == f"granite-4.2-30b={root / 'w0/granite-4.2-30b.jsonl'},{root / 'w1/granite-4.2-30b.jsonl'}"
     assert cmd[cmd.index("--seed") + 1] == "20261018" and cmd[cmd.index("--critic-model") + 1] == LIGHTNING
+    assert all(result["token_clean"].values()), result["token_clean"]
     assert result["critic_card"] == {"temperature": 0.6} and set(result["rescore_inputs"]["files"]) == {
         "pilot-out-12f.tar", "w0/granite-4.2-30b.jsonl", "w1/granite-4.2-30b.jsonl"}
     names = tarfile.open(vm / "pin" / "rescore-out.tar").getnames()
@@ -181,3 +186,13 @@ def test_a_failed_rescore_fails_the_window(vm, monkeypatch):
     _fake_rescore(monkeypatch, events, exit=2)
     with pytest.raises(RuntimeError, match="role-set rescore exited 2"):
         pw.rescore_window({}, {})
+
+
+def test_a_token_residue_stops_the_rescore_before_anything_is_set_up(vm, monkeypatch):
+    events = []
+    _fake_pool(monkeypatch, events)
+    _fake_rescore(monkeypatch, events)
+    monkeypatch.setenv("HF_TOKEN", "x")
+    with pytest.raises(RuntimeError, match="token residue is left before any wave"):
+        pw.rescore_window({}, {})
+    assert not events
