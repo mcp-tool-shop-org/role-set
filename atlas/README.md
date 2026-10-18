@@ -1,16 +1,16 @@
 # role-set: how it works
 
-Mapped at 2026-10-17 from commit 390e777 by Atlas 1.24.0.
+Mapped at 2026-10-17 from commit 5a7490b by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (89 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (100 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-17 (1ac66e8)
+## What changed since 2026-10-17 (d12bae8)
 
-Nothing structural changed since 2026-10-17; 1 file added, 1 removed and 6 changed content.
+Nothing structural changed since 2026-10-17; 1 file changed content.
 
 ## What comes in
 
@@ -21,7 +21,7 @@ Nothing structural changed since 2026-10-17; 1 file added, 1 removed and 6 chang
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (1 file) and src (40 files).
+2. That reaches scripts (3 files) and src (41 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -37,21 +37,22 @@ CI writes nothing this map can see.
 ## What breaks what
 
 - **src** is imported by 1 part (scripts), and by 1 more only from tests; it sits on the path of 2 doors.
+- **tests** is imported by 1 part (scripts) and sits on the path of 1 door.
 - **scripts** is imported only from tests, by 1 part (tests), and sits on the path of 1 door.
+- **roles/domains/naics-2022.json** is written by scripts and read by scripts; a hand edit reaches every reader.
 
 ## What tends to change together
 
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 10 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 11 commits, and the tests part imports the src part.
 - **src/role_set/mock.py** and **tests/test_runner.py** changed together in 11 of 21 commits, and the tests part imports the src part.
-- **src/role_set/cli.py** and **src/role_set/write.py** changed together in 15 of 30 commits, inside the src part.
 - **src/role_set/generate/recipes.py** and **tests/test_generate.py** changed together in 5 of 10 commits, and the tests part imports the src part.
 
-4 files changed together with their own tests, as expected.
+3 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 11 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 12 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -59,7 +60,7 @@ Every code part is imported by at least one test.
 
 ## Written but never read
 
-- **roles/domains/naics-2022.json** is written by scripts/naics_table.py and read by nothing else in this repository.
+Every written place has a reader.
 
 ## Helpers that look duplicated
 
@@ -86,8 +87,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 4 writes and 11 reads use paths built at run time and are not named here.
-- 11 writes and 44 reads go to a path their caller passes, not to this repository.
+- 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
+- 4 writes and 15 reads use paths built at run time and are not named here.
+- 27 writes and 68 reads go to a path their caller passes, not to this repository.
 - 7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.
 - 9 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

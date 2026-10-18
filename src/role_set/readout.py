@@ -139,8 +139,11 @@ def summarize(run_dir: Path) -> dict:
     glyphs = sum(r.get("glyphs_normalized", 0) for r in receipts) + sum(c.get("glyphs_normalized", 0) for c in calls if c.get("outcome") != "accepted")
     tokens = status.get("tokens", {})
     n_calls = len(calls) or sum(1 for a in status.get("actions", []) if a.get("action") in ("accepted", "refused")) or None
+    is_stub = bool(report.get("stub") or ((report.get("pins") or {}).get("machine") or {}).get("stub")
+                   or (receipts and (receipts[0].get("machine") or {}).get("stub")))
     return {
         "run": "/".join(run_dir.parts[-3:]) if run_dir.name in ("rehearsal", "mock") else run_dir.name,
+        **({"stub": True} if is_stub else {}),
         "halted": status.get("halted"),
         "lesson_halts": status.get("lesson_halts", {}),
         "cell_halts": status.get("cell_halts", {}),
@@ -169,7 +172,8 @@ def summarize(run_dir: Path) -> dict:
 
 
 def markdown(main: dict, others: list[dict]) -> str:
-    lines = [f"# Readout: {main['run']}", ""]
+    head = f"# Readout (STUB): {main['run']}" if main.get("stub") else f"# Readout: {main['run']}"
+    lines = [head, ""]
     if main.get("inputs"):
         lines += ["Inputs: " + "; ".join(f"{k} {v}" for k, v in main["inputs"].items()) + ".", ""]
     lines.append(f"Accepted {main['accepted']} of {main['attempted']} attempted (accept rate {main['accept_rate']}); "

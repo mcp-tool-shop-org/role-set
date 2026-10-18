@@ -29,10 +29,12 @@ on:
       - "roles/**"
       - "docs/**"
       - "atlas/**"
+      - "scripts/**"
       - "codecov.yml"
       - ".github/workflows/**"
+  # Every pull request, whatever its base: stacked PRs (#88, #89) never ran CI under a main-only filter (R&D,
+  # 2026-10-17), and a required check runs on every PR (github-actions rule, amended 2026-09-30).
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -42,7 +44,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # the suite ran 13 min before the window-script and lock tests (2026-10-17); 15 cut it off
     permissions:
       contents: read
       id-token: write
@@ -58,7 +60,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Test
-        run: uv run pytest -m "not sweep" -n auto --cov-report=xml
+        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1

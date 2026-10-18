@@ -8,6 +8,50 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **Window v2 hardening for the Colab window scripts** (`scripts/colab/pin_window.py`, `scripts/colab/smoke_window.sh`, `scripts/colab/checkpoints.py`; R&D, 2026-10-17, from Argon's review):
+  - **Disk:** `to_q6k` unlinks the Q8_0 GGUF before the BF16 conversion starts; `Pool` deletes each writer's GGUF once no later wave or twin batch in the window needs it while keeping any model that is also a critic until its last critique; every delete logs `resources()`.
+  - **Heartbeat:** `run_proc` writes a `HEARTBEAT` line to `job.log` every 5 minutes (subprocess PID, command head, elapsed time, disk free, RAM free) while a subprocess is alive, stopping as soon as the subprocess exits so a hung Python job is never masked.
+  - **Lock on stop:** `smoke_window.sh`'s `stop_all` holds `/tmp/colab-window-open.lock` while stopping its session so a neighbour's rate reads never straddle a stop.
+  - **Stub mode (`PIN_STUB=1`) and anti-confusion guards:** `pin_window.py`'s pilot role skips model downloads, conversions and `llama-server` starts and serves `StubLlama` on `PILOT_PORT` while running the real `role-set` and `rnd` installs, pack check, plans, logging proxy, call journal, checkpoints and tar (`PIN_CONTENT` and `PIN_WORK` overridable). With `PIN_STUB=1`, `pin-result.json` carries `"stub": true` and `job.log` and every arm's readout say `STUB`; `smoke_window.sh` refuses `PIN_STUB=1` on any GPU runtime; `checkpoints.py extract` and `resume_from` refuse stub drafts unless `PIN_STUB=1` is set.
+
+- **The critic-control window** (`PIN_ROLE=critic` in `scripts/colab/pin_window.py`; R&D, 2026-10-17). On one A100, each critic is handled in turn, and a failed check stops that critic before critic-control. The next one still runs.
+  - **The pin:** Muse and Lightning are reconverted and must reproduce their pins (c321320a…, 5bea2069…).
+  - **The fit:** llama-server's log is read for 'offloaded N/N layers to GPU'.
+  - **Muse's tokenizer:** the pilot's own 20 writer briefs and 20 critic prompts are checked id by id against llama-server's `/tokenize`, and any mismatch blocks.
+  - **Muse's fingerprint:** its replay reference is re-recorded at window 4's request.
+  - **critic-control:** role-set runs at a pinned commit, in a uv Python 3.12 env, at the card values. Muse runs at seeds 0 and 1 with `--agreement-with`, Lightning at seed 0.
+  - `smoke_window.sh` uploads `PIN_UPLOADS` and passes `PIN_ROLE` and `PIN_ROLESET_COMMIT`.
+  - **Slots:** every server runs `--parallel 1`, and the window reads `/props` for the slot count and per-slot context, refusing a per-slot context under 32768. llama-server's default splits the context across several slots, and a long thinking reply would truncate at a quarter of it. Window 5's smoke serves ran that way: their fit holds for 32768 in total, not per slot.
+- **writers.json:** Gemma's Q8_0 is pinned (e357a450…, window 9), and the three labelled Q6_K arms (`qwen3.6-35b-a3b-q6k`, `gemma-4-31b-it-q6k`, `deepseek-r1-distill-qwen-32b-q6k`) are listed with their window-9 pins, each naming its card and its source Q8_0.
+- **The Q6_K window** (`PIN_ROLE=q6k`; R&D, 2026-10-17). It's for an arm that doesn't fit the A100 at Q8_0 when no H100 is available:
+  - `llama-quantize` is built from the same 620d2225 tree as its own CPU-only target, with its sha256 pinned and `llama-server` untouched;
+  - the model's Q8_0 is rebuilt and checked against its pin (Gemma's Q8_0 is made and recorded);
+  - it's quantized to Q6_K (`--allow-requantize`), hashed, and served at 32768, recording the fit and slots;
+  - the arm is labelled Q6_K on its receipt.
+  - The smoke serve now reports `fit` and `slots` too.
+- **llama-server starts with `--log-verbosity 4`.** libllama's load lines, including 'offloaded N/M layers to GPU', are TRACE-level at 620d2225 and were dropped at the default 3, so window 7 read no fit line and stopped both critics. The window now waits for the line and keeps the server log's tail in its result.
+- **The pilot window** (`PIN_ROLE=pilot`; R&D, 2026-10-17). One or more writer arms run around one critic on one A100, swapping models by restart. Each start re-checks the GGUF's sha256 against its pin, plus the offload and the slots.
+  - The pilot and its twins are planned on the VM from the pinned role-set (`plan --pilot` and `--pilot-twins`), and the pack is uploaded and verified (aspire-si b141cf6).
+  - The waves interleave around the critic: every arm's write wave, then the critic once for all, then the rewrites. A batch ends on a critique, within the attempt budget.
+  - The twins train against each arm's own accepted rows.
+  - Readouts and a `pilot-out.tar` of every wave come back. `PIN_DOWNLOADS` names what the window fetches.
+  - Dry-run end to end against role-set's mock.
+  - **A quant policy per writer** (`PIN_PILOT_QUANT`, R&D 2026-10-17): `q8`, `q6k`, or `q8_or_q6k`. The last tries the Q8_0 against the gates (offload N/N, 1 slot × 32768) and otherwise uses the pinned Q6_K. A Q6_K must reproduce its pin. The result records which ran and why.
+  - **R&D's rulings on Argon's process consult** (2026-10-17):
+    - **Q6_K from BF16:** a Q6_K is built from a BF16 conversion of the snapshot, never requantized from the Q8_0 (llama.cpp's quantize README warns that requantizing can severely reduce quality). The order is snapshot → Q8_0 (pinned) → BF16 → drop the snapshot → Q6_K → drop the BF16, with resources logged at each step. Window 9's three requantized pins are retired in writers.json's `retired` list.
+    - **Checkpoints:** each wave's drafts are printed as a `WAVE_CHECKPOINT` line, `scripts/colab/checkpoints.py extract` recovers them, and `PIN_RESUME_WAVE` / `PIN_RESUME_DIR` resume a dropped window.
+    - **The funnel:** after w0, an arm stops at 6+ drops, a failed warm-up or a halted cell, and skips its twins.
+    - **Local preflight:** `scripts/colab/preflight_window.py` runs a window's setup on the rig first, the same way the VM does: role-set installed with uv into Python 3.12, rnd from a clone, the pack, the plans, the proxy configs, and mock waves.
+  - **The dataminer** (R&D, 2026-10-17; Mike's standing ask): rnd's logging proxy, installed at a pinned commit, sits between role-set and llama-server on every wave.
+    - Each model gets a one-candidate config from its card. The values are unchanged; only `reattach_thinking`, J2's multi-turn transform, is removed.
+    - It records every call in abmine's format, with top-5 logprobs, reasoning, timings and truncation, beside each wave.
+    - Each wave's result carries the file's sha256 and its summary: calls, truncations, thinking and output tokens, wall time.
+    - Checked locally: role-set's transport → proxy → a stub server.
+- **The cap counts a window's own spend:** the account's usage rate after its session opens, less the rate before, times its own runtime. The account balance counted a neighbour's spend too, and window 8 was cut off that way. Qwen3.6's Q6_K must reproduce window 8's 61deb1f7….
+- **A dropped session ends the window.** The watcher checks `colab sessions` every two minutes and ends the exec once the session is gone. Window 10b's VM vanished mid-download and the exec waited on nothing. Every `PIN_*` variable reaches the VM too.
+- **A window stops only its own session.** `smoke_window.sh`'s cleanup used to stop every Colab session, which would have killed a window running beside it.
+- **Transport timeout 1800 s** (was 600). A 16,384-token thinking reply at 20–33 tokens a second takes up to about 820 s, so a long reply now ends as a truncation, not a transport failure.
+
 - **The pins from the Colab windows, and the pilot's eight arms** (BUILD-SPEC B6; R&D, 2026-10-17).
   - `llama_server` is pinned: llama.cpp 620d2225, binary b4659b3f…, built with nvcc 13.4.92, its three CUDA libraries hashed.
   - Pinned at Q8_0 with revision, file and sha256: Lightning (reproduced three times), Muse (tokenizer 49/50, with the Devanagari case recorded and accepted for English rows on a brief check), Bolt (NVIDIA's GGUF), Qwen3.8 and Granite (both fit the A100), Qwen3.6 (fit unproven) and R1-Distill (doesn't fit the A100 at 32768). The last two run on an H100 or as labelled Q6_K arms.
