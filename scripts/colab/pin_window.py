@@ -160,15 +160,89 @@ def _signal_group(proc, sig) -> None:
         pass
 
 
+def heartbeat(msg: str) -> None:
+    """A HEARTBEAT line in job.log: through the Tee when the job runs under it, written directly otherwise."""
+
+    say(msg)
+    if not isinstance(sys.stdout, Tee) and JOB_LOG.parent.exists():
+        with JOB_LOG.open("a", encoding="utf-8") as f:
+            f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+
+
+def _tree_bytes(root: Path | None) -> int:
+    """Bytes under root, hidden files included (the Hub's .incomplete files live in local_dir/.cache)."""
+
+    if root is None or not Path(root).exists():
+        return 0
+    total = 0
+    for dirpath, _dirs, files in os.walk(root):
+        for f in files:
+            try:
+                total += os.lstat(os.path.join(dirpath, f)).st_size
+            except OSError:
+                pass
+    return total
+
+
+DOWNLOAD_FLOOR_MBPS = 20  # the hard timeout's floor rate (R&D, 2026-10-18): bytes / 20 MB/s + 300 s
+
+
+def download_timeout(nbytes: int | None) -> float:
+    return 3600.0 if not nbytes else nbytes / (DOWNLOAD_FLOOR_MBPS * 1e6) + 300
+
+
+def with_heartbeat(fn, label: str, timeout_s: float, watch: Path | None = None):
+    """Run fn (an in-process Hub download) in a worker thread while this thread waits on it, writing a HEARTBEAT line
+    each HEARTBEAT_S round only if the download made progress: the bytes under `watch` grew, or free disk fell (a Xet
+    download may assemble its chunks elsewhere first). A hung download writes nothing, so the rig's stall on job.log
+    (PIN_STALL_S, 600 s) ends the window (R&D, 2026-10-18, after window 13q showed the stall is the only guard against a
+    dead kernel). The heartbeat is tied to this wait, never a free-running thread (Argon #5). Past timeout_s the job
+    raises: the worker thread can't be killed, but the job's finally runs and the window ends, so a lingering daemon
+    thread is acceptable. fn's own exceptions, DeadlineReached included, are raised here."""
+
+    import threading as _threading  # noqa: PLC0415
+
+    box: dict = {}
+
+    def run() -> None:
+        try:
+            box["value"] = fn()
+        except BaseException as e:  # noqa: BLE001 - handed to the waiting thread, which raises it
+            box["error"] = e
+
+    hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
+    t0 = time.time()
+    last_t, last_bytes, last_free = t0, _tree_bytes(watch), shutil.disk_usage(_disk_target()).free
+    worker = _threading.Thread(target=run, name=f"download-{label}", daemon=True)
+    worker.start()
+    while True:
+        worker.join(timeout=max(0.001, min(hb_s, t0 + timeout_s - time.time())))
+        if not worker.is_alive():
+            break
+        now = time.time()
+        if now - t0 >= timeout_s:
+            raise RuntimeError(f"{label}: not done after {round(timeout_s)} s (floor {DOWNLOAD_FLOOR_MBPS} MB/s); the window stops")
+        nbytes, free = _tree_bytes(watch), shutil.disk_usage(_disk_target()).free
+        grew = max(nbytes - last_bytes, last_free - free)
+        if grew > 1 << 20:  # progress: a heartbeat with the rate, also data for the gate floor's recalibration
+            mbps = grew / 1e6 / max(now - last_t, 0.001)
+            heartbeat(f"HEARTBEAT {label} elapsed={round(now - t0)}s bytes={nbytes} mbps={mbps:.1f}")
+        last_t, last_bytes, last_free = now, nbytes, free
+    if "error" in box:
+        raise box["error"]
+    return box.get("value")
+
+
 def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None,
-             term_first: bool = False) -> subprocess.CompletedProcess:
+             term_first: bool = False, input: str | None = None) -> subprocess.CompletedProcess:  # noqa: A002
     """Run a subprocess, writing a heartbeat line to job.log every HEARTBEAT_S while the subprocess lives (Argon #5).
     Tied to the subprocess wait loop, never a free-running thread, so it stops when the job ends or hangs in Python."""
 
     hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
     head = (cmd if isinstance(cmd, str) else " ".join(str(x) for x in cmd)).strip().splitlines()[0][:80]
     proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
-                            start_new_session=True)
+                            stdin=subprocess.PIPE if input is not None else None, start_new_session=True)
+    send = input  # given to the first communicate only
     t0 = time.time()
     deadline = t0 + timeout
     next_hb = t0 + hb_s
@@ -177,9 +251,10 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
             now = time.time()
             wait = max(0.001, min(deadline - now, next_hb - now))
             try:
-                out, err = proc.communicate(timeout=wait)
+                out, err = proc.communicate(input=send, timeout=wait)
                 return subprocess.CompletedProcess(cmd, proc.returncode, out, err)
             except subprocess.TimeoutExpired:
+                send = None
                 now = time.time()
                 if now >= deadline:
                     import signal as _signal  # noqa: PLC0415
@@ -198,11 +273,7 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
                 if proc.poll() is None and now >= next_hb:
                     disk_gb = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
                     ram_mb = _meminfo()["MemAvailable"]
-                    msg = f"HEARTBEAT pid={proc.pid} elapsed={round(now - t0)}s disk_free_gb={disk_gb} ram_free_mb={ram_mb} cmd={head}"
-                    say(msg)
-                    if not isinstance(sys.stdout, Tee) and JOB_LOG.parent.exists():
-                        with JOB_LOG.open("a", encoding="utf-8") as f:
-                            f.write(f"[{time.strftime('%H:%M:%S')}] {msg}\n")
+                    heartbeat(f"HEARTBEAT pid={proc.pid} elapsed={round(now - t0)}s disk_free_gb={disk_gb} ram_free_mb={ram_mb} cmd={head}")
                     next_hb = now + hb_s
     finally:
         if proc.poll() is None:
@@ -461,7 +532,10 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
             check_deadline(f"{n}'s hosted download")
             resources(f"{n}: before hosted download")
             say(f"downloading {n}'s pre-built Q8_0 from the studio's repo")
-            path = Path(hf_hub_download(repo, hosted_name(n), revision=rev, token=token, local_dir=WORK / "hosted"))
+            size = sizes[hosted_name(n)]
+            path = Path(with_heartbeat(
+                lambda n=n: hf_hub_download(repo, hosted_name(n), revision=rev, token=token, local_dir=WORK / "hosted"),
+                f"hosted:{n}", download_timeout(size), watch=WORK / "hosted"))
             got = sha256(path)
             if got != spec["expect_sha256"]:
                 path.unlink(missing_ok=True)
@@ -589,8 +663,9 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
     stdin = json.dumps({**cfg, "token": token}) + "\n"
     token = None  # noqa: F841 - the child has it now; this process keeps none
     try:
-        child = subprocess.run([sys.executable, "-c", UPLOAD_CHILD], input=stdin, capture_output=True, text=True,
-                               env=env, timeout=7200)
+        # A time heartbeat, not a progress one: the child's upload shows no byte progress the job can read, so a hung
+        # upload heartbeats until the 7200 s timeout (a known gap, R&D 2026-10-18).
+        child = run_proc([sys.executable, "-c", UPLOAD_CHILD], input=stdin, env=env, timeout=7200)
     finally:
         stdin = None  # noqa: F841
         shutil.rmtree(stage, ignore_errors=True)  # one model per step: gone before the next download
@@ -626,12 +701,17 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
         if len(files) != 1:
             raise RuntimeError(f"{spec['repo']}: expected one GGUF for {spec.get('file') or spec['pattern']}, found {files}")
         say(f"downloading {files[0]}")
-        path = Path(hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"], token=False))
+        path = Path(with_heartbeat(
+            lambda: hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"], token=False),
+            f"maker:{spec['served_as']}", download_timeout(None), watch=WORK / spec["served_as"]))
         out.update({"gguf_source": "maker", "gguf_file": files[0]})
     else:
         say(f"downloading {spec['repo']} (BF16) for conversion")
-        snap = Path(snapshot_download(spec["repo"], revision=rev, local_dir=WORK / (spec["served_as"] + "-bf16"), token=False,
-                                      allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt", "*.py", "*.jinja"]))
+        snap_dir = WORK / (spec["served_as"] + "-bf16")
+        snap = Path(with_heartbeat(
+            lambda: snapshot_download(spec["repo"], revision=rev, local_dir=snap_dir, token=False,
+                                      allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt", "*.py", "*.jinja"]),
+            f"snapshot:{spec['served_as']}", download_timeout(None), watch=snap_dir))
         py = converter_python(spec, built)
         path = WORK / f"{spec['served_as']}-Q8_0.gguf"
         say("converting to Q8_0")

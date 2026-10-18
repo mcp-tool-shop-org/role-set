@@ -127,7 +127,9 @@ flock -u 9; exec 9>&-
 # stream: that stream stopped reaching the rig in windows 10d and 12a while the job ran on (mistakes #31). It ends the
 # window, through the main script's exit sequence (fetch the results, then stop the session), when:
 # - job.log carries the PIN_RESULT line: the job is done, even if the exec never returns;
-# - job.log hasn't grown: nothing within 10 minutes of the exec starting, or nothing new for 20 minutes after that
+# - job.log hasn't grown: nothing within 10 minutes of the exec starting, or nothing new for PIN_STALL_S (600 s) after
+#   that. Every long step writes a heartbeat at most 300 s apart: run_proc's, and the in-process downloads' (written only
+#   while their bytes grow, so a hung download goes silent). 1200 s until 2026-10-18 (R&D, after window 13q)
 #   (R&D, 2026-10-17; the slowest silent step, a conversion, takes about 12 minutes);
 # - own spend reaches the cap less MARGIN, the units kept back to fetch the results.
 # Colab dropping the session ends the exec at once, with nothing to fetch. At the cap itself the session stops whatever
@@ -182,7 +184,7 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
       started=$(stat -c %Y "$OUT/.exec.pid")
       stalled=""
       [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="job.log empty 10 minutes after the exec started"
-      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-1200}" ] && stalled="job.log unchanged for 20 minutes"
+      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-600}" ] && stalled="job.log unchanged for ${PIN_STALL_S:-600}s"
       if [ -n "$stalled" ]; then
         echo "STALL ($S): $stalled $(date -u +%T)" | tee "$OUT/stall.txt"; end_window stall; continue
       fi
