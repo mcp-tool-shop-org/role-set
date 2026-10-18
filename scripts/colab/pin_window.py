@@ -1171,6 +1171,34 @@ def pending(wave: dict) -> bool:
     return bool(states.get("awaiting_critique") or states.get("needs_rewrite"))
 
 
+def drafts_pending(drafts: Path) -> int:
+    """How many drafts in a sealed drafts file still wait for a critique or a rewrite."""
+
+    n = 0
+    for line in drafts.read_text(encoding="utf-8").splitlines():
+        if line.strip():
+            d = json.loads(line)
+            n += d.get("type") == "draft" and d.get("state") in ("awaiting_critique", "needs_rewrite")
+    return n
+
+
+def rebuild_batch(rs: dict, drafts: Path, out: Path) -> Path:
+    """A resumed arm with nothing pending: its batch files, rebuilt from its drafts the way the wave that finished it
+    writes them (waves.write_batch), so its twins have an accepted.jsonl to train against (R&D, 2026-10-17). Runs in
+    role-set's own Python; the drafts are read through waves.read, so a file that doesn't match its seal is refused."""
+
+    out.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(drafts, out / "wave-drafts.jsonl")
+    shutil.copyfile(drafts.with_name(drafts.name + ".sha256"), out / "wave-drafts.jsonl.sha256")
+    python = str(Path(rs["role_set"]).with_name("python")) if rs.get("role_set") else sys.executable
+    code = ("import sys; from pathlib import Path; from role_set import waves; "
+            "h, d = waves.read(Path(sys.argv[1])); waves.write_batch(d, Path(sys.argv[2]))")
+    r = run_proc([python, "-c", code, str(out / "wave-drafts.jsonl"), str(out)], timeout=600, cwd=rs.get("src"))
+    if r.returncode != 0:
+        raise RuntimeError(f"rebuilding {out}'s batch files failed: {(r.stderr or r.stdout)[-1500:]}")
+    return out
+
+
 class Pool:
     """The window's models, each set up the first time a wave needs it, and only once (R&D, 2026-10-17, from Argon's
     reply): a writer just before its own write wave, a critic just before its first critique. A VM reclaimed partway
@@ -1301,6 +1329,11 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
         if n in arms:
             arms[n]["drafts"] = f
             arms[n]["resumed_after_wave"] = start - 1
+            if not drafts_pending(f):
+                # Its batch finished in the cut window: no wave to run, and its writer is never set up for this batch.
+                # Its accepted rows are rebuilt so its twins can train against them.
+                arms[n]["done"], arms[n]["resumed_finished"] = True, True
+                arms[n]["last"] = rebuild_batch(rs, f, base / n / f"w{start - 1}-resumed")
     if start > 0:
         for n, a in arms.items():  # listed in PIN_PILOT_WRITERS but no drafts to resume: it can't run wave `start`
             if n not in resumed:
