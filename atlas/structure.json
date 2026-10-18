@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "c80da9aa8f763842a5574062b3a254f43cacae929c997f53bb8bbf32ed3b535e",
+          "hash": "561265866025d4cc01e4fa2115819f8be9e06ad3b9807839bb0a42314fad0dfa",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -153,7 +153,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "93699a1108fd9da226b06f84ee12e317f4ea4d2f18a8fd05260443fd1bf2faef",
+          "hash": "8f421da2165c351006297f0c3cb449b0f6727c744af06106364307408ac0db75",
           "path": ".gitattributes"
         },
         {
@@ -165,7 +165,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "b1a962d8067714e8deacbb92bcd74732944e0a2e110ae971821e1ffd8519da69",
+          "hash": "6cf0423191fba1677c6d133fa2e7decc342cb056b18f71b4d783c1d6a0d5dd23",
           "path": "CHANGELOG.md"
         },
         {
@@ -248,7 +248,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 9,
+      "dynamicReads": 11,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 3,
@@ -314,23 +314,38 @@
           "path": "scripts/colab/checkpoints.py"
         },
         {
+          "hash": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30",
+          "path": "scripts/colab/licences/apache-2.0.txt"
+        },
+        {
           "exports": [
             "main",
-            "take_job_lock"
+            "take_job_lock",
+            "take_token_file"
           ],
           "failurePaths": [
             {
-              "in": "take_job_lock",
+              "in": "done_here",
               "kind": "except",
-              "line": 32
+              "line": 55
             },
             {
-              "in": "main",
+              "in": "take_job_lock",
               "kind": "except",
-              "line": 82
+              "line": 68
+            },
+            {
+              "in": "_run",
+              "kind": "raise",
+              "line": 131
+            },
+            {
+              "in": "_run",
+              "kind": "except",
+              "line": 136
             }
           ],
-          "hash": "e28a40c266335330f5c052ca1097ef92a03a1563d93602e39813f15376aae26c",
+          "hash": "98f73e3c69a72014afcf11017d9b0db14cc81a2e83723f4912caeeb13142eaa8",
           "importsFiles": [
             "scripts/colab/pin_window.py"
           ],
@@ -341,34 +356,44 @@
             "all_on_gpu",
             "build",
             "build_quantize",
+            "check_deadline",
             "check_pins",
+            "check_token_clean",
             "checkpoint",
             "choose_quant",
             "converter_python",
             "critic_control",
             "critic_window",
             "critics_for",
+            "deadline_left",
+            "drafts_pending",
             "drop_snapshot",
             "fetch_model",
             "funnel_stop",
             "generations_summary",
             "hf_revision",
             "hf_token_ids",
+            "hosted_name",
             "install_rnd",
             "is_stub_drafts",
             "j1_card",
             "log_tail",
             "machine_line",
             "main",
+            "no_implicit_token",
             "pending",
             "pilot_batch",
             "pilot_window",
             "pin_libs",
+            "prefetch_hosted",
             "q6k_window",
+            "read_token_file",
+            "rebuild_batch",
             "reference",
             "resources",
             "resume_calls",
             "resume_from",
+            "resume_priors",
             "role_set_env",
             "run_dir",
             "run_proc",
@@ -384,247 +409,407 @@
             "stream_calls",
             "stub_mode",
             "take_job_lock",
+            "take_token",
             "to_q6k",
+            "token_clean",
+            "token_file",
             "tokenize_all",
             "tokenizer_check",
             "twins_enabled",
+            "twins_skip_reason",
             "unpack_resume",
+            "upload_hosted",
             "wait_for_log",
             "write_wave"
           ],
           "failurePaths": [
             {
+              "in": "check_deadline",
+              "kind": "raise",
+              "line": 148
+            },
+            {
+              "in": "_signal_group",
+              "kind": "except",
+              "line": 159
+            },
+            {
               "in": "run_proc",
               "kind": "except",
-              "line": 125
+              "line": 182
+            },
+            {
+              "in": "run_proc",
+              "kind": "except",
+              "line": 191
+            },
+            {
+              "in": "run_proc",
+              "kind": "except",
+              "line": 195
             },
             {
               "in": "run_proc",
               "kind": "raise",
-              "line": 130
+              "line": 197
+            },
+            {
+              "in": "run_proc",
+              "kind": "except",
+              "line": 212
             },
             {
               "in": "sh",
               "kind": "raise",
-              "line": 149
+              "line": 219
             },
             {
               "in": "write",
               "kind": "except",
-              "line": 177
+              "line": 247
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 224
+              "line": 300
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 228
+              "line": 304
+            },
+            {
+              "in": "check_token_clean",
+              "kind": "raise",
+              "line": 421
+            },
+            {
+              "in": "prefetch_hosted",
+              "kind": "raise",
+              "line": 438
+            },
+            {
+              "in": "prefetch_hosted",
+              "kind": "raise",
+              "line": 441
+            },
+            {
+              "in": "prefetch_hosted",
+              "kind": "raise",
+              "line": 451
+            },
+            {
+              "in": "prefetch_hosted",
+              "kind": "raise",
+              "line": 456
+            },
+            {
+              "in": "prefetch_hosted",
+              "kind": "raise",
+              "line": 468
+            },
+            {
+              "in": "upload_hosted",
+              "kind": "raise",
+              "line": 570
+            },
+            {
+              "in": "upload_hosted",
+              "kind": "raise",
+              "line": 601
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 288
+              "line": 627
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 354
+              "line": 693
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 363
+              "line": 702
             },
             {
               "in": "smoke",
               "kind": "except",
-              "line": 369
+              "line": 708
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 372
+              "line": 711
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 459
+              "line": 798
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 496
+              "line": 835
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 546
+              "line": 885
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 580
+              "line": 919
             },
             {
               "in": "start_server",
               "kind": "except",
-              "line": 585
+              "line": 924
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 589
+              "line": 928
+            },
+            {
+              "in": "stop_server",
+              "kind": "except",
+              "line": 935
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 671
+              "line": 1013
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 744
+              "line": 1086
+            },
+            {
+              "in": "critic_window",
+              "kind": "raise",
+              "line": 1087
+            },
+            {
+              "in": "critic_window",
+              "kind": "except",
+              "line": 1088
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 792
+              "line": 1136
+            },
+            {
+              "in": "q6k_window",
+              "kind": "raise",
+              "line": 1137
+            },
+            {
+              "in": "q6k_window",
+              "kind": "except",
+              "line": 1138
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 882
+              "line": 1255
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 890
+              "line": 1263
             },
             {
               "in": "install_rnd",
               "kind": "raise",
-              "line": 911
+              "line": 1284
             },
             {
               "in": "write_wave",
               "kind": "except",
-              "line": 995
+              "line": 1362
+            },
+            {
+              "in": "write_wave",
+              "kind": "raise",
+              "line": 1364
+            },
+            {
+              "in": "write_wave",
+              "kind": "raise",
+              "line": 1369
+            },
+            {
+              "in": "write_wave",
+              "kind": "except",
+              "line": 1380
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1097
+              "line": 1482
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1101
+              "line": 1486
+            },
+            {
+              "in": "resume_priors",
+              "kind": "raise",
+              "line": 1504
+            },
+            {
+              "in": "rebuild_batch",
+              "kind": "raise",
+              "line": 1595
             },
             {
               "in": "get",
               "kind": "raise",
-              "line": 1175
+              "line": 1617
+            },
+            {
+              "in": "get",
+              "kind": "raise",
+              "line": 1633
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1218
+              "line": 1676
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1220
+              "line": 1678
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1224
+              "line": 1682
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 1330
+              "line": 1802
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 1348
+              "line": 1820
             },
             {
               "in": "choose_quant",
               "kind": "except",
-              "line": 1368
+              "line": 1840
             },
             {
               "in": "check_pins",
               "kind": "raise",
-              "line": 1394
+              "line": 1868
             },
             {
               "in": "screen_plan",
               "kind": "raise",
-              "line": 1408
+              "line": 1898
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 1456
+              "line": 1947
             },
             {
               "in": "pilot_window",
               "kind": "except",
-              "line": 1523
+              "line": 2015
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 1541
+              "line": 2033
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 1545
+              "line": 2037
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 1552
+              "line": 2044
+            },
+            {
+              "in": "done_here",
+              "kind": "except",
+              "line": 2069
             },
             {
               "in": "take_job_lock",
               "kind": "except",
-              "line": 1572
+              "line": 2082
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 1634
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 1652
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 1668
+              "line": 2159
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 1670
+              "line": 2163
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 2169
             },
             {
               "in": "_main",
               "kind": "except",
-              "line": 1683
+              "line": 2187
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 2188
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 2189
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 2207
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 2208
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 2209
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 2211
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 2224
             }
           ],
-          "hash": "2d712355877efbbde0e92afe1e9196fe361c0042d7b479d7300fc76aff024cce",
+          "hash": "dc204e1922afd9cb11ec7e437348b478c0e90f3b1c79de47f341c7c96e8f091b",
           "importsFiles": [
             "src/role_set/mock.py"
           ],
@@ -697,8 +882,27 @@
           "path": "scripts/colab/preflight_window.py"
         },
         {
-          "hash": "868a655cef8ed0838bdb7a7c86488bf8777d06518e13143886ea85110cdee8a1",
+          "hash": "a024cc083e4728ce3c4180ad832a23b181d65c20efcae3db9e1d6477ed41c28a",
           "path": "scripts/colab/smoke_window.sh"
+        },
+        {
+          "exports": [
+            "gpu_readings",
+            "hf_read",
+            "host_readings",
+            "limits",
+            "main",
+            "verdict"
+          ],
+          "failurePaths": [
+            {
+              "in": "main",
+              "kind": "except",
+              "line": 112
+            }
+          ],
+          "hash": "2c5a02b7de78929de12312d2dcb10ef11505a06a1bc38c5f29f699a5622858c0",
+          "path": "scripts/colab/vm_gate.py"
         },
         {
           "exports": [
@@ -913,20 +1117,20 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 24,
+          "reads": 30,
           "where": [
             "caller"
           ],
-          "writes": 17
+          "writes": 21
         }
       ],
-      "outsideReads": 24,
-      "outsideWrites": 17,
+      "outsideReads": 30,
+      "outsideWrites": 21,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 3,
+      "testedBy": 5,
       "unresolvedNamed": [
         {
           "path": "scripts/colab/pin_window.py",
@@ -1046,7 +1250,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 6,
+      "dynamicReads": 10,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 1,
@@ -1373,10 +1577,10 @@
             {
               "in": "fold_system",
               "kind": "raise",
-              "line": 86
+              "line": 90
             }
           ],
-          "hash": "7ce7ef0ddf9c6258cdd924ef18224ee2d7f665d96606d72195c564647f876085",
+          "hash": "0848f3d945027af768b4933f0665e87f031482c871c4fb63a24d63801f57dd4a",
           "importsFiles": [
             "src/role_set/guards.py"
           ],
@@ -1393,65 +1597,70 @@
             {
               "in": "_plan",
               "kind": "except",
-              "line": 105
+              "line": 106
             },
             {
               "in": "_pilot_figures",
               "kind": "except",
-              "line": 132
+              "line": 133
             },
             {
               "in": "_cost",
               "kind": "except",
-              "line": 140
+              "line": 141
             },
             {
               "in": "_closed_form_arg",
               "kind": "except",
-              "line": 171
-            },
-            {
-              "in": "_closed_form_arg",
-              "kind": "raise",
               "line": 172
             },
             {
               "in": "_closed_form_arg",
               "kind": "raise",
-              "line": 174
+              "line": 173
+            },
+            {
+              "in": "_closed_form_arg",
+              "kind": "raise",
+              "line": 175
             },
             {
               "in": "_write",
               "kind": "except",
-              "line": 200
+              "line": 202
             },
             {
               "in": "_pack_sync",
               "kind": "except",
-              "line": 210
+              "line": 212
             },
             {
               "in": "_pack_verify",
               "kind": "except",
-              "line": 220
+              "line": 222
             },
             {
               "in": "_ingest",
               "kind": "except",
-              "line": 231
+              "line": 233
             },
             {
               "in": "_critic_control",
               "kind": "raise",
-              "line": 262
+              "line": 264
             },
             {
               "in": "_critic_control",
               "kind": "except",
-              "line": 268
+              "line": 270
+            },
+            {
+              "in": "_rescore",
+              "kind": "except",
+              "line": 517
             }
           ],
-          "hash": "c33e19fbac2b0944c38633e1aa55ca2db4a62ad6103acf26d6afc95e7599eb08",
+          "hash": "e4432a1dd574a9379e657fce7eb4aa2ad6f59cd3ea5ecc31d11fcca54c6bf9cb",
           "importOrder": [
             "src/role_set/__init__.py",
             "src/role_set/autostart.py",
@@ -1472,6 +1681,7 @@
             "src/role_set/plan.py",
             "src/role_set/prompts.py",
             "src/role_set/readout.py",
+            "src/role_set/rescore.py",
             "src/role_set/store.py",
             "src/role_set/trait_steps.py",
             "src/role_set/write.py"
@@ -1495,6 +1705,7 @@
             "src/role_set/proven.py",
             "src/role_set/puzzle_check.py",
             "src/role_set/readout.py",
+            "src/role_set/rescore.py",
             "src/role_set/solvefirst.py",
             "src/role_set/store.py",
             "src/role_set/trait_steps.py",
@@ -1505,84 +1716,84 @@
             {
               "calls": [
                 {
-                  "line": 90,
+                  "line": 91,
                   "name": "plan_pilot",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 92,
+                  "line": 93,
                   "name": "plan_pilot_twins",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 94,
+                  "line": 95,
                   "name": "plan_apply_batch",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 94,
+                  "line": 95,
                   "name": "plan_batch",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 97,
+                  "line": 98,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 98,
+                  "line": 99,
                   "name": "assign",
-                  "target": {
-                    "file": "src/role_set/__init__.py"
-                  }
-                },
-                {
-                  "line": 100,
-                  "name": "load_packs",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 101,
-                  "name": "load",
+                  "name": "load_packs",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 102,
-                  "name": "assign",
+                  "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 103,
-                  "name": "lock_skeletons",
+                  "name": "assign",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 104,
+                  "name": "lock_skeletons",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 105,
                   "name": "check",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 131,
+                  "line": 132,
                   "name": "check_plan",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -1598,7 +1809,7 @@
             {
               "calls": [
                 {
-                  "line": 131,
+                  "line": 132,
                   "name": "check_plan",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -1613,7 +1824,7 @@
             {
               "calls": [
                 {
-                  "line": 139,
+                  "line": 140,
                   "name": "estimate",
                   "target": {
                     "file": "src/role_set/cost.py"
@@ -1628,21 +1839,21 @@
             {
               "calls": [
                 {
-                  "line": 152,
+                  "line": 153,
                   "name": "find",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 153,
+                  "line": 154,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 154,
+                  "line": 155,
                   "name": "readout",
                   "target": {
                     "file": "src/role_set/readout.py"
@@ -1657,14 +1868,14 @@
             {
               "calls": [
                 {
-                  "line": 179,
+                  "line": 180,
                   "name": "WriteConfig",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 199,
+                  "line": 201,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -1679,7 +1890,7 @@
             {
               "calls": [
                 {
-                  "line": 209,
+                  "line": 211,
                   "name": "sync",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -1694,7 +1905,7 @@
             {
               "calls": [
                 {
-                  "line": 219,
+                  "line": 221,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -1709,14 +1920,14 @@
             {
               "calls": [
                 {
-                  "line": 229,
+                  "line": 231,
                   "name": "interview_questions",
                   "target": {
                     "file": "src/role_set/ingest.py"
                   }
                 },
                 {
-                  "line": 230,
+                  "line": 232,
                   "name": "ingest",
                   "target": {
                     "file": "src/role_set/ingest.py"
@@ -1731,14 +1942,14 @@
             {
               "calls": [
                 {
-                  "line": 239,
+                  "line": 241,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 240,
+                  "line": 242,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -1753,21 +1964,21 @@
             {
               "calls": [
                 {
-                  "line": 245,
+                  "line": 247,
                   "name": "open_store",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 246,
+                  "line": 248,
                   "name": "void_round",
                   "target": {
                     "file": "src/role_set/store.py"
                   }
                 },
                 {
-                  "line": 247,
+                  "line": 249,
                   "name": "counts",
                   "target": {
                     "file": "src/role_set/store.py"
@@ -1782,42 +1993,42 @@
             {
               "calls": [
                 {
-                  "line": 255,
+                  "line": 257,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 256,
+                  "line": 258,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 257,
+                  "line": 259,
                   "name": "load_machine",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 258,
+                  "line": 260,
                   "name": "require_server",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 259,
+                  "line": 261,
                   "name": "needs_grant",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 260,
+                  "line": 262,
                   "name": "require_grant",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -1825,56 +2036,56 @@
                 },
                 {
                   "branch": "not args.heartbeat",
-                  "line": 262,
+                  "line": 264,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 263,
+                  "line": 265,
                   "name": "require_heartbeat",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 264,
+                  "line": 266,
                   "name": "resolve_critic",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 266,
+                  "line": 268,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 267,
+                  "line": 269,
                   "name": "select",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 271,
+                  "line": 273,
                   "name": "load_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 273,
+                  "line": 275,
                   "name": "critic_caller",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 274,
+                  "line": 276,
                   "name": "pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -1882,7 +2093,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 285,
+                  "line": 287,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -1890,7 +2101,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 285,
+                  "line": 287,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -1898,7 +2109,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 286,
+                  "line": 288,
                   "name": "trait_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1906,7 +2117,7 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 286,
+                  "line": 288,
                   "name": "TRAIT_STEPS",
                   "passed": true,
                   "target": {
@@ -1915,35 +2126,35 @@
                 },
                 {
                   "branch": "args.trait_leg or args.answer_leg",
-                  "line": 289,
+                  "line": 291,
                   "name": "answer_leg",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 302,
+                  "line": 304,
                   "name": "cases_from_rows",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 303,
+                  "line": 305,
                   "name": "plant_errors",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 305,
+                  "line": 307,
                   "name": "run_control",
                   "target": {
                     "file": "src/role_set/critic_control.py"
                   }
                 },
                 {
-                  "line": 310,
+                  "line": 312,
                   "name": "run_agreement",
                   "target": {
                     "file": "src/role_set/critic_control.py"
@@ -1958,7 +2169,7 @@
             {
               "calls": [
                 {
-                  "line": 318,
+                  "line": 320,
                   "name": "harvest",
                   "target": {
                     "file": "src/role_set/harvest.py"
@@ -1973,7 +2184,7 @@
             {
               "calls": [
                 {
-                  "line": 345,
+                  "line": 347,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -1989,28 +2200,50 @@
             {
               "calls": [
                 {
-                  "line": 486,
+                  "line": 502,
+                  "name": "RescoreConfig",
+                  "target": {
+                    "file": "src/role_set/rescore.py"
+                  }
+                },
+                {
+                  "line": 516,
+                  "name": "run_rescore",
+                  "target": {
+                    "file": "src/role_set/rescore.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_rescore"
+            },
+            {
+              "calls": [
+                {
+                  "line": 527,
                   "name": "stamp",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 487,
+                  "line": 528,
                   "name": "check_file",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 487,
+                  "line": 528,
                   "name": "refuse_repeats",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 491,
+                  "line": 532,
                   "name": "render",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -2025,7 +2258,7 @@
             {
               "calls": [
                 {
-                  "line": 496,
+                  "line": 537,
                   "name": "run",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -2040,7 +2273,7 @@
             {
               "calls": [
                 {
-                  "line": 345,
+                  "line": 347,
                   "name": "PROFILES",
                   "passed": true,
                   "target": {
@@ -4333,6 +4566,474 @@
           ]
         },
         {
+          "entry": "run_rescore",
+          "entryRule": 4,
+          "exports": [
+            "render_table",
+            "run_rescore"
+          ],
+          "failurePaths": [
+            {
+              "in": "_read_w1_call_notes",
+              "kind": "except",
+              "line": 109
+            },
+            {
+              "in": "_parse_drafts_spec",
+              "kind": "raise",
+              "line": 150
+            },
+            {
+              "in": "_parse_drafts_spec",
+              "kind": "raise",
+              "line": 154
+            },
+            {
+              "in": "_load_one_arm",
+              "kind": "except",
+              "line": 162
+            },
+            {
+              "in": "_load_one_arm",
+              "kind": "raise",
+              "line": 163
+            },
+            {
+              "in": "_load_one_arm",
+              "kind": "raise",
+              "line": 167
+            },
+            {
+              "in": "_discover_tar_arms",
+              "kind": "raise",
+              "line": 193
+            },
+            {
+              "in": "_discover_tar_arms",
+              "kind": "except",
+              "line": 197
+            },
+            {
+              "in": "_discover_tar_arms",
+              "kind": "raise",
+              "line": 198
+            },
+            {
+              "in": "_discover_tar_arms",
+              "kind": "raise",
+              "line": 215
+            },
+            {
+              "in": "_discover_tar_arms",
+              "kind": "raise",
+              "line": 218
+            },
+            {
+              "in": "_muse_flaw_for_c",
+              "kind": "except",
+              "line": 240
+            },
+            {
+              "in": "_writer_entry_for",
+              "kind": "raise",
+              "line": 328
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 427
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 430
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 431
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 439
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 440
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 442
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 455
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 457
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 463
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 464
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 475
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 481
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 493
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 495
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 532
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 639
+            }
+          ],
+          "hash": "24f8e93bda7c8fab6a40e80e569bb3ffe939f748d4576242c23bba83c85325f5",
+          "importsFiles": [
+            "src/role_set/__init__.py",
+            "src/role_set/assemble.py",
+            "src/role_set/callcache.py",
+            "src/role_set/cards.py",
+            "src/role_set/critic.py",
+            "src/role_set/gates.py",
+            "src/role_set/guards.py",
+            "src/role_set/mock.py",
+            "src/role_set/pack.py",
+            "src/role_set/prompts.py",
+            "src/role_set/proven.py",
+            "src/role_set/runner.py",
+            "src/role_set/waves.py",
+            "src/role_set/write.py"
+          ],
+          "path": "src/role_set/rescore.py",
+          "sequences": [
+            {
+              "calls": [
+                {
+                  "line": 132,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_read_w1_journal_flaws"
+            },
+            {
+              "calls": [
+                {
+                  "line": 160,
+                  "name": "read",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 132,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_read_w1_journal_flaws"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_load_one_arm"
+            },
+            {
+              "calls": [
+                {
+                  "line": 192,
+                  "name": "is_file",
+                  "target": null
+                },
+                {
+                  "line": 160,
+                  "name": "read",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_load_one_arm"
+                },
+                {
+                  "line": 132,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_read_w1_journal_flaws"
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_discover_tar_arms"
+            },
+            {
+              "calls": [
+                {
+                  "line": 249,
+                  "name": "flaw_messages",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  }
+                },
+                {
+                  "line": 252,
+                  "name": "request_key",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 258,
+                  "name": "load_answers",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_muse_flaw_for_c"
+            },
+            {
+              "calls": [
+                {
+                  "line": 316,
+                  "name": "header_writer_pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                }
+              ],
+              "exported": false,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "_writer_entry_for"
+            },
+            {
+              "calls": [
+                {
+                  "line": 429,
+                  "name": "verify",
+                  "target": {
+                    "file": "src/role_set/pack.py"
+                  }
+                },
+                {
+                  "line": 432,
+                  "name": "load_pack",
+                  "target": {
+                    "file": "src/role_set/prompts.py"
+                  }
+                },
+                {
+                  "line": 433,
+                  "name": "trait_names_from_pack",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  }
+                },
+                {
+                  "line": 438,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 459,
+                  "name": "resolve_critic",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  }
+                },
+                {
+                  "line": 460,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 461,
+                  "name": "select",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 462,
+                  "name": "pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 466,
+                  "name": "critic_caller",
+                  "target": {
+                    "file": "src/role_set/write.py"
+                  }
+                },
+                {
+                  "line": 192,
+                  "name": "is_file",
+                  "target": null,
+                  "via": "_discover_tar_arms"
+                },
+                {
+                  "line": 160,
+                  "name": "read",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_load_one_arm"
+                },
+                {
+                  "line": 132,
+                  "name": "load",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_read_w1_journal_flaws"
+                },
+                {
+                  "line": 492,
+                  "name": "load_gates",
+                  "target": {
+                    "file": "src/role_set/gates.py"
+                  }
+                },
+                {
+                  "line": 496,
+                  "name": "mock_gates",
+                  "target": {
+                    "file": "src/role_set/mock.py"
+                  }
+                },
+                {
+                  "line": 501,
+                  "name": "load_answers",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 503,
+                  "name": "MockCritic",
+                  "target": {
+                    "file": "src/role_set/mock.py"
+                  }
+                },
+                {
+                  "line": 316,
+                  "name": "header_writer_pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_writer_entry_for"
+                },
+                {
+                  "line": 531,
+                  "name": "require_other_family",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 249,
+                  "name": "flaw_messages",
+                  "target": {
+                    "file": "src/role_set/critic.py"
+                  },
+                  "via": "_muse_flaw_for_c"
+                },
+                {
+                  "line": 252,
+                  "name": "request_key",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_muse_flaw_for_c"
+                },
+                {
+                  "line": 258,
+                  "name": "load_answers",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  },
+                  "via": "_muse_flaw_for_c"
+                },
+                {
+                  "line": 624,
+                  "name": "Runner",
+                  "target": {
+                    "file": "src/role_set/runner.py"
+                  }
+                },
+                {
+                  "line": 632,
+                  "name": "state_of",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 633,
+                  "name": "completion_of",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                }
+              ],
+              "exported": true,
+              "invokedAtTopLevel": false,
+              "isDefaultExport": false,
+              "name": "run_rescore",
+              "truncated": true
+            }
+          ]
+        },
+        {
           "exports": [
             "cell_key",
             "interleave",
@@ -4873,6 +5574,7 @@
           "exports": [
             "bare",
             "batch_pins",
+            "chain_card_pins",
             "completion_of",
             "dump_answers",
             "file_sha256",
@@ -4898,87 +5600,93 @@
             {
               "in": "read",
               "kind": "except",
-              "line": 83
-            },
-            {
-              "in": "read",
-              "kind": "raise",
               "line": 84
             },
             {
               "in": "read",
               "kind": "raise",
-              "line": 87
-            },
-            {
-              "in": "read",
-              "kind": "except",
-              "line": 90
+              "line": 85
             },
             {
               "in": "read",
               "kind": "raise",
+              "line": 88
+            },
+            {
+              "in": "read",
+              "kind": "except",
               "line": 91
             },
             {
               "in": "read",
               "kind": "raise",
-              "line": 93
+              "line": 92
             },
             {
               "in": "read",
               "kind": "raise",
-              "line": 96
+              "line": 94
+            },
+            {
+              "in": "read",
+              "kind": "raise",
+              "line": 97
             },
             {
               "in": "require_same_pins",
               "kind": "raise",
-              "line": 116
+              "line": 117
             },
             {
               "in": "require_same_pins",
               "kind": "raise",
-              "line": 119
+              "line": 120
             },
             {
               "in": "require_same_pins",
               "kind": "raise",
-              "line": 124
+              "line": 125
+            },
+            {
+              "in": "refuse",
+              "kind": "raise",
+              "line": 136
             },
             {
               "in": "one",
               "kind": "except",
-              "line": 300
+              "line": 340
             },
             {
               "in": "run_wave",
               "kind": "raise",
-              "line": 348
+              "line": 388
             },
             {
               "in": "run_wave",
               "kind": "raise",
-              "line": 351
+              "line": 391
             },
             {
               "in": "run_wave",
               "kind": "raise",
-              "line": 359
+              "line": 399
             },
             {
               "in": "run_wave",
               "kind": "raise",
-              "line": 367
+              "line": 407
             },
             {
               "in": "finish",
               "kind": "except",
-              "line": 397
+              "line": 437
             }
           ],
-          "hash": "1055b5138ed96b004171505be491959fc4a78e4e3514e121efca6bff08869a6d",
+          "hash": "3682f7a282f33d2af74b6367bbc5021ad2c5ff12b1ba307a26a5dc9dbff2ba22",
           "importsFiles": [
             "src/role_set/assemble.py",
+            "src/role_set/cards.py",
             "src/role_set/plan.py",
             "src/role_set/runner.py",
             "src/role_set/transport.py"
@@ -5002,190 +5710,195 @@
             {
               "in": "_training",
               "kind": "raise",
-              "line": 106
+              "line": 107
             },
             {
               "in": "trait_names_from_pack",
               "kind": "except",
-              "line": 140
+              "line": 141
             },
             {
               "in": "resolve_critic",
               "kind": "raise",
-              "line": 153
+              "line": 154
             },
             {
               "in": "resolve_critic",
               "kind": "raise",
-              "line": 155
+              "line": 156
             },
             {
               "in": "resolve_critic",
               "kind": "raise",
-              "line": 158
+              "line": 159
             },
             {
               "in": "_require_critic_policy",
               "kind": "raise",
-              "line": 181
+              "line": 182
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 190
+              "line": 191
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 193
-            },
-            {
-              "in": "build",
-              "kind": "raise",
               "line": 194
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 201
+              "line": 195
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 204
+              "line": 202
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 205
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 207
-            },
-            {
-              "in": "build",
-              "kind": "raise",
               "line": 208
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 211
-            },
-            {
-              "in": "build",
-              "kind": "except",
-              "line": 216
+              "line": 209
             },
             {
               "in": "build",
               "kind": "raise",
+              "line": 212
+            },
+            {
+              "in": "build",
+              "kind": "except",
               "line": 217
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 219
+              "line": 218
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 225
+              "line": 220
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 235
+              "line": 226
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 237
+              "line": 236
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 238
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 249
+              "line": 250
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 264
+              "line": 265
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 277
+              "line": 278
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 282
+              "line": 283
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 288
+              "line": 289
             },
             {
               "in": "build",
               "kind": "except",
-              "line": 298
-            },
-            {
-              "in": "build",
-              "kind": "raise",
               "line": 299
+            },
+            {
+              "in": "build",
+              "kind": "raise",
+              "line": 300
             },
             {
               "in": "require_rehearsal_dir",
               "kind": "raise",
-              "line": 328
+              "line": 329
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 348
-            },
-            {
-              "in": "run",
-              "kind": "raise",
               "line": 349
             },
             {
               "in": "run",
-              "kind": "except",
-              "line": 356
+              "kind": "raise",
+              "line": 350
             },
             {
               "in": "run",
-              "kind": "raise",
+              "kind": "except",
               "line": 357
             },
             {
               "in": "run",
-              "kind": "except",
-              "line": 370
+              "kind": "raise",
+              "line": 358
             },
             {
-              "in": "_run_wave",
+              "in": "run",
               "kind": "except",
-              "line": 405
+              "line": 371
             },
             {
               "in": "_run_wave",
               "kind": "raise",
-              "line": 406
+              "line": 408
             },
             {
               "in": "_run_wave",
               "kind": "except",
-              "line": 417
+              "line": 413
             },
             {
               "in": "_run_wave",
               "kind": "raise",
-              "line": 418
+              "line": 414
+            },
+            {
+              "in": "_run_wave",
+              "kind": "except",
+              "line": 425
+            },
+            {
+              "in": "_run_wave",
+              "kind": "raise",
+              "line": 426
             }
           ],
-          "hash": "f77c4c12a200fb650184c7213a9583ba1ea4b8195f0638abe74126c6a3e2f2e4",
+          "hash": "f3a9c1d203d6a8d2cdce725aa4b91d6b69ddfd600610891bda79069dbd23aee0",
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/assemble.py",
@@ -5212,7 +5925,7 @@
             {
               "calls": [
                 {
-                  "line": 114,
+                  "line": 115,
                   "name": "load_models",
                   "target": null
                 }
@@ -5225,19 +5938,19 @@
             {
               "calls": [
                 {
-                  "line": 120,
+                  "line": 121,
                   "name": "read_text",
                   "target": null
                 },
                 {
-                  "line": 121,
+                  "line": 122,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
                   }
                 },
                 {
-                  "line": 127,
+                  "line": 128,
                   "name": "read_bytes",
                   "target": null
                 }
@@ -5250,7 +5963,7 @@
             {
               "calls": [
                 {
-                  "line": 139,
+                  "line": 140,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -5265,7 +5978,7 @@
             {
               "calls": [
                 {
-                  "line": 150,
+                  "line": 151,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5273,7 +5986,7 @@
                 },
                 {
                   "branch": "not c_model or any(m in c_model.lower() for m in proven.CLO…",
-                  "line": 153,
+                  "line": 154,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5281,7 +5994,7 @@
                 },
                 {
                   "branch": "c_model not in listed.critics",
-                  "line": 155,
+                  "line": 156,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5289,21 +6002,21 @@
                 },
                 {
                   "branch": "entry.get(\"role\") == \"critic-comparison\" and not allow_comp…",
-                  "line": 158,
+                  "line": 159,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 160,
+                  "line": 161,
                   "name": "require_other_family",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 161,
+                  "line": 162,
                   "name": "require_pinned",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5319,7 +6032,7 @@
               "calls": [
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 181,
+                  "line": 182,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5334,13 +6047,13 @@
             {
               "calls": [
                 {
-                  "line": 120,
+                  "line": 121,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 121,
+                  "line": 122,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -5348,34 +6061,34 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 127,
+                  "line": 128,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 189,
+                  "line": 190,
                   "name": "bears_domain",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 192,
+                  "line": 193,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
                   }
                 },
                 {
-                  "line": 195,
+                  "line": 196,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
                   }
                 },
                 {
-                  "line": 139,
+                  "line": 140,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -5383,21 +6096,21 @@
                   "via": "trait_names_from_pack"
                 },
                 {
-                  "line": 206,
+                  "line": 207,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 209,
+                  "line": 210,
                   "name": "file_sha256",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 215,
+                  "line": 216,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5405,7 +6118,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 243,
+                  "line": 244,
                   "name": "interleave",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -5413,7 +6126,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 244,
+                  "line": 245,
                   "name": "load_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5421,7 +6134,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 245,
+                  "line": 246,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5429,7 +6142,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 246,
+                  "line": 247,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5437,7 +6150,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 248,
+                  "line": 249,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -5445,35 +6158,35 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 250,
+                  "line": 251,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
                   }
                 },
                 {
-                  "line": 256,
+                  "line": 257,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 257,
+                  "line": 258,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
                   }
                 },
                 {
-                  "line": 258,
+                  "line": 259,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 259,
+                  "line": 260,
                   "name": "require_partition",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5481,7 +6194,7 @@
                 },
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 181,
+                  "line": 182,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5489,14 +6202,14 @@
                   "via": "_require_critic_policy"
                 },
                 {
-                  "line": 261,
+                  "line": 262,
                   "name": "load_machine",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 262,
+                  "line": 263,
                   "name": "require_server",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5504,7 +6217,7 @@
                 },
                 {
                   "branch": "cfg.cards is None",
-                  "line": 264,
+                  "line": 265,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5520,13 +6233,13 @@
             {
               "calls": [
                 {
-                  "line": 120,
+                  "line": 121,
                   "name": "read_text",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 121,
+                  "line": 122,
                   "name": "Slot",
                   "target": {
                     "file": "src/role_set/plan.py"
@@ -5534,13 +6247,13 @@
                   "via": "load_plan"
                 },
                 {
-                  "line": 127,
+                  "line": 128,
                   "name": "read_bytes",
                   "target": null,
                   "via": "load_plan"
                 },
                 {
-                  "line": 189,
+                  "line": 190,
                   "name": "bears_domain",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5548,7 +6261,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 192,
+                  "line": 193,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
@@ -5556,7 +6269,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 195,
+                  "line": 196,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
@@ -5564,7 +6277,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 139,
+                  "line": 140,
                   "name": "trait_name",
                   "target": {
                     "file": "src/role_set/assemble.py"
@@ -5572,7 +6285,7 @@
                   "via": "trait_names_from_pack"
                 },
                 {
-                  "line": 206,
+                  "line": 207,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5580,7 +6293,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 209,
+                  "line": 210,
                   "name": "file_sha256",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5588,7 +6301,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 215,
+                  "line": 216,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5597,7 +6310,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 243,
+                  "line": 244,
                   "name": "interleave",
                   "target": {
                     "file": "src/role_set/runner.py"
@@ -5606,7 +6319,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 244,
+                  "line": 245,
                   "name": "load_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5615,7 +6328,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 245,
+                  "line": 246,
                   "name": "MockWriter",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5624,7 +6337,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 246,
+                  "line": 247,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5633,7 +6346,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 248,
+                  "line": 249,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -5642,7 +6355,7 @@
                 },
                 {
                   "branch": "cfg.mock",
-                  "line": 250,
+                  "line": 251,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -5650,7 +6363,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 256,
+                  "line": 257,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
@@ -5658,7 +6371,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 257,
+                  "line": 258,
                   "name": "require_local_endpoint",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5666,7 +6379,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 258,
+                  "line": 259,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5674,7 +6387,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 259,
+                  "line": 260,
                   "name": "require_partition",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5683,7 +6396,7 @@
                 },
                 {
                   "branch": "cfg.no_critic and (partition == \"production\" or cfg.wave ==…",
-                  "line": 181,
+                  "line": 182,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5691,7 +6404,7 @@
                   "via": "_require_critic_policy"
                 },
                 {
-                  "line": 261,
+                  "line": 262,
                   "name": "load_machine",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5699,7 +6412,7 @@
                   "via": "build"
                 },
                 {
-                  "line": 262,
+                  "line": 263,
                   "name": "require_server",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5708,7 +6421,7 @@
                 },
                 {
                   "branch": "cfg.cards is None",
-                  "line": 264,
+                  "line": 265,
                   "name": "GuardError",
                   "target": {
                     "file": "src/role_set/guards.py"
@@ -5725,15 +6438,23 @@
             {
               "calls": [
                 {
-                  "line": 403,
+                  "line": 405,
                   "name": "read",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 404,
-                  "name": "require_same_pins",
+                  "branch": "cfg.wave != \"rewrite\"",
+                  "line": 408,
+                  "name": "WaveError",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 409,
+                  "name": "chain_card_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
@@ -5746,63 +6467,84 @@
                   }
                 },
                 {
-                  "line": 411,
-                  "name": "load",
+                  "line": 412,
+                  "name": "require_same_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 412,
-                  "name": "Runner",
-                  "target": {
-                    "file": "src/role_set/runner.py"
-                  }
-                },
-                {
-                  "line": 416,
-                  "name": "run_wave",
+                  "line": 418,
+                  "name": "header_writer_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 419,
-                  "name": "batch_pins",
+                  "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
+                  "line": 420,
+                  "name": "Runner",
+                  "target": {
+                    "file": "src/role_set/runner.py"
+                  }
+                },
+                {
                   "line": 424,
-                  "name": "writer_pins",
+                  "name": "run_wave",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 427,
-                  "name": "dump_answers",
-                  "target": {
-                    "file": "src/role_set/__init__.py"
-                  }
-                },
-                {
-                  "line": 431,
-                  "name": "write",
+                  "name": "batch_pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
                   "line": 432,
+                  "name": "writer_pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 438,
+                  "name": "header_writer_pins",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 440,
+                  "name": "dump_answers",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 445,
+                  "name": "write",
+                  "target": {
+                    "file": "src/role_set/__init__.py"
+                  }
+                },
+                {
+                  "line": 446,
                   "name": "finish",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 458,
+                  "line": 472,
                   "name": "with_batch",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5810,7 +6552,7 @@
                   "via": "_leave_state"
                 },
                 {
-                  "line": 459,
+                  "line": 473,
                   "name": "save",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5826,14 +6568,14 @@
             {
               "calls": [
                 {
-                  "line": 458,
+                  "line": 472,
                   "name": "with_batch",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 459,
+                  "line": 473,
                   "name": "save",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5901,7 +6643,7 @@
           "writes": 0
         },
         {
-          "reads": 2,
+          "reads": 3,
           "where": [
             "cwd:roles/"
           ],
@@ -5922,20 +6664,20 @@
           "writes": 0
         },
         {
-          "reads": 2,
+          "reads": 3,
           "where": [
             "cwd:writers.json"
           ],
           "writes": 0
         }
       ],
-      "outsideReads": 56,
+      "outsideReads": 58,
       "outsideWrites": 17,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 44,
+      "testedBy": 47,
       "unresolvedSites": 0
     },
     {
@@ -5953,7 +6695,7 @@
             "naics_script",
             "pytest_runtest_logreport"
           ],
-          "hash": "5742005d20644f172e61e972ad6ea77c9e89e58f67445cc78f48f0b6ceb35020",
+          "hash": "71d06dfa4c0c637844a0968c48824a2d2d91b497c3731b069d3ba356aa2e7d08",
           "importsFiles": [
             "scripts/naics_table.py"
           ],
@@ -5961,7 +6703,7 @@
           "testFramework": "pytest"
         },
         {
-          "hash": "85513d503c0a5683769bf46781b891af231d18d6d98aab14eb4f44ef2cef33da",
+          "hash": "06cd2f0aac1103dcd5d3f2812c2f2ef1fa32bedcf408dddcabd206021dbaa26f",
           "path": "tests/fake_colab/colab"
         },
         {
@@ -6003,6 +6745,14 @@
         {
           "hash": "e3b3868edc5455ee0f23718490c0bd4d6e65d8aaa144cb8343da8f8432c2da6c",
           "path": "tests/fixtures/window12b-granite-w0-header.json"
+        },
+        {
+          "hash": "bcab78b86975a0a47955aa6c9969f46081cac2d9307cd1d428f05ab426ac22e0",
+          "path": "tests/fixtures/window12f-w1.tar.gz"
+        },
+        {
+          "hash": "f1da2bfe4ccfb4fc90f0f80ad2f186a5682fb9267d0c61c359ca8120d897378f",
+          "path": "tests/fixtures/window12g12h-chain.tar.gz"
         },
         {
           "hash": "df325e7c3807e16b9bdcb35078eed8e93db5545b875b7dac7047327dae360614",
@@ -6120,6 +6870,28 @@
             "tests/test_waves.py"
           ],
           "path": "tests/test_callcache.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "real",
+            "test_a_prior_checked_by_other_gates_is_refused",
+            "test_a_prior_with_no_gates_sha256_is_refused_even_beside_drafts_without_one",
+            "test_a_prior_with_other_batch_or_writer_pins_is_refused",
+            "test_a_w0_changed_without_a_new_seal_is_refused_on_its_seal",
+            "test_a_w0_with_one_byte_changed_and_resealed_is_refused_on_the_critiques_input",
+            "test_another_arms_w0_is_refused",
+            "test_drafts_that_record_card_pins_never_take_a_prior",
+            "test_the_chain_restores_all_seven_card_pins_from_the_w0_the_critique_read",
+            "test_the_chain_takes_one_hop_only",
+            "test_the_real_old_format_w1_files_lost_their_card_pins_and_their_w0_kept_them"
+          ],
+          "hash": "eb6b7983e95369371dda5bd1d99f998c4fa1ee2e28079978c8b6d1565cd3d6df",
+          "importsFiles": [
+            "src/role_set/__init__.py",
+            "src/role_set/waves.py"
+          ],
+          "path": "tests/test_card_chain.py",
           "testFramework": "pytest"
         },
         {
@@ -6553,6 +7325,45 @@
         },
         {
           "exports": [
+            "test_a_card_only_apache_repo_gets_the_vendored_text_checked_against_its_pin",
+            "test_a_child_that_dies_without_a_result_fails_the_window",
+            "test_a_clean_prefetch_records_token_clean_all_true",
+            "test_a_failing_child_fails_the_window_with_its_scrubbed_reason",
+            "test_a_hosted_file_that_isnt_its_pin_stops_the_window_and_is_deleted",
+            "test_a_hosted_file_the_repo_doesnt_list_stops_before_any_download",
+            "test_a_hub_an_earlier_exec_imported_gets_the_constant_too",
+            "test_a_hub_without_the_colab_secret_attribute_reads_clean",
+            "test_a_maker_gguf_fetch_asks_the_hub_with_token_false",
+            "test_a_pilot_window_without_a_repo_deletes_a_token_it_was_sent",
+            "test_a_prebuild_converts_exactly_one_model",
+            "test_a_prebuild_of_a_model_without_a_pin_refuses_before_any_download",
+            "test_a_set_that_wont_fit_with_its_margin_stops_before_any_download",
+            "test_a_token_no_step_will_read_is_deleted_at_the_start",
+            "test_a_window_that_needs_the_token_refuses_without_dev_shm",
+            "test_a_window_without_a_repo_checks_the_residues_too",
+            "test_an_env_model_takes_the_same_child_path",
+            "test_any_token_residue_stops_the_window_before_pool",
+            "test_byte_match_or_dont_host",
+            "test_every_hub_call_names_its_token",
+            "test_the_cards_licence_field",
+            "test_the_child_refuses_before_any_upload",
+            "test_the_child_uploads_with_the_licence_card_readme_and_its_hub_version",
+            "test_the_job_disables_the_hubs_implicit_token_before_any_import",
+            "test_the_prefetch_needs_a_full_revision_and_a_token",
+            "test_the_prefetch_takes_each_q8_by_its_pin_before_any_wave_and_keeps_no_token",
+            "test_the_token_file_is_read_once_deleted_and_the_hub_variables_dropped",
+            "test_the_token_file_lies_outside_everything_a_window_tars_or_sends_back",
+            "vm"
+          ],
+          "hash": "813834881b2f57bf0fd101d2cae06e28a8adc2f84f33c83536e71c9e7e89af7b",
+          "importsFiles": [
+            "scripts/colab/pin_window.py"
+          ],
+          "path": "tests/test_hosted_gguf.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "diag_row",
             "quiz_row",
             "receipts",
@@ -6739,35 +7550,63 @@
         },
         {
           "exports": [
+            "test_a_deadline_in_a_twin_wave_leaves_the_batch_and_is_not_recorded_as_an_arm_error",
+            "test_a_deadline_is_never_swallowed_as_a_runtime_error",
+            "test_a_dropped_model_refuses_a_later_request",
+            "test_a_finished_old_header_arm_gets_its_card_pins_beside_byte_identical_batch_files",
             "test_a_reclaim_after_the_first_arms_write_costs_only_that_arms_setup",
             "test_a_resume_tar_unpacks_and_every_drafts_file_needs_its_seal",
+            "test_a_resumed_arm_with_a_draft_sent_back_runs_the_rewrite",
+            "test_a_resumed_arm_with_nothing_pending_runs_no_wave_and_gets_its_twins",
+            "test_a_resumed_batch_runs_only_the_arms_it_has_drafts_for",
+            "test_a_rewrite_that_drops_every_slot_runs_no_critique",
+            "test_a_second_exec_runs_the_job_when_the_first_ended_with_no_result",
+            "test_a_second_exec_waits_for_the_first_then_stops_on_this_windows_result",
+            "test_a_stub_call_can_be_slowed_for_a_mid_wave_deadline",
+            "test_a_wave_under_way_at_the_deadline_is_cut_with_its_finished_calls_kept",
+            "test_a_write_that_drops_every_slot_runs_no_critique",
+            "test_check_pins_compares_the_q6k_pin",
             "test_check_pins_refuses_a_missing_or_different_pin_before_any_download",
             "test_checkpoints_and_resume_from_refuse_stub_drafts_without_pin_stub",
             "test_critics_for_refuses_a_same_family_pair_before_any_model_loads",
             "test_critics_for_takes_the_default_and_the_per_arm_settings",
             "test_each_writer_is_set_up_just_before_its_own_write_and_the_critic_last",
             "test_every_window_model_has_a_pin_that_matches_writers_json",
+            "test_no_broad_handler_can_swallow_the_deadline",
+            "test_no_model_setup_or_hosted_download_starts_past_the_deadline",
+            "test_no_wave_starts_past_the_deadline",
             "test_pin_window_stub_mode_end_to_end",
             "test_pool_deletes_writer_gguf_when_no_longer_needed_and_keeps_critic_until_last_critique",
+            "test_run_proc_timeout_kills_the_shells_children_too",
             "test_run_proc_writes_heartbeat_while_subprocess_lives_and_stops_when_it_exits",
+            "test_the_first_rewrite_after_a_resume_gets_its_prior_and_nothing_else_does",
             "test_the_funnel_scales_to_the_slot_count",
             "test_the_funnel_still_stops_on_a_halt_or_a_dead_wave",
-            "test_the_job_lock_lets_one_job_run_per_vm",
+            "test_the_job_lock_stops_on_this_windows_result_only",
+            "test_the_repo_root_without___file__",
+            "test_the_result_says_the_window_was_cut_at_its_deadline",
+            "test_the_stub_call_knob_refuses_a_real_run",
             "test_the_twins_switch",
             "test_to_q6k_unlinks_q8_0_before_bf16_conversion_and_logs_resources",
-            "test_two_arms_critique_each_other_with_each_model_fetched_once"
+            "test_twins_skip_an_arm_with_a_failed_wave",
+            "test_two_arms_critique_each_other_with_each_model_fetched_once",
+            "test_without_a_deadline_nothing_changes"
           ],
-          "hash": "3b07b0d9a46e4f80ea54cde61217ee14bc2a5455629f39cb18523068cef93461",
+          "hash": "b9b4017466a21aef500ca4206e4ec3e20921eaec3178dbbbabd76630ef16114a",
           "importOrder": [
             "scripts/colab/pin_window.py",
             "scripts/colab/checkpoints.py",
             "tests/test_cards.py",
-            "src/role_set/pack.py"
+            "src/role_set/pack.py",
+            "src/role_set/__init__.py",
+            "src/role_set/waves.py"
           ],
           "importsFiles": [
             "scripts/colab/checkpoints.py",
             "scripts/colab/pin_window.py",
+            "src/role_set/__init__.py",
             "src/role_set/pack.py",
+            "src/role_set/waves.py",
             "tests/test_cards.py"
           ],
           "path": "tests/test_pin_window.py",
@@ -6935,10 +7774,16 @@
         {
           "exports": [
             "real_path",
+            "test_a_chained_rewrite_restores_the_card_pins_and_names_its_prior",
+            "test_a_chained_rewrite_under_another_card_is_refused",
+            "test_a_critique_carries_an_old_headers_card_pins_to_the_rewrite",
+            "test_a_critique_keeps_a_new_headers_writer_pins_as_they_were",
+            "test_a_prior_is_refused_on_a_critique_and_beside_drafts_that_kept_their_card",
             "test_a_rewrite_under_another_writer_card_is_refused",
+            "test_after_an_old_header_a_rewrite_under_another_card_is_still_refused",
             "test_write_critique_rewrite_critique_on_the_real_path"
           ],
-          "hash": "b2187aaa25990683b7f374c6446a882bf70fde0ea072ad3237467351a4cdaff9",
+          "hash": "d5314662efea4fac10a3b99178fa0c79fc1bb0546912a4080b9d2ea18f47b859",
           "importOrder": [
             "tests/stub_llama.py",
             "tests/test_waves.py",
@@ -6960,6 +7805,50 @@
             "tests/test_waves.py"
           ],
           "path": "tests/test_real_chain.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
+            "screen_plan",
+            "test_a_group_short_of_two_is_drawn_as_it_stands_and_noted_in_the_manifest",
+            "test_a_sample_that_would_fail_the_batch_mix_rule_still_rescores_to_the_end",
+            "test_blinding_strips_arm_writer_served_as_and_window_from_critic_messages",
+            "test_end_to_end_rescore_on_mock_waves_for_two_arms",
+            "test_family_skip_reports_same_family_arm_as_unsampled",
+            "test_fixed_seed_reproduces_sample_and_queue_order_and_another_seed_differs",
+            "test_flag_threshold_one_disagreement_is_not_flagged_and_two_are",
+            "test_mechanical_gate_assert_stops_on_a_tampered_candidate",
+            "test_old_format_w0_header_fixture_is_sampled_blinded_and_scored_like_any_other",
+            "test_real_critic_path_runs_at_card_values_and_screen_seed_rule",
+            "test_rescore_input_validation_and_cli_refusals",
+            "test_sealed_drafts_file_with_no_tar_is_rescored_and_bad_seal_is_refused"
+          ],
+          "hash": "6f2e69779d5d9537a43a1a4fec53ff45b57df68686d067502b557bdc608a2c59",
+          "importOrder": [
+            "tests/stub_llama.py",
+            "tests/test_waves.py",
+            "src/role_set/__init__.py",
+            "src/role_set/waves.py",
+            "src/role_set/cli.py",
+            "src/role_set/mock.py",
+            "src/role_set/rescore.py",
+            "src/role_set/write.py",
+            "src/role_set/gates.py",
+            "src/role_set/runner.py"
+          ],
+          "importsFiles": [
+            "src/role_set/__init__.py",
+            "src/role_set/cli.py",
+            "src/role_set/gates.py",
+            "src/role_set/mock.py",
+            "src/role_set/rescore.py",
+            "src/role_set/runner.py",
+            "src/role_set/waves.py",
+            "src/role_set/write.py",
+            "tests/stub_llama.py",
+            "tests/test_waves.py"
+          ],
+          "path": "tests/test_rescore.py",
           "testFramework": "pytest"
         },
         {
@@ -7155,6 +8044,22 @@
         },
         {
           "exports": [
+            "lim",
+            "test_a_cpu_window_checks_no_card",
+            "test_a_vm_the_gate_cannot_read_is_rejected_with_the_reason",
+            "test_each_bad_reading_rejects_the_vm_with_its_reason",
+            "test_night_ones_a100_passes_and_the_hf_floor_is_half_the_measured_median",
+            "test_one_short_read_takes_a_second_before_rejecting"
+          ],
+          "hash": "8f47b3224e58521e26bc86a70cd6dddd4613da375604296278ab987023a9705e",
+          "importsFiles": [
+            "scripts/colab/vm_gate.py"
+          ],
+          "path": "tests/test_vm_gate.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_a_draft_that_never_reached_the_critic_has_no_critic_field",
             "test_a_vague_or_off_trait_restatement_still_fails",
             "test_an_accurate_restatement_in_the_lessons_terms_passes_without_the_trait_name",
@@ -7247,16 +8152,33 @@
         },
         {
           "exports": [
+            "test_a_bad_vm_and_a_dead_one_are_stopped_and_the_third_runs_the_job",
+            "test_a_gpu_window_with_the_gate_on_must_name_its_disk_floor",
+            "test_a_healthy_vm_passes_the_gate_once_and_the_job_runs",
+            "test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace",
+            "test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap",
             "test_a_late_first_exec_and_its_retry_run_one_job",
+            "test_a_late_first_exec_that_takes_the_lock_first_runs_the_only_job",
             "test_a_lost_first_exec_is_retried_once_and_the_job_runs",
+            "test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm",
             "test_a_neighbour_closing_between_rate_reads_falls_back_to_gpu_rate",
             "test_a_normal_exec_is_not_retried",
             "test_a_resume_tar_upload_reaches_resume_from",
+            "test_a_window_naming_an_empty_token_variable_stops_before_the_job",
             "test_a_window_whose_pin_check_fails_stops_before_any_download",
             "test_an_exec_that_never_starts_twice_stalls",
-            "test_smoke_window_refuses_pin_stub_on_any_gpu_runtime"
+            "test_each_role_sends_only_its_own_scoped_token_and_never_hf_token",
+            "test_every_window_writes_an_outcome_draft_with_its_date_and_commit",
+            "test_no_healthy_vm_in_three_tries_ends_the_window_before_any_upload_or_job",
+            "test_pin_gate_0_skips_the_gate",
+            "test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm",
+            "test_smoke_window_refuses_pin_stub_on_any_gpu_runtime",
+            "test_the_gate_gets_its_settings_and_a_cpu_window_skips_the_card_check",
+            "test_the_stub_call_knob_never_runs_on_a_gpu_window",
+            "test_the_token_goes_only_to_the_vm_that_passed_the_gate",
+            "test_the_token_reaches_the_job_as_a_file_and_appears_in_nothing_the_window_keeps"
           ],
-          "hash": "12aeca4b7a1e2f13bedc3e823b8c448ef98b656974aee8f455a0628bca5d3f4d",
+          "hash": "5694d5a0289ec9125f6660a937e3607d48e17e6042160762e9be614d925d9f16",
           "names": [
             "scripts/colab/mock_job.py"
           ],
@@ -7429,7 +8351,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 46
+          "files": 50
         },
         {
           "boundary": "scripts",
@@ -7438,7 +8360,7 @@
             "file": "scripts/naics_table.py",
             "from": "tests/conftest.py"
           },
-          "files": 3
+          "files": 4
         },
         {
           "boundary": "src",
@@ -7447,7 +8369,7 @@
             "file": "src/role_set/mock.py",
             "from": "tests/stub_llama.py"
           },
-          "files": 41
+          "files": 42
         }
       ],
       "readers": [],
@@ -7489,7 +8411,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 46,
+          "files": 50,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -7497,7 +8419,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 46,
+          "files": 50,
           "job": "sweep",
           "runner": "pytest",
           "step": "Sweep"
@@ -7505,9 +8427,6 @@
       ],
       "triggers": [
         {
-          "branches": [
-            "main"
-          ],
           "event": "pull_request"
         },
         {
@@ -7522,6 +8441,7 @@
             "docs/**",
             "pyproject.toml",
             "roles/**",
+            "scripts/**",
             "src/**",
             "tests/**",
             "uv.lock"
@@ -7715,7 +8635,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 35
+          "files": 36
         }
       ],
       "readers": [],
@@ -7769,8 +8689,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "5a7490bb3fd63d936513825e97fb33806879e4fa",
-    "tracked": 181
+    "commit": "462ea6adf4cfe70ec1273354124591e7dd5310af",
+    "tracked": 190
   },
   "landings": [
     {
@@ -7800,9 +8720,27 @@
     {
       "readers": [
         {
+          "by": "tests/test_hosted_gguf.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "LICENSE",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
           "by": "pyproject.toml",
           "call": "configuration",
           "confidence": "config"
+        },
+        {
+          "by": "tests/test_hosted_gguf.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
         }
       ],
       "target": "README.md",
@@ -7972,6 +8910,17 @@
         }
       ],
       "target": "site/src/content/docs/handbook",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/colab/pin_window.py",
+          "call": "get",
+          "confidence": "ast"
+        }
+      ],
+      "target": "src",
       "writers": []
     },
     {
@@ -8265,6 +9214,12 @@
           "call": "read_text",
           "confidence": "ast",
           "fromTests": true
+        },
+        {
+          "by": "tests/test_rescore.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
         }
       ],
       "target": "tests/fixtures/card-values.json",
@@ -8362,6 +9317,12 @@
     {
       "readers": [
         {
+          "by": "tests/test_rescore.py",
+          "call": "read_text",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
           "by": "tests/test_wave_pins.py",
           "call": "read_text",
           "confidence": "ast",
@@ -8369,6 +9330,42 @@
         }
       ],
       "target": "tests/fixtures/window12b-granite-w0-header.json",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "tests/test_card_chain.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_pin_window.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/window12f-w1.tar.gz",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "tests/test_card_chain.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        },
+        {
+          "by": "tests/test_pin_window.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "tests/fixtures/window12g12h-chain.tar.gz",
       "writers": []
     },
     {
@@ -8411,6 +9408,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 57,
+  "testFiles": 63,
   "unassigned": []
 }

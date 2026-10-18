@@ -32,6 +32,7 @@ from role_set.plan import (PILOT_LESSON, PILOT_TWIN_LESSON, PlanError, check_pla
                             plan_pilot_twins)
 from role_set.prompts import load_pack
 from role_set.readout import readout
+from role_set.rescore import RescoreConfig, RescoreError, run_rescore
 from role_set.store import counts, open_store, void_round
 from role_set.trait_steps import TRAIT_STEPS
 from role_set.write import (
@@ -480,7 +481,44 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("--json", action="store_true", help="print the full report as JSON")
     pc.add_argument("--stamp", action="store_true", help="first write each sidecar line's row_sha256 from the rows as they stand")
     pc.set_defaults(func=_puzzle_check)
+
+    rs = sub.add_parser("rescore", help="blind second-critic rescore of a sample of each writer arm's w0 drafts")
+    rs.add_argument("--runs", nargs="+", action="extend", default=[], help="pilot-out.tar files holding arm w0 and w1 wave dirs")
+    rs.add_argument("--drafts", nargs="+", action="extend", default=[], help="<arm>=<w0 wave-drafts.jsonl>,<w1 wave-drafts.jsonl>, repeatable")
+    rs.add_argument("--pack", default="roles/verifier")
+    rs.add_argument("--writers", default="writers.json")
+    rs.add_argument("--cards", default=None, help="rnd's card-values.json: the second critic runs at its card's settings")
+    rs.add_argument("--critic-endpoint", default=None, help="the second critic's llama-server, http://127.0.0.1:<port>/v1")
+    rs.add_argument("--critic-model", default=None, help="a served name from writers.json's critics")
+    rs.add_argument("--critic-gguf-sha256", default=None, help="the second critic GGUF's sha256")
+    rs.add_argument("--seed", type=int, default=0, help="seed for the within-group sample draw and the blind queue shuffle")
+    rs.add_argument("--out", default="rescore", help="directory for sample-manifest.json, rescore.json and rescore-report.json")
+    rs.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
+    rs.set_defaults(func=_rescore)
     return p
+
+
+def _rescore(args: argparse.Namespace) -> int:
+    cfg = RescoreConfig(
+        runs=tuple(Path(r) for r in (args.runs or ())),
+        drafts=tuple(args.drafts or ()),
+        pack=Path(args.pack),
+        writers_file=Path(args.writers),
+        cards=Path(args.cards) if args.cards else None,
+        critic_endpoint=args.critic_endpoint,
+        critic_model=args.critic_model,
+        critic_gguf_sha256=args.critic_gguf_sha256,
+        seed=args.seed,
+        out=Path(args.out),
+        mock=args.mock,
+    )
+    try:
+        report = run_rescore(cfg)
+    except RescoreError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(report["table"])
+    return 0
 
 
 def _puzzle_check(args) -> int:

@@ -52,24 +52,67 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 1,
+      "added": 9,
+      "changed": 15,
       "moved": 0,
-      "parts": 1,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
+        "kind": "door",
+        "sentence": "CI's pull request trigger no longer names `main`.",
+        "subjects": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      {
+        "kind": "door",
+        "sentence": "CI's push trigger now also names `scripts/**`.",
+        "subjects": [
+          ".github/workflows/ci.yml"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "LICENSE is now read by tests/test_hosted_gguf.py.",
+        "subjects": [
+          "LICENSE",
+          "tests/test_hosted_gguf.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "README.md is now also read by tests/test_hosted_gguf.py.",
+        "subjects": [
+          "README.md",
+          "tests/test_hosted_gguf.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "src/ is now read by scripts/colab/pin_window.py.",
+        "subjects": [
+          "src/",
+          "scripts/colab/pin_window.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 4 more new writers and readers of places.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-17; 1 file changed content.",
+        "sentence": "9 files added and 15 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "d12bae86a22a82567f98e7f2697f1fddb9b1f300",
-      "generatedAt": "2026-10-17T22:24:27.841Z"
+      "commit": "5a7490bb3fd63d936513825e97fb33806879e4fa",
+      "generatedAt": "2026-10-17T22:55:58.416Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -136,12 +179,12 @@
   "changesTogetherNote": [
     "3 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 12 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 14 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 3,
-  "commit": "5a7490bb3fd63d936513825e97fb33806879e4fa",
+  "commit": "462ea6adf4cfe70ec1273354124591e7dd5310af",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (100 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (106 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -156,17 +199,17 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 46
+          "files": 50
         },
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 3
+          "files": 4
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 41
+          "files": 42
         }
       ],
       "runs": [
@@ -179,8 +222,8 @@
       ],
       "stages": [],
       "triggers": [
-        "on a pull request to main",
-        "on a push to main touching 9 paths",
+        "on a pull request",
+        "on a push to main touching 10 paths",
         "or by hand"
       ]
     },
@@ -229,7 +272,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 35
+          "files": 36
         }
       ],
       "runs": [
@@ -310,13 +353,13 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-17T22:55:58.416Z",
+  "generatedAt": "2026-10-18T20:32:30.941Z",
   "limits": [
     "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
-    "4 writes and 15 reads use paths built at run time and are not named here.",
-    "27 writes and 68 reads go to a path their caller passes, not to this repository.",
+    "4 writes and 21 reads use paths built at run time and are not named here.",
+    "31 writes and 74 reads go to a path their caller passes, not to this repository.",
+    "11 reads go to the directory the command is run in, not to this repository.",
     "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
-    "9 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -344,10 +387,10 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 57,
+  "testFiles": 63,
   "testedBy": {
-    "scripts": 3,
-    "src": 44
+    "scripts": 5,
+    "src": 47
   },
   "unnamedWrites": 4,
   "unread": [],
