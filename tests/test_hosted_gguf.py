@@ -291,13 +291,13 @@ def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
                                                   "FAKE_HUB_CFG": json.dumps(cfg)})
     monkeypatch.setenv("PIN_GGUF_REPO", "studio/gguf-private")
     started = []
-    real_run = subprocess.run
+    real_run = pw.run_proc
 
     def run(args, **kw):
         started.append({"args": args, "env": kw.get("env"), "input": kw.get("input")})
         return real_run(args, **kw)
 
-    monkeypatch.setattr(pw.subprocess, "run", run)
+    monkeypatch.setattr(pw, "run_proc", run)
     gguf = vm / "pin" / f"{spec['served_as']}-Q8_0.gguf"
     gguf.write_bytes(b"q8")
     m = {"path": str(gguf), "revision": spec["revision"], "gguf_sha256": spec["expect_sha256"] or "0" * 64}
