@@ -514,6 +514,7 @@ def test_a_second_exec_runs_the_job_when_the_first_ended_with_no_result(tmp_path
         t, got = _second_exec(tmp_path)
         t.join(1.0)
         assert t.is_alive()
+        assert "JOB ALREADY RUNNING: this exec waits" in (tmp_path / "job.log").read_text(encoding="utf-8")
     finally:
         first.close()  # the first died without a result for this window
     t.join(10)
