@@ -30,7 +30,9 @@ def _window(mode: str, *, extra: dict | None = None) -> tuple[str, str, Path]:
            "PIN_OPEN_LOCK": str(tmp / "open.lock"), "PIN_GATE_MIN_DISK_GB": "0",
            "PIN_WATCH_S": "1", "PIN_STALL_FIRST_S": "6", "PIN_STALL_S": "8", "PIN_WALL_S": "120", "PIN_SESSION": "fake",
            "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.01", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
-           "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1", **(extra or {})}
+           "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
+           # The fake card is an A100 at 5.30/hr: a margin of 0.01 is ~6.8 s, so the grace and the fetch allowance fit it.
+           "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
     out = tmp / "out"
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env, 180)
@@ -278,7 +280,7 @@ def test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap():
 
 
 def test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace():
-    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_DEADLINE_GRACE_S": "3"})
+    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_DEADLINE_GRACE_S": "3"})  # 3 + 2 fit 17 s
     assert "DEADLINE (own spend" in rig and "CAP REACHED" in rig and "CAP CEILING" not in rig, rig
     assert job.count("PIN_RESULT") == 0, job
     assert "PIN_DEADLINE_GRACE_S" not in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
@@ -308,6 +310,15 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
     assert d["date"] == time.strftime("%Y-%m-%d", time.gmtime()) and d["commit"] == "c" * 40, d
     assert d["window"] == "out" and d["basis"] == "rate_x_runtime" and d["end"] in ("done", "exec"), d
     assert d["outcome"] is None and d["why"] is None  # the class and its why stay a person's call
+
+
+def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
+    rig, job, out = _window("normal", extra={"PIN_CAP_MARGIN": "0.3", "PIN_DEADLINE_GRACE_S": "180", "PIN_FETCH_ALLOW_S": "90"})
+    assert "REFUSED: grace 180s + fetch 90s don't fit the margin: 0.3 units at 5.3/hr is 203s" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
+    rig, job, out = _window("normal", extra={"PIN_CAP_MARGIN": "0.45", "PIN_DEADLINE_GRACE_S": "180", "PIN_FETCH_ALLOW_S": "90",
+                                             "PIN_MOCK_S": "2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.45 at 5.3/hr is 305 s
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0

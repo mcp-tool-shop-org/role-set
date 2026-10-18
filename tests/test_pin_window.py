@@ -783,3 +783,52 @@ def test_the_result_says_the_window_was_cut_at_its_deadline(tmp_path, monkeypatc
     pw._main()
     r = _json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
     assert r["ok"] is False and r["error"].startswith("DeadlineReached") and r["cut_at_deadline"] == cut
+
+
+def test_a_deadline_in_a_twin_wave_leaves_the_batch_and_is_not_recorded_as_an_arm_error(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    A, M = "qwen3.8-27b", "muse-glimmer-30b"
+    fake = pw.write_wave
+
+    def write_wave(rs, common, wave, out, **kw):
+        if "twins" in str(out):
+            raise pw.DeadlineReached("the write wave was cut at the window's deadline")
+        return fake(rs, common, wave, out, **kw)
+
+    monkeypatch.setattr(pw, "write_wave", write_wave)
+    with pytest.raises(pw.DeadlineReached):
+        pw.pilot_batch({}, [], plan, tmp_path / "twins", [A], {A: M}, pool, extra=["--training", "x"], later_arms=["B"])
+    assert not [e for e in events if e[0] == "critique"]  # nothing ran on after the cut
+
+
+# Every broad handler in pin_window, by the function it sits in, and why a deadline can't be lost in it. A new one fails
+# here until it re-raises DeadlineReached or is shown not to wrap a wave, a setup or a download (R&D, #91 review).
+BROAD_HANDLERS = {
+    "write": "Tee.write: a dead stream; no wave runs inside it",
+    "sample": "GPU sampling during a serve; no wave runs inside it",
+    "smoke": "the server's startup poll; no wave runs inside it",
+    "start_server": "the server's startup poll; no wave runs inside it",
+    "critic_window": "re-raises DeadlineReached first",
+    "q6k_window": "re-raises DeadlineReached first",
+    "pilot_window": "the tar in finally, after the waves",
+    "_main": "re-raises DeadlineReached first in the smoke role's two; the last records it as cut_at_deadline",
+}
+
+
+def test_no_broad_handler_can_swallow_the_deadline():
+    import ast
+
+    tree = ast.parse(Path(pw.__file__).read_text(encoding="utf-8"))
+    funcs = [(n.lineno, n.end_lineno, n.name) for n in ast.walk(tree) if isinstance(n, ast.FunctionDef)]
+    found = {}
+    for n in ast.walk(tree):
+        if isinstance(n, ast.ExceptHandler) and (n.type is None or ast.unparse(n.type) in ("Exception", "BaseException")):
+            name = [f for a, b, f in funcs if a <= n.lineno <= b][-1]
+            found.setdefault(name, []).append(n.lineno)
+    assert set(found) <= set(BROAD_HANDLERS), set(found) - set(BROAD_HANDLERS)
+    src = Path(pw.__file__).read_text(encoding="utf-8").splitlines()
+    for name in ("critic_window", "q6k_window"):
+        for line in found.get(name, []):
+            assert "except DeadlineReached:" in src[line - 3], (name, line)
+    smoke_role = [ln for ln in found["_main"] if "a smoke window" in src[ln - 1] or "recorded, and the window" in src[ln - 1]]
+    assert len(smoke_role) == 2 and all("except DeadlineReached:" in src[ln - 3] for ln in smoke_role), smoke_role

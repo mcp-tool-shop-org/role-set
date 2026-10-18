@@ -2158,6 +2158,8 @@ def _main() -> int:
                 # Each model is independent here: a failure is recorded with its model and the next one still runs.
                 try:
                     m = fetch_model(spec, built)
+                except DeadlineReached:
+                    raise
                 except Exception as e:  # noqa: BLE001 - recorded, and the window's result is not ok
                     result["models"].append({"served_as": spec["served_as"], "error": f"{type(e).__name__}: {e}"})
                     result["model_errors"] = result.get("model_errors", 0) + 1
@@ -2176,6 +2178,8 @@ def _main() -> int:
             elif role != "convert":
                 try:
                     m["smoke"] = smoke(built, m)
+                except DeadlineReached:
+                    raise
                 except Exception as e:  # noqa: BLE001 - a smoke window records a failed serve and goes on
                     if role != "smoke":
                         raise
