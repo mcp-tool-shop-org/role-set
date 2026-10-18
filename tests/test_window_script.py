@@ -32,10 +32,31 @@ def _window(mode: str, *, extra: dict | None = None) -> tuple[str, str, Path]:
            "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.01", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1", **(extra or {})}
     out = tmp / "out"
-    r = subprocess.run(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env=env,
-                       capture_output=True, text=True, timeout=180)
+    env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
+    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env, 180)
     job = (out / "job.log").read_text(encoding="utf-8") if (out / "job.log").exists() else ""
-    return r.stdout + r.stderr, job, out
+    return stdout + stderr, job, out
+
+
+def _run_window(cmd: list, env: dict, timeout: float) -> tuple[str, str]:
+    """The window under test in its own session. On timeout the whole process group goes, so a watcher subshell left
+    holding the capture pipe can't hang the read (CI run on 96da7d6 hung 11 minutes at 97%)."""
+
+    import signal
+
+    proc = subprocess.Popen(cmd, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+    try:
+        return proc.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        try:
+            out, err = proc.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            out, err = "", ""
+        raise AssertionError(f"the window under test ran past {timeout}s:\n{out[-3000:]}\n{err[-2000:]}") from None
 
 
 def test_a_lost_first_exec_is_retried_once_and_the_job_runs():
