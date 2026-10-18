@@ -61,6 +61,9 @@ def pins(card: dict, sha256: str) -> dict:
             "card_transforms_applied": [t for t in card.get("transforms") or [] if t in APPLIED_HERE]}
 
 
+# The seven keys a writer's card records (pins() above): what a chain from an earlier drafts file must restore whole.
+PIN_KEYS = frozenset(pins({"candidate": "", "sampling": {}}, ""))
+
 def fold_system(messages: list[dict]) -> list[dict]:
     """R1-Distill's card asks for no system prompt (amendment E2). Leading system messages go to the head of the first
     user message, later ones to the tail of the user message before them, each separated by a blank line."""

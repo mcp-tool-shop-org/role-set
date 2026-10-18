@@ -74,6 +74,7 @@ def _fake_window(monkeypatch, tmp_path, *, die_after_write_of=None):
     monkeypatch.setattr(pw, "PILOT_WAVES", 2)
     monkeypatch.delenv("PIN_RESUME_WAVE", raising=False)
     monkeypatch.delenv("PIN_RESUME_CALLS_DIR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_PRIOR_DIR", raising=False)
     plan = tmp_path / "plan.json"
     plan.write_text(json.dumps({"slots": [{"id": f"s{i}"} for i in range(8)]}), encoding="utf-8")
     pool = pw.Pool({}, {}, {}, tmp_path / "cards.json", tmp_path / "out")
@@ -596,6 +597,7 @@ def test_a_resumed_arm_with_nothing_pending_runs_no_wave_and_gets_its_twins(monk
         assert a["done"] and a["resumed_finished"] and a["waves"] == []
         for name in BATCH_FILES:  # rebuilt byte for byte as the window that finished the batch wrote them
             assert (Path(a["last"]) / name).read_bytes() == (src / arm / name).read_bytes(), (arm, name)
+        assert not (Path(a["last"]) / "card-pins-chain.json").exists()  # a new header keeps its card: no chain
         assert pw.twins_skip_reason(a) is None
 
 
@@ -614,3 +616,61 @@ def test_a_resumed_arm_with_a_draft_sent_back_runs_the_rewrite(monkeypatch, tmp_
     arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [Q, G], {Q: M, G: M}, pool)
     assert ("rewrite", Q, Q) in events and not [e for e in events if G in e], events
     assert not arms[Q].get("resumed_finished") and arms[G]["resumed_finished"]
+
+
+# ---- the card-pin chain (stub rung 12s5a; R&D and Argon, 2026-10-18): 12g's and 12h's real w0 and w1
+
+FIXCHAIN = Path(__file__).resolve().parent / "fixtures" / "window12g12h-chain.tar.gz"
+
+
+def _chain_dirs(tmp_path) -> tuple[Path, Path]:
+    import tarfile
+
+    with tarfile.open(FIXCHAIN) as tf:
+        tf.extractall(tmp_path / "chain", filter="data")
+    return tmp_path / "chain" / "w1", tmp_path / "chain" / "w0"
+
+
+def test_a_finished_old_header_arm_gets_its_card_pins_beside_byte_identical_batch_files(tmp_path):
+    from role_set import waves
+
+    w1, w0 = _chain_dirs(tmp_path)
+    B = "nemotron-3.5-bolt-74b-a9b"
+    plain = tmp_path / "plain"
+    plain.mkdir()
+    waves.write_batch(waves.read(w1 / f"{B}.jsonl")[1], plain)  # what the window's own finishing wave wrote
+    out = pw.rebuild_batch({}, w1 / f"{B}.jsonl", tmp_path / "rebuilt", w0 / f"{B}.jsonl")
+    for name in BATCH_FILES:
+        assert (out / name).read_bytes() == (plain / name).read_bytes(), name
+    side = json.loads((out / "card-pins-chain.json").read_text(encoding="utf-8"))
+    assert side["via"] == "chain" and set(side["pins"]) == waves.CARD_KEYS
+    assert side["prior_sha256"] == waves.file_sha256(w0 / f"{B}.jsonl")
+    # Without its prior, or with another arm's, the sidecar records why, and the rebuild still stands.
+    out = pw.rebuild_batch({}, w1 / f"{B}.jsonl", tmp_path / "noprior")
+    assert json.loads((out / "card-pins-chain.json").read_text(encoding="utf-8"))["refused"] == "no prior drafts for this arm"
+    out = pw.rebuild_batch({}, w1 / f"{B}.jsonl", tmp_path / "wrong", w0 / "granite-4.2-30b.jsonl")
+    assert "is not the input" in json.loads((out / "card-pins-chain.json").read_text(encoding="utf-8"))["refused"]
+    assert (out / "accepted.jsonl").read_bytes() == (plain / "accepted.jsonl").read_bytes()
+
+
+def test_the_first_rewrite_after_a_resume_gets_its_prior_and_nothing_else_does(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    monkeypatch.setattr(pw, "PILOT_WAVES", 4)
+    seen = []
+    fake = pw.write_wave
+
+    def write_wave(rs, common, wave, out, **kw):
+        seen.append((wave, out.parent.name, out.name, list(kw.get("extra") or [])))
+        return fake(rs, common, wave, out, **kw)
+
+    monkeypatch.setattr(pw, "write_wave", write_wave)
+    monkeypatch.setattr(pw, "rebuild_batch", lambda rs, f, out, prior=None: out)
+    w1, w0 = _chain_dirs(tmp_path)
+    G, B, M = "granite-4.2-30b", "nemotron-3.5-bolt-74b-a9b", "muse-glimmer-30b"
+    monkeypatch.setenv("PIN_RESUME_WAVE", "1")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(w1))
+    monkeypatch.setenv("PIN_RESUME_PRIOR_DIR", str(w0))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [G, B], {G: M, B: M}, pool)
+    assert ("rewrite", G, "w2", ["--prior-drafts", str(w0 / f"{G}.jsonl")]) in seen, seen
+    assert all(not extra for wave, arm, name, extra in seen if (wave, arm, name) != ("rewrite", G, "w2")), seen
+    assert arms[B]["resumed_finished"] and not [e for e in seen if e[1] == B]

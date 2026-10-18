@@ -1089,7 +1089,7 @@ def unpack_resume(tar: Path | None = None) -> Path | None:
         return None
     import tarfile  # noqa: PLC0415
 
-    dest = tar.parent / "resume"
+    dest = tar.parent / tar.name.removesuffix(".tar")  # /content/resume, or /content/prior for prior.tar
     dest.mkdir(exist_ok=True)
     with tarfile.open(tar) as tf:
         tf.extractall(dest, filter="data")
@@ -1129,6 +1129,24 @@ def resume_from() -> tuple[int, dict]:
         if stub_arms:
             raise RuntimeError(f"REFUSED: PIN_RESUME_DIR {d} has STUB drafts ({', '.join(stub_arms)}); mock drafts can never seed a real resume")
     return int(i) + 1, found
+
+
+def resume_priors() -> dict:
+    """PIN_RESUME_PRIOR_DIR=<dir of <arm>.jsonl>: for an arm whose resumed drafts lost the writer's card pins (an old
+    header through a critique before the fix), the write wave's sealed drafts that critique read. role-set checks the
+    chain (waves.chain_card_pins); this only finds the files. They arrive as prior.tar, so resume.tar stays unchanged."""
+
+    d = os.environ.get("PIN_RESUME_PRIOR_DIR")
+    if not d:
+        return {}
+    p = Path(d)
+    if not p.exists() and str(p).startswith("/content/"):
+        p = CONTENT / str(p).removeprefix("/content/")
+    found = {f.stem: f for f in p.glob("*.jsonl")}
+    missing = [n for n, f in found.items() if not f.with_name(f.name + ".sha256").exists()]
+    if not found or missing:
+        raise RuntimeError(f"PIN_RESUME_PRIOR_DIR {p}: {'no drafts' if not found else 'no seal for ' + ', '.join(missing)}")
+    return found
 
 
 def resume_calls() -> dict:
@@ -1182,18 +1200,41 @@ def drafts_pending(drafts: Path) -> int:
     return n
 
 
-def rebuild_batch(rs: dict, drafts: Path, out: Path) -> Path:
+REBUILD_CODE = r"""
+import json, sys
+from pathlib import Path
+from role_set import waves
+drafts, out = Path(sys.argv[1]), Path(sys.argv[2])
+h, d = waves.read(drafts)
+waves.write_batch(d, out)
+if not waves.CARD_KEYS & set(waves.header_writer_pins(h)):
+    side = {"drafts_sha256": waves.file_sha256(drafts)}
+    if len(sys.argv) < 4:
+        side["refused"] = "no prior drafts for this arm"
+    else:
+        try:
+            pins, sha = waves.chain_card_pins(h, Path(sys.argv[3]))
+            side.update(via="chain", prior_sha256=sha, pins=pins)
+        except waves.WaveError as e:
+            side["refused"] = str(e)
+    (out / "card-pins-chain.json").write_text(json.dumps(side, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+"""
+
+
+def rebuild_batch(rs: dict, drafts: Path, out: Path, prior: Path | None = None) -> Path:
     """A resumed arm with nothing pending: its batch files, rebuilt from its drafts the way the wave that finished it
     writes them (waves.write_batch), so its twins have an accepted.jsonl to train against (R&D, 2026-10-17). Runs in
-    role-set's own Python; the drafts are read through waves.read, so a file that doesn't match its seal is refused."""
+    role-set's own Python; the drafts are read through waves.read, so a file that doesn't match its seal is refused.
+    When the drafts' header lost the writer's card pins, card-pins-chain.json beside the batch files records them
+    through waves.chain_card_pins from `prior`, or why the chain refused; no wave needs it, so the run goes on (R&D,
+    2026-10-18). The batch files themselves stay byte for byte what the window wrote."""
 
     out.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(drafts, out / "wave-drafts.jsonl")
     shutil.copyfile(drafts.with_name(drafts.name + ".sha256"), out / "wave-drafts.jsonl.sha256")
     python = str(Path(rs["role_set"]).with_name("python")) if rs.get("role_set") else sys.executable
-    code = ("import sys; from pathlib import Path; from role_set import waves; "
-            "h, d = waves.read(Path(sys.argv[1])); waves.write_batch(d, Path(sys.argv[2]))")
-    r = run_proc([python, "-c", code, str(out / "wave-drafts.jsonl"), str(out)], timeout=600, cwd=rs.get("src"))
+    args = [str(out / "wave-drafts.jsonl"), str(out), *([str(prior)] if prior is not None else [])]
+    r = run_proc([python, "-c", REBUILD_CODE, *args], timeout=600, cwd=rs.get("src"))
     if r.returncode != 0:
         raise RuntimeError(f"rebuilding {out}'s batch files failed: {(r.stderr or r.stdout)[-1500:]}")
     return out
@@ -1325,15 +1366,18 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
     arms = {name: {"waves": [], "drafts": None, "done": False} for name in arms_in}
     start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
     calls = resume_calls() if extra is None else {}
+    priors = resume_priors() if extra is None and start > 0 else {}
     for n, f in resumed.items():
         if n in arms:
             arms[n]["drafts"] = f
             arms[n]["resumed_after_wave"] = start - 1
+            if n in priors:
+                arms[n]["prior"] = priors[n]  # for the first wave after the resume only
             if not drafts_pending(f):
                 # Its batch finished in the cut window: no wave to run, and its writer is never set up for this batch.
                 # Its accepted rows are rebuilt so its twins can train against them.
                 arms[n]["done"], arms[n]["resumed_finished"] = True, True
-                arms[n]["last"] = rebuild_batch(rs, f, base / n / f"w{start - 1}-resumed")
+                arms[n]["last"] = rebuild_batch(rs, f, base / n / f"w{start - 1}-resumed", priors.get(n))
     if start > 0:
         for n, a in arms.items():  # listed in PIN_PILOT_WRITERS but no drafts to resume: it can't run wave `start`
             if n not in resumed:
@@ -1363,8 +1407,9 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
             done_write: set[str] = set()
             for n in todo:
                 with pool.serve(n):
+                    chain = ["--prior-drafts", str(arms[n]["prior"])] if kind == "rewrite" and i == start and arms[n].get("prior") else []
                     w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=pool.get(n),
-                                   drafts=arms[n]["drafts"], extra=extra, proxy=pool.proxy(n),
+                                   drafts=arms[n]["drafts"], extra=[*(extra or []), *chain] or None, proxy=pool.proxy(n),
                                    reuse_calls=calls.get(n) if i == start else None)
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
@@ -1523,6 +1568,7 @@ def pilot_window(built: dict, result: dict) -> None:
     base = WORK / "pilot"
     base.mkdir(exist_ok=True)
     result["resume_unpacked"] = str(unpack_resume() or "")
+    result["prior_unpacked"] = str(unpack_resume(CONTENT / "prior.tar") or "")
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])

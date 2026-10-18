@@ -91,6 +91,7 @@ class WriteConfig:
     wave: str = "inline"  # inline, or one of write, critique, rewrite (BUILD-SPEC B1)
     exclusion_state: Path | None = None  # earlier batches' exclusion-state.json (BUILD-SPEC B4); None for the first batch
     drafts: Path | None = None  # a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl
+    prior_drafts: Path | None = None  # a rewrite only: the write wave's drafts the critique read, for card pins it lost
     call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
     reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
 
@@ -271,7 +272,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         else:
             # A critique wave loads no writer, but the drafts' writer must still be on the list with the same pins
             # (Argon §9.4 #2): the family that bars a same-family critic comes from writers.json, never the header.
-            drafted = (header or {}).get("writer_pins") or {}
+            drafted = waves.header_writer_pins(header or {})
             model = drafted.get("writer_model")
             if model not in listed.writers:
                 raise GuardError(f"REFUSED: the drafts name writer {model!r}, which is not on the proven writer list")
@@ -398,13 +399,20 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
 
     answers = pins.pop("_mock_answers", None)
     header_in = drafts_in = None
+    chained: dict = {}
     if cfg.wave in ("critique", "rewrite"):
         try:
             header_in, drafts_in = waves.read(cfg.drafts)
+            if cfg.prior_drafts is not None:
+                if cfg.wave != "rewrite":
+                    raise waves.WaveError("REFUSED: --prior-drafts is for a rewrite wave only")
+                card_pins, prior_sha = waves.chain_card_pins(header_in, cfg.prior_drafts)
+                header_in = {**header_in, "writer_pins": {**waves.header_writer_pins(header_in), **card_pins}}
+                chained = {"card_pins_via": "chain", "card_pins_prior_sha256": prior_sha}
             waves.require_same_pins(header_in, pins, gates, cfg.wave)
         except waves.WaveError as e:
             raise WriteRefused(str(e)) from e
-    run_pins = dict(pins)
+    run_pins = {**pins, **chained}  # a chained rewrite's receipts name the prior its card pins came from
     if cfg.wave == "critique":
         # A receipt names the writer that wrote the draft and the host it ran on, beside this wave's critic.
         run_pins.update({**waves.header_writer_pins(header_in), "writer_host": header_in.get("writer_host")})
@@ -432,7 +440,8 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
         header["mock_answers"] = waves.dump_answers(answers)
     header["waves"] = [*(header.get("waves") or []),
                        {"wave": cfg.wave, "input_sha256": pins.get("drafts_sha256"),
-                        "pins": {k: v for k, v in pins.items() if k in waves.WAVE_LOCAL or k.startswith(("writer_", "critic_"))}}]
+                        "pins": {k: v for k, v in pins.items() if k in waves.WAVE_LOCAL or k.startswith(("writer_", "critic_"))},
+                        **chained}]
     out_sha = waves.write(out / waves.DRAFTS_FILE, header, drafts)
     batch_check = waves.finish(runner, cfg.wave, drafts, out)
     states = {st: sum(1 for d in drafts if d["state"] == st) for st in (*waves.PENDING, *waves.FINAL)}

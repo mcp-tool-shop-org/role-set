@@ -158,3 +158,70 @@ def test_a_critique_keeps_a_new_headers_writer_pins_as_they_were(real_path):
     run(_cfg(rp, "w1", "critique", drafts=d0))
     h1, _ = waves.read(rp["tmp"] / "w1" / waves.DRAFTS_FILE)
     assert h1["writer_pins"] == h0["writer_pins"] and h1["batch_pins"] == h0["batch_pins"]
+
+
+def _lose_card_pins(drafts: Path) -> None:
+    """These drafts as a critique before the fix left an old header's: no card pins anywhere (windows 12g and 12h)."""
+
+    header, drafts_in = waves.read(drafts)
+    header["writer_pins"] = {k: v for k, v in header["writer_pins"].items() if k not in waves.CARD_KEYS}
+    header["batch_pins"] = {k: v for k, v in header["batch_pins"].items() if k not in waves.CARD_KEYS}
+    waves.write(drafts, header, drafts_in)
+
+
+def _chain_case(rp: dict) -> tuple[Path, Path]:
+    run(_cfg(rp, "w0", "write"))
+    d0 = rp["tmp"] / "w0" / waves.DRAFTS_FILE
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers, disagree_all=True)
+    run(_cfg(rp, "w1", "critique", drafts=d0))
+    d1 = rp["tmp"] / "w1" / waves.DRAFTS_FILE
+    _lose_card_pins(d1)
+    return d0, d1
+
+
+def test_a_chained_rewrite_restores_the_card_pins_and_names_its_prior(real_path):
+    rp = real_path
+    d0, d1 = _chain_case(rp)
+    from dataclasses import replace
+
+    with pytest.raises(Exception, match="card_"):  # without the chain: refused, as in windows 12s5a and 12s5b
+        run(_cfg(rp, "w2", "rewrite", drafts=d1))
+    w2 = run(replace(_cfg(rp, "w2", "rewrite", drafts=d1), prior_drafts=d0))
+    assert w2["states"]["awaiting_critique"] > 0, w2
+    h2, _ = waves.read(rp["tmp"] / "w2" / waves.DRAFTS_FILE)
+    assert waves.CARD_KEYS <= set(h2["writer_pins"])  # all seven back with the writer
+    assert {k: h2["writer_pins"][k] for k in waves.CARD_KEYS} == {k: waves.read(d0)[0]["writer_pins"][k] for k in waves.CARD_KEYS}
+    assert h2["waves"][-1]["card_pins_via"] == "chain" and h2["waves"][-1]["card_pins_prior_sha256"] == waves.file_sha256(d0)
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers)
+    run(_cfg(rp, "w3", "critique", drafts=rp["tmp"] / "w2" / waves.DRAFTS_FILE))
+    receipts = [json.loads(x) for x in (rp["tmp"] / "w3" / "receipts.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert receipts and all(waves.CARD_KEYS <= set(r) for r in receipts)  # every accepted row names its writer's card
+
+
+def test_a_chained_rewrite_under_another_card_is_refused(real_path, tmp_path):
+    rp = real_path
+    d0, d1 = _chain_case(rp)
+    other = json.loads(CARDS.read_text(encoding="utf-8"))
+    for c in other["candidates"]:
+        if c["candidate"] == WRITER:
+            c["sampling"] = {**c["sampling"], "temperature": 1.37}
+    changed = tmp_path / "cards-changed.json"
+    changed.write_text(json.dumps(other), encoding="utf-8")
+    from dataclasses import replace
+
+    with pytest.raises(Exception, match="card_sampling"):
+        run(replace(_cfg(rp, "w2", "rewrite", drafts=d1), prior_drafts=d0, cards=changed))
+
+
+def test_a_prior_is_refused_on_a_critique_and_beside_drafts_that_kept_their_card(real_path):
+    rp = real_path
+    run(_cfg(rp, "w0", "write"))
+    d0 = rp["tmp"] / "w0" / waves.DRAFTS_FILE
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers, disagree_all=True)
+    from dataclasses import replace
+
+    with pytest.raises(Exception, match="rewrite wave only"):
+        run(replace(_cfg(rp, "w1", "critique", drafts=d0), prior_drafts=d0))
+    run(_cfg(rp, "w1", "critique", drafts=d0))
+    with pytest.raises(Exception, match="record card pins of their own"):
+        run(replace(_cfg(rp, "w2", "rewrite", drafts=rp["tmp"] / "w1" / waves.DRAFTS_FILE), prior_drafts=d0))
