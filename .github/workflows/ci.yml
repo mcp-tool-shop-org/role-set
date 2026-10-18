@@ -44,7 +44,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # the suite ran 13 min before the window-script and lock tests (2026-10-17); 15 cut it off
     permissions:
       contents: read
       id-token: write
