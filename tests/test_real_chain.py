@@ -100,3 +100,61 @@ def test_a_rewrite_under_another_writer_card_is_refused(real_path, tmp_path):
 
     with pytest.raises(Exception, match="card"):
         run(replace(cfg, cards=changed))
+
+
+def _old_format(drafts: Path) -> None:
+    """The drafts file as a header written before 2026-10-17 kept it: the writer's card pins among its batch pins,
+    none in its writer pins (windows 12b to 12d). Resealed, as that window's own wave sealed it."""
+
+    header, drafts_in = waves.read(drafts)
+    card = {k: v for k, v in header["writer_pins"].items() if k.startswith("card_") or k == "cards_sha256"}
+    assert len(card) == 7, card
+    header["batch_pins"] = {**header["batch_pins"], **card}
+    header["writer_pins"] = {k: v for k, v in header["writer_pins"].items() if k not in card}
+    waves.write(drafts, header, drafts_in)
+
+
+def test_a_critique_carries_an_old_headers_card_pins_to_the_rewrite(real_path):
+    rp = real_path
+    run(_cfg(rp, "w0", "write"))
+    d0 = rp["tmp"] / "w0" / waves.DRAFTS_FILE
+    _old_format(d0)
+    old_card = waves.header_writer_pins(waves.read(d0)[0])
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers, disagree_all=True)
+    run(_cfg(rp, "w1", "critique", drafts=d0))
+    d1 = rp["tmp"] / "w1" / waves.DRAFTS_FILE
+    h1, _ = waves.read(d1)
+    assert {k: h1["writer_pins"][k] for k in old_card} == old_card  # the card moved to the writer pins, unchanged
+    assert not any(k.startswith("card_") or k == "cards_sha256" for k in h1["batch_pins"])
+    w2 = run(_cfg(rp, "w2", "rewrite", drafts=d1))  # window 12s5a's rewrite was refused here
+    assert w2["states"]["awaiting_critique"] > 0, w2
+
+
+def test_after_an_old_header_a_rewrite_under_another_card_is_still_refused(real_path, tmp_path):
+    rp = real_path
+    run(_cfg(rp, "w0", "write"))
+    d0 = rp["tmp"] / "w0" / waves.DRAFTS_FILE
+    _old_format(d0)
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers, disagree_all=True)
+    run(_cfg(rp, "w1", "critique", drafts=d0))
+    other = json.loads(CARDS.read_text(encoding="utf-8"))
+    for c in other["candidates"]:
+        if c["candidate"] == WRITER:
+            c["sampling"] = {**c["sampling"], "temperature": 1.37}
+    changed = tmp_path / "cards-changed.json"
+    changed.write_text(json.dumps(other), encoding="utf-8")
+    from dataclasses import replace
+
+    with pytest.raises(Exception, match="card_sampling"):
+        run(replace(_cfg(rp, "w2", "rewrite", drafts=rp["tmp"] / "w1" / waves.DRAFTS_FILE), cards=changed))
+
+
+def test_a_critique_keeps_a_new_headers_writer_pins_as_they_were(real_path):
+    rp = real_path
+    run(_cfg(rp, "w0", "write"))
+    d0 = rp["tmp"] / "w0" / waves.DRAFTS_FILE
+    h0, _ = waves.read(d0)
+    rp["stub"].critic = MockCritic(answers=rp["stub"].writer.answers, disagree_all=True)
+    run(_cfg(rp, "w1", "critique", drafts=d0))
+    h1, _ = waves.read(rp["tmp"] / "w1" / waves.DRAFTS_FILE)
+    assert h1["writer_pins"] == h0["writer_pins"] and h1["batch_pins"] == h0["batch_pins"]

@@ -423,6 +423,11 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     if cfg.wave in ("write", "rewrite"):
         header["writer_pins"] = waves.writer_pins(pins)
         header["writer_host"] = {k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")}
+    else:
+        # A critique loads no writer, so it carries the drafts' writer pins forward, card pins included wherever an
+        # older header kept them. Window 12s5a: an old header's card pins sat in batch_pins, the critique's batch pins
+        # dropped them, and the rewrite after it was refused.
+        header["writer_pins"] = waves.header_writer_pins(header_in)
     if answers is not None:
         header["mock_answers"] = waves.dump_answers(answers)
     header["waves"] = [*(header.get("waves") or []),
