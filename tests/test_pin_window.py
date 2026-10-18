@@ -39,7 +39,7 @@ class _Reclaimed(BaseException):
     """Colab taking the VM back: nothing in the window catches it."""
 
 
-def _fake_window(monkeypatch, tmp_path, *, die_after_write_of=None):
+def _fake_window(monkeypatch, tmp_path, *, die_after_write_of=None, all_dropped=()):
     events = []
 
     def fetch_model(spec, built, keep_snapshot=False):
@@ -62,7 +62,9 @@ def _fake_window(monkeypatch, tmp_path, *, die_after_write_of=None):
         events.append((wave, out.parent.name, who))
         if wave == "write" and out.parent.name == die_after_write_of:
             raise _Reclaimed()
-        return {"exit": 0, "result": {"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}}
+        # A write or rewrite leaves its drafts awaiting the critic, unless the case drops them all (R&D on 13b).
+        left = 0 if wave == "critique" or out.parent.name in all_dropped else 1
+        return {"exit": 0, "result": {"dropped": 0, "states": {"awaiting_critique": left, "needs_rewrite": 0}}}
 
     monkeypatch.setattr(pw, "fetch_model", fetch_model)
     monkeypatch.setattr(pw, "Served", Served)
@@ -674,3 +676,32 @@ def test_the_first_rewrite_after_a_resume_gets_its_prior_and_nothing_else_does(m
     assert ("rewrite", G, "w2", ["--prior-drafts", str(w0 / f"{G}.jsonl")]) in seen, seen
     assert all(not extra for wave, arm, name, extra in seen if (wave, arm, name) != ("rewrite", G, "w2")), seen
     assert arms[B]["resumed_finished"] and not [e for e in seen if e[1] == B]
+
+
+# ---- an arm whose write or rewrite leaves nothing to critique ends there (R&D on window 13b: Lightning's twin write
+# dropped both slots, and the critique pin_window then ran was refused)
+
+def test_a_write_that_drops_every_slot_runs_no_critique(monkeypatch, tmp_path):
+    A, B, M = "granite-4.2-30b", "nemotron-3.5-bolt-74b-a9b", "muse-glimmer-30b"
+    events, plan, pool = _fake_window(monkeypatch, tmp_path, all_dropped=(A,))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [A, B], {A: M, B: M}, pool)
+    assert ("critique", A, M) not in events and ("critique", B, M) in events, events
+    assert arms[A]["done"] and not any(w["exit"] for w in arms[A]["waves"])  # ended, not failed
+    assert len(arms[A]["waves"]) == 1  # its write only
+
+
+def test_a_rewrite_that_drops_every_slot_runs_no_critique(monkeypatch, tmp_path):
+    Q, G, M = "qwen3.8-27b", "gemma-4-31b-it", "muse-glimmer-30b"
+    events, plan, pool = _fake_window(monkeypatch, tmp_path, all_dropped=(Q,))
+    monkeypatch.setattr(pw, "PILOT_WAVES", 4)
+    src, d = _resume_dir_12f(tmp_path)
+    lines = (d / f"{Q}.jsonl").read_text(encoding="utf-8").splitlines()
+    row = json.loads(lines[1])
+    row["state"] = "needs_rewrite"
+    lines[1] = json.dumps(row, ensure_ascii=False)
+    (d / f"{Q}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "1")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(d))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [Q, G], {Q: M, G: M}, pool)
+    assert ("rewrite", Q, Q) in events and ("critique", Q, M) not in events, events
+    assert arms[Q]["done"] and len(arms[Q]["waves"]) == 1  # its rewrite only

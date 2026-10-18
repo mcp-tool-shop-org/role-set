@@ -12,6 +12,23 @@ if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
   exit 2
 fi
+if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
+  # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
+  # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
+  echo "REFUSED: a ${PIN_GPU:-A100} window with the VM gate on needs PIN_GATE_MIN_DISK_GB (its peak + 20 GB)" >&2
+  exit 2
+fi
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  # Scoped tokens only (R&D, 2026-10-18): a pilot window reads with HF_TOKEN_GGUF_READ, a prebuild writes with
+  # HF_TOKEN_GGUF_WRITE, each fine-grained to the one private repo. The account-wide HF_TOKEN never goes to a VM.
+  # Checked before any VM is asked for; presence only, never the value.
+  case "${PIN_ROLE:-}:$PIN_HF_TOKEN_FROM" in
+    pilot:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE) ;;
+    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE)"; exit 2;;
+  esac
+  tokvar=$PIN_HF_TOKEN_FROM
+  [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
+fi
 CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
@@ -168,15 +185,15 @@ done
 # the rig's environment variable Mike set (the read token for a pilot window, the write token for a prebuild). It goes
 # over as a file, written owner-only and deleted here at once: never on a command line, never through --env, never in a
 # log. The job reads it once, deletes it and drops it before any wave. It goes up only after the VM gate passed, so a
-# rejected VM never receives it. If the job dies before reading it, the file stays at /content/.hf_token on a VM that
-# this script is stopping anyway (the EXIT trap); nothing fetches it back.
+# rejected VM never receives it. If the job dies before reading it, the file stays at /dev/shm/hf.token on a VM that
+# this script is stopping anyway (the EXIT trap); nothing fetches it back. On the VM it goes to RAM-backed /dev/shm,
+# outside /content and every tar.
 if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
   tokvar=$PIN_HF_TOKEN_FROM
-  [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
   TOKF=$(mktemp); chmod 600 "$TOKF"; printf '%s' "${!tokvar}" > "$TOKF"; tf=$TOKF
   ok=0
   for try in 1 2 3; do
-    if timeout 120 colab upload -s "$S" "$tf" /content/.hf_token 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
+    if timeout 120 colab upload -s "$S" "$tf" /dev/shm/hf.token 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
     sleep 5
   done
   rm -f "$tf"; TOKF=""

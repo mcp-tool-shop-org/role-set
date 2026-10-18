@@ -302,9 +302,14 @@ RESOURCES: list = []
 # A CPU window (PIN_ROLE=prebuild) converts one model, and uploads it only if its Q8_0 byte-matches the model's
 # expect_sha256. An A100 pilot window with PIN_GGUF_REPO and PIN_GGUF_REVISION downloads every model it needs before
 # any wave, checks each against the same pin, and then has no token left. The token reaches the VM only as a file the
-# rig uploads (token_file(), mode 600): never a command line, never the environment, never a persisted file. It is read
-# once and deleted. If a token ever shows up in a persisted file, Mike revokes it (the receipts README's compensator).
+# rig uploads to RAM-backed /dev/shm, outside /content and every tar (R&D, from Argon): never a command line, never the
+# environment, never a persisted file. The job reads it once at its very start, whatever the role, deletes the file and
+# keeps the value only in _TOKEN until the one step that uses it is done. It goes to the Hub only as a token= argument
+# (an explicit token= isn't written to ~/.cache/huggingface). If a token ever shows up in a persisted file, the receipts
+# README's compensator applies (Mike revokes it).
 HOSTED: dict = {}  # served_as -> {"path", "sha256"} of a GGUF this window took from the private repo
+TOKEN_PATH = Path("/dev/shm/hf.token")
+_TOKEN: str | None = None  # the value, between the job's start and the step that uses it
 # Licences stated only in a model card (Gemma 4 and Granite 4.2 ship no LICENSE file): one vendored copy of the text,
 # pinned, so an upload needs no network for it and the text can't drift (R&D, 2026-10-18). Source:
 # https://www.apache.org/licenses/LICENSE-2.0.txt, fetched 2026-10-18.
@@ -312,23 +317,37 @@ LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c4
 DISK_MARGIN_GB = 20  # R&D: a window's peak plus this must fit the VM's free disk
 
 
+
 def token_file() -> Path:
-    return CONTENT / ".hf_token"
+    return TOKEN_PATH
+
+
+def read_token_file(needed: bool) -> None:
+    """At the job's very start, whatever the role: the file is read into _TOKEN and deleted, and the Hub's environment
+    variables are dropped. A window that won't use it (needed False) keeps nothing."""
+
+    global _TOKEN
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):  # never left where a subprocess or a later step could read one
+        os.environ.pop(k, None)
+    p = token_file()
+    if not p.exists():
+        _TOKEN = None
+        return
+    try:
+        value = p.read_text(encoding="utf-8").strip() or None
+    finally:
+        p.unlink(missing_ok=True)
+    _TOKEN = value if needed else None
+    if not needed:
+        say("a token file reached a window that doesn't use it: deleted, not kept")
 
 
 def take_token() -> str | None:
-    """The private repo's token, read once from the file the rig uploaded, and the file deleted."""
+    """The token, handed to the one step that uses it, and forgotten here."""
 
-    p = token_file()
-    if not p.exists():
-        return None
-    try:
-        tok = p.read_text(encoding="utf-8").strip()
-    finally:
-        p.unlink(missing_ok=True)
-    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"):  # never left where a subprocess or a later step could read one
-        os.environ.pop(k, None)
-    return tok or None
+    global _TOKEN
+    tok, _TOKEN = _TOKEN, None
+    return tok
 
 
 def hosted_name(served_as: str) -> str:
@@ -341,6 +360,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
 
     repo, rev = os.environ.get("PIN_GGUF_REPO"), os.environ.get("PIN_GGUF_REVISION")
     if not repo:
+        take_token()  # nothing to download: a token kept anyway is forgotten, never carried through the waves
         return
     if not rev or len(rev) != 40:
         raise RuntimeError("PIN_GGUF_REPO needs PIN_GGUF_REVISION, the repo's full commit sha")
@@ -354,7 +374,10 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
         # the free disk, or it stops before any download.
         todo = [n for n in names if by_name[n]["how"] == "convert" and n not in HOSTED]
         sizes = {i.path: i.size for i in HfApi(token=token).get_paths_info(repo, [hosted_name(n) for n in todo], revision=rev)}
-        need_gb = sum(sizes.get(hosted_name(n), 0) for n in todo) / 1e9
+        missing = [hosted_name(n) for n in todo if not sizes.get(hosted_name(n))]
+        if missing:
+            raise RuntimeError(f"{repo}@{rev[:12]} doesn't hold {', '.join(missing)}; nothing downloaded")
+        need_gb = sum(sizes[hosted_name(n)] for n in todo) / 1e9
         free_gb = shutil.disk_usage(_disk_target()).free / 1e9
         result["hosted_disk"] = {"need_gb": round(need_gb, 1), "free_gb": round(free_gb, 1), "margin_gb": DISK_MARGIN_GB}
         if need_gb + DISK_MARGIN_GB > free_gb:
@@ -422,8 +445,15 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
     stage = WORK / "upload" / spec["served_as"]
     try:
         api = HfApi(token=token)
-        if not api.repo_info(repo).private:
+        info = api.repo_info(repo)
+        if not info.private:
             raise RuntimeError(f"REFUSED: {repo} is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
+        # The repo's own card says its licence (Mike set it: apache-2.0, 2026-10-18). Its root card is his page and is
+        # never written here; only models whose card names the same licence go in.
+        card = getattr(info, "card_data", None) or {}
+        repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
+        if not repo_licence:
+            raise RuntimeError(f"REFUSED: {repo}'s card names no licence; set it before any model goes in")
         stage.mkdir(parents=True, exist_ok=True)
         shutil.move(m["path"], stage / Path(hosted_name(spec["served_as"])).name)
         listed = HfApi().list_repo_files(spec["repo"], revision=m["revision"])  # the upstream repos are public
@@ -432,6 +462,10 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
             got = Path(hf_hub_download(spec["repo"], f, revision=m["revision"], local_dir=WORK / "upstream-legal" / spec["served_as"]))
             shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
         licence = card_licence(stage / "UPSTREAM-CARD.md")
+        if licence != repo_licence:
+            # The repo's label is true only if every file in it is under that licence: Lightning (OpenMDW-1.1) and any
+            # other licence go elsewhere, never here.
+            raise RuntimeError(f"REFUSED: {spec['repo']}'s card licence is {licence!r}; {repo} holds {repo_licence} models only")
         if not any(f.upper().startswith(("LICENSE", "LICENCE")) for f in legal):
             # Gemma 4 and Granite 4.2 state Apache-2.0 in the card and ship no LICENSE file: the licence's own text.
             if licence not in LICENCE_FALLBACK:
@@ -1584,7 +1618,8 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
                 arms[n]["drafts"] = arms[n]["last"] / "wave-drafts.jsonl"
                 checkpoint(n, f"{base.name}-w{i}", arms[n]["drafts"])
-                arms[n]["done"] = w["exit"] != 0
+                # Nothing left to critique (every slot dropped, R&D on 13b) ends the arm, as the critique branch does.
+                arms[n]["done"] = w["exit"] != 0 or not pending(w)
                 # ---- (9) the funnel, on the pilot's first write wave only
                 if i == 0 and extra is None:
                     why = funnel_stop(w, len(json.loads(plan.read_text(encoding="utf-8"))["slots"]))
@@ -1926,8 +1961,16 @@ def main() -> int:
 
 def _main() -> int:
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "job_token": os.environ.get("PIN_JOB_TOKEN")}
-    if token_file().exists():  # the private repo's token, uploaded by the rig: owner-only until it is read and deleted
-        os.chmod(token_file(), 0o600)
+    # The private repo's token: read once, here, before anything else runs (R&D, from Argon). Only a prebuild, or a
+    # pilot window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
+    role0 = os.environ.get("PIN_ROLE", "all")
+    needs_token = role0 == "prebuild" or (role0 == "pilot" and bool(os.environ.get("PIN_GGUF_REPO")))
+    if needs_token and not token_file().parent.is_dir():
+        result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"
+        (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
+        return 1
+    read_token_file(needed=needs_token)
     if stub_mode():
         result["stub"] = True
         say("STUB MODE (PIN_STUB=1): mock writer and critic on StubLlama; NOT A REAL RUN")
@@ -1955,6 +1998,10 @@ def _main() -> int:
         specs = MODELS if role in ("all", "smoke", "critic", "q6k") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
         if role == "prebuild" and len([x for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]) != 1:
             raise RuntimeError("PIN_ROLE=prebuild converts one model per window: set PIN_ONLY to exactly one")
+        if role == "prebuild":
+            unpinned = [m["served_as"] for m in specs if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
+            if unpinned:  # byte-match or don't host means nothing without a pin to match (R&D)
+                raise RuntimeError(f"REFUSED: {', '.join(unpinned)} has no expect_sha256; a prebuild needs a pin to match")
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:

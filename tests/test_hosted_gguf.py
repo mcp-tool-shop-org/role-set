@@ -11,7 +11,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "colab"))
 import pin_window as pw  # noqa: E402
 
-SENTINEL = "hf_SENTINEL_never_persist_9f3c2a71"
+SENTINEL = "hf_" + "SENTINELneverPERSIST9f3c2a71abcdEFGHijk"  # split: the source never holds the shape
 GRANITE = next(m for m in pw.MODELS if m["served_as"] == "granite-4.2-30b")
 REV = "a" * 40
 
@@ -26,8 +26,12 @@ def vm(tmp_path, monkeypatch):
     # The VM's disk, not this host's (WSL's /tmp is a 14 GB tmpfs): an A100 VM's 200 GB free at the start.
     monkeypatch.setattr(pw.shutil, "disk_usage", lambda p: SimpleNamespace(free=int(200e9), total=int(250e9), used=0))
     (tmp_path / "pin").mkdir()
-    (tmp_path / ".hf_token").write_text(SENTINEL + "\n", encoding="utf-8")
+    (tmp_path / "shm").mkdir()
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm" / "hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    pw.TOKEN_PATH.write_text(SENTINEL + "\n", encoding="utf-8")
     monkeypatch.setenv("HF_TOKEN", "should-be-dropped")
+    pw.read_token_file(needed=True)  # as _main does first thing
     return tmp_path
 
 
@@ -56,9 +60,9 @@ def _fake_hub(monkeypatch, content: bytes, seen: list):
 
 
 def test_the_token_file_is_read_once_deleted_and_the_hub_variables_dropped(vm):
+    assert not pw.token_file().exists() and "HF_TOKEN" not in pw.os.environ
     assert pw.take_token() == SENTINEL
-    assert not (vm / ".hf_token").exists() and "HF_TOKEN" not in pw.os.environ
-    assert pw.take_token() is None
+    assert pw.take_token() is None and pw._TOKEN is None  # handed to one step, then forgotten
 
 
 def test_the_prefetch_takes_each_q8_by_its_pin_before_any_wave_and_keeps_no_token(vm, monkeypatch):
@@ -74,7 +78,7 @@ def test_the_prefetch_takes_each_q8_by_its_pin_before_any_wave_and_keeps_no_toke
     assert seen == [{"api_token": SENTINEL}, {"repo": "studio/gguf-private", "filename": "granite-4.2-30b/granite-4.2-30b-Q8_0.gguf",
                      "revision": REV, "token": SENTINEL}]
     assert result["hosted_disk"]["need_gb"] == 0.0 and result["hosted_disk"]["margin_gb"] == 20
-    assert not (vm / ".hf_token").exists()
+    assert not pw.token_file().exists()
     assert result["hosted"]["models"] == {"granite-4.2-30b": spec["expect_sha256"]}
     assert SENTINEL not in json.dumps(result)
     m = pw.fetch_model(spec, {})  # the Pool's fetch finds it: no download, no conversion
@@ -107,15 +111,9 @@ def test_the_prefetch_needs_a_full_revision_and_a_token(vm, monkeypatch):
     with pytest.raises(RuntimeError, match="full commit sha"):
         pw.prefetch_hosted([], {}, {})
     monkeypatch.setenv("PIN_GGUF_REVISION", REV)
-    (vm / ".hf_token").unlink()
+    pw.take_token()  # no token left
     with pytest.raises(RuntimeError, match="no token file"):
         pw.prefetch_hosted([], {}, {})
-
-
-def test_no_repo_set_means_no_prefetch_and_the_token_file_is_left_alone(vm, monkeypatch):
-    monkeypatch.delenv("PIN_GGUF_REPO", raising=False)
-    pw.prefetch_hosted(["granite-4.2-30b"], {"granite-4.2-30b": GRANITE}, {})
-    assert (vm / ".hf_token").exists() and not pw.HOSTED
 
 
 @pytest.mark.parametrize("card, want", [("---\nlicense: apache-2.0\nlibrary_name: x\n---\n# M\n", "apache-2.0"),
@@ -127,18 +125,22 @@ def test_the_cards_licence_field(tmp_path, card, want):
 
 
 class _Api:
-    def __init__(self, private=True, files=("README.md",)):
+    def __init__(self, private=True, files=("README.md",), repo_licence="apache-2.0"):
         self.private, self.files, self.calls, self.uploaded = private, list(files), [], {}
+        self.repo_licence = repo_licence  # the repo's root card, as Mike set it: license apache-2.0
 
     def __call__(self, token=None):  # HfApi(token=...) or HfApi()
         self.calls.append(("token", token))
         return self
 
     def repo_info(self, repo):
-        return SimpleNamespace(private=self.private)
+        return SimpleNamespace(private=self.private, card_data={"license": self.repo_licence})
 
     def list_repo_files(self, repo, revision=None):
         return self.files
+
+    def upload_file(self, path_or_fileobj, path_in_repo, repo_id, commit_message):
+        self.calls.append(("upload_file", repo_id, path_in_repo))
 
     def upload_folder(self, repo_id, folder_path, path_in_repo, commit_message):
         self.calls.append(("upload", repo_id, path_in_repo))
@@ -170,7 +172,8 @@ def test_an_upload_carries_the_licence_card_and_a_readme_and_names_its_pin(vm, m
     assert result["uploaded"]["files"] == ["LICENSE", "NOTICE", "README.md", "UPSTREAM-CARD.md", "granite-4.2-30b-Q8_0.gguf"]
     readme = api.uploaded["README.md"].decode()
     assert GRANITE["revision"] in readme and pw.LLAMA_CPP_COMMIT in readme and GRANITE["expect_sha256"] in readme
-    assert ("token", SENTINEL) in api.calls and not (vm / ".hf_token").exists()
+    assert ("token", SENTINEL) in api.calls and not pw.token_file().exists()
+    assert not any(c[0] == "upload_file" for c in api.calls)  # Mike's root card is never written
     assert SENTINEL not in json.dumps(result) and not (vm / "pin" / "upload" / "granite-4.2-30b").exists()
 
 
@@ -179,8 +182,8 @@ def test_a_card_only_apache_repo_gets_the_vendored_licence_text_and_anything_els
     api = _Api(files=["README.md"])  # Gemma 4 and Granite 4.2: no LICENSE file, Apache-2.0 in the card
     assert "LICENSE" in _upload(vm, monkeypatch, api)["uploaded"]["files"]
     assert api.uploaded["LICENSE"] == vendored.read_bytes() and b"Apache License" in api.uploaded["LICENSE"]
-    (vm / ".hf_token").write_text(SENTINEL, encoding="utf-8")
-    with pytest.raises(RuntimeError, match="no known text"):
+    monkeypatch.setattr(pw, "_TOKEN", SENTINEL)
+    with pytest.raises(RuntimeError, match="holds apache-2.0 models only"):
         _upload(vm, monkeypatch, _Api(files=["README.md"]), card="---\nlicense: other\n---\n")
 
 
@@ -225,11 +228,11 @@ def test_a_prebuild_converts_exactly_one_model(vm, monkeypatch):
 
 
 def test_the_token_file_lies_outside_everything_a_window_tars_or_sends_back():
-    # pilot-out.tar is `tar -C WORK pilot`; the downloads are WORK files. The token file is CONTENT/.hf_token.
+    # pilot-out.tar is `tar -C WORK pilot`; the downloads are WORK files. The token file is in RAM-backed /dev/shm.
     src = (Path(__file__).resolve().parents[1] / "scripts" / "colab" / "pin_window.py").read_text(encoding="utf-8")
     assert 'tar -C {WORK} -cf {WORK}/pilot-out.tar pilot"' in src
     tok = pw.token_file()
-    assert tok.parent == pw.CONTENT and pw.WORK not in tok.parents and (pw.WORK / "pilot") not in tok.parents
+    assert tok == Path("/dev/shm/hf.token") and pw.CONTENT not in tok.parents and pw.WORK not in tok.parents
 
 
 def test_a_vendored_licence_text_that_drifted_from_its_pin_refuses(tmp_path, monkeypatch):
@@ -240,3 +243,83 @@ def test_a_vendored_licence_text_that_drifted_from_its_pin_refuses(tmp_path, mon
     monkeypatch.setitem(pw.LICENCE_FALLBACK, "apache-2.0", ("missing.txt", "0" * 64))
     with pytest.raises(RuntimeError, match="isn't here"):
         pw.licence_text("apache-2.0")
+
+
+# ---- R&D's fixes on 346ea2d
+
+def test_a_token_no_step_will_read_is_deleted_at_the_start(vm, monkeypatch):
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")  # a fresh file for this job
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    monkeypatch.setenv("PIN_ROLE", "smoke")
+    monkeypatch.delenv("PIN_GGUF_REPO", raising=False)
+
+    def stop(cpu_ok=False):
+        assert not pw.token_file().exists()  # already gone before anything else runs
+        raise RuntimeError("stop here")
+
+    monkeypatch.setattr(pw, "machine_line", stop)
+    pw._main()
+    assert not pw.token_file().exists() and pw._TOKEN is None  # read and dropped, not kept
+
+
+def test_a_pilot_window_without_a_repo_deletes_a_token_it_was_sent(vm, monkeypatch):
+    monkeypatch.delenv("PIN_GGUF_REPO", raising=False)
+    pw.prefetch_hosted(["granite-4.2-30b"], {"granite-4.2-30b": GRANITE}, {})
+    assert pw._TOKEN is None and not pw.HOSTED
+
+
+def test_a_window_that_needs_the_token_refuses_without_dev_shm(vm, monkeypatch):
+    monkeypatch.setattr(pw, "TOKEN_PATH", vm / "no-shm" / "hf.token")
+    monkeypatch.setenv("PIN_ROLE", "prebuild")
+    monkeypatch.setattr(pw, "machine_line", lambda cpu_ok=False: (_ for _ in ()).throw(AssertionError("ran on")))
+    assert pw._main() == 1
+    res = json.loads((vm / "pin" / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is False and "no /dev/shm" in res["error"]
+
+
+def test_a_hosted_file_the_repo_doesnt_list_stops_before_any_download(vm, monkeypatch):
+    monkeypatch.setenv("PIN_GGUF_REPO", "studio/gguf-private")
+    monkeypatch.setenv("PIN_GGUF_REVISION", REV)
+    seen = []
+
+    class Api:
+        def __init__(self, token=None):
+            pass
+
+        def get_paths_info(self, repo, paths, revision=None):
+            return []
+
+    _hub(monkeypatch, HfApi=Api, hf_hub_download=lambda *a, **k: seen.append(a))
+    with pytest.raises(RuntimeError, match="doesn't hold granite-4.2-30b/granite-4.2-30b-Q8_0.gguf"):
+        pw.prefetch_hosted([GRANITE["served_as"]], {GRANITE["served_as"]: GRANITE}, {})
+    assert not seen
+
+
+def test_a_prebuild_of_a_model_without_a_pin_refuses_before_any_download(vm, monkeypatch):
+    monkeypatch.setitem(GRANITE, "expect_sha256", None)
+    monkeypatch.setenv("PIN_ROLE", "prebuild")
+    monkeypatch.setenv("PIN_ONLY", "granite-4.2-30b")
+    monkeypatch.setattr(pw, "sh", lambda *a, **k: "")
+    monkeypatch.setattr(pw, "machine_line", lambda cpu_ok=False: {"card": "CPU"})
+    fetched = []
+    monkeypatch.setattr(pw, "fetch_model", lambda *a, **k: fetched.append(a))
+    pw._main()
+    res = json.loads((vm / "pin" / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is False and "has no expect_sha256" in res["error"] and not fetched
+
+
+def test_lightnings_openmdw_card_is_refused_by_the_apache_repo(vm, monkeypatch):
+    # Mike, 2026-10-18: the repo is Apache-2.0, true only if every file in it is. Lightning ships a LICENSE file, and its
+    # card names another licence: refused before any upload.
+    api = _Api(files=["README.md", "LICENSE"])
+    lightning_card = "\n".join(["---", "license: other", "license_name: openmdw-1.1", "---", "# Nemotron 3.5 Lightning", ""])
+    with pytest.raises(RuntimeError, match="card licence is 'other'.*holds apache-2.0 models only"):
+        _upload(vm, monkeypatch, api, card=lightning_card)
+    assert not any(c[0] in ("upload", "upload_file") for c in api.calls)
+
+
+def test_a_repo_whose_card_names_no_licence_takes_no_model(vm, monkeypatch):
+    api = _Api(repo_licence=None)
+    with pytest.raises(RuntimeError, match="names no licence"):
+        _upload(vm, monkeypatch, api)
+    assert not any(c[0] == "upload" for c in api.calls)

@@ -22,7 +22,7 @@ CONTENT = Path(os.environ.get("PIN_CONTENT") or str(WORK.parent))
 def take_token_file() -> None:
     """As pin_window.take_token: the private repo's token file, read once and deleted; only its length is logged."""
 
-    p = CONTENT / ".hf_token"
+    p = CONTENT.parent / "dev" / "shm" / "hf.token"  # the fake CLI's VM root is PIN_CONTENT's parent
     if p.exists():
         n = len(p.read_text(encoding="utf-8").strip())
         p.unlink()
