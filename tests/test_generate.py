@@ -23,8 +23,14 @@ def _rendered(b, pack, seed):
     return render_puzzle(b.model, PACKS[pack]["plural"], random.Random(seed))
 
 
-@pytest.mark.parametrize("pack", sorted(PACKS))
-@pytest.mark.parametrize("seed", [1, 2])
+# The slow-test split (R&D, 2026-10-18): a case that takes over ~10 s under coverage runs in the sweep job, the
+# rest of the parametrization stays in the test job. Under coverage on a CI runner these cases passed the 240 s
+# faulthandler limit, and its dump took down the xdist worker (#93, twice).
+SLOW_OPEN_SET = {(1, "trains"), (2, "machines")}  # 35 s and 19 s under coverage, locally
+
+
+@pytest.mark.parametrize("seed,pack", [pytest.param(seed, pack, marks=[pytest.mark.sweep] if (seed, pack) in SLOW_OPEN_SET else [])
+                                       for seed in [1, 2] for pack in sorted(PACKS)])
 def test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips(pack, seed):
     b = _proven(pack, seed, "set")
     # The count is on the deciding path, and a size loosening changes the set (design pin: the trait step decides).
@@ -34,8 +40,8 @@ def test_a_t10_open_set_puzzle_is_proven_and_its_wording_round_trips(pack, seed)
     assert answer(without, "underdetermined_with_explicit_set") != answer(b.model, "underdetermined_with_explicit_set")
 
 
-@pytest.mark.parametrize("pack", sorted(PACKS))
-def test_a_t10_claim_is_proven(pack):
+@pytest.mark.parametrize("pack", [pytest.param(p, marks=pytest.mark.sweep) if p == "beds" else p for p in sorted(PACKS)])
+def test_a_t10_claim_is_proven(pack):  # beds: 59 s under coverage, in the sweep (the split, above)
     b = _proven(pack, 1, "claim")
     text = _rendered(b, pack, 1)
     assert "Question: Claim:" in text
@@ -309,8 +315,14 @@ def _cell_shape_cases():
                 found.setdefault(shape, (pack, seed, question))
     cases = []
     for (kind, question, n, op, ifs), (pack, seed, question) in sorted(found.items()):
-        cases.append(pytest.param(pack, seed, question, id=f"{kind}-{question}-n{n}-{op}-ifs{ifs}"))
+        shape = f"{kind}-{question}-n{n}-{op}-ifs{ifs}"
+        marks = [pytest.mark.sweep] if shape in SLOW_CELL_SHAPES else []  # the split, above
+        cases.append(pytest.param(pack, seed, question, id=shape, marks=marks))
     return cases
+
+
+# 59, 15, 13 and 11 s under coverage, locally: in the sweep.
+SLOW_CELL_SHAPES = {"three-claim-n5-=-ifs2", "three-set-n5-<=-ifs1", "three-set-n5->=-ifs1", "three-set-n4-<=-ifs2"}
 
 
 @pytest.mark.sweep

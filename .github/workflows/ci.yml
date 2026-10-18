@@ -59,8 +59,11 @@ jobs:
       - name: Install
         run: uv sync --frozen
 
+      # faulthandler_timeout 900 (R&D, 2026-10-18, #94): at 240 its dump took down healthy slow workers. Measured on a
+      # runner, t11 [confirm] alone under coverage took 372 s (131 s on the rig, 29 s without coverage) and passed. 900
+      # still names a real hang well inside the job's 25 minutes.
       - name: Test
-        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
+        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=900
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
@@ -81,7 +84,8 @@ jobs:
         run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 
   sweep:
-    if: github.event_name == 'workflow_dispatch'
+    # The sweep: on a manual run, and on every push to main (R&D, 2026-10-18, the slow-test split).
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:

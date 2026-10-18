@@ -146,7 +146,11 @@ def test_the_committed_catalogue_is_current():
     assert got.returncode == 0, got.stdout + got.stderr
 
 
-@pytest.mark.parametrize("side", T11_SIDES_BUILT)
+# The slow-test split (R&D, 2026-10-18): a case that takes over ~10 s under coverage runs in the sweep job, the
+# rest of the parametrization stays in the test job. Under coverage on a CI runner these cases passed the 240 s
+# faulthandler limit, and its dump took down the xdist worker (#93, twice).
+# confirm: 130 s under coverage locally, past 240 s on a CI runner; find stays as the representative.
+@pytest.mark.parametrize("side", [pytest.param(x, marks=pytest.mark.sweep) if x == "confirm" else x for x in T11_SIDES_BUILT])
 def test_every_catalogue_row_builds_and_proves(side):
     from role_set.generate.recipes import _t11_catalogue, _t11_from_row
     from role_set.puzzle_check import skeleton
