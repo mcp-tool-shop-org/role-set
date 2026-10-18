@@ -198,7 +198,11 @@ def with_heartbeat(fn, label: str, timeout_s: float, watch: Path | None = None):
     (PIN_STALL_S, 600 s) ends the window (R&D, 2026-10-18, after window 13q showed the stall is the only guard against a
     dead kernel). The heartbeat is tied to this wait, never a free-running thread (Argon #5). Past timeout_s the job
     raises: the worker thread can't be killed, but the job's finally runs and the window ends, so a lingering daemon
-    thread is acceptable. fn's own exceptions, DeadlineReached included, are raised here."""
+    thread is acceptable. The same at the window's deadline (R&D on #92): a download can come mid-run (W-A fetched Bolt
+    lazily at 12:59), so each round checks PIN_DEADLINE and raises DeadlineReached, and the results are written before
+    the watcher's cap kill. fn's own exceptions, DeadlineReached included, are raised here. Known residue: a prefetch
+    download's lingering worker keeps the token in its closure until hf_hub_download returns (take_token has already
+    cleared _TOKEN, and the window is ending)."""
 
     import threading as _threading  # noqa: PLC0415
 
@@ -216,9 +220,13 @@ def with_heartbeat(fn, label: str, timeout_s: float, watch: Path | None = None):
     worker = _threading.Thread(target=run, name=f"download-{label}", daemon=True)
     worker.start()
     while True:
-        worker.join(timeout=max(0.001, min(hb_s, t0 + timeout_s - time.time())))
+        left = deadline_left()
+        worker.join(timeout=max(0.001, min(hb_s, t0 + timeout_s - time.time(), *([left] if left is not None else []))))
         if not worker.is_alive():
             break
+        left = deadline_left()
+        if left is not None and left <= 0:
+            raise DeadlineReached(f"{label} was under way at the window's deadline; nothing more is fetched")
         now = time.time()
         if now - t0 >= timeout_s:
             raise RuntimeError(f"{label}: not done after {round(timeout_s)} s (floor {DOWNLOAD_FLOOR_MBPS} MB/s); the window stops")

@@ -953,3 +953,15 @@ def test_every_in_process_hub_download_goes_through_the_heartbeat():
             parents = [p for p in ast.walk(tree) if isinstance(p, ast.Call) and getattr(p.func, "id", None) == "with_heartbeat"
                        and any(c is n for c in ast.walk(p))]
             assert parents, f"line {n.lineno}: {ast.unparse(n.func)} outside with_heartbeat"
+
+
+def test_a_download_running_at_the_deadline_is_cut_within_one_round(monkeypatch, tmp_path):
+    import time as _t
+
+    _hb(monkeypatch, tmp_path)
+    monkeypatch.setenv("PIN_HEARTBEAT_S", "5")  # a long round: the deadline, not the heartbeat, ends the wait
+    monkeypatch.setenv("PIN_DEADLINE", str(_t.time() + 1))
+    t0 = _t.time()
+    with pytest.raises(pw.DeadlineReached, match="hosted:x was under way at the window's deadline"):
+        pw.with_heartbeat(lambda: _t.sleep(30), "hosted:x", 600, watch=tmp_path)
+    assert _t.time() - t0 < 4  # cut at the deadline, well inside one 5 s round
