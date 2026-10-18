@@ -125,7 +125,6 @@ def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
             raise WaveError(f"REFUSED: a rewrite continues the drafts' own writer; these pins differ: {', '.join(diff)}")
 
 
-
 def chain_card_pins(header: dict, prior: Path) -> tuple[dict, str]:
     """The writer's card pins for drafts whose header lost them, taken whole from the write wave's drafts they came from
     (stub rung 12s5a; R&D and Argon, 2026-10-18). A critique wave before the fix dropped an old header's card pins, which
@@ -156,11 +155,14 @@ def chain_card_pins(header: dict, prior: Path) -> tuple[dict, str]:
     diff = sorted(k for k in set(p_pins) | set(have) if k not in CARD_KEYS and p_pins.get(k) != have.get(k))
     diff += [k for k in sorted(set(batch_pins(p_header.get("batch_pins") or {})) | set(batch_pins(header.get("batch_pins") or {})))
              if batch_pins(p_header.get("batch_pins") or {}).get(k) != batch_pins(header.get("batch_pins") or {}).get(k)]
-    if (p_header.get("gates") or {}).get("sha256") != (header.get("gates") or {}).get("sha256"):
-        diff.append("gates")
+    p_gates, gates = p_header.get("gates") or {}, header.get("gates") or {}
+    if not p_gates.get("sha256"):
+        diff.append("gates (the prior records no gates sha256)")
+    diff += [f"gates {k}" for k in ("version", "sha256", "closed_form") if p_gates.get(k) != gates.get(k)]
     if diff:  # (v)
         refuse(f"the prior's pins differ from these drafts' ({', '.join(diff)})")
     return {k: p_pins[k] for k in sorted(CARD_KEYS)}, sha
+
 
 def _completion_dict(c) -> dict:
     return {"text": c.text, "prompt_tokens": c.prompt_tokens, "completion_tokens": c.completion_tokens, "model": c.model,

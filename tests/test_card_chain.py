@@ -104,3 +104,25 @@ def test_a_prior_with_other_batch_or_writer_pins_is_refused(real):
         forged = {**h1, "waves": [h1["waves"][0], {**h1["waves"][1], "input_sha256": waves.file_sha256(w0)}]}
         with pytest.raises(waves.WaveError, match=key):
             waves.chain_card_pins(forged, w0)
+
+
+@pytest.mark.parametrize("key, value", [("version", "9.9.9"), ("sha256", "f" * 64), ("closed_form", {"carry": "verbatim"})])
+def test_a_prior_checked_by_other_gates_is_refused(real, key, value):
+    w0 = real / "w0" / f"{GRANITE}.jsonl"
+    h0, d0 = waves.read(w0)
+    h1, _ = waves.read(real / "w1" / f"{GRANITE}.jsonl")
+    _reseal(w0, {**h0, "gates": {**h0["gates"], key: value}}, d0)
+    forged = {**h1, "waves": [h1["waves"][0], {**h1["waves"][1], "input_sha256": waves.file_sha256(w0)}]}
+    with pytest.raises(waves.WaveError, match=f"gates {key}"):
+        waves.chain_card_pins(forged, w0)
+
+
+def test_a_prior_with_no_gates_sha256_is_refused_even_beside_drafts_without_one(real):
+    w0 = real / "w0" / f"{GRANITE}.jsonl"
+    h0, d0 = waves.read(w0)
+    h1, _ = waves.read(real / "w1" / f"{GRANITE}.jsonl")
+    _reseal(w0, {**h0, "gates": {k: v for k, v in h0["gates"].items() if k != "sha256"}}, d0)
+    bare = {**h1, "gates": {k: v for k, v in h1["gates"].items() if k != "sha256"},
+            "waves": [h1["waves"][0], {**h1["waves"][1], "input_sha256": waves.file_sha256(w0)}]}
+    with pytest.raises(waves.WaveError, match="records no gates sha256"):
+        waves.chain_card_pins(bare, w0)
