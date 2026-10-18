@@ -280,8 +280,15 @@ def test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap():
 
 
 def test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace():
+    import re
+    from datetime import datetime
+
     rig, job, out = _window("normal", extra={**DEADLINE, "PIN_DEADLINE_GRACE_S": "3"})  # 3 + 2 fit 17 s
-    assert "DEADLINE (own spend" in rig and "CAP REACHED" in rig and "CAP CEILING" not in rig, rig
+    assert "CAP REACHED" in rig and "CAP CEILING" not in rig and "end=cap" in rig, rig
+    # The kill waited out the grace. (The DEADLINE note is printed only if a watcher check falls inside the grace; under
+    # a loaded suite the first check can come after it.)
+    t = lambda pat: datetime.strptime(re.search(pat, rig).group(1), "%H:%M:%S")  # noqa: E731
+    assert (t(r"CAP REACHED .* (\d\d:\d\d:\d\d)") - t(r"deadline (\d\d:\d\d:\d\d)")).total_seconds() >= 3, rig
     assert job.count("PIN_RESULT") == 0, job
     assert "PIN_DEADLINE_GRACE_S" not in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
 
@@ -319,6 +326,12 @@ def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm()
     rig, job, out = _window("normal", extra={"PIN_CAP_MARGIN": "0.45", "PIN_DEADLINE_GRACE_S": "180", "PIN_FETCH_ALLOW_S": "90",
                                              "PIN_MOCK_S": "2"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.45 at 5.3/hr is 305 s
+
+
+def test_the_stub_call_knob_never_runs_on_a_gpu_window():
+    rig, job, out = _window("normal", extra={"PIN_STUB_CALL_S": "30"})  # the fake's default card: A100
+    assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on A100" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0

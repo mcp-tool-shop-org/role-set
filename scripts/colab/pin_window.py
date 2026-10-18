@@ -1165,6 +1165,26 @@ def _repo_root() -> Path:
     return Path(f).resolve().parents[2] if f else CONTENT / "role-set"
 
 
+class _SlowStub:
+    """A stub writer or critic that takes PIN_STUB_CALL_S per call, so a stub rung has waves long enough to cut at a
+    forced deadline mid-wave (R&D on #91). Stub mode only; everything else passes through."""
+
+    def __init__(self, inner, seconds: float):
+        self.inner, self.seconds = inner, seconds
+
+    def __call__(self, *a, **k):
+        time.sleep(self.seconds)
+        return self.inner(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def _slow_stub(inner):
+    s = float(os.environ.get("PIN_STUB_CALL_S") or 0)
+    return _SlowStub(inner, s) if s > 0 else inner
+
+
 def _start_stub(name: str, port: int):
     """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
 
@@ -1180,7 +1200,7 @@ def _start_stub(name: str, port: int):
     w = _STUB_WRITER
     c = MockCritic(answers=w.answers)
     if "port" in stub_mod.StubLlama.__init__.__code__.co_varnames:
-        return stub_mod.StubLlama(name, name, writer=w, critic=c, port=port)
+        return stub_mod.StubLlama(name, name, writer=_slow_stub(w), critic=_slow_stub(c), port=port)
     # Fallback when /content/role-set is checked out at an earlier commit before StubLlama gained `port`.
     orig_srv = stub_mod.ThreadingHTTPServer
 
@@ -2097,6 +2117,12 @@ def _main() -> int:
     # The private repo's token: read once, here, before anything else runs (R&D, from Argon). Only a prebuild, or a
     # pilot window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
     role0 = os.environ.get("PIN_ROLE", "all")
+    if os.environ.get("PIN_STUB_CALL_S") and not stub_mode():
+        # A test knob that slows the stub's calls (R&D on #91): it can never slow a real run.
+        result["ok"], result["error"] = False, "REFUSED: PIN_STUB_CALL_S is set without PIN_STUB=1; nothing ran"
+        (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
+        return 1
     needs_token = role0 == "prebuild" or (role0 == "pilot" and bool(os.environ.get("PIN_GGUF_REPO")))
     if needs_token and not token_file().parent.is_dir():
         result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"

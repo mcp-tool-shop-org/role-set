@@ -832,3 +832,37 @@ def test_no_broad_handler_can_swallow_the_deadline():
             assert "except DeadlineReached:" in src[line - 3], (name, line)
     smoke_role = [ln for ln in found["_main"] if "a smoke window" in src[ln - 1] or "recorded, and the window" in src[ln - 1]]
     assert len(smoke_role) == 2 and all("except DeadlineReached:" in src[ln - 3] for ln in smoke_role), smoke_role
+
+
+def test_a_stub_call_can_be_slowed_for_a_mid_wave_deadline(monkeypatch):
+    import time as _t
+
+    calls = []
+
+    class Inner:
+        answers = {"a": 1}
+
+        def __call__(self, msgs, seed=0):
+            calls.append(seed)
+            return "ok"
+
+    monkeypatch.delenv("PIN_STUB_CALL_S", raising=False)
+    inner = Inner()
+    assert pw._slow_stub(inner) is inner  # unset: the stub as it was
+    monkeypatch.setenv("PIN_STUB_CALL_S", "0.2")
+    slow = pw._slow_stub(inner)
+    t0 = _t.time()
+    assert slow([], seed=3) == "ok" and _t.time() - t0 >= 0.2 and calls == [3]
+    assert slow.answers == {"a": 1}  # MockCritic reads the writer's answers through it
+
+
+def test_the_stub_call_knob_refuses_a_real_run(tmp_path, monkeypatch):
+    import json as _json
+
+    monkeypatch.setattr(pw, "WORK", tmp_path)
+    monkeypatch.setenv("PIN_STUB_CALL_S", "30")
+    monkeypatch.delenv("PIN_STUB", raising=False)
+    monkeypatch.setattr(pw, "machine_line", lambda **k: pytest.fail("nothing may run"))
+    assert pw._main() == 1
+    r = _json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
+    assert r["ok"] is False and "PIN_STUB_CALL_S is set without PIN_STUB=1" in r["error"]

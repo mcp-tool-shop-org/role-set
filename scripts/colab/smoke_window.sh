@@ -12,6 +12,11 @@ if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
   exit 2
 fi
+# PIN_STUB_CALL_S slows the stub's calls for a forced mid-wave deadline (R&D on #91): a test knob, never on a GPU window.
+if [ -n "${PIN_STUB_CALL_S:-}" ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+  echo "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on ${PIN_GPU:-A100}" >&2
+  exit 2
+fi
 if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
   # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
   # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
