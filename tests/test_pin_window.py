@@ -138,14 +138,6 @@ def test_the_twins_switch(monkeypatch):
     assert not pw.twins_enabled()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="fcntl.flock is Linux, where the window runs")
-def test_the_job_lock_lets_one_job_run_per_vm(tmp_path):
-    first = pw.take_job_lock(tmp_path)
-    assert first is not None
-    assert pw.take_job_lock(tmp_path) is None  # a second exec, even in the same process, finds it held
-    assert "JOB ALREADY RUNNING" in (tmp_path / "job.log").read_text(encoding="utf-8")
-    first.close()
-    assert pw.take_job_lock(tmp_path) is not None  # released with its file
 def test_every_window_model_has_a_pin_that_matches_writers_json():
     import json
 
@@ -478,37 +470,56 @@ def test_the_job_lock_stops_on_this_windows_result_only(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_JOB_TOKEN", "pinw-1")
     (tmp_path / "pin-result.json").write_text('{"job_token": "pinw-1"}', encoding="utf-8")
     assert pw.take_job_lock(tmp_path) is None  # this window's result is written: a later exec stops
+    assert not (tmp_path / "job.lock").exists()  # before any lock file is opened
     (tmp_path / "pin-result.json").write_text('{"job_token": "another-window"}', encoding="utf-8")
     fh = pw.take_job_lock(tmp_path)
     assert fh is not None  # a stale result from another run never makes a real job skip itself
     fh.close()
 
 
-@LINUX
-def test_a_second_exec_waits_for_the_first_then_stops_or_runs(tmp_path, monkeypatch):
+def _second_exec(work):
+    """take_job_lock in a daemon thread, as a second `colab exec -f` runs in the same kernel process."""
     import threading
 
+    got = {}
+    t = threading.Thread(target=lambda: got.__setitem__("lock", pw.take_job_lock(work)), daemon=True)
+    t.start()
+    return t, got
+
+
+@LINUX
+def test_a_second_exec_waits_for_the_first_then_stops_on_this_windows_result(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_JOB_TOKEN", "pinw-2")
     first = pw.take_job_lock(tmp_path)
-    got = {}
-    t = threading.Thread(target=lambda: got.setdefault("second", pw.take_job_lock(tmp_path)))
-    t.start()
-    t.join(1.0)
-    assert t.is_alive()  # the second waits while the first job runs
-    (tmp_path / "pin-result.json").write_text('{"job_token": "pinw-2"}', encoding="utf-8")
-    first.close()
-    t.join(5)
-    assert got["second"] is None  # the first finished this window: the second stops
-    (tmp_path / "pin-result.json").unlink()
+    assert first is not None
+    try:
+        t, got = _second_exec(tmp_path)
+        t.join(1.0)
+        assert t.is_alive()  # the second waits while the first job runs
+        assert "JOB ALREADY RUNNING: this exec waits" in (tmp_path / "job.log").read_text(encoding="utf-8")
+        (tmp_path / "pin-result.json").write_text('{"job_token": "pinw-2"}', encoding="utf-8")
+    finally:
+        first.close()  # always released, so the waiter ends even when an assert fails
+    t.join(10)
+    assert not t.is_alive() and got["lock"] is None  # the first finished this window: the second stops
+    assert "the first job finished this window" in (tmp_path / "job.log").read_text(encoding="utf-8")
+
+
+@LINUX
+def test_a_second_exec_runs_the_job_when_the_first_ended_with_no_result(tmp_path, monkeypatch):
+    monkeypatch.setenv("PIN_JOB_TOKEN", "pinw-3")
     first = pw.take_job_lock(tmp_path)
-    t = threading.Thread(target=lambda: got.__setitem__("third", pw.take_job_lock(tmp_path)))
-    t.start()
-    first.close()  # the first died without a result for this window
-    t.join(5)
-    assert got["third"] is not None  # so the waiting exec runs the job
-    got["third"].close()
-    log = (tmp_path / "job.log").read_text(encoding="utf-8")
-    assert "JOB ALREADY RUNNING: this exec waits" in log and "JOB ALREADY DONE: the first job finished" in log
+    assert first is not None
+    try:
+        t, got = _second_exec(tmp_path)
+        t.join(1.0)
+        assert t.is_alive()
+    finally:
+        first.close()  # the first died without a result for this window
+    t.join(10)
+    assert not t.is_alive() and got["lock"] is not None  # so the waiting exec runs the job
+    got["lock"].close()
+    assert "ended with no result" in (tmp_path / "job.log").read_text(encoding="utf-8")
 
 
 def test_twins_skip_an_arm_with_a_failed_wave(tmp_path, monkeypatch):
