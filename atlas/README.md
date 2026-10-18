@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-17 from commit d12bae8 by Atlas 1.24.0.
+Mapped at 2026-10-17 from commit 5a7490b by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,14 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (100 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-17 (3aa0324)
+## What changed since 2026-10-17 (d12bae8)
 
-- scripts now imports tests, which closes the cycle scripts → tests → scripts.
-- roles/domains/naics-2022.json is now also read by scripts/colab/preflight_window.py.
-- scripts/colab/ is now read by scripts/colab/preflight_window.py.
-- tests/fixtures/card-values.json is now read by tests/test_real_chain.py.
-- And 1 more new writer or reader of a place.
-- 14 files added and 5 changed content, across 3 parts.
+Nothing structural changed since 2026-10-17; 1 file changed content.
 
 ## What comes in
 
@@ -26,7 +21,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (2 files) and src (41 files).
+2. That reaches scripts (3 files) and src (41 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -49,12 +44,11 @@ CI writes nothing this map can see.
 ## What tends to change together
 
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 10 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 11 commits, and the tests part imports the src part.
 - **src/role_set/mock.py** and **tests/test_runner.py** changed together in 11 of 21 commits, and the tests part imports the src part.
-- **src/role_set/cli.py** and **src/role_set/write.py** changed together in 16 of 32 commits, inside the src part.
 - **src/role_set/generate/recipes.py** and **tests/test_generate.py** changed together in 5 of 10 commits, and the tests part imports the src part.
 
-4 files changed together with their own tests, as expected.
+3 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
@@ -83,7 +77,7 @@ No two parts export a helper that looks alike.
 
 ## Hand-authored
 
-People write .github/, assets/, docs/, the repository root and site/; 6 writes with paths built at run time may land here.
+People write .github/, assets/, docs/, the repository root and site/; 4 writes with paths built at run time may land here.
 
 ## Where to start
 
@@ -93,8 +87,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 6 writes and 18 reads use paths built at run time and are not named here.
-- 17 writes and 59 reads go to a path their caller passes, not to this repository.
+- 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
+- 4 writes and 15 reads use paths built at run time and are not named here.
+- 27 writes and 68 reads go to a path their caller passes, not to this repository.
 - 7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.
 - 9 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

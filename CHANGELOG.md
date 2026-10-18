@@ -8,6 +8,12 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Added
 
+- **Window v2 hardening for the Colab window scripts** (`scripts/colab/pin_window.py`, `scripts/colab/smoke_window.sh`, `scripts/colab/checkpoints.py`; R&D, 2026-10-17, from Argon's review):
+  - **Disk:** `to_q6k` unlinks the Q8_0 GGUF before the BF16 conversion starts; `Pool` deletes each writer's GGUF once no later wave or twin batch in the window needs it while keeping any model that is also a critic until its last critique; every delete logs `resources()`.
+  - **Heartbeat:** `run_proc` writes a `HEARTBEAT` line to `job.log` every 5 minutes (subprocess PID, command head, elapsed time, disk free, RAM free) while a subprocess is alive, stopping as soon as the subprocess exits so a hung Python job is never masked.
+  - **Lock on stop:** `smoke_window.sh`'s `stop_all` holds `/tmp/colab-window-open.lock` while stopping its session so a neighbour's rate reads never straddle a stop.
+  - **Stub mode (`PIN_STUB=1`) and anti-confusion guards:** `pin_window.py`'s pilot role skips model downloads, conversions and `llama-server` starts and serves `StubLlama` on `PILOT_PORT` while running the real `role-set` and `rnd` installs, pack check, plans, logging proxy, call journal, checkpoints and tar (`PIN_CONTENT` and `PIN_WORK` overridable). With `PIN_STUB=1`, `pin-result.json` carries `"stub": true` and `job.log` and every arm's readout say `STUB`; `smoke_window.sh` refuses `PIN_STUB=1` on any GPU runtime; `checkpoints.py extract` and `resume_from` refuse stub drafts unless `PIN_STUB=1` is set.
+
 - **The critic-control window** (`PIN_ROLE=critic` in `scripts/colab/pin_window.py`; R&D, 2026-10-17). On one A100, each critic is handled in turn, and a failed check stops that critic before critic-control. The next one still runs.
   - **The pin:** Muse and Lightning are reconverted and must reproduce their pins (c321320a…, 5bea2069…).
   - **The fit:** llama-server's log is read for 'offloaded N/N layers to GPU'.

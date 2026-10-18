@@ -191,6 +191,7 @@ def _write(args: argparse.Namespace) -> int:
         partition=args.partition, machine=Path(args.machine) if args.machine else None,
         writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
         server_sha256=args.llama_server_sha256, wave=args.wave, drafts=Path(args.drafts) if args.drafts else None,
+        prior_drafts=Path(args.prior_drafts) if args.prior_drafts else None,
         call_journal=Path(args.call_journal) if args.call_journal else None,
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
@@ -431,6 +432,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--exclusion-state", default=None, help="earlier batches' exclusion-state.json; the run checks against their rows and "
                                                            "writes the state it leaves beside its own (BUILD-SPEC B4)")
     w.add_argument("--drafts", default=None, help="a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl")
+    w.add_argument("--prior-drafts", default=None, help="a rewrite only: the write wave's wave-drafts.jsonl that the critique read, "
+                                                         "for drafts whose header lost the writer's card pins (one hop, checked)")
     w.add_argument("--grant", default=None, help="the Publisher's grant id, required unless the machine line names a Colab VM or a pod")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
     w.add_argument("--concurrency", type=int, default=1)

@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from role_set.assemble import Material
+from role_set.cards import PIN_KEYS as CARD_KEYS
 from role_set.plan import Slot
 from role_set.runner import MAX_ATTEMPTS, Outcome, RunHalted, Runner, SlotState, interleave
 from role_set.transport import Completion
@@ -122,6 +123,45 @@ def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
         diff = sorted(k for k in set(have_w) | set(want_w) if have_w.get(k) != want_w.get(k))
         if diff:
             raise WaveError(f"REFUSED: a rewrite continues the drafts' own writer; these pins differ: {', '.join(diff)}")
+
+
+def chain_card_pins(header: dict, prior: Path) -> tuple[dict, str]:
+    """The writer's card pins for drafts whose header lost them, taken whole from the write wave's drafts they came from
+    (stub rung 12s5a; R&D and Argon, 2026-10-18). A critique wave before the fix dropped an old header's card pins, which
+    sat among its batch pins; its input, the write wave's sealed drafts, still holds them. One hop only: these drafts are
+    one write wave and one critique, and `prior` is the exact file that critique read. Returns the seven pins and the
+    prior's sha256; any miss refuses, and pins are never taken partly from one file and partly from the other."""
+
+    def refuse(why: str):
+        raise WaveError(f"REFUSED: the card-pin chain to {prior.name}: {why}")
+
+    have = header_writer_pins(header)
+    if CARD_KEYS & (set(have) | set(header.get("batch_pins") or {})):  # (i)
+        refuse("these drafts record card pins of their own, and a prior never replaces them")
+    hops = header.get("waves") or []
+    if [w.get("wave") for w in hops] != ["write", "critique"] or hops[0].get("input_sha256"):
+        refuse(f"these drafts are waves {[w.get('wave') for w in hops]}; the chain takes one write wave and one critique")
+    p_header, _ = read(prior)  # (ii): the prior's seal, or this raises
+    p_hops = p_header.get("waves") or []
+    if [w.get("wave") for w in p_hops] != ["write"] or p_hops[0].get("input_sha256"):
+        refuse(f"the prior is waves {[w.get('wave') for w in p_hops]}, not one write wave's drafts")
+    sha = file_sha256(prior)
+    if sha != hops[-1].get("input_sha256"):  # (iii)
+        refuse(f"its sha256 {sha[:12]} is not the input {str(hops[-1].get('input_sha256'))[:12]} of the critique that wrote these drafts")
+    p_pins = header_writer_pins(p_header)
+    missing = sorted(CARD_KEYS - set(p_pins))
+    if missing:  # (iv)
+        refuse(f"the prior lacks card pins {', '.join(missing)}")
+    diff = sorted(k for k in set(p_pins) | set(have) if k not in CARD_KEYS and p_pins.get(k) != have.get(k))
+    diff += [k for k in sorted(set(batch_pins(p_header.get("batch_pins") or {})) | set(batch_pins(header.get("batch_pins") or {})))
+             if batch_pins(p_header.get("batch_pins") or {}).get(k) != batch_pins(header.get("batch_pins") or {}).get(k)]
+    p_gates, gates = p_header.get("gates") or {}, header.get("gates") or {}
+    if not p_gates.get("sha256"):
+        diff.append("gates (the prior records no gates sha256)")
+    diff += [f"gates {k}" for k in ("version", "sha256", "closed_form") if p_gates.get(k) != gates.get(k)]
+    if diff:  # (v)
+        refuse(f"the prior's pins differ from these drafts' ({', '.join(diff)})")
+    return {k: p_pins[k] for k in sorted(CARD_KEYS)}, sha
 
 
 def _completion_dict(c) -> dict:

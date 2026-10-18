@@ -44,7 +44,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25  # the suite ran 13 min before the window-script and lock tests (2026-10-17); 15 cut it off
     permissions:
       contents: read
       id-token: write
@@ -60,7 +60,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Test
-        run: uv run pytest -m "not sweep" -n auto --cov-report=xml
+        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
