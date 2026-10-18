@@ -59,11 +59,11 @@ jobs:
       - name: Install
         run: uv sync --frozen
 
-      - name: Diagnose t11 confirm alone (TEMPORARY, R&D 2026-10-18; removed before merge)
-        run: /usr/bin/time -v uv run pytest "tests/test_generate_t11.py::test_every_catalogue_row_builds_and_proves[confirm]" -m sweep -p no:xdist --cov=role_set --cov-fail-under=0 -q 2>&1 | grep -E "passed|failed|Elapsed|Maximum resident|Exit status"; nproc; free -g | head -2
-
+      # faulthandler_timeout 900 (R&D, 2026-10-18, #94): at 240 its dump took down healthy slow workers. Measured on a
+      # runner, t11 [confirm] alone under coverage took 372 s (131 s on the rig, 29 s without coverage) and passed. 900
+      # still names a real hang well inside the job's 25 minutes.
       - name: Test
-        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
+        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=900
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
