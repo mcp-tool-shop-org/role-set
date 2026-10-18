@@ -4,7 +4,9 @@ It does what pin_window.py does for the rig's watcher, with no model: it appends
 PIN_MOCK_EVERY_S seconds for PIN_MOCK_S seconds, then writes pin-result.json and its PIN_RESULT line. With
 PIN_MOCK_SILENT=1 it prints nothing to the exec's stream, so the rig can only follow the job through job.log. With
 PIN_MOCK_HANG_S it then waits that long before returning, as an exec that never comes back: the rig must end the window
-from the PIN_RESULT line in job.log.
+from the PIN_RESULT line in job.log. With PIN_MOCK_DEADLINE=1 it stops at PIN_DEADLINE as pin_window does, writing a
+result that says it was cut there. With PIN_MOCK_DIE_AFTER_S it dies that many seconds in, with no result, as a kernel
+killed for memory would.
 """
 
 from __future__ import annotations
@@ -118,7 +120,15 @@ def _run() -> int:
                 start_wave, resumed = pw.resume_from()
                 extra_res["resume_unpacked"] = str(unpacked or "")
                 extra_res["resumed_from"] = {"start_wave": start_wave, "arms": sorted(resumed)}
+        deadline = os.environ.get("PIN_DEADLINE") if os.environ.get("PIN_MOCK_DEADLINE") == "1" else None
+        die_after = float(os.environ.get("PIN_MOCK_DIE_AFTER_S") or 0)
         while time.time() - started < total:
+            if die_after and time.time() - started >= die_after:
+                line(f"[{time.strftime('%H:%M:%S')}] mock kernel killed")
+                os._exit(137)  # no finally, no result: the kernel is gone
+            if deadline and time.time() >= float(deadline):
+                extra_res["cut_at_deadline"] = {"step": n}
+                raise RuntimeError("DeadlineReached: the mock wave was cut at the window's deadline")
             n += 1
             line(f"[{time.strftime('%H:%M:%S')}] mock step {n}")
             time.sleep(every)

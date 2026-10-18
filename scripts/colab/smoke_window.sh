@@ -12,6 +12,11 @@ if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
   exit 2
 fi
+# PIN_STUB_CALL_S slows the stub's calls for a forced mid-wave deadline (R&D on #91): a test knob, never on a GPU window.
+if [ -n "${PIN_STUB_CALL_S:-}" ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+  echo "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on ${PIN_GPU:-A100}" >&2
+  exit 2
+fi
 if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
   # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
   # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
@@ -38,6 +43,23 @@ mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log" "$OUT/.retry"
 JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
 MARGIN="${PIN_CAP_MARGIN:-0.3}"  # units kept back at the cap to fetch the results (R&D, 2026-10-17)
 DL_S="${PIN_DL_TIMEOUT:-300}"
+# The margin's budget (R&D on #91): the job's deadline is cap - MARGIN; it gets GRACE_S past it to cut its wave, tar and
+# print its result, and the exit fetch needs FETCH_ALLOW_S after that, all before the ceiling at the cap. So
+# GRACE_S + FETCH_ALLOW_S must fit in MARGIN at this card's rate, or the window doesn't open. The rates are the measured
+# ones (A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and the margin is set from them.
+# Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
+# deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
+# a 120 s fetch allowance: 180 s, 0.265 units at the A100's 5.3/hr, inside the default margin of 0.3.
+GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
+FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
+case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in A100:*) CARD_RATE=5.3;; CPU:1) CARD_RATE=0.26;; CPU:*) CARD_RATE=0.08;; *) CARD_RATE="";; esac
+if [ -n "$CARD_RATE" ]; then
+  BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
+  if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
+    echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
+    exit 2
+  fi
+fi
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
@@ -92,6 +114,12 @@ colab usage 2>&1 | grep -E "rate|assign"
 case "${PIN_GPU:-A100}" in A100) GPU_RATE=5.3;; CPU) GPU_RATE=0.08;; *) GPU_RATE="";; esac
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
+# The job's deadline (R&D, 2026-10-18): own spend at the cap less MARGIN. Past it the job starts nothing new, cuts a wave
+# under way (SIGTERM, then SIGKILL) and writes pilot-out.tar and pin-result.json, so a cap stop returns results, not only
+# job.log. The watcher waits PIN_DEADLINE_GRACE_S past it for the PIN_RESULT line before it kills the exec.
+PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
+export PIN_DEADLINE
+echo "deadline $(date -u -d "@$PIN_DEADLINE" +%T) (cap $CAP_UNITS less $MARGIN at $OWN_RATE/hr); grace ${GRACE_S}s"
 # This window's token: the job writes it into pin-result.json, and a second exec stops only on this window's result.
 export PIN_JOB_TOKEN="$S-$T_OPEN"
 flock -u 9; exec 9>&-
@@ -116,7 +144,7 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
   new=$(stat -c %s "$part"); old=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
   if [ "$new" -ge "$old" ]; then mv -f "$part" "$OUT/job.log"; else rm -f "$part"; return 1; fi
 }
-( seen=0; size0=-1; grew=0; ended=""
+( seen=0; size0=-1; grew=0; ended=""; noted=""
   end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; }
   while sleep "${PIN_WATCH_S:-120}"; do
     now=$(date +%s)
@@ -147,6 +175,10 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
       if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
         echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
       fi
+      # A job that dies with its kernel (an OOM kill) is caught only by the stall below. Window 13q (2026-10-18): the job
+      # killed its kernel, but `colab status` kept reading "BUSY (exec(...))" for 22 minutes and the exec never returned;
+      # status follows the CLI's exec, not the kernel. A rule on IDLE could never fire, so there is none (R&D). A child
+      # killed for memory (a server, a converter) raises in the job instead, and its finally writes the result.
       started=$(stat -c %Y "$OUT/.exec.pid")
       stalled=""
       [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="job.log empty 10 minutes after the exec started"
@@ -156,7 +188,13 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
       fi
     fi
     if awk -v s="$spent" -v c="$CAP_UNITS" -v m="$MARGIN" 'BEGIN{exit !(s>=c-m)}'; then
-      echo "CAP REACHED (own spend $spent of $CAP_UNITS; $MARGIN kept back to fetch the results) $(date -u +%T)"; end_window cap
+      if [ "$now" -lt $(( PIN_DEADLINE + GRACE_S )) ]; then
+        # The job cuts its own wave at the deadline and writes its results; its PIN_RESULT line ends the window above.
+        [ -n "$noted" ] || echo "DEADLINE (own spend $spent of $CAP_UNITS): the job cuts its wave and writes its results; up to ${GRACE_S}s $(date -u +%T)"
+        noted=1
+      else
+        echo "CAP REACHED (own spend $spent of $CAP_UNITS; $MARGIN kept back to fetch the results) $(date -u +%T)"; end_window cap
+      fi
     fi
   done ) &
 WATCH=$!
@@ -207,7 +245,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
@@ -238,3 +276,9 @@ kill "$WATCH" 2>/dev/null
 rm -f "$OUT"/job.log.part.*
 grep -h "^PIN_RESULT" "$OUT/job.log" "$OUT/smoke-window.log" 2>/dev/null | head -1 | cut -c1-600
 echo "end balance $(bal) (start $START)"
+# The window's outcome record (R&D, 2026-10-18: every outcome.json carries its date and commit). The rig writes what it
+# measured; the outcome class and its why are filled in by whoever reads the window, in outcome.json.
+spent_end=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
+printf '{"window": "%s", "date": "%s", "commit": "%s", "card": "%s", "cap": %s, "spent": %s, "basis": "rate_x_runtime", "end": "%s", "outcome": null, "why": null}\n' \
+  "$(basename "$OUT")" "$(date -u +%F)" "${PIN_ROLESET_COMMIT:-unset}" "${PIN_GPU:-A100}" "$CAP_UNITS" "$spent_end" \
+  "$(cat "$OUT/.end" 2>/dev/null || echo exec)" > "$OUT/outcome.draft.json"

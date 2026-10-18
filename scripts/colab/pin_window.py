@@ -29,6 +29,24 @@ import time
 import urllib.request
 from pathlib import Path
 
+# No implicit Hub token, ever (R&D, from Argon's W-A reply, 2026-10-18). With token=None, huggingface_hub looks in the
+# environment, ~/.cache/huggingface/token and, inside Colab, the account's secrets vault (userdata.get("HF_TOKEN")). In W-A
+# that lookup timed out after ~10 s before Bolt's public download; with a notebook attached to the runtime it would succeed
+# and use whatever token the account holds. Set here, before anything imports huggingface_hub; child processes inherit it.
+# An explicit token= (the prefetch, the upload child) is unaffected.
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+
+
+def no_implicit_token() -> None:
+    """The same for a huggingface_hub an earlier exec in this kernel already imported: it read its constants then."""
+
+    c = sys.modules.get("huggingface_hub.constants")
+    if c is not None:
+        c.HF_HUB_DISABLE_IMPLICIT_TOKEN = True
+
+
+no_implicit_token()
+
 LLAMA_CPP_COMMIT = "620d2225cc436ab0b001e3200e590e3b286ef9ab"  # ggml-org/llama.cpp release v0.7.0, 2026-10-15
 # SASS for A100 (80), H100/H200 (90) and B200 (100): one binary for Colab and RunPod, no PTX JIT.
 CUDA_ARCHS = "80;90;100"
@@ -106,6 +124,30 @@ def _meminfo() -> dict[str, int]:
     return {k: int(mem.get(k, "0 kB").split()[0]) // 1024 for k in ("MemAvailable", "MemTotal")}
 
 
+# The window's deadline (R&D, from Argon's golden-path reply, 2026-10-18): smoke_window passes PIN_DEADLINE, the epoch at
+# which its own spend reaches the cap less the margin. Past it no wave, download or model setup starts, and a wave under
+# way is cut: its role-set process gets SIGTERM, then SIGKILL after 30 s, and the job raises DeadlineReached so the
+# finally blocks write pilot-out.tar and pin-result.json before the rig fetches. The call journal keeps every finished
+# call, so a cut wave loses only the call in flight and a resume replays the rest. Without this, a cap stop killed the
+# exec and only job.log came back (12g).
+class DeadlineReached(Exception):  # not a RuntimeError: nothing that falls back on a RuntimeError may swallow it
+    pass
+
+
+CUT_AT: dict | None = None  # the wave cut at the deadline, for pin-result.json
+
+
+def deadline_left() -> float | None:
+    d = os.environ.get("PIN_DEADLINE")
+    return None if not d else float(d) - time.time()
+
+
+def check_deadline(before: str) -> None:
+    left = deadline_left()
+    if left is not None and left <= 0:
+        raise DeadlineReached(f"the window's deadline passed before {before}; nothing new starts")
+
+
 def _signal_group(proc, sig) -> None:
     """Signal a child started with start_new_session=True and everything it spawned: under `sh -c`, killing the shell
     alone leaves its children holding the output pipes, and the wait after the kill never returns (Argon, v2 re-review)."""
@@ -118,7 +160,8 @@ def _signal_group(proc, sig) -> None:
         pass
 
 
-def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None) -> subprocess.CompletedProcess:
+def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None,
+             term_first: bool = False) -> subprocess.CompletedProcess:
     """Run a subprocess, writing a heartbeat line to job.log every HEARTBEAT_S while the subprocess lives (Argon #5).
     Tied to the subprocess wait loop, never a free-running thread, so it stops when the job ends or hangs in Python."""
 
@@ -139,11 +182,18 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
             except subprocess.TimeoutExpired:
                 now = time.time()
                 if now >= deadline:
-                    _signal_group(proc, None)
+                    import signal as _signal  # noqa: PLC0415
+
+                    # term_first (the deadline): SIGTERM lets the wave's process end its current write, then SIGKILL.
+                    _signal_group(proc, _signal.SIGTERM if term_first else None)
                     try:
                         out, err = proc.communicate(timeout=30)
                     except subprocess.TimeoutExpired:
-                        out, err = "", ""
+                        _signal_group(proc, None)
+                        try:
+                            out, err = proc.communicate(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            out, err = "", ""
                     raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=err) from None
                 if proc.poll() is None and now >= next_hb:
                     disk_gb = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
@@ -350,6 +400,27 @@ def take_token() -> str | None:
     return tok
 
 
+def token_clean() -> dict:
+    """Every place a token could still be, read after the prefetch (R&D, from Argon's W-A reply): the /dev/shm file, the
+    value in _TOKEN, the Hub's environment variables, the Hub's token cache, and the Colab secret huggingface_hub caches
+    after a vault lookup (read by getattr, so a hub version without it reads as clean, not a crash)."""
+
+    home = Path(os.environ.get("HF_HOME") or (Path.home() / ".cache" / "huggingface"))
+    auth = sys.modules.get("huggingface_hub.utils._auth")
+    return {"file_gone": not token_file().exists(), "value_dropped": _TOKEN is None,
+            "env_clear": not ({"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"} & set(os.environ)),
+            "no_cached_token": not any((home / f).exists() for f in ("token", "stored_tokens")),
+            "no_colab_secret": getattr(auth, "_GOOGLE_COLAB_SECRET", None) is None}
+
+
+def check_token_clean(result: dict) -> None:
+    result["token_clean"] = clean = token_clean()
+    say(f"token_clean {clean}")
+    left = [k for k, v in clean.items() if not v]
+    if left:
+        raise RuntimeError(f"a token residue is left before any wave ({', '.join(left)}); the window stops here")
+
+
 def hosted_name(served_as: str) -> str:
     return f"{served_as}/{served_as}-Q8_0.gguf"
 
@@ -361,6 +432,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
     repo, rev = os.environ.get("PIN_GGUF_REPO"), os.environ.get("PIN_GGUF_REVISION")
     if not repo:
         take_token()  # nothing to download: a token kept anyway is forgotten, never carried through the waves
+        check_token_clean(result)
         return
     if not rev or len(rev) != 40:
         raise RuntimeError("PIN_GGUF_REPO needs PIN_GGUF_REVISION, the repo's full commit sha")
@@ -386,6 +458,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
             spec = by_name[n]
             if spec["how"] != "convert" or n in HOSTED:
                 continue
+            check_deadline(f"{n}'s hosted download")
             resources(f"{n}: before hosted download")
             say(f"downloading {n}'s pre-built Q8_0 from the studio's repo")
             path = Path(hf_hub_download(repo, hosted_name(n), revision=rev, token=token, local_dir=WORK / "hosted"))
@@ -398,6 +471,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
         token = None  # noqa: F841 - dropped before any wave runs
     result["hosted"] = {"repo": repo, "revision": rev, "models": {n: v["sha256"] for n, v in HOSTED.items()}}
     resources("after hosted downloads")
+    check_token_clean(result)
 
 
 CARD_LICENCE_SRC = """
@@ -453,10 +527,10 @@ try:
         refuse(repo + "'s card names no licence; set it before any model goes in")
     stage.mkdir(parents=True, exist_ok=True)
     shutil.move(cfg["gguf"], stage / cfg["gguf_name"])
-    listed = HfApi().list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
+    listed = HfApi(token=False).list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
     legal = [f for f in listed if "/" not in f and f.upper().startswith(("LICENSE", "LICENCE", "NOTICE"))]
     for f in legal + (["README.md"] if "README.md" in listed else []):
-        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"]))
+        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"], token=False))
         shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
     licence = card_licence(stage / "UPSTREAM-CARD.md")
     if licence != repo_licence:
@@ -531,6 +605,7 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
 
 
 def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
+    check_deadline(f"{spec['served_as']}'s setup")
     if spec["served_as"] in HOSTED:  # taken from the private repo before any wave, and already checked against its pin
         h = HOSTED[spec["served_as"]]
         out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": spec.get("revision"), "card": spec.get("card")}
@@ -544,18 +619,18 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
     out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": rev, "card": spec.get("card")}
     resources(f"{spec['served_as']}: before download")
     if spec["how"] == "maker_gguf":
-        listed = HfApi().list_repo_files(spec["repo"], revision=rev)
+        listed = HfApi(token=False).list_repo_files(spec["repo"], revision=rev)  # public: never an implicit token (Q1)
         # An exact `file` when the repo's names overlap (Bolt's mmproj file contains the model file's name).
         files = [f for f in listed if f == spec["file"]] if spec.get("file") else \
             [f for f in listed if f.endswith(".gguf") and spec["pattern"] in f]
         if len(files) != 1:
             raise RuntimeError(f"{spec['repo']}: expected one GGUF for {spec.get('file') or spec['pattern']}, found {files}")
         say(f"downloading {files[0]}")
-        path = Path(hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"]))
+        path = Path(hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"], token=False))
         out.update({"gguf_source": "maker", "gguf_file": files[0]})
     else:
         say(f"downloading {spec['repo']} (BF16) for conversion")
-        snap = Path(snapshot_download(spec["repo"], revision=rev, local_dir=WORK / (spec["served_as"] + "-bf16"),
+        snap = Path(snapshot_download(spec["repo"], revision=rev, local_dir=WORK / (spec["served_as"] + "-bf16"), token=False,
                                       allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt", "*.py", "*.jinja"]))
         py = converter_python(spec, built)
         path = WORK / f"{spec['served_as']}-Q8_0.gguf"
@@ -1008,6 +1083,8 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
                 rec["critic_control"] = runs
             finally:
                 stop_server(proc, log_fh)
+        except DeadlineReached:
+            raise
         except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
@@ -1056,6 +1133,8 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
             rec["smoke"] = m6["smoke"]
             if not (rec["smoke"].get("fit") or {}).get("ok") or not (rec["smoke"].get("slots") or {}).get("ok"):
                 rec["stopped"] = "the Q6_K doesn't fit the card at 32768 with every layer on the GPU and one full slot"
+        except DeadlineReached:
+            raise
         except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
@@ -1086,6 +1165,26 @@ def _repo_root() -> Path:
     return Path(f).resolve().parents[2] if f else CONTENT / "role-set"
 
 
+class _SlowStub:
+    """A stub writer or critic that takes PIN_STUB_CALL_S per call, so a stub rung has waves long enough to cut at a
+    forced deadline mid-wave (R&D on #91). Stub mode only; everything else passes through."""
+
+    def __init__(self, inner, seconds: float):
+        self.inner, self.seconds = inner, seconds
+
+    def __call__(self, *a, **k):
+        time.sleep(self.seconds)
+        return self.inner(*a, **k)
+
+    def __getattr__(self, name):
+        return getattr(self.inner, name)
+
+
+def _slow_stub(inner):
+    s = float(os.environ.get("PIN_STUB_CALL_S") or 0)
+    return _SlowStub(inner, s) if s > 0 else inner
+
+
 def _start_stub(name: str, port: int):
     """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
 
@@ -1101,7 +1200,7 @@ def _start_stub(name: str, port: int):
     w = _STUB_WRITER
     c = MockCritic(answers=w.answers)
     if "port" in stub_mod.StubLlama.__init__.__code__.co_varnames:
-        return stub_mod.StubLlama(name, name, writer=w, critic=c, port=port)
+        return stub_mod.StubLlama(name, name, writer=_slow_stub(w), critic=_slow_stub(c), port=port)
     # Fallback when /content/role-set is checked out at an earlier commit before StubLlama gained `port`.
     orig_srv = stub_mod.ThreadingHTTPServer
 
@@ -1235,6 +1334,7 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
                            generations_path=gen, max_calls=10**6, wall_limit_s=86400)
         px = LoggingProxyServer(state).start()
         endpoint = px.openai_base_url
+    check_deadline(f"the {wave} wave at {out}")
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
@@ -1254,8 +1354,19 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         cmd += ["--drafts", str(drafts)]
     cmd += extra or []
     t0 = time.time()
+    left = deadline_left()
     try:
-        run = run_proc(cmd, timeout=6 * 3600, cwd=rs["src"])
+        try:
+            run = run_proc(cmd, timeout=6 * 3600 if left is None else min(6 * 3600, max(left, 1)), cwd=rs["src"],
+                           term_first=left is not None)
+        except subprocess.TimeoutExpired:
+            if left is None or left >= 6 * 3600:
+                raise
+            global CUT_AT
+            CUT_AT = {"wave": wave, "out": str(out), "arm": arm, "label": label, "journal": str(journal),
+                      "seconds": round(time.time() - t0), "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            say(f"CUT AT THE DEADLINE {arm} {label} after {CUT_AT['seconds']} s; the finished calls are in {journal.name}")
+            raise DeadlineReached(f"the {wave} wave at {out} was cut at the window's deadline") from None
     finally:
         stop.set()
         tail.join(timeout=60)
@@ -2006,6 +2117,12 @@ def _main() -> int:
     # The private repo's token: read once, here, before anything else runs (R&D, from Argon). Only a prebuild, or a
     # pilot window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
     role0 = os.environ.get("PIN_ROLE", "all")
+    if os.environ.get("PIN_STUB_CALL_S") and not stub_mode():
+        # A test knob that slows the stub's calls (R&D on #91): it can never slow a real run.
+        result["ok"], result["error"] = False, "REFUSED: PIN_STUB_CALL_S is set without PIN_STUB=1; nothing ran"
+        (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
+        return 1
     needs_token = role0 == "prebuild" or (role0 == "pilot" and bool(os.environ.get("PIN_GGUF_REPO")))
     if needs_token and not token_file().parent.is_dir():
         result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"
@@ -2067,6 +2184,8 @@ def _main() -> int:
                 # Each model is independent here: a failure is recorded with its model and the next one still runs.
                 try:
                     m = fetch_model(spec, built)
+                except DeadlineReached:
+                    raise
                 except Exception as e:  # noqa: BLE001 - recorded, and the window's result is not ok
                     result["models"].append({"served_as": spec["served_as"], "error": f"{type(e).__name__}: {e}"})
                     result["model_errors"] = result.get("model_errors", 0) + 1
@@ -2085,6 +2204,8 @@ def _main() -> int:
             elif role != "convert":
                 try:
                     m["smoke"] = smoke(built, m)
+                except DeadlineReached:
+                    raise
                 except Exception as e:  # noqa: BLE001 - a smoke window records a failed serve and goes on
                     if role != "smoke":
                         raise
@@ -2102,6 +2223,8 @@ def _main() -> int:
         result["ok"] = not result.get("model_errors")
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
         result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"
+        if isinstance(e, DeadlineReached):
+            result["cut_at_deadline"] = CUT_AT or {"before": str(e)}
     finally:
         result["resources"] = RESOURCES
         result["ended"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

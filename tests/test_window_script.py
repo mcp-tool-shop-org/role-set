@@ -30,7 +30,9 @@ def _window(mode: str, *, extra: dict | None = None) -> tuple[str, str, Path]:
            "PIN_OPEN_LOCK": str(tmp / "open.lock"), "PIN_GATE_MIN_DISK_GB": "0",
            "PIN_WATCH_S": "1", "PIN_STALL_FIRST_S": "6", "PIN_STALL_S": "8", "PIN_WALL_S": "120", "PIN_SESSION": "fake",
            "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.01", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
-           "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1", **(extra or {})}
+           "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
+           # The fake card is an A100 at 5.30/hr: a margin of 0.01 is ~6.8 s, so the grace and the fetch allowance fit it.
+           "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
     out = tmp / "out"
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env, 180)
@@ -256,6 +258,66 @@ def test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm():
     assert not any("PIN_HIGH_MEM" in p.read_text(encoding="utf-8") for p in st.glob("job-*.sh"))
     rig, job, out = _window("normal", extra={"PIN_GPU": "CPU"})
     assert "--high-mem" not in (out.parent / "st" / "new-args.log").read_text(encoding="utf-8")
+
+
+# ---- the deadline and the outcome draft (R&D, 2026-10-18, after Argon's golden-path and W-A replies) ----
+# The fake account rate is 5.30/hr: a cap of 0.03 with 0.0256 kept back puts the deadline ~3 s after the session opens,
+# and the cap's ceiling ~20 s after it.
+DEADLINE = {"PIN_CAP_UNITS": "0.03", "PIN_CAP_MARGIN": "0.0256", "PIN_MOCK_S": "30"}
+
+
+def test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap():
+    import json
+
+    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_MOCK_DEADLINE": "1"})
+    # The job's own result ends it: the watcher's PIN_RESULT read, or the exec returning first.
+    assert "deadline " in rig and ("JOB DONE" in rig or "end=exec" in rig), rig
+    assert "CAP REACHED" not in rig and "CAP CEILING" not in rig, rig
+    r = json.loads((out / "pin-result.json").read_text(encoding="utf-8"))
+    assert r["ok"] is False and "cut_at_deadline" in r and "DeadlineReached" in r["error"], r
+    assert any(e.startswith("PIN_DEADLINE=") for e in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
+               .replace("export ", "").split()), "PIN_DEADLINE never reached the job"
+
+
+def test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace():
+    import re
+    from datetime import datetime
+
+    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_DEADLINE_GRACE_S": "3"})  # 3 + 2 fit 17 s
+    assert "CAP REACHED" in rig and "CAP CEILING" not in rig and "end=cap" in rig, rig
+    # The kill waited out the grace. (The DEADLINE note is printed only if a watcher check falls inside the grace; under
+    # a loaded suite the first check can come after it.)
+    t = lambda pat: datetime.strptime(re.search(pat, rig).group(1), "%H:%M:%S")  # noqa: E731
+    assert (t(r"CAP REACHED .* (\d\d:\d\d:\d\d)") - t(r"deadline (\d\d:\d\d:\d\d)")).total_seconds() >= 3, rig
+    assert job.count("PIN_RESULT") == 0, job
+    assert "PIN_DEADLINE_GRACE_S" not in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
+
+
+def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
+    import json
+    import time
+
+    rig, job, out = _window("normal", extra={"PIN_ROLESET_COMMIT": "c" * 40, "PIN_MOCK_S": "2"})
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["date"] == time.strftime("%Y-%m-%d", time.gmtime()) and d["commit"] == "c" * 40, d
+    assert d["window"] == "out" and d["basis"] == "rate_x_runtime" and d["end"] in ("done", "exec"), d
+    assert d["outcome"] is None and d["why"] is None  # the class and its why stay a person's call
+
+
+def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
+    # The defaults (an empty value takes them): grace 60 s + fetch 120 s against the margin at the fake A100's 5.3/hr.
+    defaults = {"PIN_DEADLINE_GRACE_S": "", "PIN_FETCH_ALLOW_S": ""}
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2"})
+    assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.2 units at 5.3/hr is 135s" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MOCK_S": "2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
+
+
+def test_the_stub_call_knob_never_runs_on_a_gpu_window():
+    rig, job, out = _window("normal", extra={"PIN_STUB_CALL_S": "30"})  # the fake's default card: A100
+    assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on A100" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0
