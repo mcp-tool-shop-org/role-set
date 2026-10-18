@@ -60,7 +60,7 @@ jobs:
         run: uv sync --frozen
 
       - name: Test
-        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20
+        run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
