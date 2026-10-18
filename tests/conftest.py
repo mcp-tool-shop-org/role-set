@@ -59,3 +59,11 @@ def domain_table(tmp_path_factory) -> Path:
     out = d / "naics-2022.json"
     assert naics_script().main([str(xlsx), "--out", str(out)]) == 0
     return out
+
+
+# ---- no real Hub token cache in any test (pin_window's token_clean reads HF_HOME) -----------------------------------
+@pytest.fixture(autouse=True)
+def _isolated_hf_home(tmp_path_factory, monkeypatch):
+    """A rig's own HF_HOME can hold a token cache; the window's token_clean check must see a VM's, which has none."""
+
+    monkeypatch.setenv("HF_HOME", str(tmp_path_factory.mktemp("hf-home")))

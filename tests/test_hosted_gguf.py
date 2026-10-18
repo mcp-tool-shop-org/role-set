@@ -376,3 +376,104 @@ def test_an_env_model_takes_the_same_child_path(vm, monkeypatch, tmp_path):
     result, rows, err = _child_upload(vm, monkeypatch, tmp_path, spec=muse, files=["README.md", "LICENSE"])
     assert err is None, err
     assert result["uploaded"]["path"] == "muse-glimmer-30b/muse-glimmer-30b-Q8_0.gguf"
+
+
+# ---- no implicit token, and no residue before any wave (R&D, from Argon's W-A reply, 2026-10-18) -----------------------
+
+def test_the_job_disables_the_hubs_implicit_token_before_any_import():
+    assert pw.os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] == "1"
+    src = (Path(pw.__file__)).read_text(encoding="utf-8")
+    assert src.index('os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"') < src.index("from huggingface_hub")
+
+
+def test_a_hub_an_earlier_exec_imported_gets_the_constant_too(monkeypatch):
+    const = SimpleNamespace(HF_HUB_DISABLE_IMPLICIT_TOKEN=False)
+    monkeypatch.setitem(sys.modules, "huggingface_hub.constants", const)
+    pw.no_implicit_token()
+    assert const.HF_HUB_DISABLE_IMPLICIT_TOKEN is True
+
+
+def test_every_hub_call_names_its_token():
+    """Every HfApi(), hf_hub_download() and snapshot_download() in the job and in the upload child passes token=: the
+    private repo's (token) or, for a public repo, token=False. None is left to an implicit lookup."""
+
+    import ast
+
+    trees = [ast.parse(Path(pw.__file__).read_text(encoding="utf-8")), ast.parse(pw.UPLOAD_CHILD)]
+    calls = [n for tree in trees for n in ast.walk(tree) if isinstance(n, ast.Call)
+             and getattr(n.func, "id", None) in ("HfApi", "hf_hub_download", "snapshot_download")]
+    assert len(calls) >= 8, len(calls)  # prefetch 2, upload child 3, fetch_model 3
+    for c in calls:
+        tok = [k.value for k in c.keywords if k.arg == "token"]
+        assert tok, f"line {c.lineno}: {ast.unparse(c)[:80]} has no token="
+        v = tok[0]
+        assert (isinstance(v, ast.Name) and v.id == "token") or (isinstance(v, ast.Constant) and v.value is False), \
+            f"line {c.lineno}: token={ast.unparse(v)}"
+
+
+def test_a_maker_gguf_fetch_asks_the_hub_with_token_false(vm, monkeypatch):
+    seen = []
+
+    class Api:
+        def __init__(self, token=None):
+            seen.append({"api_token": token})
+
+        def list_repo_files(self, repo, revision=None):
+            return ["model-Q8_0.gguf"]
+
+    def hf_hub_download(repo, filename, revision=None, local_dir=None, token=None, **kw):
+        seen.append({"download_token": token})
+        p = Path(local_dir) / filename
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b"gguf")
+        return str(p)
+
+    _hub(monkeypatch, HfApi=Api, hf_hub_download=hf_hub_download, snapshot_download=None)
+    spec = {"served_as": "maker-x", "how": "maker_gguf", "repo": "maker/x-GGUF", "revision": REV, "file": "model-Q8_0.gguf"}
+    pw.fetch_model(spec, {})
+    assert seen == [{"api_token": False}, {"download_token": False}]
+
+
+def test_a_clean_prefetch_records_token_clean_all_true(vm, monkeypatch):
+    import hashlib
+
+    content = b"gguf bytes"
+    spec = {**GRANITE, "expect_sha256": hashlib.sha256(content).hexdigest()}
+    monkeypatch.setenv("PIN_GGUF_REPO", "studio/gguf-private")
+    monkeypatch.setenv("PIN_GGUF_REVISION", REV)
+    _fake_hub(monkeypatch, content, [])
+    result = {}
+    pw.prefetch_hosted([spec["served_as"]], {spec["served_as"]: spec}, result)
+    assert result["token_clean"] == {"file_gone": True, "value_dropped": True, "env_clear": True,
+                                     "no_cached_token": True, "no_colab_secret": True}
+
+
+def test_a_window_without_a_repo_checks_the_residues_too(vm):
+    result = {}
+    pw.prefetch_hosted([], {}, result)
+    assert all(result["token_clean"].values()) and pw._TOKEN is None
+
+
+@pytest.mark.parametrize("residue, key", [("env", "env_clear"), ("cache", "no_cached_token"), ("colab", "no_colab_secret"),
+                                          ("file", "file_gone")])
+def test_any_token_residue_stops_the_window_before_pool(vm, monkeypatch, tmp_path, residue, key):
+    if residue == "env":
+        monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "x")
+    elif residue == "cache":
+        home = tmp_path / "hfh"
+        home.mkdir()
+        (home / "token").write_text("x", encoding="utf-8")
+        monkeypatch.setenv("HF_HOME", str(home))
+    elif residue == "colab":
+        monkeypatch.setitem(sys.modules, "huggingface_hub.utils._auth", SimpleNamespace(_GOOGLE_COLAB_SECRET="x"))
+    else:
+        pw.TOKEN_PATH.write_text("x", encoding="utf-8")
+    result = {}
+    with pytest.raises(RuntimeError, match=rf"token residue is left before any wave \(.*{key}"):
+        pw.prefetch_hosted([], {}, result)
+    assert result["token_clean"][key] is False
+
+
+def test_a_hub_without_the_colab_secret_attribute_reads_clean(monkeypatch):
+    monkeypatch.setitem(sys.modules, "huggingface_hub.utils._auth", SimpleNamespace())
+    assert pw.token_clean()["no_colab_secret"] is True

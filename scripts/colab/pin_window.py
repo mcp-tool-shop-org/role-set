@@ -29,6 +29,24 @@ import time
 import urllib.request
 from pathlib import Path
 
+# No implicit Hub token, ever (R&D, from Argon's W-A reply, 2026-10-18). With token=None, huggingface_hub looks in the
+# environment, ~/.cache/huggingface/token and, inside Colab, the account's secrets vault (userdata.get("HF_TOKEN")). In W-A
+# that lookup timed out after ~10 s before Bolt's public download; with a notebook attached to the runtime it would succeed
+# and use whatever token the account holds. Set here, before anything imports huggingface_hub; child processes inherit it.
+# An explicit token= (the prefetch, the upload child) is unaffected.
+os.environ["HF_HUB_DISABLE_IMPLICIT_TOKEN"] = "1"
+
+
+def no_implicit_token() -> None:
+    """The same for a huggingface_hub an earlier exec in this kernel already imported: it read its constants then."""
+
+    c = sys.modules.get("huggingface_hub.constants")
+    if c is not None:
+        c.HF_HUB_DISABLE_IMPLICIT_TOKEN = True
+
+
+no_implicit_token()
+
 LLAMA_CPP_COMMIT = "620d2225cc436ab0b001e3200e590e3b286ef9ab"  # ggml-org/llama.cpp release v0.7.0, 2026-10-15
 # SASS for A100 (80), H100/H200 (90) and B200 (100): one binary for Colab and RunPod, no PTX JIT.
 CUDA_ARCHS = "80;90;100"
@@ -350,6 +368,27 @@ def take_token() -> str | None:
     return tok
 
 
+def token_clean() -> dict:
+    """Every place a token could still be, read after the prefetch (R&D, from Argon's W-A reply): the /dev/shm file, the
+    value in _TOKEN, the Hub's environment variables, the Hub's token cache, and the Colab secret huggingface_hub caches
+    after a vault lookup (read by getattr, so a hub version without it reads as clean, not a crash)."""
+
+    home = Path(os.environ.get("HF_HOME") or (Path.home() / ".cache" / "huggingface"))
+    auth = sys.modules.get("huggingface_hub.utils._auth")
+    return {"file_gone": not token_file().exists(), "value_dropped": _TOKEN is None,
+            "env_clear": not ({"HF_TOKEN", "HUGGING_FACE_HUB_TOKEN"} & set(os.environ)),
+            "no_cached_token": not any((home / f).exists() for f in ("token", "stored_tokens")),
+            "no_colab_secret": getattr(auth, "_GOOGLE_COLAB_SECRET", None) is None}
+
+
+def check_token_clean(result: dict) -> None:
+    result["token_clean"] = clean = token_clean()
+    say(f"token_clean {clean}")
+    left = [k for k, v in clean.items() if not v]
+    if left:
+        raise RuntimeError(f"a token residue is left before any wave ({', '.join(left)}); the window stops here")
+
+
 def hosted_name(served_as: str) -> str:
     return f"{served_as}/{served_as}-Q8_0.gguf"
 
@@ -361,6 +400,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
     repo, rev = os.environ.get("PIN_GGUF_REPO"), os.environ.get("PIN_GGUF_REVISION")
     if not repo:
         take_token()  # nothing to download: a token kept anyway is forgotten, never carried through the waves
+        check_token_clean(result)
         return
     if not rev or len(rev) != 40:
         raise RuntimeError("PIN_GGUF_REPO needs PIN_GGUF_REVISION, the repo's full commit sha")
@@ -398,6 +438,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
         token = None  # noqa: F841 - dropped before any wave runs
     result["hosted"] = {"repo": repo, "revision": rev, "models": {n: v["sha256"] for n, v in HOSTED.items()}}
     resources("after hosted downloads")
+    check_token_clean(result)
 
 
 CARD_LICENCE_SRC = """
@@ -453,10 +494,10 @@ try:
         refuse(repo + "'s card names no licence; set it before any model goes in")
     stage.mkdir(parents=True, exist_ok=True)
     shutil.move(cfg["gguf"], stage / cfg["gguf_name"])
-    listed = HfApi().list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
+    listed = HfApi(token=False).list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
     legal = [f for f in listed if "/" not in f and f.upper().startswith(("LICENSE", "LICENCE", "NOTICE"))]
     for f in legal + (["README.md"] if "README.md" in listed else []):
-        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"]))
+        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"], token=False))
         shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
     licence = card_licence(stage / "UPSTREAM-CARD.md")
     if licence != repo_licence:
@@ -544,18 +585,18 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
     out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": rev, "card": spec.get("card")}
     resources(f"{spec['served_as']}: before download")
     if spec["how"] == "maker_gguf":
-        listed = HfApi().list_repo_files(spec["repo"], revision=rev)
+        listed = HfApi(token=False).list_repo_files(spec["repo"], revision=rev)  # public: never an implicit token (Q1)
         # An exact `file` when the repo's names overlap (Bolt's mmproj file contains the model file's name).
         files = [f for f in listed if f == spec["file"]] if spec.get("file") else \
             [f for f in listed if f.endswith(".gguf") and spec["pattern"] in f]
         if len(files) != 1:
             raise RuntimeError(f"{spec['repo']}: expected one GGUF for {spec.get('file') or spec['pattern']}, found {files}")
         say(f"downloading {files[0]}")
-        path = Path(hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"]))
+        path = Path(hf_hub_download(spec["repo"], files[0], revision=rev, local_dir=WORK / spec["served_as"], token=False))
         out.update({"gguf_source": "maker", "gguf_file": files[0]})
     else:
         say(f"downloading {spec['repo']} (BF16) for conversion")
-        snap = Path(snapshot_download(spec["repo"], revision=rev, local_dir=WORK / (spec["served_as"] + "-bf16"),
+        snap = Path(snapshot_download(spec["repo"], revision=rev, local_dir=WORK / (spec["served_as"] + "-bf16"), token=False,
                                       allow_patterns=["*.json", "*.safetensors", "*.model", "*.txt", "*.py", "*.jinja"]))
         py = converter_python(spec, built)
         path = WORK / f"{spec['served_as']}-Q8_0.gguf"
