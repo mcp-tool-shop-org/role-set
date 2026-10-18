@@ -59,6 +59,9 @@ jobs:
       - name: Install
         run: uv sync --frozen
 
+      - name: Diagnose t11 confirm alone (TEMPORARY, R&D 2026-10-18; removed before merge)
+        run: /usr/bin/time -v uv run pytest "tests/test_generate_t11.py::test_every_catalogue_row_builds_and_proves[confirm]" -m sweep -p no:xdist --cov=role_set --cov-fail-under=0 -q 2>&1 | grep -E "passed|failed|Elapsed|Maximum resident|Exit status"; nproc; free -g | head -2
+
       - name: Test
         run: uv run pytest -m "not sweep" -n auto --cov-report=xml --durations=20 -o faulthandler_timeout=240
 
@@ -81,7 +84,8 @@ jobs:
         run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 
   sweep:
-    if: github.event_name == 'workflow_dispatch'
+    # The sweep: on a manual run, and on every push to main (R&D, 2026-10-18, the slow-test split).
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
