@@ -8,6 +8,7 @@
 #   late            the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
 #                   remote kernel would); the second runs the job at once
 #   neverstarts     every exec hangs with nothing run
+# FAKE_GATE (any mode) sets what each VM health gate exec reports: good (default), bad or dead.
 ST=${FAKE_ST:?FAKE_ST}; VM=$ST/vm; mkdir -p "$VM/content/pin"
 cmd=$1; shift
 case "$cmd" in
@@ -30,6 +31,20 @@ case "$cmd" in
   exec)
     file=""; envs=()
     while [ $# -gt 0 ]; do case "$1" in -f) file=$2; shift 2;; --env) envs+=("$2"); shift 2;; -s|--timeout) shift 2;; *) shift;; esac; done
+    # The VM health gate's exec (vm_gate.py): FAKE_GATE is a comma list, one entry per gate exec: good, bad, or dead (the
+    # exec dies with nothing printed, as windows 11c and 12e did). Gate execs don't count as job execs.
+    if [ "$(basename "$file")" = vm_gate.py ]; then
+      g=$(( $(cat "$ST/gates" 2>/dev/null || echo 0) + 1 )); echo $g > "$ST/gates"
+      printf '%s
+' "${envs[@]}" > "$ST/gate-env-$g"
+      what=$(echo "${FAKE_GATE:-good}" | cut -d, -f"$g"); what=${what:-good}
+      case "$what" in
+        good) echo 'VM_GATE {"ok": true, "why": [], "gpu_name": "NVIDIA A100-SXM4-40GB", "disk_free_gb": 204.2}';;
+        bad) echo 'VM_GATE {"ok": false, "why": ["card in use: 1200 MiB used, 1 processes"], "disk_free_gb": 204.2}';;
+        dead) echo "RuntimeError: Connection was lost."; exec sleep 3600;;  # exec: the timeout kills the sleep itself
+      esac
+      exit 0
+    fi
     n=$(( $(cat "$ST/execs" 2>/dev/null || echo 0) + 1 )); echo $n > "$ST/execs"
     job="$ST/job-$n.sh"
     { echo "#!/usr/bin/env bash"; echo "touch '$ST/busy.$n'"

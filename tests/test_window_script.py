@@ -160,3 +160,51 @@ if __name__ == "__main__":  # WSL on the rig: no pytest needed
                 failed += 1
                 print(f"FAIL {name}: {str(e)[:1500]}")
     sys.exit(1 if failed else 0)
+
+
+# ---- the VM health gate (Mike and R&D, 2026-10-18): before any upload, a bad VM is stopped and a fresh one asked for
+
+def _gate_rows(out: Path) -> list[dict]:
+    import json
+
+    p = out / "gate.jsonl"
+    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()] if p.exists() else []
+
+
+def test_a_healthy_vm_passes_the_gate_once_and_the_job_runs():
+    rig, job, out = _window("normal", extra={"FAKE_GATE": "good"})
+    assert "VM gate passed (try 1)" in rig and job.count("PIN_RESULT") == 1, rig
+    rows = _gate_rows(out)
+    assert [r["try"] for r in rows] == [1] and rows[0]["gate"]["ok"] is True, rows
+
+
+def test_a_bad_vm_and_a_dead_one_are_stopped_and_the_third_runs_the_job():
+    rig, job, out = _window("normal", extra={"FAKE_GATE": "bad,dead,good", "PIN_GATE_TIMEOUT_S": "3"})
+    assert "VM gate rejected try 1" in rig and "card in use" in rig, rig
+    assert "VM gate rejected try 2" in rig and "died or timed out" in rig, rig
+    assert "VM gate passed (try 3)" in rig and job.count("PIN_RESULT") == 1, rig
+    assert [r["gate"]["ok"] for r in _gate_rows(out)] == [False, False, True]
+    assert rig.count("Session terminated") >= 3  # each rejected VM stopped, then the window's own stop
+
+
+def test_no_healthy_vm_in_three_tries_ends_the_window_before_any_upload_or_job():
+    rig, job, out = _window("normal", extra={"FAKE_GATE": "bad,bad,bad", "PIN_UPLOADS": str(Path(__file__))})
+    assert "VM GATE: no healthy A100 in 3 tries" in rig, rig
+    st = out.parent / "st"
+    assert not (st / "execs").exists() and not job, rig  # no job exec ever ran
+    assert not (st / "vm" / "content" / Path(__file__).name).exists()  # and nothing was uploaded
+    assert not (st / "open").exists()  # the last VM was stopped too
+    assert len(_gate_rows(out)) == 3
+
+
+def test_the_gate_gets_its_settings_and_a_cpu_window_skips_the_card_check():
+    rig, job, out = _window("normal", extra={"PIN_GPU": "CPU", "PIN_GATE_MIN_DISK_GB": "224", "PIN_GATE_TRIES": "2"})
+    env = (out.parent / "st" / "gate-env-1").read_text(encoding="utf-8").split()
+    assert "PIN_GATE_GPU=0" in env and "PIN_GATE_MIN_DISK_GB=224" in env, env
+    assert not any(e.startswith(("PIN_GATE_TRIES=", "PIN_GATE_TIMEOUT_S=")) for e in env), env  # the rig's own settings
+    assert _gate_rows(out)[0]["gpu"] == "CPU"
+
+
+def test_pin_gate_0_skips_the_gate():
+    rig, job, out = _window("normal", extra={"PIN_GATE": "0"})
+    assert not _gate_rows(out) and "VM gate" not in rig and job.count("PIN_RESULT") == 1, rig
