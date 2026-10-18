@@ -388,17 +388,34 @@ def _blind_draft(d0: dict, tokens: set[str]) -> dict:
     }
 
 
-def _blind_critic(critic, forbidden: set[str]):
-    """Wrap the critic so no forbidden string (arm, writer, served_as, window) can ever reach its messages."""
+def _blind_critic(critic, forbidden: set[str], queue_index: int):
+    """Wrap the critic so any forbidden string in its messages refuses the run (naming the queue index, never the string)."""
 
     def wrapped(messages: list[dict], **kwargs):
-        cleaned = [
-            {**m, "content": _strip_tokens(str(m.get("content") or ""), forbidden)}
-            for m in messages
-        ]
-        return critic(cleaned, **kwargs)
+        for m in messages:
+            text = str(m.get("content") or "")
+            for tok in forbidden:
+                if tok and tok in text:
+                    raise RescoreError(
+                        f"REFUSED: unblinded identifier in critic messages at queue index {queue_index}"
+                    )
+        return critic(messages, **kwargs)
 
     return wrapped
+
+
+def _w1_critics(header1: dict) -> set[str]:
+    out: set[str] = set()
+    for w in header1.get("waves") or []:
+        if w.get("wave") == "critique":
+            cm = ((w.get("pins") or {}).get("critic_model") or "").strip()
+            if cm:
+                out.add(cm)
+    for key in ("critic_pins", "batch_pins"):
+        cm = ((header1.get(key) or {}).get("critic_model") or "").strip()
+        if cm:
+            out.add(cm)
+    return out
 
 
 def render_table(report: dict) -> str:
@@ -446,9 +463,9 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
     c_card_pins: dict | None = None
     critic_entry: dict = {"served_as": c_model, "family": ""}
     if listed is not None and c_model in listed.critics:
-        critic_entry = listed.critics[c_model]
+        critic_entry = dict(listed.critics[c_model])
     elif listed is not None and c_model in listed.writers:
-        critic_entry = listed.writers[c_model]
+        critic_entry = dict(listed.writers[c_model])
 
     if not cfg.mock:
         if listed is None:
@@ -457,13 +474,18 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
             raise RescoreError("REFUSED: the critic runs at its card values; pass --cards <card-values.json>")
         try:
             c_endpoint, c_model, c_pins = resolve_critic(listed, cfg.critic_model, cfg.critic_endpoint, cfg.critic_gguf_sha256)
+            critic_entry = dict(listed.critics[c_model])
             card_set, card_sha = cards.load(cfg.cards)
-            c_card = cards.select(card_set, listed.critics[c_model], c_model)
+            c_card = cards.select(card_set, critic_entry, c_model)
             c_card_pins = cards.pins(c_card, card_sha)
         except GuardError as e:
             raise RescoreError(str(e)) from e
         if critic is None:
             critic = critic_caller(c_endpoint, c_model, c_card)
+
+    c_family = (critic_entry.get("family") or "").strip() or None
+    if not cfg.mock and not c_family:
+        raise RescoreError(f"REFUSED: critic {c_model!r} has no family on record")
 
     with tempfile.TemporaryDirectory(prefix="rescore-") as tmp_str:
         tmp = Path(tmp_str)
@@ -482,6 +504,8 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
             seen_arms.add(arm)
             arms_in.append(_load_one_arm(arm, w0_p, w1_p, {arm}))
 
+        arms_in.sort(key=lambda a: a.arm)
+
         closed_form = None
         for a in arms_in:
             cf = (a.header0.get("gates") or {}).get("closed_form")
@@ -494,6 +518,18 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
             if not cfg.mock:
                 raise RescoreError(str(e)) from e
             gates = mock_gates(closed_form=closed_form)
+
+        for a in arms_in:
+            g = a.header0.get("gates") or {}
+            if (g.get("version"), g.get("sha256")) != (gates.version, gates.sha256):
+                raise RescoreError(
+                    f"REFUSED: {a.arm}'s drafts were checked by gates {g.get('version')}; "
+                    f"rescore has {gates.version}"
+                )
+            if c_model in _w1_critics(a.header1):
+                raise RescoreError(
+                    f"REFUSED: second critic {c_model!r} is the same critic that judged {a.arm}'s w1"
+                )
 
         if cfg.mock and critic is None:
             merged_answers: dict = {}
@@ -508,7 +544,7 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
         manifest: dict = {
             "seed": cfg.seed,
             "critic_model": c_model,
-            "critic_family": critic_entry.get("family") or None,
+            "critic_family": c_family,
             "unsampled": [],
             "arms": {},
             "items": [],
@@ -524,11 +560,13 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
             w_pins, w_entry = _writer_entry_for(a, listed, mock=cfg.mock)
             forbidden_all |= _forbidden_strings_for(a, w_pins, w_entry)
             w_model = w_pins.get("writer_model") or w_entry.get("served_as") or a.arm
-            w_family = w_entry.get("family") or w_pins.get("writer_family") or None
+            w_family = (w_entry.get("family") or w_pins.get("writer_family") or "").strip() or None
+            if not cfg.mock and not w_family:
+                raise RescoreError(f"REFUSED: {a.arm}'s writer {w_model!r} has no family on record")
 
-            if w_family and critic_entry.get("family"):
+            if w_family and c_family:
                 try:
-                    proven.require_other_family(w_entry, critic_entry)
+                    proven.require_other_family({**w_entry, "family": w_family}, {**critic_entry, "family": c_family})
                 except GuardError as e:
                     reason = str(e)
                     manifest["unsampled"].append({
@@ -536,7 +574,7 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
                         "writer_model": w_model,
                         "writer_family": w_family,
                         "critic_model": c_model,
-                        "critic_family": critic_entry.get("family"),
+                        "critic_family": c_family,
                         "reason": reason,
                     })
                     manifest["arms"][a.arm] = {
@@ -615,7 +653,6 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
         manifest_path.write_text(json.dumps(manifest, indent=1), encoding="utf-8")
 
         # Score the blinded queue with Runner.mechanical and Runner.critique_step.
-        safe_critic = _blind_critic(critic, forbidden_all)
         raw_scores: list[dict] = []
         scratch_root = tmp / "runner-scratch"
         for q_item in blind_queue:
@@ -626,16 +663,14 @@ def run_rescore(cfg: RescoreConfig, *, critic=None) -> dict:
                 pack=pack,
                 trait_names=trait_names,
                 writer=None,
-                critic=safe_critic,
+                critic=_blind_critic(critic, forbidden_all, q_idx),
                 out_dir=scratch_root / f"q-{q_idx}",
             )
             st = waves.state_of(d_blind)
             c = waves.completion_of(d_blind)
             m_refusal, cand, _ = runner.mechanical(st, c)
             if m_refusal is not None or cand is None or cand.lookup != bool(d_blind.get("lookup")):
-                detail = m_refusal[" code"] if m_refusal and " code" in m_refusal else (
-                    f"{m_refusal['code']}: {m_refusal['detail']}" if m_refusal else "lookup mismatch"
-                )
+                detail = f"{m_refusal['code']}: {m_refusal['detail']}" if m_refusal else "lookup mismatch"
                 raise RescoreError(
                     f"REFUSED: mechanical check on {st.slot.id} (queue {q_idx}) differed from w0 ({detail})"
                 )

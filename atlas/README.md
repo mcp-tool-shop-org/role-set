@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-18 from commit 462ea6a by Atlas 1.24.0.
+Mapped at 2026-10-18 from commit 05becc8 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,15 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (106 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-17 (5a7490b)
+## What changed since 2026-10-18 (462ea6a)
 
-- CI's pull request trigger no longer names `main`.
-- CI's push trigger now also names `scripts/**`.
-- LICENSE is now read by tests/test_hosted_gguf.py.
-- README.md is now also read by tests/test_hosted_gguf.py.
-- src/ is now read by scripts/colab/pin_window.py.
-- And 4 more new writers and readers of places.
-- 9 files added and 15 changed content, across 5 parts.
+Nothing structural changed since 2026-10-18; 3 files changed content.
 
 ## What comes in
 

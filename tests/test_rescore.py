@@ -140,6 +140,11 @@ def _make_arm_waves(
     if monkeypatch is not None:
         monkeypatch.setattr(w_mod, "MockCritic", MockCritic)
     w1_drafts_path = w1_out / "mock" / waves.DRAFTS_FILE
+    h1, d1 = waves.read(w1_drafts_path)
+    for w in h1.get("waves") or []:
+        if w.get("wave") == "critique":
+            w.setdefault("pins", {})["critic_model"] = "muse-glimmer-30b-a3b"
+    waves.write(w1_drafts_path, h1, d1)
     return w0_drafts_path, w1_drafts_path, refuse_set
 
 
@@ -494,7 +499,7 @@ def test_old_format_w0_header_fixture_is_sampled_blinded_and_scored_like_any_oth
     assert not (waves.CARD_KEYS & set(fixture_h0["writer_pins"]))
 
     h0, d0 = waves.read(w0_p)
-    old_h0 = {**fixture_h0, "mock_answers": h0.get("mock_answers")}
+    old_h0 = {**fixture_h0, "gates": h0["gates"], "mock_answers": h0.get("mock_answers")}
     waves.write(w0_p, old_h0, d0)
 
     h1, d1 = waves.read(w1_p)
@@ -670,5 +675,178 @@ def test_rescore_input_validation_and_cli_refusals(
             drafts=(f"qwen3.8-27b={w0_p},{short_w1}",),
             pack=pack_dir, seed=0, out=tmp_path / "o7", mock=True,
         ))
+
+
+def test_blinding_refuses_when_forbidden_string_is_in_candidate_text(
+    screen_plan: Path, pack_dir: Path, tmp_path: Path, monkeypatch
+):
+    w0_p, w1_p, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "leak-arm",
+        writer_model="qwen3.8-27b", writer_family="qwen", window_tag="window12f-secret-tag", refuse_count=2, monkeypatch=monkeypatch,
+    )
+    # Plant a forbidden string (the writer's served_as / window tag) in every C/D candidate's statement so it passes
+    # mechanical assembly and reaches the critic's messages.
+    h0, d0 = waves.read(w0_p)
+    for d in d0:
+        if d.get("candidate") and d["slot"]["kind"] in ("C", "D"):
+            fields = json.loads(d["candidate"]["text"])
+            fields["statement"] = f"According to qwen3.8-27b, {fields['statement']}"
+            if d["slot"]["kind"] == "C" and "checker_trace" in fields:
+                fields["checker_trace"] = f"{fields['checker_trace']} (qwen3.8-27b)"
+            d["candidate"]["text"] = json.dumps(fields)
+    waves.write(w0_p, h0, d0)
+
+    with pytest.raises(RescoreError) as exc_info:
+        run_rescore(RescoreConfig(
+            drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+            pack=pack_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model="nemotron-3.5-lightning-30b-a3b",
+            seed=0,
+            out=tmp_path / "leak-out",
+            mock=True,
+        ))
+    msg = str(exc_info.value)
+    assert "queue index" in msg
+    assert "qwen3.8-27b" not in msg
+
+
+def test_missing_writer_or_critic_family_refuses_outside_mock(
+    screen_plan: Path, pack_dir: Path, tmp_path: Path, monkeypatch
+):
+    import role_set.rescore as r_mod
+
+    w0_p, w1_p, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "fam-arm",
+        writer_model="qwen3.8-27b", writer_family="qwen", refuse_count=2, monkeypatch=monkeypatch,
+    )
+    listed_orig = r_mod.proven.load(ROOT / "writers.json")
+    critic_name = "nemotron-3.5-lightning-30b-a3b"
+    critic_sha = listed_orig.critics[critic_name]["gguf_sha256"]
+
+    # 1. Missing critic family outside --mock raises RescoreError.
+    no_critic_fam = r_mod.proven.ProvenList(
+        writers=dict(listed_orig.writers),
+        critics={**listed_orig.critics, critic_name: {**listed_orig.critics[critic_name], "family": ""}},
+        server=dict(listed_orig.server),
+        sha256=listed_orig.sha256,
+    )
+    monkeypatch.setattr(r_mod.proven, "load", lambda _: no_critic_fam)
+    with pytest.raises(RescoreError, match="critic.*no family"):
+        run_rescore(
+            RescoreConfig(
+                drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+                pack=pack_dir, writers_file=ROOT / "writers.json", cards=CARDS,
+                critic_endpoint="http://127.0.0.1:8080", critic_model=critic_name, critic_gguf_sha256=critic_sha,
+                seed=0, out=tmp_path / "no-cfam", mock=False,
+            ),
+            critic=MockCritic(answers={}),
+        )
+
+    # 2. Missing writer family outside --mock raises RescoreError.
+    h0, d0 = waves.read(w0_p)
+    h0["writer_pins"]["writer_family"] = ""
+    waves.write(w0_p, h0, d0)
+    h1, d1 = waves.read(w1_p)
+    h1["writer_pins"]["writer_family"] = ""
+    waves.write(w1_p, h1, d1)
+    no_writer_fam = r_mod.proven.ProvenList(
+        writers={**listed_orig.writers, "qwen3.8-27b": {**listed_orig.writers["qwen3.8-27b"], "family": ""}},
+        critics=dict(listed_orig.critics),
+        server=dict(listed_orig.server),
+        sha256=listed_orig.sha256,
+    )
+    monkeypatch.setattr(r_mod.proven, "load", lambda _: no_writer_fam)
+    with pytest.raises(RescoreError, match="writer.*no family"):
+        run_rescore(
+            RescoreConfig(
+                drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+                pack=pack_dir, writers_file=ROOT / "writers.json", cards=CARDS,
+                critic_endpoint="http://127.0.0.1:8080", critic_model=critic_name, critic_gguf_sha256=critic_sha,
+                seed=0, out=tmp_path / "no-wfam", mock=False,
+            ),
+            critic=MockCritic(answers={}),
+        )
+
+
+def test_second_critic_equal_to_w1_critic_is_refused(
+    screen_plan: Path, pack_dir: Path, tmp_path: Path, monkeypatch
+):
+    w0_p, w1_p, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "same-critic-arm",
+        writer_model="qwen3.8-27b", writer_family="qwen", refuse_count=2, monkeypatch=monkeypatch,
+    )
+    # w1's critique wave recorded critic_model="muse-glimmer-30b-a3b"; passing Muse again is refused.
+    with pytest.raises(RescoreError, match="same critic that judged"):
+        run_rescore(RescoreConfig(
+            drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+            pack=pack_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model="muse-glimmer-30b-a3b",
+            seed=0,
+            out=tmp_path / "same-critic-out",
+            mock=True,
+        ))
+
+
+def test_gates_version_or_sha256_mismatch_with_w0_header_is_refused(
+    screen_plan: Path, pack_dir: Path, tmp_path: Path, monkeypatch
+):
+    w0_p, w1_p, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "gates-arm",
+        writer_model="qwen3.8-27b", writer_family="qwen", refuse_count=2, monkeypatch=monkeypatch,
+    )
+    h0, d0 = waves.read(w0_p)
+    orig_gates = dict(h0["gates"])
+
+    # Differing gates version is refused.
+    h0["gates"] = {**orig_gates, "version": "0.0.0-other"}
+    waves.write(w0_p, h0, d0)
+    with pytest.raises(RescoreError, match="drafts were checked by gates 0.0.0-other"):
+        run_rescore(RescoreConfig(
+            drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+            pack=pack_dir, writers_file=ROOT / "writers.json",
+            critic_model="nemotron-3.5-lightning-30b-a3b", seed=0, out=tmp_path / "gates-ver", mock=True,
+        ))
+
+    # Differing gates sha256 under the same version string is also refused.
+    h0["gates"] = {**orig_gates, "sha256": "f" * 64}
+    waves.write(w0_p, h0, d0)
+    with pytest.raises(RescoreError, match="drafts were checked by gates"):
+        run_rescore(RescoreConfig(
+            drafts=(f"qwen3.8-27b={w0_p},{w1_p}",),
+            pack=pack_dir, writers_file=ROOT / "writers.json",
+            critic_model="nemotron-3.5-lightning-30b-a3b", seed=0, out=tmp_path / "gates-sha", mock=True,
+        ))
+
+
+def test_sample_manifest_is_independent_of_argument_order(
+    screen_plan: Path, pack_dir: Path, tmp_path: Path, monkeypatch
+):
+    w0_q, w1_q, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "qwen-arm",
+        writer_model="qwen3.8-27b", writer_family="qwen", refuse_count=3, monkeypatch=monkeypatch,
+    )
+    w0_g, w1_g, _ = _make_arm_waves(
+        screen_plan, pack_dir, tmp_path / "gemma-arm",
+        writer_model="gemma-4-31b-it", writer_family="gemma", refuse_count=3, monkeypatch=monkeypatch,
+    )
+    spec_q = f"qwen3.8-27b={w0_q},{w1_q}"
+    spec_g = f"gemma-4-31b-it={w0_g},{w1_g}"
+
+    out_qg = tmp_path / "order-qg"
+    out_gq = tmp_path / "order-gq"
+    run_rescore(RescoreConfig(
+        drafts=(spec_q, spec_g), pack=pack_dir, writers_file=ROOT / "writers.json",
+        critic_model="nemotron-3.5-lightning-30b-a3b", seed=17, out=out_qg, mock=True,
+    ))
+    run_rescore(RescoreConfig(
+        drafts=(spec_g, spec_q), pack=pack_dir, writers_file=ROOT / "writers.json",
+        critic_model="nemotron-3.5-lightning-30b-a3b", seed=17, out=out_gq, mock=True,
+    ))
+    man_qg = json.loads((out_qg / "sample-manifest.json").read_text(encoding="utf-8"))
+    man_gq = json.loads((out_gq / "sample-manifest.json").read_text(encoding="utf-8"))
+    assert man_qg == man_gq
+
 
 

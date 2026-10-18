@@ -165,7 +165,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "6cf0423191fba1677c6d133fa2e7decc342cb056b18f71b4d783c1d6a0d5dd23",
+          "hash": "a439480bba6fedcecb4da57901343e82156bfddb2925b5c59f607435946882c7",
           "path": "CHANGELOG.md"
         },
         {
@@ -4639,39 +4639,29 @@
               "line": 328
             },
             {
+              "in": "wrapped",
+              "kind": "raise",
+              "line": 399
+            },
+            {
               "in": "run_rescore",
               "kind": "raise",
-              "line": 427
+              "line": 444
             },
             {
               "in": "run_rescore",
               "kind": "except",
-              "line": 430
+              "line": 447
             },
             {
               "in": "run_rescore",
               "kind": "raise",
-              "line": 431
+              "line": 448
             },
             {
               "in": "run_rescore",
               "kind": "except",
-              "line": 439
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
-              "line": 440
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
-              "line": 442
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
-              "line": 455
+              "line": 456
             },
             {
               "in": "run_rescore",
@@ -4680,46 +4670,81 @@
             },
             {
               "in": "run_rescore",
+              "kind": "raise",
+              "line": 459
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 472
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 474
+            },
+            {
+              "in": "run_rescore",
               "kind": "except",
-              "line": 463
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
-              "line": 464
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
-              "line": 475
-            },
-            {
-              "in": "run_rescore",
-              "kind": "raise",
               "line": 481
             },
             {
               "in": "run_rescore",
-              "kind": "except",
-              "line": 493
+              "kind": "raise",
+              "line": 482
             },
             {
               "in": "run_rescore",
               "kind": "raise",
-              "line": 495
-            },
-            {
-              "in": "run_rescore",
-              "kind": "except",
-              "line": 532
+              "line": 488
             },
             {
               "in": "run_rescore",
               "kind": "raise",
-              "line": 639
+              "line": 497
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 503
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 517
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 519
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 525
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 530
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 565
+            },
+            {
+              "in": "run_rescore",
+              "kind": "except",
+              "line": 570
+            },
+            {
+              "in": "run_rescore",
+              "kind": "raise",
+              "line": 674
             }
           ],
-          "hash": "24f8e93bda7c8fab6a40e80e569bb3ffe939f748d4576242c23bba83c85325f5",
+          "hash": "cac6e73e2e1ac4c8c5a3fd560e002b8ee31115425f4b7dd729d7a82f41221081",
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/assemble.py",
@@ -4852,63 +4877,63 @@
             {
               "calls": [
                 {
-                  "line": 429,
+                  "line": 446,
                   "name": "verify",
                   "target": {
                     "file": "src/role_set/pack.py"
                   }
                 },
                 {
-                  "line": 432,
+                  "line": 449,
                   "name": "load_pack",
                   "target": {
                     "file": "src/role_set/prompts.py"
                   }
                 },
                 {
-                  "line": 433,
+                  "line": 450,
                   "name": "trait_names_from_pack",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 438,
+                  "line": 455,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 459,
+                  "line": 476,
                   "name": "resolve_critic",
                   "target": {
                     "file": "src/role_set/write.py"
                   }
                 },
                 {
-                  "line": 460,
+                  "line": 478,
                   "name": "load",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 461,
+                  "line": 479,
                   "name": "select",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 462,
+                  "line": 480,
                   "name": "pins",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 466,
+                  "line": 484,
                   "name": "critic_caller",
                   "target": {
                     "file": "src/role_set/write.py"
@@ -4937,28 +4962,28 @@
                   "via": "_read_w1_journal_flaws"
                 },
                 {
-                  "line": 492,
+                  "line": 516,
                   "name": "load_gates",
                   "target": {
                     "file": "src/role_set/gates.py"
                   }
                 },
                 {
-                  "line": 496,
+                  "line": 520,
                   "name": "mock_gates",
                   "target": {
                     "file": "src/role_set/mock.py"
                   }
                 },
                 {
-                  "line": 501,
+                  "line": 537,
                   "name": "load_answers",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 503,
+                  "line": 539,
                   "name": "MockCritic",
                   "target": {
                     "file": "src/role_set/mock.py"
@@ -4973,7 +4998,7 @@
                   "via": "_writer_entry_for"
                 },
                 {
-                  "line": 531,
+                  "line": 569,
                   "name": "require_other_family",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -5004,21 +5029,21 @@
                   "via": "_muse_flaw_for_c"
                 },
                 {
-                  "line": 624,
+                  "line": 661,
                   "name": "Runner",
                   "target": {
                     "file": "src/role_set/runner.py"
                   }
                 },
                 {
-                  "line": 632,
+                  "line": 669,
                   "name": "state_of",
                   "target": {
                     "file": "src/role_set/__init__.py"
                   }
                 },
                 {
-                  "line": 633,
+                  "line": 670,
                   "name": "completion_of",
                   "target": {
                     "file": "src/role_set/__init__.py"
@@ -7812,18 +7837,23 @@
             "screen_plan",
             "test_a_group_short_of_two_is_drawn_as_it_stands_and_noted_in_the_manifest",
             "test_a_sample_that_would_fail_the_batch_mix_rule_still_rescores_to_the_end",
+            "test_blinding_refuses_when_forbidden_string_is_in_candidate_text",
             "test_blinding_strips_arm_writer_served_as_and_window_from_critic_messages",
             "test_end_to_end_rescore_on_mock_waves_for_two_arms",
             "test_family_skip_reports_same_family_arm_as_unsampled",
             "test_fixed_seed_reproduces_sample_and_queue_order_and_another_seed_differs",
             "test_flag_threshold_one_disagreement_is_not_flagged_and_two_are",
+            "test_gates_version_or_sha256_mismatch_with_w0_header_is_refused",
             "test_mechanical_gate_assert_stops_on_a_tampered_candidate",
+            "test_missing_writer_or_critic_family_refuses_outside_mock",
             "test_old_format_w0_header_fixture_is_sampled_blinded_and_scored_like_any_other",
             "test_real_critic_path_runs_at_card_values_and_screen_seed_rule",
             "test_rescore_input_validation_and_cli_refusals",
-            "test_sealed_drafts_file_with_no_tar_is_rescored_and_bad_seal_is_refused"
+            "test_sample_manifest_is_independent_of_argument_order",
+            "test_sealed_drafts_file_with_no_tar_is_rescored_and_bad_seal_is_refused",
+            "test_second_critic_equal_to_w1_critic_is_refused"
           ],
-          "hash": "6f2e69779d5d9537a43a1a4fec53ff45b57df68686d067502b557bdc608a2c59",
+          "hash": "b095521ec0c795f19bcaea4fd5b9e35cb138f3042e980eb11de4c4bf50e9cb75",
           "importOrder": [
             "tests/stub_llama.py",
             "tests/test_waves.py",
@@ -8689,7 +8719,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "462ea6adf4cfe70ec1273354124591e7dd5310af",
+    "commit": "05becc87491242e3cb0727bcc53013a9107c6732",
     "tracked": 190
   },
   "landings": [
