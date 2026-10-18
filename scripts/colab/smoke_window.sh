@@ -25,7 +25,9 @@ export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
 # Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
+TOKF=""  # the rig-side token file, if this window sends one: removed in the trap too, so a crash can't leave it
 stop_all() {
+  [ -n "$TOKF" ] && rm -f "$TOKF"
   (
     # Bounded: the EXIT trap can fire while this script still holds the open lock, and an unbounded wait would never
     # stop the session (R&D on #89). After 60 s it stops the session anyway.
@@ -162,11 +164,30 @@ for f in ${PIN_UPLOADS:-}; do
   [ "$ok" = 1 ] || { echo "UPLOAD FAILED: $(basename "$f")"; exit 3; }
   echo "uploaded $(basename "$f") $(sha256sum "$f" | cut -c1-16)"
 done
+# The private GGUF repo's token (R&D, 2026-10-18), only for a window that names one: PIN_HF_TOKEN_FROM is the name of
+# the rig's environment variable Mike set (the read token for a pilot window, the write token for a prebuild). It goes
+# over as a file, written owner-only and deleted here at once: never on a command line, never through --env, never in a
+# log. The job reads it once, deletes it and drops it before any wave. It goes up only after the VM gate passed, so a
+# rejected VM never receives it. If the job dies before reading it, the file stays at /content/.hf_token on a VM that
+# this script is stopping anyway (the EXIT trap); nothing fetches it back.
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  tokvar=$PIN_HF_TOKEN_FROM
+  [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
+  TOKF=$(mktemp); chmod 600 "$TOKF"; printf '%s' "${!tokvar}" > "$TOKF"; tf=$TOKF
+  ok=0
+  for try in 1 2 3; do
+    if timeout 120 colab upload -s "$S" "$tf" /content/.hf_token 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
+    sleep 5
+  done
+  rm -f "$tf"; TOKF=""
+  [ "$ok" = 1 ] || { echo "UPLOAD FAILED: the token file"; exit 3; }
+  echo "uploaded the token file (owner-only, deleted on the rig)"
+fi
 t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")

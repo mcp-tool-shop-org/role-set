@@ -208,3 +208,35 @@ def test_the_gate_gets_its_settings_and_a_cpu_window_skips_the_card_check():
 def test_pin_gate_0_skips_the_gate():
     rig, job, out = _window("normal", extra={"PIN_GATE": "0"})
     assert not _gate_rows(out) and "VM gate" not in rig and job.count("PIN_RESULT") == 1, rig
+
+
+# ---- the private GGUF repo's token (R&D, 2026-10-18): a file, read once on the VM, in nothing the window keeps
+
+SENTINEL = "hf_SENTINEL_never_persist_9f3c2a71"
+
+
+def test_the_token_reaches_the_job_as_a_file_and_appears_in_nothing_the_window_keeps():
+    rig, job, out = _window("normal", extra={"PIN_HF_TOKEN_FROM": "FAKE_TEST_TOKEN", "FAKE_TEST_TOKEN": SENTINEL})
+    assert f"TOKEN FILE READ ({len(SENTINEL)} chars) and deleted" in job, job
+    assert "uploaded the token file" in rig and job.count("PIN_RESULT") == 1, rig
+    st = out.parent / "st"
+    assert not (st / "vm" / "content" / ".hf_token").exists()  # deleted on the VM by the job
+    # Every file the window keeps or sends back: job.log, pin-result.json, gate.jsonl, smoke-window.log, and the fake
+    # CLI's record of each exec's command line and env (job-<n>.sh, gate-env-<n>).
+    leaks = [str(p) for p in out.parent.rglob("*") if p.is_file() and SENTINEL.encode() in p.read_bytes()]
+    assert not leaks, leaks
+    assert SENTINEL not in rig
+
+
+def test_a_window_naming_an_empty_token_variable_stops_before_the_job():
+    rig, job, out = _window("normal", extra={"PIN_HF_TOKEN_FROM": "FAKE_TEST_TOKEN_UNSET"})
+    assert "names FAKE_TEST_TOKEN_UNSET, which is empty on the rig" in rig and not job, rig
+
+
+def test_the_token_goes_only_to_the_vm_that_passed_the_gate():
+    rig, job, out = _window("normal", extra={"FAKE_GATE": "bad,good", "PIN_HF_TOKEN_FROM": "FAKE_TEST_TOKEN",
+                                             "FAKE_TEST_TOKEN": SENTINEL})
+    uploads = (out.parent / "st" / "uploads.log").read_text(encoding="utf-8").splitlines()
+    assert [u for u in uploads if u.endswith("/content/.hf_token")] == ["vm2 /content/.hf_token"], uploads
+    assert "VM gate rejected try 1" in rig and "VM gate passed (try 2)" in rig, rig
+    assert not [str(p) for p in out.parent.rglob("*") if p.is_file() and SENTINEL.encode() in p.read_bytes()]

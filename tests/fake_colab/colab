@@ -17,7 +17,7 @@ case "$cmd" in
       if [ -f "$ST/open" ]; then r=10.60; else r=15.90; fi
     elif [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi
     echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
-  new) touch "$ST/open"; echo "[colab] Session READY.";;
+  new) touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
   sessions) [ -f "$ST/open" ] && echo "[fake] fake | Hardware: A100"; true;;
   stop)
     if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
@@ -25,7 +25,8 @@ case "$cmd" in
     fi
     rm -f "$ST/open"; echo "[colab] Session terminated.";;
   status) if ls "$ST"/busy.* >/dev/null 2>&1; then echo "[fake] Status: BUSY (exec(job))"; else echo "[fake] Status: IDLE"; fi;;
-  upload) [ "$1" = -s ] && shift 2; mkdir -p "$VM$(dirname "$2")"; cp "$1" "$VM$2"; echo "[colab] Uploaded";;
+  upload) [ "$1" = -s ] && shift 2; mkdir -p "$VM$(dirname "$2")"; cp "$1" "$VM$2"
+          echo "vm$(cat "$ST/news" 2>/dev/null || echo 0) $2" >> "$ST/uploads.log"; echo "[colab] Uploaded";;
   download) [ "$1" = -s ] && shift 2
             if [ -f "$ST/open" ] && [ -f "$VM$1" ]; then cp "$VM$1" "$2"; echo "[colab] Downloaded"; else echo "[colab] Download failed: $1"; exit 1; fi;;
   exec)
