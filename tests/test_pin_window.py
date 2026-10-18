@@ -805,6 +805,7 @@ def test_a_deadline_in_a_twin_wave_leaves_the_batch_and_is_not_recorded_as_an_ar
 # here until it re-raises DeadlineReached or is shown not to wrap a wave, a setup or a download (R&D, #91 review).
 BROAD_HANDLERS = {
     "write": "Tee.write: a dead stream; no wave runs inside it",
+    "run": "with_heartbeat's worker: every exception, DeadlineReached included, goes to the waiting thread, which raises it",
     "sample": "GPU sampling during a serve; no wave runs inside it",
     "smoke": "the server's startup poll; no wave runs inside it",
     "start_server": "the server's startup poll; no wave runs inside it",
@@ -866,3 +867,101 @@ def test_the_stub_call_knob_refuses_a_real_run(tmp_path, monkeypatch):
     assert pw._main() == 1
     r = _json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
     assert r["ok"] is False and "PIN_STUB_CALL_S is set without PIN_STUB=1" in r["error"]
+
+
+
+# ---- the progress-gated heartbeat for in-process downloads (R&D, 2026-10-18, after window 13q) ---------------------------
+
+def _hb(monkeypatch, tmp_path):
+    lines = []
+    monkeypatch.setattr(pw, "heartbeat", lambda msg: lines.append(msg))
+    monkeypatch.setenv("PIN_HEARTBEAT_S", "0.2")
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    return lines
+
+
+def test_a_download_that_grows_heartbeats_with_its_bytes_and_rate(monkeypatch, tmp_path):
+    import time as _t
+
+    lines = _hb(monkeypatch, tmp_path)
+    d = tmp_path / "dl"
+    d.mkdir()
+
+    def download():
+        with (d / ".cache-x.incomplete").open("wb") as f:
+            for _ in range(6):
+                f.write(b"x" * (2 << 20))
+                f.flush()
+                _t.sleep(0.2)
+        return "done"
+
+    assert pw.with_heartbeat(download, "maker:x", 60, watch=d) == "done"
+    assert lines and all(x.startswith("HEARTBEAT maker:x elapsed=") and " bytes=" in x and " mbps=" in x for x in lines)
+
+
+def test_a_download_whose_bytes_stop_growing_writes_no_heartbeat_after_the_stop(monkeypatch, tmp_path):
+    import time as _t
+
+    lines = _hb(monkeypatch, tmp_path)
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(pw.shutil, "disk_usage", lambda p: SimpleNamespace(free=int(100e9), total=int(200e9), used=0))
+    d = tmp_path / "dl"
+    d.mkdir()
+    stopped = {}
+
+    def download():
+        (d / "part.incomplete").write_bytes(b"x" * (4 << 20))
+        _t.sleep(1.0)  # several 0.2 s rounds: the growth is seen, even on a loaded runner
+        stopped["at"] = len(lines)
+        _t.sleep(1.5)  # hung: nothing more arrives
+        return "late"
+
+    pw.with_heartbeat(download, "hosted:x", 60, watch=d)
+    assert len(lines) == stopped["at"] and len(lines) <= 2, lines  # silence after the stop: the rig's stall can fire
+
+
+def test_a_download_past_its_hard_timeout_stops_the_window(monkeypatch, tmp_path):
+    import time as _t
+
+    _hb(monkeypatch, tmp_path)
+    with pytest.raises(RuntimeError, match="not done after 1 s"):
+        pw.with_heartbeat(lambda: _t.sleep(30), "snapshot:x", 1, watch=tmp_path)
+
+
+def test_a_deadline_inside_a_download_reaches_the_job(monkeypatch, tmp_path):
+    _hb(monkeypatch, tmp_path)
+
+    def download():
+        raise pw.DeadlineReached("cut")
+
+    with pytest.raises(pw.DeadlineReached):
+        pw.with_heartbeat(download, "hosted:x", 60, watch=tmp_path)
+
+
+def test_the_hard_timeout_is_size_over_twenty_mb_per_s_plus_five_minutes():
+    assert pw.download_timeout(None) == 3600.0
+    assert pw.download_timeout(int(32e9)) == pytest.approx(32e9 / 20e6 + 300)
+
+
+def test_every_in_process_hub_download_goes_through_the_heartbeat():
+    import ast
+
+    tree = ast.parse(Path(pw.__file__).read_text(encoding="utf-8"))
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Call) and getattr(n.func, "id", None) in ("hf_hub_download", "snapshot_download"):
+            parents = [p for p in ast.walk(tree) if isinstance(p, ast.Call) and getattr(p.func, "id", None) == "with_heartbeat"
+                       and any(c is n for c in ast.walk(p))]
+            assert parents, f"line {n.lineno}: {ast.unparse(n.func)} outside with_heartbeat"
+
+
+def test_a_download_running_at_the_deadline_is_cut_within_one_round(monkeypatch, tmp_path):
+    import time as _t
+
+    _hb(monkeypatch, tmp_path)
+    monkeypatch.setenv("PIN_HEARTBEAT_S", "5")  # a long round: the deadline, not the heartbeat, ends the wait
+    monkeypatch.setenv("PIN_DEADLINE", str(_t.time() + 1))
+    t0 = _t.time()
+    with pytest.raises(pw.DeadlineReached, match="hosted:x was under way at the window's deadline"):
+        pw.with_heartbeat(lambda: _t.sleep(30), "hosted:x", 600, watch=tmp_path)
+    assert _t.time() - t0 < 4  # cut at the deadline, well inside one 5 s round
