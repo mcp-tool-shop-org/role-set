@@ -705,3 +705,81 @@ def test_a_rewrite_that_drops_every_slot_runs_no_critique(monkeypatch, tmp_path)
     arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [Q, G], {Q: M, G: M}, pool)
     assert ("rewrite", Q, Q) in events and ("critique", Q, M) not in events, events
     assert arms[Q]["done"] and len(arms[Q]["waves"]) == 1  # its rewrite only
+
+
+# ---- the window's deadline (R&D, 2026-10-18, from Argon's golden-path reply): a cap stop returns results ----------------
+
+def _deadline(monkeypatch, seconds_from_now: float):
+    import time as _t
+
+    monkeypatch.setenv("PIN_DEADLINE", str(int(_t.time() + seconds_from_now)))
+    monkeypatch.setattr(pw, "CUT_AT", None)
+
+
+def test_no_wave_starts_past_the_deadline(tmp_path, monkeypatch):
+    _deadline(monkeypatch, -1)
+    rs = {"role_set": str(tmp_path / "never-run"), "src": str(tmp_path)}
+    with pytest.raises(pw.DeadlineReached, match="before the write wave"):
+        pw.write_wave(rs, [], "write", tmp_path / "arm" / "w0")
+    assert pw.CUT_AT is None  # nothing was under way to cut
+
+
+def test_no_model_setup_or_hosted_download_starts_past_the_deadline(tmp_path, monkeypatch):
+    _deadline(monkeypatch, -1)
+    spec = next(m for m in pw.MODELS if m["served_as"] == "granite-4.2-30b")
+    with pytest.raises(pw.DeadlineReached, match="granite-4.2-30b's setup"):
+        pw.fetch_model(spec, {})
+
+
+def test_a_deadline_is_never_swallowed_as_a_runtime_error():
+    assert not issubclass(pw.DeadlineReached, RuntimeError)  # choose_quant falls back on RuntimeError
+
+
+def test_without_a_deadline_nothing_changes(monkeypatch):
+    monkeypatch.delenv("PIN_DEADLINE", raising=False)
+    assert pw.deadline_left() is None
+    pw.check_deadline("anything")  # no raise
+
+
+@LINUX
+def test_a_wave_under_way_at_the_deadline_is_cut_with_its_finished_calls_kept(tmp_path, monkeypatch):
+    import time as _t
+
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    fake = tmp_path / "role-set"
+    # A wave: one finished call journaled, then a long call in flight.
+    fake.write_text('#!/usr/bin/env bash\nfor a in "$@"; do [ "$prev" = --call-journal ] && j=$a; prev=$a; done\n'
+                    'echo \'{"call": 1}\' >> "$j"\nsleep 60\n', encoding="utf-8")
+    fake.chmod(0o755)
+    rs = {"role_set": str(fake), "src": str(tmp_path)}
+    out = tmp_path / "arm" / "w2"
+    out.parent.mkdir(parents=True)
+    _deadline(monkeypatch, 2)
+    t0 = _t.time()
+    with pytest.raises(pw.DeadlineReached, match="cut at the window's deadline"):
+        pw.write_wave(rs, [], "rewrite", out)
+    assert _t.time() - t0 < 20  # SIGTERM ended it; no wait for the call in flight
+    assert pw.CUT_AT["wave"] == "rewrite" and pw.CUT_AT["arm"] == "arm"
+    journal = Path(pw.CUT_AT["journal"])
+    assert journal.read_text(encoding="utf-8").strip() == '{"call": 1}'  # the finished call is kept for the resume
+
+
+def test_the_result_says_the_window_was_cut_at_its_deadline(tmp_path, monkeypatch):
+    import json as _json
+
+    monkeypatch.setattr(pw, "WORK", tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "machine_line", lambda **k: {"card": "stub"})
+    monkeypatch.setattr(pw, "read_token_file", lambda **k: None)
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_STUB", "1")
+    cut = {"wave": "critique", "arm": "granite-4.2-30b", "label": "pilot-w3", "seconds": 61}
+
+    def pilot_window(built, result):
+        monkeypatch.setattr(pw, "CUT_AT", cut)
+        raise pw.DeadlineReached("the critique wave at w3 was cut at the window's deadline")
+
+    monkeypatch.setattr(pw, "pilot_window", pilot_window)
+    pw._main()
+    r = _json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
+    assert r["ok"] is False and r["error"].startswith("DeadlineReached") and r["cut_at_deadline"] == cut

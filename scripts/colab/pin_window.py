@@ -124,6 +124,30 @@ def _meminfo() -> dict[str, int]:
     return {k: int(mem.get(k, "0 kB").split()[0]) // 1024 for k in ("MemAvailable", "MemTotal")}
 
 
+# The window's deadline (R&D, from Argon's golden-path reply, 2026-10-18): smoke_window passes PIN_DEADLINE, the epoch at
+# which its own spend reaches the cap less the margin. Past it no wave, download or model setup starts, and a wave under
+# way is cut: its role-set process gets SIGTERM, then SIGKILL after 30 s, and the job raises DeadlineReached so the
+# finally blocks write pilot-out.tar and pin-result.json before the rig fetches. The call journal keeps every finished
+# call, so a cut wave loses only the call in flight and a resume replays the rest. Without this, a cap stop killed the
+# exec and only job.log came back (12g).
+class DeadlineReached(Exception):  # not a RuntimeError: nothing that falls back on a RuntimeError may swallow it
+    pass
+
+
+CUT_AT: dict | None = None  # the wave cut at the deadline, for pin-result.json
+
+
+def deadline_left() -> float | None:
+    d = os.environ.get("PIN_DEADLINE")
+    return None if not d else float(d) - time.time()
+
+
+def check_deadline(before: str) -> None:
+    left = deadline_left()
+    if left is not None and left <= 0:
+        raise DeadlineReached(f"the window's deadline passed before {before}; nothing new starts")
+
+
 def _signal_group(proc, sig) -> None:
     """Signal a child started with start_new_session=True and everything it spawned: under `sh -c`, killing the shell
     alone leaves its children holding the output pipes, and the wait after the kill never returns (Argon, v2 re-review)."""
@@ -136,7 +160,8 @@ def _signal_group(proc, sig) -> None:
         pass
 
 
-def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None) -> subprocess.CompletedProcess:
+def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=None,
+             term_first: bool = False) -> subprocess.CompletedProcess:
     """Run a subprocess, writing a heartbeat line to job.log every HEARTBEAT_S while the subprocess lives (Argon #5).
     Tied to the subprocess wait loop, never a free-running thread, so it stops when the job ends or hangs in Python."""
 
@@ -157,11 +182,18 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
             except subprocess.TimeoutExpired:
                 now = time.time()
                 if now >= deadline:
-                    _signal_group(proc, None)
+                    import signal as _signal  # noqa: PLC0415
+
+                    # term_first (the deadline): SIGTERM lets the wave's process end its current write, then SIGKILL.
+                    _signal_group(proc, _signal.SIGTERM if term_first else None)
                     try:
                         out, err = proc.communicate(timeout=30)
                     except subprocess.TimeoutExpired:
-                        out, err = "", ""
+                        _signal_group(proc, None)
+                        try:
+                            out, err = proc.communicate(timeout=30)
+                        except subprocess.TimeoutExpired:
+                            out, err = "", ""
                     raise subprocess.TimeoutExpired(cmd, timeout, output=out, stderr=err) from None
                 if proc.poll() is None and now >= next_hb:
                     disk_gb = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
@@ -426,6 +458,7 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
             spec = by_name[n]
             if spec["how"] != "convert" or n in HOSTED:
                 continue
+            check_deadline(f"{n}'s hosted download")
             resources(f"{n}: before hosted download")
             say(f"downloading {n}'s pre-built Q8_0 from the studio's repo")
             path = Path(hf_hub_download(repo, hosted_name(n), revision=rev, token=token, local_dir=WORK / "hosted"))
@@ -572,6 +605,7 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
 
 
 def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
+    check_deadline(f"{spec['served_as']}'s setup")
     if spec["served_as"] in HOSTED:  # taken from the private repo before any wave, and already checked against its pin
         h = HOSTED[spec["served_as"]]
         out = {"served_as": spec["served_as"], "repo": spec["repo"], "revision": spec.get("revision"), "card": spec.get("card")}
@@ -1049,6 +1083,8 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
                 rec["critic_control"] = runs
             finally:
                 stop_server(proc, log_fh)
+        except DeadlineReached:
+            raise
         except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
@@ -1097,6 +1133,8 @@ def q6k_window(built: dict, specs: list, result: dict) -> None:
             rec["smoke"] = m6["smoke"]
             if not (rec["smoke"].get("fit") or {}).get("ok") or not (rec["smoke"].get("slots") or {}).get("ok"):
                 rec["stopped"] = "the Q6_K doesn't fit the card at 32768 with every layer on the GPU and one full slot"
+        except DeadlineReached:
+            raise
         except Exception as e:  # noqa: BLE001 - recorded with its model; the next model still runs
             rec["error"] = f"{type(e).__name__}: {e}"
         finally:
@@ -1276,6 +1314,7 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
                            generations_path=gen, max_calls=10**6, wall_limit_s=86400)
         px = LoggingProxyServer(state).start()
         endpoint = px.openai_base_url
+    check_deadline(f"the {wave} wave at {out}")
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
@@ -1295,8 +1334,19 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         cmd += ["--drafts", str(drafts)]
     cmd += extra or []
     t0 = time.time()
+    left = deadline_left()
     try:
-        run = run_proc(cmd, timeout=6 * 3600, cwd=rs["src"])
+        try:
+            run = run_proc(cmd, timeout=6 * 3600 if left is None else min(6 * 3600, max(left, 1)), cwd=rs["src"],
+                           term_first=left is not None)
+        except subprocess.TimeoutExpired:
+            if left is None or left >= 6 * 3600:
+                raise
+            global CUT_AT
+            CUT_AT = {"wave": wave, "out": str(out), "arm": arm, "label": label, "journal": str(journal),
+                      "seconds": round(time.time() - t0), "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+            say(f"CUT AT THE DEADLINE {arm} {label} after {CUT_AT['seconds']} s; the finished calls are in {journal.name}")
+            raise DeadlineReached(f"the {wave} wave at {out} was cut at the window's deadline") from None
     finally:
         stop.set()
         tail.join(timeout=60)
@@ -2143,6 +2193,8 @@ def _main() -> int:
         result["ok"] = not result.get("model_errors")
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
         result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"
+        if isinstance(e, DeadlineReached):
+            result["cut_at_deadline"] = CUT_AT or {"before": str(e)}
     finally:
         result["resources"] = RESOURCES
         result["ended"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())

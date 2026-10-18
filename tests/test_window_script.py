@@ -257,6 +257,58 @@ def test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm():
     rig, job, out = _window("normal", extra={"PIN_GPU": "CPU"})
     assert "--high-mem" not in (out.parent / "st" / "new-args.log").read_text(encoding="utf-8")
 
+
+# ---- the deadline, a dead kernel, and the outcome draft (R&D, 2026-10-18, after Argon's golden-path and W-A replies) ----
+# The fake account rate is 5.30/hr: a cap of 0.03 with 0.0256 kept back puts the deadline ~3 s after the session opens,
+# and the cap's ceiling ~20 s after it.
+DEADLINE = {"PIN_CAP_UNITS": "0.03", "PIN_CAP_MARGIN": "0.0256", "PIN_MOCK_S": "30"}
+
+
+def test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap():
+    import json
+
+    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_MOCK_DEADLINE": "1"})
+    # The job's own result ends it: the watcher's PIN_RESULT read, or the exec returning first.
+    assert "deadline " in rig and ("JOB DONE" in rig or "end=exec" in rig), rig
+    assert "CAP REACHED" not in rig and "CAP CEILING" not in rig, rig
+    r = json.loads((out / "pin-result.json").read_text(encoding="utf-8"))
+    assert r["ok"] is False and "cut_at_deadline" in r and "DeadlineReached" in r["error"], r
+    assert any(e.startswith("PIN_DEADLINE=") for e in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
+               .replace("export ", "").split()), "PIN_DEADLINE never reached the job"
+
+
+def test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace():
+    rig, job, out = _window("normal", extra={**DEADLINE, "PIN_DEADLINE_GRACE_S": "3"})
+    assert "DEADLINE (own spend" in rig and "CAP REACHED" in rig and "CAP CEILING" not in rig, rig
+    assert job.count("PIN_RESULT") == 0, job
+    assert "PIN_DEADLINE_GRACE_S" not in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
+
+
+def test_a_kernel_that_dies_without_a_result_ends_the_window_before_the_stall():
+    import json
+
+    rig, job, out = _window("kerneldies", extra={"PIN_MOCK_S": "30", "PIN_MOCK_DIE_AFTER_S": "3", "PIN_STALL_S": "30"})
+    assert "JOB DIED (fake): kernel IDLE at two checks" in rig and "STALL" not in rig, rig
+    assert "mock kernel killed" in job and "PIN_RESULT" not in job, job
+    assert (out / "died.txt").exists()
+    assert json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "died"
+
+
+def test_one_idle_read_with_the_job_still_running_does_not_end_the_window():
+    rig, job, out = _window("normal", extra={"PIN_MOCK_S": "4"})
+    assert "JOB DIED" not in rig and job.count("PIN_RESULT") == 1, rig
+
+
+def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
+    import json
+    import time
+
+    rig, job, out = _window("normal", extra={"PIN_ROLESET_COMMIT": "c" * 40, "PIN_MOCK_S": "2"})
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["date"] == time.strftime("%Y-%m-%d", time.gmtime()) and d["commit"] == "c" * 40, d
+    assert d["window"] == "out" and d["basis"] == "rate_x_runtime" and d["end"] in ("done", "exec"), d
+    assert d["outcome"] is None and d["why"] is None  # the class and its why stay a person's call
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0
     for name, fn in list(globals().items()):
