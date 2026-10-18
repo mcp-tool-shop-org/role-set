@@ -1343,6 +1343,7 @@ class Served:
             raise RuntimeError(f"{self.model['served_as']}: GGUF {got[:12]} isn't the pin {self.pinned[:12]}")
         t0 = time.time()
         self.proc, self.log_fh, log = start_server(self.built, self.model, CRITIC_CTX, PILOT_PORT)
+        self.log = log
         wait_for_log(log)
         fit, sl = all_on_gpu(_offload_lines(log)), slots(PILOT_PORT, CRITIC_CTX)
         self.starts.append({"seconds": round(time.time() - t0), "fit": fit, "slots": sl})
@@ -1989,6 +1990,122 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
     return ids
 
 
+def rescore_inputs(result: dict) -> tuple[Path, dict]:
+    """The rescore's inputs, read-only (R&D, 2026-10-18): one tar the rig uploads (PIN_RESCORE_INPUTS), unpacked into a
+    directory of its own and made read-only, and every file named in PIN_RESCORE_SHAS ("<relative path>=<sha256>,...")
+    checked against its sha256 before use. A file the run or drafts list names without a sha refuses the window, and so
+    does any mismatch. The rescore never writes beside them."""
+
+    tar = Path(os.environ.get("PIN_RESCORE_INPUTS") or (CONTENT / "rescore-inputs.tar"))
+    shas = dict(x.split("=", 1) for x in os.environ.get("PIN_RESCORE_SHAS", "").split(",") if "=" in x)
+    named = [x for x in os.environ.get("PIN_RESCORE_RUNS", "").split(",") if x]
+    for spec in [x for x in os.environ.get("PIN_RESCORE_DRAFTS", "").split(";") if x]:
+        named += spec.split("=", 1)[1].split(",")
+    if not named:
+        raise RuntimeError("REFUSED: PIN_RESCORE_RUNS and PIN_RESCORE_DRAFTS name no input")
+    unpinned = [n for n in named if n not in shas]
+    if unpinned:
+        raise RuntimeError(f"REFUSED: no sha256 in PIN_RESCORE_SHAS for {', '.join(unpinned)}")
+    root = WORK / "rescore-in"
+    if root.exists():
+        sh(f"chmod -R u+w {root} && rm -rf {root}")
+    root.mkdir(parents=True)
+    sh(f"tar -xf {tar} -C {root}")
+    got = {n: sha256(root / n) for n in shas}
+    bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
+    if bad:
+        raise RuntimeError("REFUSED: rescore input sha256 mismatch: " + "; ".join(bad))
+    sh(f"chmod -R a-w {root}")
+    result["rescore_inputs"] = {"tar_sha256": sha256(tar), "files": got}
+    return root, shas
+
+
+def rescore_window(built: dict, result: dict) -> None:
+    """PIN_ROLE=rescore (R&D, 2026-10-18): the second critic (PIN_RESCORE_CRITIC) set up and served exactly as in the
+    screen's critique waves (the Pool: converted in-window, byte-matched to its pin before serving, its card's proxy
+    config from card-values.json), then one `role-set rescore` against it on the read-only inputs, with PIN_RESCORE_SEED.
+    The rescore's process sits under the window's deadline like a wave: past it, SIGTERM, then SIGKILL, DeadlineReached,
+    and the finally returns what exists. sample-manifest.json is written before scoring, so a cut window still returns
+    the draw. Known limit: the rescore's critic calls aren't journaled, so a cut means scoring again (7 items).
+    rescore-out.tar holds the manifest, rescore.json, rescore-report.json, the rescore's log and the critic's server
+    log; pin-result.json carries critic_card and the input shas."""
+
+    rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
+    critic = os.environ["PIN_RESCORE_CRITIC"]
+    seed = os.environ.get("PIN_RESCORE_SEED", "0")
+    if critic not in {m["served_as"] for m in MODELS}:
+        raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
+    root, _ = rescore_inputs(result)
+    pack = CONTENT / "pack"
+    if not (pack / "pack.json").exists():
+        pack.mkdir(parents=True, exist_ok=True)
+        sh(f"tar -xf {CONTENT / 'pack.tar'} -C {pack}")
+    cards_file = CONTENT / "card-values.json"
+    out = WORK / "rescore"
+    out.mkdir(parents=True, exist_ok=True)
+    log = out / "rescore.log"
+    srv = None
+    try:
+        pool = Pool(built, result, {}, cards_file, WORK / "cards-j1")
+        m = pool.get(critic)  # converted or stubbed; a GGUF that isn't its pin raises here, before any serve
+        result["critic"] = {"served_as": m["served_as"], "gguf_sha256": m["gguf_sha256"]}
+        check_deadline("the rescore")
+        srv = pool.serve(critic)
+        with srv:
+            proxy = pool.proxy(critic)
+            px, endpoint = None, f"http://127.0.0.1:{PILOT_PORT}/v1"
+            if proxy is not None:
+                from mcptoolshop_rnd.localbuilders.proxy import LoggingProxyServer, ProxyState  # noqa: PLC0415
+
+                state = ProxyState(upstream_url=f"http://127.0.0.1:{PILOT_PORT}", config=proxy["config"],
+                                   candidate=proxy["candidate"], generations_path=out / "generations.jsonl",
+                                   max_calls=10**6, wall_limit_s=86400)
+                px = LoggingProxyServer(state).start()
+                endpoint = px.openai_base_url
+            cmd = [rs["role_set"], "rescore", "--pack", str(pack), "--writers", f"{rs['src']}/writers.json",
+                   "--cards", str(cards_file), "--critic-endpoint", endpoint, "--critic-model", m["served_as"],
+                   "--critic-gguf-sha256", m["gguf_sha256"], "--seed", str(seed), "--out", str(out)]
+            for r in [x for x in os.environ.get("PIN_RESCORE_RUNS", "").split(",") if x]:
+                cmd += ["--runs", str(root / r)]
+            for spec in [x for x in os.environ.get("PIN_RESCORE_DRAFTS", "").split(";") if x]:
+                arm, files = spec.split("=", 1)
+                cmd += ["--drafts", f"{arm}=" + ",".join(str(root / f) for f in files.split(","))]
+            left = deadline_left()
+            t0 = time.time()
+            try:
+                run = run_proc(cmd, timeout=4 * 3600 if left is None else min(4 * 3600, max(left, 1)), cwd=rs["src"],
+                               term_first=left is not None)
+            except subprocess.TimeoutExpired:
+                if left is None or left >= 4 * 3600:
+                    raise
+                global CUT_AT
+                CUT_AT = {"wave": "rescore", "out": str(out), "seconds": round(time.time() - t0),
+                          "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())}
+                say(f"CUT AT THE DEADLINE rescore after {CUT_AT['seconds']} s; the manifest was written before scoring")
+                raise DeadlineReached("the rescore was cut at the window's deadline") from None
+            finally:
+                if px is not None:
+                    px.close()
+            log.write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
+            result["rescore"] = {"exit": run.returncode, "seconds": round(time.time() - t0), "table": run.stdout[-3000:]}
+            if run.returncode != 0:
+                raise RuntimeError(f"role-set rescore exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
+        report = json.loads((out / "rescore-report.json").read_text(encoding="utf-8"))
+        result["critic_card"] = report.get("critic_card")
+        if not result["critic_card"] and not stub_mode():
+            raise RuntimeError("the rescore report has no critic_card: no number from it may be read (R&D)")
+        result["rescore"]["flagged"] = report.get("flagged")
+        result["model_errors"] = 0
+    finally:
+        if srv is not None and getattr(srv, "log", None) and Path(srv.log).exists():
+            shutil.copy(srv.log, out / "critic-server.log")
+        try:
+            sh(f"tar -C {WORK} -cf {WORK}/rescore-out.tar rescore")
+        except Exception as e:  # noqa: BLE001 - recorded; the result still prints
+            result["tar_error"] = str(e)[:300]
+
+
 def pilot_window(built: dict, result: dict) -> None:
     """PIN_ROLE=pilot (R&D, 2026-10-17): the T02 pilot (or the screen's slot list), then its T04 apply twins (the arm's
     accepted rows as --training), for each writer in PIN_PILOT_WRITERS, in that order, each read by its critic
@@ -2229,8 +2346,8 @@ def _main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic", "q6k", "pilot"):
-            if stub_mode() and role == "pilot":
+        if role in ("smoke", "critic", "q6k", "pilot", "rescore"):
+            if stub_mode() and role in ("pilot", "rescore"):
                 result["llama_server"] = built = {"commit": LLAMA_CPP_COMMIT, "sha256": SERVER_SHA256, "path": "stub", "stub": True}
             else:
                 result["llama_server"] = built = runtime()
@@ -2264,6 +2381,9 @@ def _main() -> int:
             specs = []
         elif role == "pilot":
             pilot_window(built, result)
+            specs = []
+        elif role == "rescore":
+            rescore_window(built, result)
             specs = []
         else:
             result["models"] = []
@@ -2303,7 +2423,7 @@ def _main() -> int:
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
-        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role == "pilot"):
+        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role in ("pilot", "rescore")):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")
