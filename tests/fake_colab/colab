@@ -8,7 +8,6 @@
 #   late            the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
 #                   remote kernel would); the second runs the job at once
 #   neverstarts     every exec hangs with nothing run
-#   kerneldies      the job dies with its kernel (IDLE, no result) while the exec hangs on
 # FAKE_GATE (any mode) sets what each VM health gate exec reports: good (default), bad or dead.
 ST=${FAKE_ST:?FAKE_ST}; VM=$ST/vm; mkdir -p "$VM/content/pin"
 cmd=$1; shift
@@ -56,8 +55,6 @@ case "$cmd" in
     lost() { echo "RuntimeError: Connection was lost."; sleep 3600; }
     case "$FAKE_MODE:$n" in
       normal:*|neighbourclose:*) "$job";;
-      # kerneldies: the job dies (PIN_MOCK_DIE_AFTER_S) and the kernel reads IDLE, but the exec never returns.
-      kerneldies:*) "$job"; sleep 3600;;
       lostfirst:1|neverstarts:*) lost;;
       lostfirst:*) "$job";;
       late:1) setsid bash -c "sleep ${FAKE_LATE_S:-4}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;

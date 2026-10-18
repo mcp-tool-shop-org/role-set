@@ -260,7 +260,7 @@ def test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm():
     assert "--high-mem" not in (out.parent / "st" / "new-args.log").read_text(encoding="utf-8")
 
 
-# ---- the deadline, a dead kernel, and the outcome draft (R&D, 2026-10-18, after Argon's golden-path and W-A replies) ----
+# ---- the deadline and the outcome draft (R&D, 2026-10-18, after Argon's golden-path and W-A replies) ----
 # The fake account rate is 5.30/hr: a cap of 0.03 with 0.0256 kept back puts the deadline ~3 s after the session opens,
 # and the cap's ceiling ~20 s after it.
 DEADLINE = {"PIN_CAP_UNITS": "0.03", "PIN_CAP_MARGIN": "0.0256", "PIN_MOCK_S": "30"}
@@ -293,21 +293,6 @@ def test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace():
     assert "PIN_DEADLINE_GRACE_S" not in (out.parent / "st" / "job-1.sh").read_text(encoding="utf-8")
 
 
-def test_a_kernel_that_dies_without_a_result_ends_the_window_before_the_stall():
-    import json
-
-    rig, job, out = _window("kerneldies", extra={"PIN_MOCK_S": "30", "PIN_MOCK_DIE_AFTER_S": "3", "PIN_STALL_S": "30"})
-    assert "JOB DIED (fake): kernel IDLE at two checks" in rig and "STALL" not in rig, rig
-    assert "mock kernel killed" in job and "PIN_RESULT" not in job, job
-    assert (out / "died.txt").exists()
-    assert json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "died"
-
-
-def test_one_idle_read_with_the_job_still_running_does_not_end_the_window():
-    rig, job, out = _window("normal", extra={"PIN_MOCK_S": "4"})
-    assert "JOB DIED" not in rig and job.count("PIN_RESULT") == 1, rig
-
-
 def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
     import json
     import time
@@ -320,12 +305,13 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
 
 
 def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
-    rig, job, out = _window("normal", extra={"PIN_CAP_MARGIN": "0.3", "PIN_DEADLINE_GRACE_S": "180", "PIN_FETCH_ALLOW_S": "90"})
-    assert "REFUSED: grace 180s + fetch 90s don't fit the margin: 0.3 units at 5.3/hr is 203s" in rig, rig
+    # The defaults (an empty value takes them): grace 60 s + fetch 120 s against the margin at the fake A100's 5.3/hr.
+    defaults = {"PIN_DEADLINE_GRACE_S": "", "PIN_FETCH_ALLOW_S": ""}
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2"})
+    assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.2 units at 5.3/hr is 135s" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
-    rig, job, out = _window("normal", extra={"PIN_CAP_MARGIN": "0.45", "PIN_DEADLINE_GRACE_S": "180", "PIN_FETCH_ALLOW_S": "90",
-                                             "PIN_MOCK_S": "2"})
-    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.45 at 5.3/hr is 305 s
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MOCK_S": "2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
 
 
 def test_the_stub_call_knob_never_runs_on_a_gpu_window():

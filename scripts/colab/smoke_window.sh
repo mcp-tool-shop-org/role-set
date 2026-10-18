@@ -47,8 +47,11 @@ DL_S="${PIN_DL_TIMEOUT:-300}"
 # print its result, and the exit fetch needs FETCH_ALLOW_S after that, all before the ceiling at the cap. So
 # GRACE_S + FETCH_ALLOW_S must fit in MARGIN at this card's rate, or the window doesn't open. The rates are the measured
 # ones (A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and the margin is set from them.
-GRACE_S="${PIN_DEADLINE_GRACE_S:-180}"
-FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-90}"
+# Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
+# deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
+# a 120 s fetch allowance: 180 s, 0.265 units at the A100's 5.3/hr, inside the default margin of 0.3.
+GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
+FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
 case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in A100:*) CARD_RATE=5.3;; CPU:1) CARD_RATE=0.26;; CPU:*) CARD_RATE=0.08;; *) CARD_RATE="";; esac
 if [ -n "$CARD_RATE" ]; then
   BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
@@ -141,7 +144,7 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
   new=$(stat -c %s "$part"); old=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
   if [ "$new" -ge "$old" ]; then mv -f "$part" "$OUT/job.log"; else rm -f "$part"; return 1; fi
 }
-( seen=0; size0=-1; grew=0; ended=""; idle=0; noted=""
+( seen=0; size0=-1; grew=0; ended=""; noted=""
   end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; }
   while sleep "${PIN_WATCH_S:-120}"; do
     now=$(date +%s)
@@ -172,14 +175,10 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
       if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
         echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
       fi
-      # The job died with its kernel (R&D, 2026-10-18; most likely an OOM kill): the kernel reads IDLE, job.log has lines
-      # and no PIN_RESULT, at two checks running. A child killed by OOM (a server, a converter) raises in the job instead,
-      # and its finally writes the result. Two checks, so one stale status read can't end a window.
-      if [ "$size" -gt 0 ] && echo "$st" | grep -q "Status: IDLE"; then idle=$(( idle + 1 )); else idle=0; fi
-      if [ "$idle" -ge 2 ]; then
-        echo "JOB DIED ($S): kernel IDLE at two checks, job.log without PIN_RESULT (likely OOM) $(date -u +%T)" | tee "$OUT/died.txt"
-        end_window died; continue
-      fi
+      # A job that dies with its kernel (an OOM kill) is caught only by the stall below. Window 13q (2026-10-18): the job
+      # killed its kernel, but `colab status` kept reading "BUSY (exec(...))" for 22 minutes and the exec never returned;
+      # status follows the CLI's exec, not the kernel. A rule on IDLE could never fire, so there is none (R&D). A child
+      # killed for memory (a server, a converter) raises in the job instead, and its finally writes the result.
       started=$(stat -c %Y "$OUT/.exec.pid")
       stalled=""
       [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="job.log empty 10 minutes after the exec started"
