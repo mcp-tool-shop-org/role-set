@@ -124,76 +124,6 @@ def test_the_cards_licence_field(tmp_path, card, want):
     assert pw.card_licence(p) == want
 
 
-class _Api:
-    def __init__(self, private=True, files=("README.md",), repo_licence="apache-2.0"):
-        self.private, self.files, self.calls, self.uploaded = private, list(files), [], {}
-        self.repo_licence = repo_licence  # the repo's root card, as Mike set it: license apache-2.0
-
-    def __call__(self, token=None):  # HfApi(token=...) or HfApi()
-        self.calls.append(("token", token))
-        return self
-
-    def repo_info(self, repo):
-        return SimpleNamespace(private=self.private, card_data={"license": self.repo_licence})
-
-    def list_repo_files(self, repo, revision=None):
-        return self.files
-
-    def upload_file(self, path_or_fileobj, path_in_repo, repo_id, commit_message):
-        self.calls.append(("upload_file", repo_id, path_in_repo))
-
-    def upload_folder(self, repo_id, folder_path, path_in_repo, commit_message):
-        self.calls.append(("upload", repo_id, path_in_repo))
-        self.uploaded = {p.name: p.read_bytes() for p in Path(folder_path).iterdir()}
-        return SimpleNamespace(oid="c" * 40)
-
-
-def _upload(vm, monkeypatch, api, card="---\nlicense: apache-2.0\n---\n"):
-    monkeypatch.setenv("PIN_GGUF_REPO", "studio/gguf-private")
-
-    def hf_hub_download(repo, filename, revision=None, local_dir=None, **kw):
-        p = Path(local_dir) / filename
-        p.parent.mkdir(parents=True, exist_ok=True)
-        p.write_text(card if filename == "README.md" else f"{filename} text", encoding="utf-8")
-        return str(p)
-
-    _hub(monkeypatch, HfApi=api, hf_hub_download=hf_hub_download)
-    gguf = vm / "pin" / "granite-4.2-30b-Q8_0.gguf"
-    gguf.write_bytes(b"q8")
-    m = {"path": str(gguf), "revision": GRANITE["revision"], "gguf_sha256": GRANITE["expect_sha256"]}
-    result = {}
-    pw.upload_hosted(GRANITE, m, result)
-    return result
-
-
-def test_an_upload_carries_the_licence_card_and_a_readme_and_names_its_pin(vm, monkeypatch):
-    api = _Api(files=["README.md", "LICENSE", "NOTICE", "config.json"])
-    result = _upload(vm, monkeypatch, api)
-    assert result["uploaded"]["files"] == ["LICENSE", "NOTICE", "README.md", "UPSTREAM-CARD.md", "granite-4.2-30b-Q8_0.gguf"]
-    readme = api.uploaded["README.md"].decode()
-    assert GRANITE["revision"] in readme and pw.LLAMA_CPP_COMMIT in readme and GRANITE["expect_sha256"] in readme
-    assert ("token", SENTINEL) in api.calls and not pw.token_file().exists()
-    assert not any(c[0] == "upload_file" for c in api.calls)  # Mike's root card is never written
-    assert SENTINEL not in json.dumps(result) and not (vm / "pin" / "upload" / "granite-4.2-30b").exists()
-
-
-def test_a_card_only_apache_repo_gets_the_vendored_licence_text_and_anything_else_refuses(vm, monkeypatch):
-    vendored = Path(__file__).resolve().parents[1] / "scripts" / "colab" / "licences" / "apache-2.0.txt"
-    api = _Api(files=["README.md"])  # Gemma 4 and Granite 4.2: no LICENSE file, Apache-2.0 in the card
-    assert "LICENSE" in _upload(vm, monkeypatch, api)["uploaded"]["files"]
-    assert api.uploaded["LICENSE"] == vendored.read_bytes() and b"Apache License" in api.uploaded["LICENSE"]
-    monkeypatch.setattr(pw, "_TOKEN", SENTINEL)
-    with pytest.raises(RuntimeError, match="holds apache-2.0 models only"):
-        _upload(vm, monkeypatch, _Api(files=["README.md"]), card="---\nlicense: other\n---\n")
-
-
-def test_an_upload_to_a_public_repo_is_refused(vm, monkeypatch):
-    api = _Api(private=False)
-    with pytest.raises(RuntimeError, match="is public"):
-        _upload(vm, monkeypatch, api)
-    assert not any(c[0] == "upload" for c in api.calls)
-
-
 def _prebuild(vm, monkeypatch, sha):
     monkeypatch.setenv("PIN_ROLE", "prebuild")
     monkeypatch.setenv("PIN_ONLY", "granite-4.2-30b")
@@ -234,18 +164,6 @@ def test_the_token_file_lies_outside_everything_a_window_tars_or_sends_back():
     tok = pw.token_file()
     assert tok == Path("/dev/shm/hf.token") and pw.CONTENT not in tok.parents and pw.WORK not in tok.parents
 
-
-def test_a_vendored_licence_text_that_drifted_from_its_pin_refuses(tmp_path, monkeypatch):
-    monkeypatch.setattr(pw, "CONTENT", tmp_path)
-    monkeypatch.setitem(pw.LICENCE_FALLBACK, "apache-2.0", ("apache-2.0.txt", "0" * 64))
-    with pytest.raises(RuntimeError, match="pinned sha256"):
-        pw.licence_text("apache-2.0")
-    monkeypatch.setitem(pw.LICENCE_FALLBACK, "apache-2.0", ("missing.txt", "0" * 64))
-    with pytest.raises(RuntimeError, match="isn't here"):
-        pw.licence_text("apache-2.0")
-
-
-# ---- R&D's fixes on 346ea2d
 
 def test_a_token_no_step_will_read_is_deleted_at_the_start(vm, monkeypatch):
     pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")  # a fresh file for this job
@@ -308,18 +226,153 @@ def test_a_prebuild_of_a_model_without_a_pin_refuses_before_any_download(vm, mon
     assert res["ok"] is False and "has no expect_sha256" in res["error"] and not fetched
 
 
-def test_lightnings_openmdw_card_is_refused_by_the_apache_repo(vm, monkeypatch):
-    # Mike, 2026-10-18: the repo is Apache-2.0, true only if every file in it is. Lightning ships a LICENSE file, and its
-    # card names another licence: refused before any upload.
-    api = _Api(files=["README.md", "LICENSE"])
-    lightning_card = "\n".join(["---", "license: other", "license_name: openmdw-1.1", "---", "# Nemotron 3.5 Lightning", ""])
-    with pytest.raises(RuntimeError, match="card licence is 'other'.*holds apache-2.0 models only"):
-        _upload(vm, monkeypatch, api, card=lightning_card)
-    assert not any(c[0] in ("upload", "upload_file") for c in api.calls)
+# ---- the upload in a fresh interpreter (R&D, 2026-10-18, window 13i): the real child process, a stand-in hub
+
+FAKE_HUB = r"""
+import hashlib, json, os
+from pathlib import Path
+from types import SimpleNamespace
+__version__ = "0.36.2-standin"
+CFG = json.loads(os.environ.get("FAKE_HUB_CFG", "{}"))
+LOG = Path(os.environ["FAKE_HUB_LOG"])
+if CFG.get("die_on_import"):
+    raise SystemExit(3)
 
 
-def test_a_repo_whose_card_names_no_licence_takes_no_model(vm, monkeypatch):
-    api = _Api(repo_licence=None)
-    with pytest.raises(RuntimeError, match="names no licence"):
-        _upload(vm, monkeypatch, api)
-    assert not any(c[0] == "upload" for c in api.calls)
+def _log(rec):
+    with LOG.open("a", encoding="utf-8") as f:
+        f.write(json.dumps(rec) + "\n")
+
+
+class HfApi:
+    def __init__(self, token=None):
+        _log({"call": "init", "token_sha": hashlib.sha256(token.encode()).hexdigest() if token else None})
+
+    def repo_info(self, repo):
+        return SimpleNamespace(private=CFG.get("private", True), card_data={"license": CFG.get("repo_licence", "apache-2.0")})
+
+    def list_repo_files(self, repo, revision=None):
+        return CFG.get("files", ["README.md"])
+
+    def upload_file(self, *a, **k):
+        _log({"call": "upload_file"})
+
+    def upload_folder(self, repo_id, folder_path, path_in_repo, commit_message):
+        if CFG.get("fail_upload"):
+            raise RuntimeError(CFG["fail_upload"])
+        files = {q.name: q.read_bytes().decode("latin-1") for q in Path(folder_path).iterdir()}
+        _log({"call": "upload", "repo": repo_id, "path_in_repo": path_in_repo, "files": sorted(files),
+              "readme": files.get("README.md"), "license": files.get("LICENSE")})
+        return SimpleNamespace(oid="c" * 40)
+
+
+def hf_hub_download(repo, filename, revision=None, local_dir=None, **kw):
+    q = Path(local_dir) / filename
+    q.parent.mkdir(parents=True, exist_ok=True)
+    q.write_text(CFG.get("card", "---\nlicense: apache-2.0\n---\n") if filename == "README.md" else filename + " text",
+                 encoding="utf-8")
+    return str(q)
+"""
+
+
+def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
+    """upload_hosted with its real child process, which imports the stand-in hub. Returns (result, hub log, what the
+    child was started with)."""
+
+    import hashlib
+    import subprocess
+
+    hub = tmp_path / "standin"
+    (hub / "huggingface_hub").mkdir(parents=True, exist_ok=True)
+    (hub / "huggingface_hub" / "__init__.py").write_text(FAKE_HUB, encoding="utf-8")
+    log = tmp_path / "hub.log"
+    log.unlink(missing_ok=True)
+    monkeypatch.setattr(pw, "UPLOAD_CHILD_ENV", {"PYTHONPATH": str(hub), "FAKE_HUB_LOG": str(log),
+                                                  "FAKE_HUB_CFG": json.dumps(cfg)})
+    monkeypatch.setenv("PIN_GGUF_REPO", "studio/gguf-private")
+    started = []
+    real_run = subprocess.run
+
+    def run(args, **kw):
+        started.append({"args": args, "env": kw.get("env"), "input": kw.get("input")})
+        return real_run(args, **kw)
+
+    monkeypatch.setattr(pw.subprocess, "run", run)
+    gguf = vm / "pin" / f"{spec['served_as']}-Q8_0.gguf"
+    gguf.write_bytes(b"q8")
+    m = {"path": str(gguf), "revision": spec["revision"], "gguf_sha256": spec["expect_sha256"] or "0" * 64}
+    result, err = {}, None
+    try:
+        pw.upload_hosted(spec, m, result)
+    except RuntimeError as e:
+        err = str(e)
+    rows = [json.loads(x) for x in log.read_text(encoding="utf-8").splitlines()] if log.exists() else []
+    assert started, "no child was started"
+    s = started[-1]
+    # The token reached the child on stdin only: never its argv or its environment.
+    assert SENTINEL in s["input"] and SENTINEL not in json.dumps(s["args"]) and SENTINEL not in json.dumps(s["env"])
+    assert "HF_TOKEN" not in s["env"] and "HUGGING_FACE_HUB_TOKEN" not in s["env"]
+    inits = [r for r in rows if r["call"] == "init" and r["token_sha"]]
+    if inits:
+        assert inits[0]["token_sha"] == hashlib.sha256(SENTINEL.encode()).hexdigest()
+    assert pw._TOKEN is None  # this process kept none
+    assert SENTINEL not in json.dumps(result) and SENTINEL not in (err or "")
+    return result, rows, err
+
+
+def test_the_child_uploads_with_the_licence_card_readme_and_its_hub_version(vm, monkeypatch, tmp_path):
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, files=["README.md", "LICENSE", "NOTICE", "config.json"])
+    assert err is None, err
+    up = result["uploaded"]
+    assert up["files"] == ["LICENSE", "NOTICE", "README.md", "UPSTREAM-CARD.md", "granite-4.2-30b-Q8_0.gguf"]
+    assert up["hub_version"] == "0.36.2-standin" and up["commit"] == "c" * 40 and up["licence"] == "apache-2.0"
+    readme = [r for r in rows if r["call"] == "upload"][0]["readme"]
+    assert GRANITE["revision"] in readme and pw.LLAMA_CPP_COMMIT in readme and GRANITE["expect_sha256"] in readme
+    assert "Licence: apache-2.0" in readme
+    assert not any(r["call"] == "upload_file" for r in rows)  # Mike's root card is never written
+    assert not (vm / "pin" / "upload" / "granite-4.2-30b").exists()
+
+
+def test_a_card_only_apache_repo_gets_the_vendored_text_checked_against_its_pin(vm, monkeypatch, tmp_path):
+    vendored = Path(__file__).resolve().parents[1] / "scripts" / "colab" / "licences" / "apache-2.0.txt"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, files=["README.md"])
+    assert err is None, err
+    assert [r for r in rows if r["call"] == "upload"][0]["license"] == vendored.read_bytes().decode("latin-1")
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")
+    pw.read_token_file(needed=True)
+    monkeypatch.setitem(pw.LICENCE_FALLBACK, "apache-2.0", ("apache-2.0.txt", "0" * 64))
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, files=["README.md"])
+    assert "pinned sha256" in err and not [r for r in rows if r["call"] == "upload"]
+
+
+@pytest.mark.parametrize("cfg, why", [
+    ({"private": False}, "is public"),
+    ({"repo_licence": None}, "names no licence"),
+    ({"files": ["README.md", "LICENSE"], "card": "---\nlicense: other\nlicense_name: openmdw-1.1\n---\n"},
+     "card licence is 'other'"),
+])
+def test_the_child_refuses_before_any_upload(vm, monkeypatch, tmp_path, cfg, why):
+    # A public repo; a repo card with no licence; Lightning's OpenMDW card in the Apache repo.
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, **cfg)
+    assert why in err and "REFUSED" in err and "uploaded" not in result
+    assert not [r for r in rows if r["call"] in ("upload", "upload_file")]
+
+
+def test_a_failing_child_fails_the_window_with_its_scrubbed_reason(vm, monkeypatch, tmp_path):
+    leak = "hf_" + "LEAKEDinAnERRORmessage0123456789abcdefgh"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, fail_upload=f"server said no to {leak}")
+    assert "exited 1" in err and "[token]" in err and leak not in err
+
+
+def test_a_child_that_dies_without_a_result_fails_the_window(vm, monkeypatch, tmp_path):
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, die_on_import=True)
+    assert "exited 1" in err or "exited 3" in err
+    assert "uploaded" not in result
+
+
+def test_an_env_model_takes_the_same_child_path(vm, monkeypatch, tmp_path):
+    muse = next(x for x in pw.MODELS if x["served_as"] == "muse-glimmer-30b")
+    assert muse.get("env")  # Muse and Gemma convert in their own venv; their upload still goes through the child
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, spec=muse, files=["README.md", "LICENSE"])
+    assert err is None, err
+    assert result["uploaded"]["path"] == "muse-glimmer-30b/muse-glimmer-30b-Q8_0.gguf"

@@ -20,6 +20,7 @@ import hashlib
 import json
 import math
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -399,8 +400,9 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
     resources("after hosted downloads")
 
 
-def card_licence(card: Path) -> str | None:
-    """The `license:` field of a model card's YAML front matter."""
+CARD_LICENCE_SRC = """
+def card_licence(card):
+    \"\"\"The `license:` field of a model card's YAML front matter.\"\"\"
 
     if not card.exists():
         return None
@@ -411,80 +413,121 @@ def card_licence(card: Path) -> str | None:
         if line.strip() == "---":
             break
         if line.startswith("license:"):
-            return line.split(":", 1)[1].strip().strip("'\"")
+            return line.split(":", 1)[1].strip().strip("'\\"")
     return None
+"""
+exec(CARD_LICENCE_SRC)  # defines card_licence here; the upload child execs the same text
 
 
-def licence_text(licence: str) -> bytes:
-    """The vendored licence text beside this script, refused if it isn't its pinned sha256."""
+# The upload runs in a fresh interpreter (R&D, 2026-10-18, window 13i): for a model without `env`, converter_python
+# pip-installs llama.cpp's requirements into this very interpreter mid-job, which replaced huggingface_hub on disk after
+# it was imported, and the upload's later imports failed (ImportError XetAuthorizationError). A child process sees one
+# consistent huggingface_hub, whatever is on disk. Every check runs in the child, in this order: the repo is private, its
+# card names a licence, the model's card names the same one, the licence files are staged; then the upload.
+UPLOAD_CHILD = r"""
+import hashlib, json, shutil, sys
+from pathlib import Path
+cfg = json.loads(sys.stdin.readline())
+token = cfg.pop("token")
+exec(cfg["card_licence_src"])
 
-    name, pinned = LICENCE_FALLBACK[licence]
-    # In the repo it sits in scripts/colab/licences/; on the VM the window uploads it flat into /content (colab exec runs
-    # this file with no __file__).
-    here = Path(globals().get("__file__") or (CONTENT / "pin_window.py")).resolve().parent
-    found = [p for p in (here / "licences" / name, CONTENT / name) if p.exists()]
-    if not found:
-        raise RuntimeError(f"REFUSED: the vendored licence text {name} isn't here; upload scripts/colab/licences/{name}")
-    data = found[0].read_bytes()
-    if hashlib.sha256(data).hexdigest() != pinned:
-        raise RuntimeError(f"REFUSED: the vendored {name} isn't its pinned sha256")
-    return data
+
+def refuse(why):
+    raise RuntimeError("REFUSED: " + why)
+
+
+out = {}
+try:
+    import huggingface_hub
+    from huggingface_hub import HfApi, hf_hub_download
+    out["hub_version"] = getattr(huggingface_hub, "__version__", None)
+    api = HfApi(token=token)
+    token = None
+    repo, stage = cfg["repo"], Path(cfg["stage"])
+    info = api.repo_info(repo)
+    if not info.private:
+        refuse(repo + " is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
+    card = getattr(info, "card_data", None) or {}
+    repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
+    if not repo_licence:
+        refuse(repo + "'s card names no licence; set it before any model goes in")
+    stage.mkdir(parents=True, exist_ok=True)
+    shutil.move(cfg["gguf"], stage / cfg["gguf_name"])
+    listed = HfApi().list_repo_files(cfg["upstream"], revision=cfg["revision"])  # the upstream repos are public
+    legal = [f for f in listed if "/" not in f and f.upper().startswith(("LICENSE", "LICENCE", "NOTICE"))]
+    for f in legal + (["README.md"] if "README.md" in listed else []):
+        got = Path(hf_hub_download(cfg["upstream"], f, revision=cfg["revision"], local_dir=cfg["legal_dir"]))
+        shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
+    licence = card_licence(stage / "UPSTREAM-CARD.md")
+    if licence != repo_licence:
+        # The repo's label is true only if every file in it is under that licence: Lightning (OpenMDW-1.1) and any
+        # other licence go elsewhere, never here.
+        refuse(cfg["upstream"] + "'s card licence is " + repr(licence) + "; " + repo + " holds " + repo_licence + " models only")
+    if not any(f.upper().startswith(("LICENSE", "LICENCE")) for f in legal):
+        # Gemma 4 and Granite 4.2 state Apache-2.0 in the card and ship no LICENSE file: the vendored text, pinned.
+        fallback = cfg["fallback"].get(licence)
+        if not fallback:
+            refuse(cfg["upstream"] + " has no LICENSE file and its card's licence " + repr(licence) + " has no known text")
+        data = Path(fallback[0]).read_bytes()
+        if hashlib.sha256(data).hexdigest() != fallback[1]:
+            refuse("the vendored licence text isn't its pinned sha256")
+        (stage / "LICENSE").write_bytes(data)
+    (stage / "README.md").write_text(cfg["readme"].replace("{licence}", str(licence)), encoding="utf-8")
+    done = api.upload_folder(repo_id=repo, folder_path=str(stage), path_in_repo=cfg["path_in_repo"],
+                             commit_message=cfg["commit_message"])
+    out.update(ok=True, commit=getattr(done, "oid", None), licence=licence, files=sorted(x.name for x in stage.iterdir()))
+except BaseException as e:  # every failure is reported, then a non-zero exit
+    out.update(ok=False, error=type(e).__name__ + ": " + str(e)[:1000])
+print("UPLOAD_RESULT " + json.dumps(out), flush=True)
+sys.exit(0 if out.get("ok") else 1)
+"""
+UPLOAD_CHILD_ENV: dict = {}  # tests point the child at a stand-in huggingface_hub (PYTHONPATH) here
+TOKEN_SHAPE_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 
 
 def upload_hosted(spec: dict, m: dict, result: dict) -> None:
     """A prebuild window's one model, uploaded to the private repo with its upstream licence files and model card and a
-    README naming its source, revision, converter and pin (R&D's licence conditions). Only after its pin matched."""
-
-    from huggingface_hub import HfApi, hf_hub_download  # noqa: PLC0415
+    README naming its source, revision, converter and pin (R&D's licence conditions). Only after its pin matched. The
+    work runs in UPLOAD_CHILD; the token goes to it on stdin only, never argv or the environment."""
 
     repo = os.environ["PIN_GGUF_REPO"]
     token = take_token()
     if token is None:
         raise RuntimeError("a prebuild needs the write token's file; none reached the VM")
     stage = WORK / "upload" / spec["served_as"]
+    fallback = {}
+    for name, (fname, pinned) in LICENCE_FALLBACK.items():
+        here = Path(globals().get("__file__") or (CONTENT / "pin_window.py")).resolve().parent
+        found = [x for x in (here / "licences" / fname, CONTENT / fname) if x.exists()]
+        if found:
+            fallback[name] = [str(found[0]), pinned]
+    cfg = {"repo": repo, "stage": str(stage), "gguf": m["path"], "gguf_name": Path(hosted_name(spec["served_as"])).name,
+           "upstream": spec["repo"], "revision": m["revision"], "legal_dir": str(WORK / "upstream-legal" / spec["served_as"]),
+           "fallback": fallback, "path_in_repo": spec["served_as"], "card_licence_src": CARD_LICENCE_SRC,
+           "commit_message": f"{spec['served_as']} Q8_0 {m['gguf_sha256'][:12]} from {spec['repo']}@{m['revision'][:12]}",
+           "readme": (f"# {spec['served_as']} Q8_0 (private, studio use only)\n\n"
+                      f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
+                      "- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
+                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
+                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n")}
+    env = {k: v for k, v in os.environ.items() if k not in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")}
+    env.update(UPLOAD_CHILD_ENV)
+    stdin = json.dumps({**cfg, "token": token}) + "\n"
+    token = None  # noqa: F841 - the child has it now; this process keeps none
     try:
-        api = HfApi(token=token)
-        info = api.repo_info(repo)
-        if not info.private:
-            raise RuntimeError(f"REFUSED: {repo} is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
-        # The repo's own card says its licence (Mike set it: apache-2.0, 2026-10-18). Its root card is his page and is
-        # never written here; only models whose card names the same licence go in.
-        card = getattr(info, "card_data", None) or {}
-        repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
-        if not repo_licence:
-            raise RuntimeError(f"REFUSED: {repo}'s card names no licence; set it before any model goes in")
-        stage.mkdir(parents=True, exist_ok=True)
-        shutil.move(m["path"], stage / Path(hosted_name(spec["served_as"])).name)
-        listed = HfApi().list_repo_files(spec["repo"], revision=m["revision"])  # the upstream repos are public
-        legal = [f for f in listed if "/" not in f and f.upper().startswith(("LICENSE", "LICENCE", "NOTICE"))]
-        for f in legal + (["README.md"] if "README.md" in listed else []):
-            got = Path(hf_hub_download(spec["repo"], f, revision=m["revision"], local_dir=WORK / "upstream-legal" / spec["served_as"]))
-            shutil.copyfile(got, stage / ("UPSTREAM-CARD.md" if f == "README.md" else f))
-        licence = card_licence(stage / "UPSTREAM-CARD.md")
-        if licence != repo_licence:
-            # The repo's label is true only if every file in it is under that licence: Lightning (OpenMDW-1.1) and any
-            # other licence go elsewhere, never here.
-            raise RuntimeError(f"REFUSED: {spec['repo']}'s card licence is {licence!r}; {repo} holds {repo_licence} models only")
-        if not any(f.upper().startswith(("LICENSE", "LICENCE")) for f in legal):
-            # Gemma 4 and Granite 4.2 state Apache-2.0 in the card and ship no LICENSE file: the licence's own text.
-            if licence not in LICENCE_FALLBACK:
-                raise RuntimeError(f"REFUSED: {spec['repo']} has no LICENSE file and its card's licence {licence!r} has no known text")
-            text = licence_text(licence)
-            (stage / "LICENSE").write_bytes(text)
-        (stage / "README.md").write_text(
-            f"# {spec['served_as']} Q8_0 (private, studio use only)\n\n"
-            f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
-            f"- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
-            f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
-            f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n", encoding="utf-8")
-        info = api.upload_folder(repo_id=repo, folder_path=str(stage), path_in_repo=spec["served_as"],
-                                 commit_message=f"{spec['served_as']} Q8_0 {m['gguf_sha256'][:12]} from {spec['repo']}@{m['revision'][:12]}")
-        result["uploaded"] = {"repo": repo, "path": hosted_name(spec["served_as"]), "sha256": m["gguf_sha256"],
-                              "commit": getattr(info, "oid", None), "licence": licence,
-                              "files": sorted(x.name for x in stage.iterdir())}
+        child = subprocess.run([sys.executable, "-c", UPLOAD_CHILD], input=stdin, capture_output=True, text=True,
+                               env=env, timeout=7200)
     finally:
-        token = None  # noqa: F841
+        stdin = None  # noqa: F841
         shutil.rmtree(stage, ignore_errors=True)  # one model per step: gone before the next download
+    out, err = TOKEN_SHAPE_RE.sub("[token]", child.stdout or ""), TOKEN_SHAPE_RE.sub("[token]", child.stderr or "")
+    lines = [x for x in out.splitlines() if x.startswith("UPLOAD_RESULT ")]
+    res = json.loads(lines[-1].removeprefix("UPLOAD_RESULT ")) if lines else {}
+    if child.returncode != 0 or not res.get("ok"):
+        raise RuntimeError(f"the upload child exited {child.returncode}: {res.get('error') or err[-1500:]}")
+    result["uploaded"] = {"repo": repo, "path": hosted_name(spec["served_as"]), "sha256": m["gguf_sha256"],
+                          "commit": res.get("commit"), "licence": res.get("licence"), "files": res.get("files"),
+                          "hub_version": res.get("hub_version")}
 
 
 def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
