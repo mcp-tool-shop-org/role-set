@@ -149,19 +149,6 @@ def test_a_late_first_exec_that_takes_the_lock_first_runs_the_only_job():
     assert (out / "pin-result.json").exists() and "STALL" not in rig, rig
 
 
-if __name__ == "__main__":  # WSL on the rig: no pytest needed
-    failed = 0
-    for name, fn in list(globals().items()):
-        if name.startswith("test_"):
-            try:
-                fn()
-                print(f"PASS {name}")
-            except AssertionError as e:
-                failed += 1
-                print(f"FAIL {name}: {str(e)[:1500]}")
-    sys.exit(1 if failed else 0)
-
-
 # ---- the VM health gate (Mike and R&D, 2026-10-18): before any upload, a bad VM is stopped and a fresh one asked for
 
 def _gate_rows(out: Path) -> list[dict]:
@@ -260,3 +247,24 @@ def test_the_token_goes_only_to_the_vm_that_passed_the_gate():
 def test_a_gpu_window_with_the_gate_on_must_name_its_disk_floor():
     rig, job, out = _window("normal", extra={"PIN_GATE_MIN_DISK_GB": ""})
     assert "needs PIN_GATE_MIN_DISK_GB" in rig and not job and not (out.parent / "st" / "news").exists(), rig
+
+
+def test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm():
+    rig, job, out = _window("normal", extra={"PIN_GPU": "CPU", "PIN_HIGH_MEM": "1"})
+    st = out.parent / "st"
+    assert "--high-mem" in (st / "new-args.log").read_text(encoding="utf-8") and job.count("PIN_RESULT") == 1, rig
+    assert not any("PIN_HIGH_MEM" in p.read_text(encoding="utf-8") for p in st.glob("job-*.sh"))
+    rig, job, out = _window("normal", extra={"PIN_GPU": "CPU"})
+    assert "--high-mem" not in (out.parent / "st" / "new-args.log").read_text(encoding="utf-8")
+
+if __name__ == "__main__":  # WSL on the rig: no pytest needed
+    failed = 0
+    for name, fn in list(globals().items()):
+        if name.startswith("test_"):
+            try:
+                fn()
+                print(f"PASS {name}")
+            except AssertionError as e:
+                failed += 1
+                print(f"FAIL {name}: {str(e)[:1500]}")
+    sys.exit(1 if failed else 0)

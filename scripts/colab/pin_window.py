@@ -317,7 +317,6 @@ LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c4
 DISK_MARGIN_GB = 20  # R&D: a window's peak plus this must fit the VM's free disk
 
 
-
 def token_file() -> Path:
     return TOKEN_PATH
 

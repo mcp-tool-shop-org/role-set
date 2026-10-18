@@ -61,6 +61,9 @@ exec 9>"$OPEN_LOCK"; flock 9
 START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
 sha256sum "$BIN"
 GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
+# PIN_HIGH_MEM=1 asks for the high-memory shape (a CPU conversion needs it: 8 cores and 52 GB against the default's 2 and
+# 12 GB, measured 2026-10-18).
+[ "${PIN_HIGH_MEM:-0}" = 1 ] && GPU_ARGS+=(--high-mem)
 # The VM health gate (Mike and R&D, 2026-10-18): before anything is uploaded, vm_gate.py reads the card, disk, RAM and
 # the pipe to Hugging Face; a VM that fails, or whose first exec dies or times out (windows 11c and 12e lost 5.7 units
 # to first-exec deaths after the upload), is stopped and a fresh one asked for, up to PIN_GATE_TRIES. Each attempt is a
@@ -204,7 +207,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM)$'); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")

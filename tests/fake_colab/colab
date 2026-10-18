@@ -17,7 +17,7 @@ case "$cmd" in
       if [ -f "$ST/open" ]; then r=10.60; else r=15.90; fi
     elif [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi
     echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
-  new) touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
+  new) echo "$*" >> "$ST/new-args.log"; touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
   sessions) [ -f "$ST/open" ] && echo "[fake] fake | Hardware: A100"; true;;
   stop)
     if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
