@@ -536,7 +536,7 @@ def test_a_resumed_batch_runs_only_the_arms_it_has_drafts_for(monkeypatch, tmp_p
     A, B, M = "granite-4.2-30b", "nemotron-3.5-bolt-74b-a9b", "muse-glimmer-30b"
     d = tmp_path / "resume"
     d.mkdir()
-    (d / f"{A}.jsonl").write_text("{}\n", encoding="utf-8")
+    (d / f"{A}.jsonl").write_text('{"type": "header"}\n{"type": "draft", "state": "awaiting_critique"}\n', encoding="utf-8")
     (d / f"{A}.jsonl.sha256").write_text(f"x  {A}.jsonl\n", encoding="utf-8")
     monkeypatch.setenv("PIN_RESUME_WAVE", "0")
     monkeypatch.setenv("PIN_RESUME_DIR", str(d))
@@ -557,3 +557,59 @@ def test_check_pins_compares_the_q6k_pin(monkeypatch):
         pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
     monkeypatch.setitem(r1, "expect_q6k_sha256", "6" * 64)
     pw.check_pins(["deepseek-r1-distill-qwen-32b"], listed, {"deepseek-r1-distill-qwen-32b": "q6k"})
+
+
+# ---- a resumed arm whose batch already finished (R&D, 2026-10-17): 12f's real w1 files for Qwen3.8 and Gemma
+
+FIX12F = Path(__file__).resolve().parent / "fixtures" / "window12f-w1.tar.gz"
+BATCH_FILES = ("accepted.jsonl", "receipts.jsonl", "accepted.models.jsonl")
+
+
+def _resume_dir_12f(tmp_path) -> tuple[Path, Path]:
+    import tarfile
+
+    src = tmp_path / "w12f"
+    with tarfile.open(FIX12F) as tf:
+        tf.extractall(src, filter="data")
+    d = tmp_path / "resume"
+    d.mkdir()
+    for arm in ("qwen3.8-27b", "gemma-4-31b-it"):  # as checkpoints.py extract lays them out: <arm>.jsonl + its seal
+        (d / f"{arm}.jsonl").write_bytes((src / arm / "wave-drafts.jsonl").read_bytes())
+        (d / f"{arm}.jsonl.sha256").write_bytes((src / arm / "wave-drafts.jsonl.sha256").read_bytes())
+    return src, d
+
+
+def test_a_resumed_arm_with_nothing_pending_runs_no_wave_and_gets_its_twins(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    monkeypatch.setattr(pw, "PILOT_WAVES", 4)
+    monkeypatch.delenv("PIN_PILOT_TWINS", raising=False)
+    src, d = _resume_dir_12f(tmp_path)
+    Q, G, M = "qwen3.8-27b", "gemma-4-31b-it", "muse-glimmer-30b"
+    monkeypatch.setenv("PIN_RESUME_WAVE", "1")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(d))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [Q, G], {Q: M, G: M}, pool, twins_after=True)
+    # No refused rewrite, and neither writer (nor the critic) is set up for this batch.
+    assert events == [], events
+    for arm in (Q, G):
+        a = arms[arm]
+        assert a["done"] and a["resumed_finished"] and a["waves"] == []
+        for name in BATCH_FILES:  # rebuilt byte for byte as the window that finished the batch wrote them
+            assert (Path(a["last"]) / name).read_bytes() == (src / arm / name).read_bytes(), (arm, name)
+        assert pw.twins_skip_reason(a) is None
+
+
+def test_a_resumed_arm_with_a_draft_sent_back_runs_the_rewrite(monkeypatch, tmp_path):
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    monkeypatch.setattr(pw, "PILOT_WAVES", 4)
+    src, d = _resume_dir_12f(tmp_path)
+    Q, G, M = "qwen3.8-27b", "gemma-4-31b-it", "muse-glimmer-30b"
+    lines = (d / f"{Q}.jsonl").read_text(encoding="utf-8").splitlines()
+    row = json.loads(lines[1])
+    row["state"] = "needs_rewrite"
+    lines[1] = json.dumps(row, ensure_ascii=False)
+    (d / f"{Q}.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "1")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(d))
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot", [Q, G], {Q: M, G: M}, pool)
+    assert ("rewrite", Q, Q) in events and not [e for e in events if G in e], events
+    assert not arms[Q].get("resumed_finished") and arms[G]["resumed_finished"]
