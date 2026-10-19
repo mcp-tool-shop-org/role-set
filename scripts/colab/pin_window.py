@@ -2109,6 +2109,221 @@ def rescore_window(built: dict, result: dict) -> None:
             result["tar_error"] = str(e)[:300]
 
 
+def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
+    """Read-only, sha-checked inputs for PIN_ROLE=critic-eval (PIN_CRITIC_EVAL_INPUTS, PIN_CRITIC_EVAL_SHAS).
+    Inputs may be .tar or .tar.gz (GNU tar's -xf detects compression)."""
+
+    default_tar = CONTENT / "critic-eval-inputs.tar.gz" if (CONTENT / "critic-eval-inputs.tar.gz").exists() else CONTENT / "critic-eval-inputs.tar"
+    tar = Path(os.environ.get("PIN_CRITIC_EVAL_INPUTS") or default_tar)
+    shas = dict(x.split("=", 1) for x in os.environ.get("PIN_CRITIC_EVAL_SHAS", "").split(",") if "=" in x)
+    if not shas:
+        raise RuntimeError("REFUSED: PIN_CRITIC_EVAL_SHAS names no input")
+    items_rel = os.environ.get("PIN_CRITIC_EVAL_ITEMS")
+    if items_rel:
+        if items_rel not in shas:
+            raise RuntimeError(f"REFUSED: no sha256 in PIN_CRITIC_EVAL_SHAS for {items_rel}")
+    else:
+        jsonls = [k for k in shas if k.endswith(".jsonl")]
+        if not jsonls:
+            raise RuntimeError("REFUSED: PIN_CRITIC_EVAL_SHAS names no items .jsonl file")
+        items_rel = jsonls[0]
+    root = WORK / "critic-eval-in"
+    if root.exists():
+        sh(f"chmod -R u+w {root} && rm -rf {root}")
+    root.mkdir(parents=True)
+    sh(f"tar -xf {tar} -C {root}")
+    got = {n: sha256(root / n) for n in shas}
+    bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
+    if bad:
+        raise RuntimeError("REFUSED: critic-eval input sha256 mismatch: " + "; ".join(bad))
+    items_path = root / items_rel
+    seal_p = items_path.with_name(items_path.name + ".sha256")
+    if not seal_p.exists():
+        seal_p.write_text(f"{shas[items_rel]}  {items_path.name}\n", encoding="utf-8")
+    sh(f"chmod -R a-w {root}")
+    result["critic_eval_inputs"] = {"tar_sha256": sha256(tar), "files": got}
+    return root, items_path, shas
+
+
+def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None) -> dict[int, Path]:
+    """PIN_CRITIC_EVAL_RESUME: a tar of an earlier window's journals; maps each seed to its journal path.
+    Accepts only critic-eval/s{seed}/calls-journal.jsonl and critic-eval-s{seed}/calls/{critic}.jsonl."""
+
+    raw = os.environ.get("PIN_CRITIC_EVAL_RESUME")
+    if not raw:
+        return {}
+    tar = Path(raw)
+    if not tar.exists() and str(tar).startswith("/content/"):
+        tar = CONTENT / str(tar).removeprefix("/content/")
+    if not tar.exists():
+        raise RuntimeError(f"REFUSED: PIN_CRITIC_EVAL_RESUME {tar} does not exist")
+    tar_sha = sha256(tar)
+    dest = WORK / "critic-eval-resume"
+    if dest.exists():
+        sh(f"rm -rf {dest}")
+    dest.mkdir(parents=True)
+    sh(f"tar -xf {tar} -C {dest}")
+    found: dict[int, Path] = {}
+    for s in seeds:
+        for c in (
+            dest / "critic-eval" / f"s{s}" / "calls-journal.jsonl",
+            dest / f"critic-eval-s{s}" / "calls" / f"{critic}.jsonl",
+        ):
+            if c.is_file():
+                found[s] = c
+                break
+    if result is not None:
+        result["critic_eval_resume"] = {
+            "tar_sha256": tar_sha,
+            "journals": {str(s): str(p) for s, p in found.items()},
+        }
+    return found
+
+
+def critic_eval_window(built: dict, result: dict) -> None:
+    """PIN_ROLE=critic-eval: score every item of a sealed set across PIN_CRITIC_SEEDS, streaming each seed's call
+    journal as CALL_CHECKPOINT lines and tarring critic-eval-out.tar in finally."""
+
+    global _TOKEN, CUT_AT
+    held_token = take_token()
+    try:
+        check_token_clean(result)
+        if not os.environ.get("PIN_GGUF_REPO"):
+            held_token = None
+        rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+        result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
+        critic = (
+            os.environ.get("PIN_CRITIC_EVAL_CRITIC")
+            or os.environ.get("PIN_CRITIC_MODEL")
+            or os.environ["PIN_RESCORE_CRITIC"]
+        )
+        raw_seeds = os.environ.get("PIN_CRITIC_SEEDS") or os.environ.get("PIN_CRITIC_EVAL_SEEDS") or "0"
+        seeds = [int(x.strip()) for x in raw_seeds.split(",") if x.strip()]
+        by_name = {m["served_as"]: m for m in MODELS}
+        if critic not in by_name:
+            raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
+        _, items_path, _ = critic_eval_inputs(result)
+        resumed = critic_eval_resume(critic, seeds, result)
+        if resumed:
+            result["critic_eval_resumed"] = {str(s): str(p) for s, p in resumed.items()}
+        pack = CONTENT / "pack"
+        if not (pack / "pack.json").exists():
+            pack.mkdir(parents=True, exist_ok=True)
+            sh(f"tar -xf {CONTENT / 'pack.tar'} -C {pack}")
+        cards_file = CONTENT / "card-values.json"
+        if os.environ.get("PIN_GGUF_REPO"):
+            _TOKEN, held_token = held_token, None
+        prefetch_hosted([critic], by_name, result)
+        check_token_clean(result)
+    finally:
+        held_token = None
+        _TOKEN = None
+
+    out = WORK / "critic-eval"
+    out.mkdir(parents=True, exist_ok=True)
+    srv = None
+    try:
+        pool = Pool(built, result, {}, cards_file, WORK / "cards-j1")
+        m = pool.get(critic)
+        result["critic"] = {"served_as": m["served_as"], "gguf_sha256": m["gguf_sha256"]}
+        check_deadline("the critic-eval")
+        srv = pool.serve(critic)
+        with srv:
+            proxy = pool.proxy(critic)
+            result["critic_eval"] = {"seeds": seeds, "runs": []}
+            for seed in seeds:
+                check_deadline(f"critic-eval seed {seed}")
+                seed_out = out / f"s{seed}"
+                seed_out.mkdir(parents=True, exist_ok=True)
+                journal = seed_out / "calls-journal.jsonl"
+                label = f"critic-eval-s{seed}"
+                px, endpoint = None, f"http://127.0.0.1:{PILOT_PORT}/v1"
+                if proxy is not None:
+                    from mcptoolshop_rnd.localbuilders.proxy import LoggingProxyServer, ProxyState  # noqa: PLC0415
+
+                    state = ProxyState(
+                        upstream_url=f"http://127.0.0.1:{PILOT_PORT}",
+                        config=proxy["config"],
+                        candidate=proxy["candidate"],
+                        generations_path=seed_out / "generations.jsonl",
+                        max_calls=10**6,
+                        wall_limit_s=86400,
+                    )
+                    px = LoggingProxyServer(state).start()
+                    endpoint = px.openai_base_url
+                cmd = [
+                    rs["role_set"], "critic-eval",
+                    "--items", str(items_path),
+                    "--pack", str(pack),
+                    "--writers", f"{rs['src']}/writers.json",
+                    "--cards", str(cards_file),
+                    "--critic-endpoint", endpoint,
+                    "--critic-model", m["served_as"],
+                    "--critic-gguf-sha256", m["gguf_sha256"],
+                    "--critic-seed", str(seed),
+                    "--call-journal", str(journal),
+                    "--out", str(seed_out),
+                ]
+                if seed in resumed:
+                    cmd += ["--reuse-calls", str(resumed[seed])]
+                stop = threading.Event()
+                tail = threading.Thread(target=stream_calls, args=(journal, m["served_as"], label, stop), daemon=True)
+                tail.start()
+                left = deadline_left()
+                t0 = time.time()
+                try:
+                    try:
+                        run = run_proc(
+                            cmd,
+                            timeout=6 * 3600 if left is None else min(6 * 3600, max(left, 1)),
+                            cwd=rs["src"],
+                            term_first=left is not None,
+                        )
+                    except subprocess.TimeoutExpired:
+                        if left is None or left >= 6 * 3600:
+                            raise
+                        CUT_AT = {
+                            "wave": "critic-eval",
+                            "seed": seed,
+                            "out": str(seed_out),
+                            "arm": m["served_as"],
+                            "label": label,
+                            "journal": str(journal),
+                            "seconds": round(time.time() - t0),
+                            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        }
+                        say(f"CUT AT THE DEADLINE {m['served_as']} {label} after {CUT_AT['seconds']} s; finished calls are in {journal.name}")
+                        raise DeadlineReached(f"the critic-eval seed {seed} was cut at the window's deadline") from None
+                finally:
+                    stop.set()
+                    tail.join(timeout=60)
+                    if px is not None:
+                        px.close()
+                (seed_out / "critic-eval.log").write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
+                if run.returncode != 0:
+                    raise RuntimeError(f"role-set critic-eval (seed {seed}) exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
+                report = json.loads((seed_out / "critic-eval-report.json").read_text(encoding="utf-8"))
+                result["critic_card"] = report.get("critic_card")
+                if not result["critic_card"] and not stub_mode():
+                    raise RuntimeError("the critic-eval report has no critic_card: no number from it may be read (R&D)")
+                result["critic_eval"]["runs"].append({
+                    "seed": seed,
+                    "exit": run.returncode,
+                    "seconds": round(time.time() - t0),
+                    "items_scored": report.get("items_scored"),
+                    "skipped_count": report.get("skipped_count"),
+                    "calls": report.get("calls"),
+                })
+        result["model_errors"] = 0
+    finally:
+        if srv is not None and getattr(srv, "log", None) and Path(srv.log).exists():
+            shutil.copy(srv.log, out / "critic-server.log")
+        try:
+            sh(f"tar -C {WORK} -cf {WORK}/critic-eval-out.tar critic-eval")
+        except Exception as e:  # noqa: BLE001 - recorded; the result still prints
+            result["tar_error"] = str(e)[:300]
+
+
 def pilot_window(built: dict, result: dict) -> None:
     """PIN_ROLE=pilot (R&D, 2026-10-17): the T02 pilot (or the screen's slot list), then its T04 apply twins (the arm's
     accepted rows as --training), for each writer in PIN_PILOT_WRITERS, in that order, each read by its critic
@@ -2323,7 +2538,7 @@ def main() -> int:
 def _main() -> int:
     result: dict = {"started": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "job_token": os.environ.get("PIN_JOB_TOKEN")}
     # The private repo's token: read once, here, before anything else runs (R&D, from Argon). Only a prebuild, or a
-    # pilot window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
+    # pilot/critic-eval window with PIN_GGUF_REPO, keeps the value; for any other window it's dropped at once (R&D on 346ea2d).
     role0 = os.environ.get("PIN_ROLE", "all")
     if os.environ.get("PIN_STUB_CALL_S") and not stub_mode():
         # A test knob that slows the stub's calls (R&D on #91): it can never slow a real run.
@@ -2331,7 +2546,7 @@ def _main() -> int:
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
         print("PIN_RESULT " + json.dumps(result), flush=True)
         return 1
-    needs_token = role0 == "prebuild" or (role0 == "pilot" and bool(os.environ.get("PIN_GGUF_REPO")))
+    needs_token = role0 == "prebuild" or (role0 in ("pilot", "critic-eval") and bool(os.environ.get("PIN_GGUF_REPO")))
     if needs_token and not token_file().parent.is_dir():
         result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
@@ -2349,8 +2564,8 @@ def _main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic", "q6k", "pilot", "rescore"):
-            if stub_mode() and role in ("pilot", "rescore"):
+        if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval"):
+            if stub_mode() and role in ("pilot", "rescore", "critic-eval"):
                 result["llama_server"] = built = {"commit": LLAMA_CPP_COMMIT, "sha256": SERVER_SHA256, "path": "stub", "stub": True}
             else:
                 result["llama_server"] = built = runtime()
@@ -2387,6 +2602,9 @@ def _main() -> int:
             specs = []
         elif role == "rescore":
             rescore_window(built, result)
+            specs = []
+        elif role == "critic-eval":
+            critic_eval_window(built, result)
             specs = []
         else:
             result["models"] = []
@@ -2426,7 +2644,7 @@ def _main() -> int:
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
-        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role in ("pilot", "rescore")):
+        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval")):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")
