@@ -101,7 +101,8 @@ MODELS = [
     # 5.12.1 (TokenizersBackend), so Muse's recipe: its own env and the tokenizer checked id by id. The pin comes from the
     # first conversion (PIN_ROLE=convert on the RunPod converter) and is added before any prebuild or serve.
     {"served_as": "nemotron-3.5-super-vl-120b-a12b", "how": "convert", "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
-     "revision": "1f8953f7f0935358e3605150d22bc15df062061c", "env": {"transformers": "5.20.1"}, "tokenizer_check": True},
+     "revision": "1f8953f7f0935358e3605150d22bc15df062061c", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
+     "via_bf16": True},
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
@@ -195,6 +196,20 @@ DOWNLOAD_FLOOR_MBPS = 20  # the hard timeout's floor rate (R&D, 2026-10-18): byt
 
 def download_timeout(nbytes: int | None) -> float:
     return 3600.0 if not nbytes else nbytes / (DOWNLOAD_FLOOR_MBPS * 1e6) + 300
+
+
+# A conversion's time bound, from the snapshot it reads (R&D, 2026-10-19, after Super-VL-120B hit a flat 3600 s cap).
+# Measured: the direct q8_0 path read Super-VL's 249 GB BF16 at ~1.8 GB/min of input (0.9 GB/min of output); 30B models
+# ran far faster. The bound allows 1 GB/min of input, never below the old 3600 s. A backstop, not a schedule: a window's
+# deadline and a pod's watchdog still bound the cost.
+CONVERT_FLOOR_S = 3600
+CONVERT_INPUT_GB_PER_MIN = 1.0
+
+
+def convert_timeout(snapshot_bytes: int | None) -> int:
+    if not snapshot_bytes:
+        return CONVERT_FLOOR_S
+    return max(CONVERT_FLOOR_S, int(snapshot_bytes / 1e9 / CONVERT_INPUT_GB_PER_MIN * 60))
 
 
 def with_heartbeat(fn, label: str, timeout_s: float, watch: Path | None = None):
@@ -743,8 +758,31 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
             f"snapshot:{spec['served_as']}", download_timeout(None), watch=snap_dir))
         py = converter_python(spec, built)
         path = WORK / f"{spec['served_as']}-Q8_0.gguf"
-        say("converting to Q8_0")
-        sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=3600)
+        timeout = convert_timeout(_tree_bytes(snap))
+        out["convert_timeout_s"] = timeout
+        if spec.get("via_bf16"):
+            # critic-signal §10 (R&D, 2026-10-19): the direct q8_0 path quantizes in single-threaded Python (Super-VL-120B
+            # ran 0.9 GB/min and hit the old 3600 s cap at 54.8 of ~127 GB). This route writes BF16 (no quantize maths)
+            # and quantizes with the pinned, multithreaded llama-quantize, the Q6_K path's own steps. Same Q8_0 level; the
+            # per-tensor types are llama-quantize's, so the receipts carry the GGUF's type table.
+            if "llama_quantize" not in out:
+                out["llama_quantize"] = build_quantize(Path(built["src"]))
+            bf16 = WORK / f"{spec['served_as']}-BF16.gguf"
+            say("converting to BF16, then llama-quantize Q8_0 (via_bf16)")
+            t0 = time.time()
+            sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype bf16 --outfile {bf16}", timeout=timeout)
+            out["bf16_seconds"] = round(time.time() - t0)
+            resources(f"{spec['served_as']}: after BF16 conversion")
+            t1 = time.time()
+            sh(f"{out['llama_quantize']['path']} {bf16} {path} Q8_0", timeout=timeout)
+            out["quantize_seconds"] = round(time.time() - t1)
+            out["bf16_sha256"] = sha256(bf16)
+            bf16.unlink(missing_ok=True)
+            resources(f"{spec['served_as']}: after Q8_0 quantize, BF16 removed")
+            out["route"] = "bf16+llama-quantize"
+        else:
+            say("converting to Q8_0")
+            sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=timeout)
         if spec.get("tokenizer_check"):
             out["tokenizer_hf"] = hf_token_ids(py, snap)
         if spec.get("brief_check") and BRIEFS.exists():

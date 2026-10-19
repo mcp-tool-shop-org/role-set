@@ -519,3 +519,65 @@ def test_a_readme_note_is_written_when_given_and_left_out_otherwise(vm, monkeypa
     result, rows, err = _child_upload(vm, monkeypatch, tmp_path)
     assert err is None, err
     assert "- Note:" not in [r for r in rows if r["call"] == "upload"][0]["readme"]
+
+
+def test_the_convert_timeout_scales_with_the_snapshot_and_keeps_the_old_floor():
+    # Super-VL-120B (critic-signal §10) hit a flat 3600 s cap at 54.8 of ~127 GB; 30B models stay at the floor.
+    assert pw.convert_timeout(None) == 3600 and pw.convert_timeout(0) == 3600
+    assert pw.convert_timeout(int(60e9)) == 3600  # Lightning-size snapshot: 60 min at 1 GB/min, the floor
+    assert pw.convert_timeout(int(248.9e9)) == int(248.9 * 60)  # Super-VL: ~4.1 h at 1 GB/min of input
+
+
+def _convert_spec(**extra):
+    return {"served_as": "big-x", "how": "convert", "repo": "maker/big-x", "revision": REV, **extra}
+
+
+def _convert_run(vm, monkeypatch, spec):
+    """fetch_model's convert path with the snapshot, the converter and llama-quantize stood in; returns the commands
+    run, their timeouts and the record."""
+
+    def snapshot_download(repo, revision=None, local_dir=None, token=None, allow_patterns=None):
+        d = Path(local_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "model.safetensors").write_bytes(b"x" * 1000)
+        return str(d)
+
+    _hub(monkeypatch, snapshot_download=snapshot_download, HfApi=None, hf_hub_download=None)
+    monkeypatch.setattr(pw, "_tree_bytes", lambda root: int(248.9e9))  # Super-VL's measured snapshot
+    monkeypatch.setattr(pw, "converter_python", lambda spec, built: "py")
+    built_q = []
+    monkeypatch.setattr(pw, "build_quantize", lambda src: built_q.append(src) or {"path": "/q/llama-quantize", "sha256": "q" * 64})
+    ran = []
+
+    def sh(cmd, timeout=None, **kw):
+        ran.append((cmd, timeout))
+        for tok in cmd.split():
+            if tok.endswith(".gguf") and ("--outfile" in cmd and tok == cmd.split("--outfile ")[1].split()[0]
+                                          or cmd.startswith("/q/llama-quantize") and tok == cmd.split()[2]):
+                Path(tok).write_bytes(b"gguf")
+        return "pkg==1"
+
+    monkeypatch.setattr(pw, "sh", sh)
+    m = pw.fetch_model(spec, {"src": "/src"})
+    return ran, built_q, m
+
+
+def test_via_bf16_writes_bf16_then_quantizes_with_llama_quantize_and_records_both_steps(vm, monkeypatch):
+    ran, built_q, m = _convert_run(vm, monkeypatch, _convert_spec(via_bf16=True))
+    convert = [c for c in ran if "convert_hf_to_gguf.py" in c[0]]
+    quant = [c for c in ran if c[0].startswith("/q/llama-quantize")]
+    assert len(convert) == 1 and "--outtype bf16" in convert[0][0] and "-BF16.gguf" in convert[0][0]
+    assert len(quant) == 1 and quant[0][0].endswith("-Q8_0.gguf Q8_0") and "-BF16.gguf" in quant[0][0]
+    assert convert[0][1] == quant[0][1] == pw.convert_timeout(int(248.9e9))  # the scaled bound, not 3600
+    assert built_q == [Path("/src")]
+    assert m["route"] == "bf16+llama-quantize" and "bf16_seconds" in m and "quantize_seconds" in m and m["bf16_sha256"]
+    assert not (pw.WORK / "big-x-BF16.gguf").exists()  # the BF16 is removed once quantized
+    assert m["gguf_file"] == "big-x-Q8_0.gguf" and m["gguf_sha256"]
+
+
+def test_without_via_bf16_the_direct_q8_0_path_runs_with_the_scaled_timeout(vm, monkeypatch):
+    ran, built_q, m = _convert_run(vm, monkeypatch, _convert_spec())
+    convert = [c for c in ran if "convert_hf_to_gguf.py" in c[0]]
+    assert len(convert) == 1 and "--outtype q8_0" in convert[0][0]
+    assert convert[0][1] == pw.convert_timeout(int(248.9e9))
+    assert built_q == [] and "route" not in m and not [c for c in ran if "llama-quantize" in c[0]]
