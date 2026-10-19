@@ -117,7 +117,10 @@ def test_the_prefetch_needs_a_full_revision_and_a_token(vm, monkeypatch):
 
 
 @pytest.mark.parametrize("card, want", [("---\nlicense: apache-2.0\nlibrary_name: x\n---\n# M\n", "apache-2.0"),
-                                         ("---\nlicense: 'other'\n---\n", "other"), ("# no front matter\n", None)])
+                                         ("---\nlicense: 'other'\n---\n", None), ("# no front matter\n", None),
+                                         ("---\nlicense: other\nlicense_name: openmdw-1.1\n---\n", "openmdw-1.1"),
+                                         ("---\nlicense_name: openmdw-1.1\nlicense: other\n---\n", "openmdw-1.1"),
+                                         ("---\nlicense: mit\nlicense_name: ignored\n---\n", "mit")])
 def test_the_cards_licence_field(tmp_path, card, want):
     p = tmp_path / "c.md"
     p.write_text(card, encoding="utf-8")
@@ -249,7 +252,10 @@ class HfApi:
         _log({"call": "init", "token_sha": hashlib.sha256(token.encode()).hexdigest() if token else None})
 
     def repo_info(self, repo):
-        return SimpleNamespace(private=CFG.get("private", True), card_data={"license": CFG.get("repo_licence", "apache-2.0")})
+        data = {"license": CFG.get("repo_licence", "apache-2.0")}
+        if CFG.get("repo_licence_name"):
+            data["license_name"] = CFG["repo_licence_name"]
+        return SimpleNamespace(private=CFG.get("private", True), card_data=data)
 
     def list_repo_files(self, repo, revision=None):
         return CFG.get("files", ["README.md"])
@@ -275,7 +281,7 @@ def hf_hub_download(repo, filename, revision=None, local_dir=None, **kw):
 """
 
 
-def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
+def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, note=None, **cfg):
     """upload_hosted with its real child process, which imports the stand-in hub. Returns (result, hub log, what the
     child was started with)."""
 
@@ -301,6 +307,8 @@ def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
     gguf = vm / "pin" / f"{spec['served_as']}-Q8_0.gguf"
     gguf.write_bytes(b"q8")
     m = {"path": str(gguf), "revision": spec["revision"], "gguf_sha256": spec["expect_sha256"] or "0" * 64}
+    if note:
+        m["readme_note"] = note
     result, err = {}, None
     try:
         pw.upload_hosted(spec, m, result)
@@ -349,7 +357,12 @@ def test_a_card_only_apache_repo_gets_the_vendored_text_checked_against_its_pin(
     ({"private": False}, "is public"),
     ({"repo_licence": None}, "names no licence"),
     ({"files": ["README.md", "LICENSE"], "card": "---\nlicense: other\nlicense_name: openmdw-1.1\n---\n"},
-     "card licence is 'other'"),
+     "card licence is 'openmdw-1.1'"),
+    ({"files": ["README.md"], "repo_licence": "other", "repo_licence_name": "openmdw-1.1",
+      "card": "---\nlicense: other\nlicense_name: some-other-1.0\n---\n"}, "card licence is 'some-other-1.0'"),
+    ({"files": ["README.md"], "repo_licence": "other"}, "names no licence"),
+    ({"files": ["README.md"], "repo_licence": "other", "repo_licence_name": "openmdw-1.1",
+      "card": "---\nlicense: other\n---\n"}, "card licence is None"),
 ])
 def test_the_child_refuses_before_any_upload(vm, monkeypatch, tmp_path, cfg, why):
     # A public repo; a repo card with no licence; Lightning's OpenMDW card in the Apache repo.
@@ -477,3 +490,119 @@ def test_any_token_residue_stops_the_window_before_pool(vm, monkeypatch, tmp_pat
 def test_a_hub_without_the_colab_secret_attribute_reads_clean(monkeypatch):
     monkeypatch.setitem(sys.modules, "huggingface_hub.utils._auth", SimpleNamespace())
     assert pw.token_clean()["no_colab_secret"] is True
+
+
+def test_an_openmdw_repo_takes_an_openmdw_card_with_the_vendored_agreement(vm, monkeypatch, tmp_path):
+    # Super-VL (critic-signal §10): an OpenMDW-1.1 card with no LICENSE file goes to a repo labelled other/openmdw-1.1,
+    # and gets the vendored agreement, checked against its pin.
+    import hashlib
+
+    vendored = Path(__file__).resolve().parents[1] / "scripts" / "colab" / "licences" / "openmdw-1.1.txt"
+    assert hashlib.sha256(vendored.read_bytes()).hexdigest() == pw.LICENCE_FALLBACK["openmdw-1.1"][1]
+    card = "---\nlicense: other\nlicense_name: openmdw-1.1\n---\n# Super-VL\n"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, files=["README.md"], card=card,
+                                      repo_licence="other", repo_licence_name="openmdw-1.1")
+    assert err is None, err
+    up = [r for r in rows if r["call"] == "upload"][0]
+    assert up["license"] == vendored.read_bytes().decode("latin-1")
+    assert result["uploaded"]["licence"] == "openmdw-1.1"
+
+
+def test_a_readme_note_is_written_when_given_and_left_out_otherwise(vm, monkeypatch, tmp_path):
+    # Super-VL's single conversion (R&D, 2026-10-19): the README says reproducibility isn't re-proven.
+    note = "one conversion; reproducibility not re-proven for this GGUF"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, note=note)
+    assert err is None, err
+    assert f"- Note: {note}" in [r for r in rows if r["call"] == "upload"][0]["readme"]
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")
+    pw.read_token_file(needed=True)
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path)
+    assert err is None, err
+    assert "- Note:" not in [r for r in rows if r["call"] == "upload"][0]["readme"]
+
+
+def test_the_readme_names_the_route_the_conversion_took(vm, monkeypatch, tmp_path):
+    # Super-VL's first README said --outtype q8_0 after a BF16 + llama-quantize conversion (R&D: provenance is true).
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path)
+    assert err is None, err
+    readme = [r for r in rows if r["call"] == "upload"][0]["readme"]
+    assert "convert_hf_to_gguf.py --outtype q8_0" in readme and "llama-quantize" not in readme
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")
+    pw.read_token_file(needed=True)
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, spec=dict(GRANITE, via_bf16=True))
+    assert err is None, err
+    readme = [r for r in rows if r["call"] == "upload"][0]["readme"]
+    assert "convert_hf_to_gguf.py --outtype bf16, then llama-quantize Q8_0" in readme and "--outtype q8_0" not in readme
+
+
+def test_the_convert_timeout_scales_with_the_snapshot_and_keeps_the_old_floor():
+    # Super-VL-120B (critic-signal §10) hit a flat 3600 s cap at 54.8 of ~127 GB; 30B models stay at the floor.
+    assert pw.convert_timeout(None) == 3600 and pw.convert_timeout(0) == 3600
+    assert pw.convert_timeout(int(60e9)) == 3600  # Lightning-size snapshot: 60 min at 1 GB/min, the floor
+    assert pw.convert_timeout(int(248.9e9)) == int(248.9 * 60)  # Super-VL: ~4.1 h at 1 GB/min of input
+
+
+def _convert_spec(**extra):
+    return {"served_as": "big-x", "how": "convert", "repo": "maker/big-x", "revision": REV, **extra}
+
+
+def _convert_run(vm, monkeypatch, spec):
+    """fetch_model's convert path with the snapshot, the converter and llama-quantize stood in; returns the commands
+    run, their timeouts and the record."""
+
+    def snapshot_download(repo, revision=None, local_dir=None, token=None, allow_patterns=None):
+        d = Path(local_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "model.safetensors").write_bytes(b"x" * 1000)
+        return str(d)
+
+    _hub(monkeypatch, snapshot_download=snapshot_download, HfApi=None, hf_hub_download=None)
+    monkeypatch.setattr(pw, "_tree_bytes", lambda root: int(248.9e9))  # Super-VL's measured snapshot
+    monkeypatch.setattr(pw, "converter_python", lambda spec, built: "py")
+    built_q = []
+    monkeypatch.setattr(pw, "build_quantize", lambda src: built_q.append(src) or {"path": "/q/llama-quantize", "sha256": "q" * 64})
+    ran = []
+
+    def sh(cmd, timeout=None, **kw):
+        ran.append((cmd, timeout))
+        for tok in cmd.split():
+            if tok.endswith(".gguf") and ("--outfile" in cmd and tok == cmd.split("--outfile ")[1].split()[0]
+                                          or cmd.startswith("/q/llama-quantize") and tok == cmd.split()[2]):
+                Path(tok).write_bytes(b"gguf")
+        return "pkg==1"
+
+    monkeypatch.setattr(pw, "sh", sh)
+    m = pw.fetch_model(spec, {"src": "/src"})
+    return ran, built_q, m
+
+
+def test_via_bf16_writes_bf16_then_quantizes_with_llama_quantize_and_records_both_steps(vm, monkeypatch):
+    ran, built_q, m = _convert_run(vm, monkeypatch, _convert_spec(via_bf16=True))
+    convert = [c for c in ran if "convert_hf_to_gguf.py" in c[0]]
+    quant = [c for c in ran if c[0].startswith("/q/llama-quantize")]
+    assert len(convert) == 1 and "--outtype bf16" in convert[0][0] and "-BF16.gguf" in convert[0][0]
+    assert len(quant) == 1 and quant[0][0].endswith("-Q8_0.gguf Q8_0") and "-BF16.gguf" in quant[0][0]
+    assert convert[0][1] == quant[0][1] == pw.convert_timeout(int(248.9e9))  # the scaled bound, not 3600
+    assert built_q == [Path("/src")]
+    assert m["route"] == "bf16+llama-quantize" and "bf16_seconds" in m and "quantize_seconds" in m and m["bf16_sha256"]
+    assert not (pw.WORK / "big-x-BF16.gguf").exists()  # the BF16 is removed once quantized
+    assert m["gguf_file"] == "big-x-Q8_0.gguf" and m["gguf_sha256"]
+
+
+def test_without_via_bf16_the_direct_q8_0_path_runs_with_the_scaled_timeout(vm, monkeypatch):
+    ran, built_q, m = _convert_run(vm, monkeypatch, _convert_spec())
+    convert = [c for c in ran if "convert_hf_to_gguf.py" in c[0]]
+    assert len(convert) == 1 and "--outtype q8_0" in convert[0][0]
+    assert convert[0][1] == pw.convert_timeout(int(248.9e9))
+    assert built_q == [] and "route" not in m and not [c for c in ran if "llama-quantize" in c[0]]
+
+
+def test_run_proc_keeps_the_rc_when_a_tool_prints_bytes_that_are_not_utf8():
+    # Plan 2 (2026-10-19): llama-quantize printed 0xc4 on Super-VL and the strict decode raised after the child finished,
+    # losing its rc and timing. The output is a log: the byte is replaced, the rc and the rest of the text survive.
+    code = ("import sys; sys.stdout.buffer.write(b'q8 ' + bytes([0xC4]) + b' done'); "
+            "sys.stderr.buffer.write(b'e ' + bytes([0xFF])); sys.exit(3)")
+    out = pw.run_proc([sys.executable, "-c", code], timeout=60)
+    assert out.returncode == 3
+    assert out.stdout.startswith("q8 ") and out.stdout.rstrip().endswith("done") and "�" in out.stdout
+    assert "�" in out.stderr

@@ -96,6 +96,15 @@ MODELS = [
      "revision": "711ad2ea6aa40cfca18895e8aca02ab92df1a746", "tokenizer_check": True,
      "expect_sha256": "b791775c3bb0d1ab3cd7a73c6760c4ab915680f3587be8a7d29937ca2b9ad24e",
      "retired_q6k_sha256": "c2cda735fb0f026d33db4734c1466b94cfca9ed8f9a88bab0610bca45687bce5"},
+    # The larger critic of critic-signal §10 (rnd 1.1.15.2.9), used text-only: the converter takes llm_config as the text
+    # config (NemotronHForCausalLM, latent MoE, one MTP head) and leaves the vision tower out. Saved with transformers
+    # 5.12.1 (TokenizersBackend), so Muse's recipe: its own env and the tokenizer checked id by id. The pin comes from the
+    # first conversion (PIN_ROLE=convert on the RunPod converter) and is added before any prebuild or serve.
+    # Pinned 2026-10-19 from plan 2 (RTX PRO 6000 Server pod): BF16 1,282 s, then llama-quantize Q8_0 run twice from the
+    # same BF16 (209425cf...), both 6fa3c010 (the second rc 0, 112 s); one conversion, so reproducibility isn't re-proven.
+    {"served_as": "nemotron-3.5-super-vl-120b-a12b", "how": "convert", "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+     "revision": "1f8953f7f0935358e3605150d22bc15df062061c", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
+     "via_bf16": True, "expect_sha256": "6fa3c010ebd015d298d910a2ab6ad4d953155b1cc418b0f54581075aafbeeb02"},
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
@@ -191,6 +200,20 @@ def download_timeout(nbytes: int | None) -> float:
     return 3600.0 if not nbytes else nbytes / (DOWNLOAD_FLOOR_MBPS * 1e6) + 300
 
 
+# A conversion's time bound, from the snapshot it reads (R&D, 2026-10-19, after Super-VL-120B hit a flat 3600 s cap).
+# Measured: the direct q8_0 path read Super-VL's 249 GB BF16 at ~1.8 GB/min of input (0.9 GB/min of output); 30B models
+# ran far faster. The bound allows 1 GB/min of input, never below the old 3600 s. A backstop, not a schedule: a window's
+# deadline and a pod's watchdog still bound the cost.
+CONVERT_FLOOR_S = 3600
+CONVERT_INPUT_GB_PER_MIN = 1.0
+
+
+def convert_timeout(snapshot_bytes: int | None) -> int:
+    if not snapshot_bytes:
+        return CONVERT_FLOOR_S
+    return max(CONVERT_FLOOR_S, int(snapshot_bytes / 1e9 / CONVERT_INPUT_GB_PER_MIN * 60))
+
+
 def with_heartbeat(fn, label: str, timeout_s: float, watch: Path | None = None):
     """Run fn (an in-process Hub download) in a worker thread while this thread waits on it, writing a HEARTBEAT line
     each HEARTBEAT_S round only if the download made progress: the bytes under `watch` grew, or free disk fell (a Xet
@@ -248,7 +271,10 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
 
     hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
     head = (cmd if isinstance(cmd, str) else " ".join(str(x) for x in cmd)).strip().splitlines()[0][:80]
-    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+    # errors="replace" (plan 2, 2026-10-19): llama-quantize printed a non-UTF-8 byte (0xc4) on Super-VL and the strict
+    # decode raised after the child had finished, losing its rc and timing. A tool's output is a log, never data here.
+    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            encoding="utf-8", errors="replace", env=env,
                             stdin=subprocess.PIPE if input is not None else None, start_new_session=True)
     send = input  # given to the first communicate only
     t0 = time.time()
@@ -443,7 +469,11 @@ _TOKEN: str | None = None  # the value, between the job's start and the step tha
 # Licences stated only in a model card (Gemma 4 and Granite 4.2 ship no LICENSE file): one vendored copy of the text,
 # pinned, so an upload needs no network for it and the text can't drift (R&D, 2026-10-18). Source:
 # https://www.apache.org/licenses/LICENSE-2.0.txt, fetched 2026-10-18.
-LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30")}
+# openmdw-1.1.txt is the agreement alone ("OpenMDW License Agreement, version 1.1" through "Copyright The Linux
+# Foundation and its contributors." plus one LF), cut by R&D from the registry snapshot
+# E:/AI/licence-snapshots/2026-10-17/openmdw-1.1.txt (page-text sha256 c709632b, read 2026-10-17).
+LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"),
+                    "openmdw-1.1": ("openmdw-1.1.txt", "ac19de4aa4e0216bbf0ca2fc5794490637a6ba786f12afec8fb63f0005c5b27f")}
 DISK_MARGIN_GB = 20  # R&D: a window's peak plus this must fit the VM's free disk
 
 
@@ -558,19 +588,24 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
 
 CARD_LICENCE_SRC = """
 def card_licence(card):
-    \"\"\"The `license:` field of a model card's YAML front matter.\"\"\"
+    \"\"\"A model card's licence from its YAML front matter: `license:`, or `license_name:` when the licence is
+    `other` (Super-VL: other / openmdw-1.1), so two different "other" licences never compare equal.\"\"\"
 
     if not card.exists():
         return None
     lines = card.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0].strip() != "---":
         return None
+    fields = {}
     for line in lines[1:]:
         if line.strip() == "---":
             break
-        if line.startswith("license:"):
-            return line.split(":", 1)[1].strip().strip("'\\"")
-    return None
+        for key in ("license", "license_name"):
+            if line.startswith(key + ":"):
+                fields[key] = line.split(":", 1)[1].strip().strip("'\\"")
+    licence = fields.get("license")
+    # A bare "other" names no licence at all: None, so it can never match (R&D on #98).
+    return fields.get("license_name") if licence == "other" else licence
 """
 exec(CARD_LICENCE_SRC)  # defines card_licence here; the upload child execs the same text
 
@@ -604,7 +639,11 @@ try:
     if not info.private:
         refuse(repo + " is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
     card = getattr(info, "card_data", None) or {}
-    repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
+    get = card.get if isinstance(card, dict) else (lambda k: getattr(card, k, None))
+    repo_licence = get("license")
+    if repo_licence == "other":
+        # The same rule as card_licence: an "other" repo is labelled by its license_name (openmdw-1.1), never "other".
+        repo_licence = get("license_name")  # a bare "other" names no licence: refused below (R&D on #98)
     if not repo_licence:
         refuse(repo + "'s card names no licence; set it before any model goes in")
     stage.mkdir(parents=True, exist_ok=True)
@@ -641,6 +680,14 @@ UPLOAD_CHILD_ENV: dict = {}  # tests point the child at a stand-in huggingface_h
 TOKEN_SHAPE_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 
 
+def conversion_route(spec: dict) -> str:
+    """The hosted README's conversion line, true to the route fetch_model took (R&D, 2026-10-19: provenance is true)."""
+
+    if spec.get("via_bf16"):
+        return "convert_hf_to_gguf.py --outtype bf16, then llama-quantize Q8_0"
+    return "convert_hf_to_gguf.py --outtype q8_0"
+
+
 def upload_hosted(spec: dict, m: dict, result: dict) -> None:
     """A prebuild window's one model, uploaded to the private repo with its upstream licence files and model card and a
     README naming its source, revision, converter and pin (R&D's licence conditions). Only after its pin matched. The
@@ -664,8 +711,10 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
            "readme": (f"# {spec['served_as']} Q8_0 (private, studio use only)\n\n"
                       f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
                       "- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
-                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
-                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n")}
+                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, {conversion_route(spec)}\n"
+                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n"
+                      # e.g. Super-VL (R&D, 2026-10-19): one conversion, so reproducibility isn't re-proven for it.
+                      + (f"- Note: {m['readme_note']}\n" if m.get("readme_note") else ""))}
     env = {k: v for k, v in os.environ.items() if k not in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")}
     env.update(UPLOAD_CHILD_ENV)
     stdin = json.dumps({**cfg, "token": token}) + "\n"
@@ -722,8 +771,31 @@ def fetch_model(spec: dict, built: dict, keep_snapshot: bool = False) -> dict:
             f"snapshot:{spec['served_as']}", download_timeout(None), watch=snap_dir))
         py = converter_python(spec, built)
         path = WORK / f"{spec['served_as']}-Q8_0.gguf"
-        say("converting to Q8_0")
-        sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=3600)
+        timeout = convert_timeout(_tree_bytes(snap))
+        out["convert_timeout_s"] = timeout
+        if spec.get("via_bf16"):
+            # critic-signal §10 (R&D, 2026-10-19): the direct q8_0 path quantizes in single-threaded Python (Super-VL-120B
+            # ran 0.9 GB/min and hit the old 3600 s cap at 54.8 of ~127 GB). This route writes BF16 (no quantize maths)
+            # and quantizes with the pinned, multithreaded llama-quantize, the Q6_K path's own steps. Same Q8_0 level; the
+            # per-tensor types are llama-quantize's, so the receipts carry the GGUF's type table.
+            if "llama_quantize" not in out:
+                out["llama_quantize"] = build_quantize(Path(built["src"]))
+            bf16 = WORK / f"{spec['served_as']}-BF16.gguf"
+            say("converting to BF16, then llama-quantize Q8_0 (via_bf16)")
+            t0 = time.time()
+            sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype bf16 --outfile {bf16}", timeout=timeout)
+            out["bf16_seconds"] = round(time.time() - t0)
+            resources(f"{spec['served_as']}: after BF16 conversion")
+            t1 = time.time()
+            sh(f"{out['llama_quantize']['path']} {bf16} {path} Q8_0", timeout=timeout)
+            out["quantize_seconds"] = round(time.time() - t1)
+            out["bf16_sha256"] = sha256(bf16)
+            bf16.unlink(missing_ok=True)
+            resources(f"{spec['served_as']}: after Q8_0 quantize, BF16 removed")
+            out["route"] = "bf16+llama-quantize"
+        else:
+            say("converting to Q8_0")
+            sh(f"{py} {built['src']}/convert_hf_to_gguf.py {snap} --outtype q8_0 --outfile {path}", timeout=timeout)
         if spec.get("tokenizer_check"):
             out["tokenizer_hf"] = hf_token_ids(py, snap)
         if spec.get("brief_check") and BRIEFS.exists():

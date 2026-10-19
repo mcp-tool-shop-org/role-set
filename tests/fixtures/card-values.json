@@ -190,6 +190,28 @@
       "transforms": [
         "fold_system"
       ]
+    },
+    {
+      "candidate": "nemotron-3.5-super-vl-120b-a12b",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "revision": "1f8953f7f0935358e3605150d22bc15df062061c",
+      "card_sha256": "5314d0e464ebb95a4e84a29736b0297a32a0c9eea814a65d8f1791e4cb3f91fb",
+      "template_from": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16@1f8953f7f0935358e3605150d22bc15df062061c",
+      "template_sha256": "1369e90b19976f99ce2070eb21ade8fcb4af640f008e14e82af5c5e89a9cc816",
+      "sampling": {
+        "min_p": 0.0,
+        "top_k": 0,
+        "repeat_penalty": 1.0,
+        "presence_penalty": 0.0,
+        "temperature": 1.0,
+        "top_p": 0.95
+      },
+      "chat_template_kwargs": {
+        "enable_thinking": true
+      },
+      "card_section": "Model overview: Recommended Sampling (text: temperature 1.0, top_p 0.95); Text and reasoning example",
+      "notes": "Used text-only. The template defaults are enable_thinking true and medium_effort false, so reasoning is the full 'on' level; medium_effort is not injected. Vision sampling (temperature 0.6) does not apply. top_k and min_p disabled.",
+      "transforms": []
     }
   ],
   "proxy_rules": {
