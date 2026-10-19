@@ -1753,12 +1753,22 @@ class Pool:
                 self.drop(name)
 
 
-def critics_for(writer_names: list, families: dict | None = None) -> dict:
+def critics_for(writer_names: list, families: dict | None = None, *, waves: int | None = None) -> dict:
     """Each arm's critic: PIN_PILOT_CRITIC for all, with PIN_PILOT_CRITIC_FOR=<writer>=<critic>,... per arm (W3:
-    Lightning and Muse critique each other's arm, the design's own critic rule). role-set refuses a same-family pair."""
+    Lightning and Muse critique each other's arm, the design's own critic rule). role-set refuses a same-family pair.
+    PIN_PILOT_CRITIC=none is allowed only when PIN_PILOT_WAVES=1 (write-only)."""
 
-    default = os.environ.get("PIN_PILOT_CRITIC", "")
+    default = os.environ.get("PIN_PILOT_CRITIC", "").strip()
     over = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_CRITIC_FOR", "").split(",") if "=" in x)
+    eff_waves = int(os.environ.get("PIN_PILOT_WAVES") or PILOT_WAVES) if waves is None else int(waves)
+    if default.lower() == "none":
+        if over:
+            raise RuntimeError("REFUSED: PIN_PILOT_CRITIC=none takes no PIN_PILOT_CRITIC_FOR")
+        if eff_waves != 1:
+            raise RuntimeError(f"REFUSED: PIN_PILOT_CRITIC=none is allowed only when PIN_PILOT_WAVES=1 (got {eff_waves})")
+        return {}
+    if any(c.strip().lower() == "none" for c in over.values()):
+        raise RuntimeError("REFUSED: 'none' is only valid as PIN_PILOT_CRITIC=none with PIN_PILOT_WAVES=1")
     out = {n: over.get(n, default) for n in writer_names}
     missing = [n for n, c in out.items() if not c]
     if missing:
@@ -1777,14 +1787,14 @@ def _needed_models(arms: dict, critic_for: dict, i: int, left_in_wave: list[str]
     needed: set[str] = set()
     if not finished_batch:
         if kind == "critique":
-            needed.update(critic_for[n] for n in left_in_wave)
+            needed.update(critic_for[n] for n in left_in_wave if n in critic_for)
         else:
             needed.update(left_in_wave)
         active = [n for n, a in arms.items() if not a["done"]]
         if any(j == 0 or j % 2 == 0 for j in range(i + 1, PILOT_WAVES)):
             needed.update(active)
         if any(j > 0 and j % 2 == 1 for j in range(i + 1, PILOT_WAVES)):
-            needed.update(critic_for[n] for n in active)
+            needed.update(critic_for[n] for n in active if n in critic_for)
     twin_arms = list(later_arms)
     if twins_after:
         for n, a in arms.items():
@@ -1833,6 +1843,7 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
         if not todo:
             break
         if kind == "critique":
+            assert critic_for and all(critic_for.get(n) for n in todo), f"pilot_batch reached a critique wave with no critic for {todo}"
             done_crit: set[str] = set()
             for c in dict.fromkeys(critic_for[n] for n in todo):  # each critic served once, in the arms' order
                 with pool.serve(c):
@@ -1988,6 +1999,39 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
     data["slots"] = [s for s in data["slots"] if s["id"] in ids]
     plan.write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")  # the same bytes on Windows and the VM
     return ids
+
+
+def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, work_dir: Path | None = None) -> dict:
+    """Plan each lesson alone with `role-set plan --lessons <L> --seed 0 --domains <naics> --out <tmp>` and merge into `out`."""
+
+    slot_ids = [x.strip() for x in os.environ.get("PIN_PILOT_SLOT_IDS", "").split(",") if x.strip()]
+    if not slot_ids:
+        raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_SLOT_IDS")
+    if twins_enabled():
+        raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_TWINS=0")
+    tmp_dir = work_dir or out.parent
+    tmp_dir.mkdir(parents=True, exist_ok=True)
+    per_lesson_sha256: dict[str, str] = {}
+    plans: list[dict] = []
+    excl_shas: dict[str, str | None] = {}
+    for lesson in lessons:
+        tmp = tmp_dir / f"lesson-{lesson}-plan.json"
+        sh(f"{rs['role_set']} plan --lessons {lesson} --seed 0 --domains {domains} --out {tmp}", cwd=rs.get("src"))
+        per_lesson_sha256[lesson] = sha256(tmp)
+        pdata = json.loads(tmp.read_text(encoding="utf-8"))
+        plans.append(pdata)
+        excl_shas[lesson] = pdata.get("exclusion_state_sha256")
+    if len(set(excl_shas.values())) > 1:
+        raise RuntimeError(f"REFUSED: lesson plans have mismatched exclusion_state_sha256: {excl_shas}")
+    merged = dict(plans[0])
+    merged["slots"] = [s for p in plans for s in p.get("slots", [])]
+    merged["figures"] = [f for p in plans for f in (p.get("figures") or [])]
+    out.write_text(json.dumps(merged, indent=1), encoding="utf-8", newline="\n")
+    return {
+        "lessons": list(lessons),
+        "per_lesson_sha256": per_lesson_sha256,
+        "exclusion_state_sha256": merged.get("exclusion_state_sha256"),
+    }
 
 
 def rescore_inputs(result: dict) -> tuple[Path, dict]:
@@ -2351,19 +2395,33 @@ def pilot_window(built: dict, result: dict) -> None:
     result["prior_unpacked"] = str(unpack_resume(CONTENT / "prior.tar") or "")
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
-    sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
-    sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
-    result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
-                        "waves": PILOT_WAVES}
-    result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
-                       # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
-                       # state, so the shas agree by construction (write refuses a mismatch).
-                       "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
+    lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
+    if lessons:
+        lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
+        screened_pilot = screen_plan(plan, "PIN_PILOT_SLOT_IDS")
+        result["screen"] = {"pilot": screened_pilot, "twins": None, "waves": PILOT_WAVES}
+        result["plans"] = {
+            "lessons": lessons_meta["lessons"],
+            "per_lesson_sha256": lessons_meta["per_lesson_sha256"],
+            "pilot_sha256": sha256(plan),
+            "twins_sha256": None,
+            "exclusion_state_sha256": lessons_meta["exclusion_state_sha256"],
+        }
+    else:
+        sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
+        sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
+        result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
+                            "waves": PILOT_WAVES}
+        result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
+                           # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
+                           # state, so the shas agree by construction (write refuses a mismatch).
+                           "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
     listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
     families = {e["served_as"]: e.get("family") for e in listed["writers"] + listed["critics"]}
-    critic_for = result["critic_for"] = critics_for(writer_names, families)
+    critic_for = critics_for(writer_names, families, waves=PILOT_WAVES)
+    result["critic_for"] = critic_for if critic_for else "none (write only)"
     check_pins(list(dict.fromkeys([*writer_names, *critic_for.values()])), listed, policies)
     for name in [*writer_names, *critic_for.values()]:
         if name not in by_name:
