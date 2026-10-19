@@ -269,7 +269,10 @@ def run_proc(cmd, *, shell: bool = False, cwd=None, timeout: float = 3600, env=N
 
     hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
     head = (cmd if isinstance(cmd, str) else " ".join(str(x) for x in cmd)).strip().splitlines()[0][:80]
-    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=env,
+    # errors="replace" (plan 2, 2026-10-19): llama-quantize printed a non-UTF-8 byte (0xc4) on Super-VL and the strict
+    # decode raised after the child had finished, losing its rc and timing. A tool's output is a log, never data here.
+    proc = subprocess.Popen(cmd, shell=shell, cwd=cwd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            encoding="utf-8", errors="replace", env=env,
                             stdin=subprocess.PIPE if input is not None else None, start_new_session=True)
     send = input  # given to the first communicate only
     t0 = time.time()

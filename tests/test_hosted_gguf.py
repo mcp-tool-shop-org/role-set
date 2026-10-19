@@ -581,3 +581,14 @@ def test_without_via_bf16_the_direct_q8_0_path_runs_with_the_scaled_timeout(vm, 
     assert len(convert) == 1 and "--outtype q8_0" in convert[0][0]
     assert convert[0][1] == pw.convert_timeout(int(248.9e9))
     assert built_q == [] and "route" not in m and not [c for c in ran if "llama-quantize" in c[0]]
+
+
+def test_run_proc_keeps_the_rc_when_a_tool_prints_bytes_that_are_not_utf8():
+    # Plan 2 (2026-10-19): llama-quantize printed 0xc4 on Super-VL and the strict decode raised after the child finished,
+    # losing its rc and timing. The output is a log: the byte is replaced, the rc and the rest of the text survive.
+    code = ("import sys; sys.stdout.buffer.write(b'q8 ' + bytes([0xC4]) + b' done'); "
+            "sys.stderr.buffer.write(b'e ' + bytes([0xFF])); sys.exit(3)")
+    out = pw.run_proc([sys.executable, "-c", code], timeout=60)
+    assert out.returncode == 3
+    assert out.stdout.startswith("q8 ") and out.stdout.rstrip().endswith("done") and "�" in out.stdout
+    assert "�" in out.stderr
