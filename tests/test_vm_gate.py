@@ -75,3 +75,44 @@ def test_a_vm_the_gate_cannot_read_is_rejected_with_the_reason(lim, monkeypatch,
     g.main()
     r = json.loads(capsys.readouterr().out.strip().removeprefix("VM_GATE "))
     assert r["ok"] is False and "could not read the VM" in r["why"][0]
+
+
+# The floor scaled to the window (R&D, 2026-10-19): bytes / (bytes / median + budget), budget max(300 s, 15% of the
+# window's projected seconds), never under 20 MB/s; the override wins; with no window bytes, the old half-median.
+@pytest.mark.parametrize("window_bytes, want", [(1e9, 20.0), (32e9, 75.5), (300e9, 205.1)])
+def test_the_hf_floor_scales_with_the_bytes_the_window_downloads(lim, monkeypatch, window_bytes, want):
+    monkeypatch.setenv("PIN_GATE_HF_BYTES_WINDOW", str(int(window_bytes)))
+    got = g.limits()
+    assert got["min_hf_mbps"] == want and got["hf_floor_from"] == "computed" and got["hf_budget_s"] == 300.0
+
+
+def test_a_small_window_keeps_the_broken_pipe_floor(lim, monkeypatch):
+    monkeypatch.setenv("PIN_GATE_HF_BYTES_WINDOW", str(10**6))
+    assert g.limits()["min_hf_mbps"] == g.HF_HARD_FLOOR_MBPS == 20.0
+    assert g.verdict({**GOOD, "hf_mbps": 19.9}, g.limits()) and not g.verdict({**GOOD, "hf_mbps": 43.2}, g.limits())
+
+
+def test_without_window_bytes_the_floor_stays_half_the_median(lim, monkeypatch):
+    assert lim["min_hf_mbps"] == 129.0 and lim["hf_floor_from"] == "default"
+    monkeypatch.setenv("PIN_GATE_PROJECTED_S", "7200")  # a projection alone has no bytes to scale
+    assert g.limits()["min_hf_mbps"] == 129.0 and g.limits()["hf_floor_from"] == "default"
+
+
+def test_the_explicit_floor_wins_over_the_computed_one(lim, monkeypatch):
+    monkeypatch.setenv("PIN_GATE_HF_BYTES_WINDOW", str(int(32e9)))
+    monkeypatch.setenv("PIN_GATE_MIN_HF_MBPS", "60")
+    got = g.limits()
+    assert got["min_hf_mbps"] == 60.0 and got["hf_floor_from"] == "override"
+
+
+def test_a_long_window_gets_a_bigger_budget_and_a_lower_floor(lim, monkeypatch):
+    monkeypatch.setenv("PIN_GATE_HF_BYTES_WINDOW", str(int(300e9)))
+    monkeypatch.setenv("PIN_GATE_PROJECTED_S", str(4 * 3600))  # 15% of 4 h is 2,160 s, over the 300 s minimum
+    got = g.limits()
+    assert got["hf_budget_s"] == 2160.0 and got["min_hf_mbps"] == round(300e9 / (300e9 / 258e6 + 2160) / 1e6, 1) == 90.3
+
+
+def test_the_gate_line_records_the_floor_and_its_source(lim, monkeypatch, capsys):
+    monkeypatch.setenv("PIN_GATE_HF_BYTES_WINDOW", str(int(32e9)))
+    r = _run_main(monkeypatch, capsys, [80.0])
+    assert r["ok"] is True and r["limits"]["min_hf_mbps"] == 75.5 and r["limits"]["hf_floor_from"] == "computed"

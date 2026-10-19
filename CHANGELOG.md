@@ -122,6 +122,8 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **The VM gate's Hugging Face floor scales to the window** (`scripts/colab/vm_gate.py`; R&D, 2026-10-19). With `PIN_GATE_HF_BYTES_WINDOW` (bytes the window downloads) and `PIN_GATE_PROJECTED_S`, the floor is `bytes / (bytes / 258 MB/s + budget)`, budget `max(300 s, 15% of the projection)`, never under 20 MB/s: about 75 MB/s for a 32 GB model, 205 for a 300 GB window, 20 for a 1 GB rung. Without them it stays 129; `PIN_GATE_MIN_HF_MBPS` still overrides. The gate line records the floor's source (`hf_floor_from`). The flat 129 had rejected six VMs on 2026-10-19 for a minute or less of extra download.
+
 - **Super-VL-120B's pin** (critic-signal §10): `expect_sha256` 6fa3c010… in MODELS and a `critics` entry in writers.json (OpenMDW-1.1, text-only). BF16 then llama-quantize Q8_0; the quantize ran twice from the same BF16 and matched. One conversion, so reproducibility isn't re-proven; 131.6 GB needs a 141 GB card.
 
 - **The wave pilot, from BUILD-SPEC §9.2 and Argon's §9.4 review, findings 7 and 19 (composition ruled by R&D).**
