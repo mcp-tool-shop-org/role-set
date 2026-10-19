@@ -117,7 +117,7 @@ def test_the_prefetch_needs_a_full_revision_and_a_token(vm, monkeypatch):
 
 
 @pytest.mark.parametrize("card, want", [("---\nlicense: apache-2.0\nlibrary_name: x\n---\n# M\n", "apache-2.0"),
-                                         ("---\nlicense: 'other'\n---\n", "other"), ("# no front matter\n", None),
+                                         ("---\nlicense: 'other'\n---\n", None), ("# no front matter\n", None),
                                          ("---\nlicense: other\nlicense_name: openmdw-1.1\n---\n", "openmdw-1.1"),
                                          ("---\nlicense_name: openmdw-1.1\nlicense: other\n---\n", "openmdw-1.1"),
                                          ("---\nlicense: mit\nlicense_name: ignored\n---\n", "mit")])
@@ -281,7 +281,7 @@ def hf_hub_download(repo, filename, revision=None, local_dir=None, **kw):
 """
 
 
-def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
+def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, note=None, **cfg):
     """upload_hosted with its real child process, which imports the stand-in hub. Returns (result, hub log, what the
     child was started with)."""
 
@@ -307,6 +307,8 @@ def _child_upload(vm, monkeypatch, tmp_path, spec=GRANITE, **cfg):
     gguf = vm / "pin" / f"{spec['served_as']}-Q8_0.gguf"
     gguf.write_bytes(b"q8")
     m = {"path": str(gguf), "revision": spec["revision"], "gguf_sha256": spec["expect_sha256"] or "0" * 64}
+    if note:
+        m["readme_note"] = note
     result, err = {}, None
     try:
         pw.upload_hosted(spec, m, result)
@@ -358,6 +360,9 @@ def test_a_card_only_apache_repo_gets_the_vendored_text_checked_against_its_pin(
      "card licence is 'openmdw-1.1'"),
     ({"files": ["README.md"], "repo_licence": "other", "repo_licence_name": "openmdw-1.1",
       "card": "---\nlicense: other\nlicense_name: some-other-1.0\n---\n"}, "card licence is 'some-other-1.0'"),
+    ({"files": ["README.md"], "repo_licence": "other"}, "names no licence"),
+    ({"files": ["README.md"], "repo_licence": "other", "repo_licence_name": "openmdw-1.1",
+      "card": "---\nlicense: other\n---\n"}, "card licence is None"),
 ])
 def test_the_child_refuses_before_any_upload(vm, monkeypatch, tmp_path, cfg, why):
     # A public repo; a repo card with no licence; Lightning's OpenMDW card in the Apache repo.
@@ -501,3 +506,16 @@ def test_an_openmdw_repo_takes_an_openmdw_card_with_the_vendored_agreement(vm, m
     up = [r for r in rows if r["call"] == "upload"][0]
     assert up["license"] == vendored.read_bytes().decode("latin-1")
     assert result["uploaded"]["licence"] == "openmdw-1.1"
+
+
+def test_a_readme_note_is_written_when_given_and_left_out_otherwise(vm, monkeypatch, tmp_path):
+    # Super-VL's single conversion (R&D, 2026-10-19): the README says reproducibility isn't re-proven.
+    note = "one conversion; reproducibility not re-proven for this GGUF"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, note=note)
+    assert err is None, err
+    assert f"- Note: {note}" in [r for r in rows if r["call"] == "upload"][0]["readme"]
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")
+    pw.read_token_file(needed=True)
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path)
+    assert err is None, err
+    assert "- Note:" not in [r for r in rows if r["call"] == "upload"][0]["readme"]

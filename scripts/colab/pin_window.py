@@ -584,7 +584,8 @@ def card_licence(card):
             if line.startswith(key + ":"):
                 fields[key] = line.split(":", 1)[1].strip().strip("'\\"")
     licence = fields.get("license")
-    return fields.get("license_name") or licence if licence == "other" else licence
+    # A bare "other" names no licence at all: None, so it can never match (R&D on #98).
+    return fields.get("license_name") if licence == "other" else licence
 """
 exec(CARD_LICENCE_SRC)  # defines card_licence here; the upload child execs the same text
 
@@ -622,7 +623,7 @@ try:
     repo_licence = get("license")
     if repo_licence == "other":
         # The same rule as card_licence: an "other" repo is labelled by its license_name (openmdw-1.1), never "other".
-        repo_licence = get("license_name") or repo_licence
+        repo_licence = get("license_name")  # a bare "other" names no licence: refused below (R&D on #98)
     if not repo_licence:
         refuse(repo + "'s card names no licence; set it before any model goes in")
     stage.mkdir(parents=True, exist_ok=True)
@@ -683,7 +684,9 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
                       f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
                       "- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
                       f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
-                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n")}
+                      f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n"
+                      # e.g. Super-VL (R&D, 2026-10-19): one conversion, so reproducibility isn't re-proven for it.
+                      + (f"- Note: {m['readme_note']}\n" if m.get("readme_note") else ""))}
     env = {k: v for k, v in os.environ.items() if k not in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN")}
     env.update(UPLOAD_CHILD_ENV)
     stdin = json.dumps({**cfg, "token": token}) + "\n"
