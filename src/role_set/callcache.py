@@ -32,8 +32,11 @@ def request_key(role: str, args: tuple, kwargs: dict) -> str:
 
 
 def _completion_dict(c: Completion) -> dict:
-    return {"text": c.text, "prompt_tokens": c.prompt_tokens, "completion_tokens": c.completion_tokens, "model": c.model,
-            "seconds": c.seconds, "finish_reason": getattr(c, "finish_reason", None)}
+    out = {"text": c.text, "prompt_tokens": c.prompt_tokens, "completion_tokens": c.completion_tokens, "model": c.model,
+           "seconds": c.seconds, "finish_reason": getattr(c, "finish_reason", None)}
+    if getattr(c, "thinking_tokens", None) is not None:
+        out["thinking_tokens"] = c.thinking_tokens
+    return out
 
 
 def load(path: Path) -> dict[str, deque]:
@@ -49,7 +52,8 @@ def load(path: Path) -> dict[str, deque]:
         c = d["completion"]
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
-                                          seconds=c.get("seconds") or 0.0, finish_reason=c.get("finish_reason")))
+                                          seconds=c.get("seconds") or 0.0, finish_reason=c.get("finish_reason"),
+                                          thinking_tokens=c.get("thinking_tokens")))
     return reuse
 
 

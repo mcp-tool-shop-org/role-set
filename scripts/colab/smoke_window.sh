@@ -28,8 +28,8 @@ if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
   # HF_TOKEN_GGUF_WRITE, each fine-grained to the one private repo. The account-wide HF_TOKEN never goes to a VM.
   # Checked before any VM is asked for; presence only, never the value.
   case "${PIN_ROLE:-}:$PIN_HF_TOKEN_FROM" in
-    pilot:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE) ;;
-    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE)"; exit 2;;
+    pilot:HF_TOKEN_GGUF_READ|critic-eval:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE) ;;
+    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot/critic-eval: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE)"; exit 2;;
   esac
   tokvar=$PIN_HF_TOKEN_FROM
   [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }

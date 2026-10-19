@@ -33,6 +33,13 @@ from role_set.plan import (PILOT_LESSON, PILOT_TWIN_LESSON, PlanError, check_pla
 from role_set.prompts import load_pack
 from role_set.readout import readout
 from role_set.rescore import RescoreConfig, RescoreError, run_rescore
+from role_set.critic_eval import (
+    CriticEvalConfig,
+    CriticEvalError,
+    CriticRescoreOfflineConfig,
+    run_critic_eval,
+    run_critic_rescore_offline,
+)
 from role_set.store import counts, open_store, void_round
 from role_set.trait_steps import TRAIT_STEPS
 from role_set.write import (
@@ -495,7 +502,71 @@ def build_parser() -> argparse.ArgumentParser:
     rs.add_argument("--out", default="rescore", help="directory for sample-manifest.json, rescore.json and rescore-report.json")
     rs.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
     rs.set_defaults(func=_rescore)
+
+    ce = sub.add_parser("critic-eval", help="score every item of a sealed set with the critic's verdict and flaw checks only")
+    ce.add_argument("--items", required=True, help="sealed items file (waves.read checks its .sha256 seal)")
+    ce.add_argument("--pack", default=None, help="the synced role pack (optional)")
+    ce.add_argument("--writers", default="writers.json")
+    ce.add_argument("--cards", default=None, help="rnd's card-values.json: the critic runs at its card's settings")
+    ce.add_argument("--critic-endpoint", default=None, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
+    ce.add_argument("--critic-model", default=None, help="a served name from writers.json's critics")
+    ce.add_argument("--critic-gguf-sha256", default=None, help="the critic GGUF's sha256")
+    ce.add_argument("--critic-seed", type=int, default=0, help="the critic's sampling seed")
+    ce.add_argument("--call-journal", default=None, help="where each finished critic call is journaled")
+    ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
+    ce.add_argument("--out", default="critic-eval", help="directory for critic-eval.jsonl and critic-eval-report.json")
+    ce.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
+    ce.set_defaults(func=_critic_eval)
+
+    cro = sub.add_parser("critic-rescore-offline", help="re-score recorded critic-eval replies against any key under P0, P2 and P3")
+    cro.add_argument("--eval", nargs="+", action="extend", default=[], required=True, help="one or two critic-eval.jsonl files")
+    cro.add_argument("--items", default=None, help="the sealed items file")
+    cro.add_argument("--keys", nargs="+", action="extend", default=[], help="alternate key file(s)")
+    cro.add_argument("--out", default="critic-rescore-offline", help="directory (or .jsonl path) for offline rescore outputs")
+    cro.add_argument("--mock", action="store_true", help="allow mock gates fallback when aspire-si-gates is unavailable")
+    cro.set_defaults(func=_critic_rescore_offline)
     return p
+
+
+def _critic_eval(args: argparse.Namespace) -> int:
+    cfg = CriticEvalConfig(
+        items=Path(args.items),
+        pack=Path(args.pack) if args.pack else None,
+        writers_file=Path(args.writers),
+        cards=Path(args.cards) if args.cards else None,
+        critic_endpoint=args.critic_endpoint,
+        critic_model=args.critic_model,
+        critic_gguf_sha256=args.critic_gguf_sha256,
+        critic_seed=args.critic_seed,
+        call_journal=Path(args.call_journal) if args.call_journal else None,
+        reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
+        out=Path(args.out),
+        mock=args.mock,
+    )
+    try:
+        report = run_critic_eval(cfg)
+    except CriticEvalError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(json.dumps(report))
+    return 0
+
+
+def _critic_rescore_offline(args: argparse.Namespace) -> int:
+    cfg = CriticRescoreOfflineConfig(
+        eval_files=tuple(Path(p) for p in (args.eval or ())),
+        items=Path(args.items) if args.items else None,
+        keys=tuple(Path(p) for p in (args.keys or ())),
+        out=Path(args.out),
+        mock=args.mock,
+    )
+    try:
+        report = run_critic_rescore_offline(cfg)
+    except CriticEvalError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(report["table"])
+    return 0
 
 
 def _rescore(args: argparse.Namespace) -> int:

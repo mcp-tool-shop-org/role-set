@@ -52,24 +52,32 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 3,
+      "added": 5,
+      "changed": 11,
       "moved": 0,
-      "parts": 3,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "tests/fixtures/card-values.json is now also read by tests/test_critic_eval.py.",
+        "subjects": [
+          "tests/fixtures/card-values.json",
+          "tests/test_critic_eval.py"
+        ]
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-18; 3 files changed content.",
+        "sentence": "5 files added and 11 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "462ea6adf4cfe70ec1273354124591e7dd5310af",
-      "generatedAt": "2026-10-18T20:32:30.941Z"
+      "commit": "05becc87491242e3cb0727bcc53013a9107c6732",
+      "generatedAt": "2026-10-18T21:01:53.697Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -116,21 +124,6 @@
       ],
       "relation": "b-imports-a",
       "shared": 11
-    },
-    {
-      "a": "src/role_set/generate/recipes.py",
-      "b": "tests/test_generate.py",
-      "either": 10,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
-      "shared": 5
     }
   ],
   "changesTogetherNote": [
@@ -139,9 +132,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 14 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 3,
-  "commit": "05becc87491242e3cb0727bcc53013a9107c6732",
+  "commit": "3b9609ce6e22089f3eec016d9639b6a9706ac1db",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (106 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (111 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -156,17 +149,17 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 50
+          "files": 53
         },
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 4
+          "files": 5
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 42
+          "files": 43
         }
       ],
       "runs": [
@@ -229,7 +222,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 36
+          "files": 37
         }
       ],
       "runs": [
@@ -310,12 +303,12 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-18T21:01:53.697Z",
+  "generatedAt": "2026-10-19T02:25:32.738Z",
   "limits": [
     "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
-    "4 writes and 21 reads use paths built at run time and are not named here.",
-    "31 writes and 74 reads go to a path their caller passes, not to this repository.",
-    "11 reads go to the directory the command is run in, not to this repository.",
+    "6 writes and 24 reads use paths built at run time and are not named here.",
+    "37 writes and 84 reads go to a path their caller passes, not to this repository.",
+    "12 reads go to the directory the command is run in, not to this repository.",
     "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
@@ -344,12 +337,12 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 63,
+  "testFiles": 66,
   "testedBy": {
-    "scripts": 5,
-    "src": 47
+    "scripts": 8,
+    "src": 50
   },
-  "unnamedWrites": 4,
+  "unnamedWrites": 6,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],

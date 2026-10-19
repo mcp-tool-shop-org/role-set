@@ -813,6 +813,7 @@ BROAD_HANDLERS = {
     "q6k_window": "re-raises DeadlineReached first",
     "pilot_window": "the tar in finally, after the waves",
     "rescore_window": "the tar in finally, after the rescore",
+    "critic_eval_window": "the tar in finally, after the critic-eval runs",
     "_main": "re-raises DeadlineReached first in the smoke role's two; the last records it as cut_at_deadline",
 }
 
