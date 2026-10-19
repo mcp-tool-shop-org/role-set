@@ -1254,6 +1254,13 @@ def test_pin_window_stub_write_only_lessons_ends_with_awaiting_critique_drafts(t
     monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
     monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
     monkeypatch.setattr(pw.Pool, "proxy", lambda self, name: None)
+    # A free port of its own: under -n auto the window-script tests serve their stub windows on PILOT_PORT at the same
+    # time (CI on #97: "Address already in use").
+    import socket as _socket
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(pw, "PILOT_PORT", s.getsockname()[1])
 
     monkeypatch.setenv("PIN_STUB", "1")
     monkeypatch.setenv("PIN_ROLE", "pilot")
