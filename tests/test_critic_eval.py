@@ -216,6 +216,40 @@ def test_critic_eval_end_to_end_mock_records_checks_and_makes_no_trait_calls(
             assert row["flaw_check"] is None
 
 
+def test_critic_eval_refuses_a_kind_c_draft_with_no_planted_flaw(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """A write-only wave leaves row null; the gold record's key must carry planted_flaw. With none anywhere, critic-eval
+    refuses the item rather than rebuild a key from the slot (R&D on #97)."""
+
+    h, items = waves.read(eval_items_file)
+    c_items = [i for i, it in enumerate(items) if it["slot"]["kind"] == "C"]
+    assert c_items
+    it = items[c_items[0]]
+    it["row"] = None
+    it["key"].pop("planted_flaw", None)
+    it["key"].pop("flaw", None)
+    it["slot"].pop("planted_flaw", None)
+    cand = json.loads(it["candidate"]["text"])
+    cand.pop("planted_flaw", None)
+    it["candidate"]["text"] = json.dumps(cand)
+    no_flaw = tmp_path / "no-flaw-items.jsonl"
+    waves.write(no_flaw, h, items)
+
+    with pytest.raises(CriticEvalError, match="lacks a valid planted_flaw"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=no_flaw,
+                pack=pack_dir,
+                out=tmp_path / "eval-no-flaw",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=0,
+                mock=True,
+            )
+        )
+
+
 def test_critic_eval_skips_same_family_writer_and_reports_it(
     eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
 ):
@@ -1344,19 +1378,15 @@ def test_offline_rescore_leaves_out_skipped_items_and_checks_p3_skip_sets(
     - an unscored, unskipped item still refuses (skipping never hides a missing reply)."""
     from role_set.critic_eval import extract_item_parts
 
-    # Verify awaiting_critique Kind C drafts derive planted_flaw from slot_flaw when row is None
-    awaiting_odd = extract_item_parts({
+    # A kind-C draft with no planted_flaw anywhere (row null, as a write-only wave leaves it) keeps key_flaw None: the
+    # gold record's key carries it explicitly, and nothing rebuilds it from the slot (R&D on #97).
+    awaiting = extract_item_parts({
         "slot": {"id": "T02-C-01", "lesson": "T02", "kind": "C", "verdict": "unsupported"},
+        "row": None,
         "material": {"text": "Line 1."},
         "candidate": {"text": json.dumps({"statement": "S1", "deciding": ["Line 1."], "checker_trace": "T", "checker_verdict": "supported"})},
     })
-    awaiting_even = extract_item_parts({
-        "slot": {"id": "T02-C-06", "lesson": "T02", "kind": "C", "verdict": "supported"},
-        "material": {"text": "Line 1."},
-        "candidate": {"text": json.dumps({"statement": "S1", "deciding": ["Line 1."], "checker_trace": "T", "checker_verdict": "supported"})},
-    })
-    assert awaiting_odd["key_flaw"] in ("guess", "loop", "nitpick", "rubber_stamp")
-    assert awaiting_even["key_flaw"] == "none"
+    assert awaiting["key_flaw"] is None
 
     h, rows = waves.read(eval_items_file)
     # Mark first source row as written by LIGHTNING (nvidia family) so critic-eval skips all perturbations of rows[0].

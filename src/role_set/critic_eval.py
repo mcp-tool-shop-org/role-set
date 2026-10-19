@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from role_set import callcache, cards, proven, waves
-from role_set.assemble import FLAWS, VERDICTS, Slot, slot_flaw
+from role_set.assemble import FLAWS, VERDICTS
 from role_set.critic import CriticVerdict, _lines, compare_flaw, compare_verdict, flaw_messages, verdict_messages
 from role_set.gates import Gates, GatesUnavailable, load_gates
 from role_set.guards import GuardError
@@ -177,20 +177,6 @@ def extract_item_parts(d: dict) -> dict:
         key_flaw = fields["planted_flaw"]
     elif "planted_flaw" in slot:
         key_flaw = slot["planted_flaw"]
-    elif kind == "C" and slot.get("id") and slot.get("verdict"):
-        try:
-            key_flaw = slot_flaw(
-                Slot(
-                    id=str(slot["id"]),
-                    lesson=str(slot.get("lesson") or "T02"),
-                    kind="C",
-                    side=str(slot.get("side") or "x"),
-                    tier=int(slot.get("tier") or 1),
-                    verdict=str(slot["verdict"]),
-                )
-            )
-        except (ValueError, IndexError):
-            key_flaw = None
     else:
         key_flaw = None
 
