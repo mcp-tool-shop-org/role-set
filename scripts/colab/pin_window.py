@@ -680,6 +680,14 @@ UPLOAD_CHILD_ENV: dict = {}  # tests point the child at a stand-in huggingface_h
 TOKEN_SHAPE_RE = re.compile(r"hf_[A-Za-z0-9]{30,}")
 
 
+def conversion_route(spec: dict) -> str:
+    """The hosted README's conversion line, true to the route fetch_model took (R&D, 2026-10-19: provenance is true)."""
+
+    if spec.get("via_bf16"):
+        return "convert_hf_to_gguf.py --outtype bf16, then llama-quantize Q8_0"
+    return "convert_hf_to_gguf.py --outtype q8_0"
+
+
 def upload_hosted(spec: dict, m: dict, result: dict) -> None:
     """A prebuild window's one model, uploaded to the private repo with its upstream licence files and model card and a
     README naming its source, revision, converter and pin (R&D's licence conditions). Only after its pin matched. The
@@ -703,7 +711,7 @@ def upload_hosted(spec: dict, m: dict, result: dict) -> None:
            "readme": (f"# {spec['served_as']} Q8_0 (private, studio use only)\n\n"
                       f"- Source: https://huggingface.co/{spec['repo']} at revision {m['revision']}\n"
                       "- Licence: {licence} (upstream LICENSE/NOTICE and model card beside this file)\n"
-                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, convert_hf_to_gguf.py --outtype q8_0\n"
+                      f"- Conversion: llama.cpp {LLAMA_CPP_COMMIT}, {conversion_route(spec)}\n"
                       f"- sha256: {m['gguf_sha256']} (role-set pin_window.MODELS expect_sha256)\n"
                       # e.g. Super-VL (R&D, 2026-10-19): one conversion, so reproducibility isn't re-proven for it.
                       + (f"- Note: {m['readme_note']}\n" if m.get("readme_note") else ""))}

@@ -173,6 +173,7 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Fixed
 
+- **The hosted README names the route the conversion took.** A `via_bf16` model's line reads "convert_hf_to_gguf.py --outtype bf16, then llama-quantize Q8_0", not `--outtype q8_0` (Super-VL's first README said q8_0; corrected on the Hub).
 - **`run_proc` reads a tool's output as a log, not strict UTF-8.** On Super-VL's conversion llama-quantize printed a non-UTF-8 byte (0xC4), and the strict decode raised after the child had finished, losing its exit code and timing. `errors="replace"` keeps both; a test runs a child that writes invalid bytes and exits 3.
 
 ## [0.2.0] - 2026-10-14

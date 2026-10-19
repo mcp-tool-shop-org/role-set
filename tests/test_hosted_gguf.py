@@ -521,6 +521,20 @@ def test_a_readme_note_is_written_when_given_and_left_out_otherwise(vm, monkeypa
     assert "- Note:" not in [r for r in rows if r["call"] == "upload"][0]["readme"]
 
 
+def test_the_readme_names_the_route_the_conversion_took(vm, monkeypatch, tmp_path):
+    # Super-VL's first README said --outtype q8_0 after a BF16 + llama-quantize conversion (R&D: provenance is true).
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path)
+    assert err is None, err
+    readme = [r for r in rows if r["call"] == "upload"][0]["readme"]
+    assert "convert_hf_to_gguf.py --outtype q8_0" in readme and "llama-quantize" not in readme
+    pw.TOKEN_PATH.write_text(SENTINEL, encoding="utf-8")
+    pw.read_token_file(needed=True)
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, spec=dict(GRANITE, via_bf16=True))
+    assert err is None, err
+    readme = [r for r in rows if r["call"] == "upload"][0]["readme"]
+    assert "convert_hf_to_gguf.py --outtype bf16, then llama-quantize Q8_0" in readme and "--outtype q8_0" not in readme
+
+
 def test_the_convert_timeout_scales_with_the_snapshot_and_keeps_the_old_floor():
     # Super-VL-120B (critic-signal §10) hit a flat 3600 s cap at 54.8 of ~127 GB; 30B models stay at the floor.
     assert pw.convert_timeout(None) == 3600 and pw.convert_timeout(0) == 3600
