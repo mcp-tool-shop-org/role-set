@@ -175,6 +175,8 @@ def extract_item_parts(d: dict) -> dict:
         key_flaw = row["planted_flaw"]
     elif "planted_flaw" in fields:
         key_flaw = fields["planted_flaw"]
+    elif "planted_flaw" in slot:
+        key_flaw = slot["planted_flaw"]
     else:
         key_flaw = None
 
@@ -721,6 +723,28 @@ def _report_gguf_sha(rep: dict) -> str | None:
     return str(sha).strip() if isinstance(sha, str) and sha.strip() else None
 
 
+def _skipped_ids_from_report(rep: dict) -> list[str]:
+    """Extract the skipped item_ids from a critic-eval-report.json object."""
+    raw = rep.get("skipped")
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise CriticEvalError("REFUSED: critic-eval-report.json 'skipped' must be a list")
+    ids: list[str] = []
+    for entry in raw:
+        if isinstance(entry, str) and entry.strip():
+            iid = entry.strip()
+        elif isinstance(entry, dict):
+            iid = str(entry.get("item_id") or entry.get("id") or "").strip()
+            if not iid:
+                raise CriticEvalError("REFUSED: critic-eval-report.json 'skipped' entry lacks item_id")
+        else:
+            raise CriticEvalError("REFUSED: invalid entry in critic-eval-report.json 'skipped'")
+        if iid not in ids:
+            ids.append(iid)
+    return ids
+
+
 def _verdict_replies_from_eval(eval_rec: dict, num_turns: int) -> list[str]:
     """Extract each turn's raw_reply from eval_rec. Never reconstructs a reply from parsed fields."""
     iid = eval_rec.get("item_id") or eval_rec.get("id")
@@ -905,7 +929,7 @@ def _index_eval(rows: list[dict]) -> dict[str, dict]:
     return by_id
 
 
-def render_offline_table(summary: dict[str, dict[str, dict]]) -> str:
+def render_offline_table(summary: dict[str, dict[str, dict]], *, skipped: list[str] | None = None) -> str:
     lines = [
         "| rule_set | perturbation_type | role | n | accepted | refused | accept_rate | refuse_rate | primary_metric |",
         "| --- | --- | --- | --- | --- | --- | --- | --- | --- |",
@@ -920,6 +944,9 @@ def render_offline_table(summary: dict[str, dict[str, dict]]) -> str:
                 f"| {rs} | {ptype} | {role} | {s['n']} | {s['accepted']} | {s['refused']} "
                 f"| {s['accept_rate']:.3f} | {s['refuse_rate']:.3f} | {primary} |"
             )
+    if skipped is not None:
+        ids_str = ", ".join(skipped) if skipped else "none"
+        lines.append(f"\nSkipped ({len(skipped)}): {ids_str}")
     return "\n".join(lines)
 
 
@@ -1002,6 +1029,7 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
                 f"does not match --items {items_path.name} ({items_sha256})"
             )
 
+    skipped_0 = _skipped_ids_from_report(eval_reports[0])
     if len(eval_runs) == 2:
         rep0, rep1 = eval_reports[0], eval_reports[1]
         model0, model1 = rep0.get("critic_model"), rep1.get("critic_model")
@@ -1016,6 +1044,12 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
             )
         if rep0.get("input_sha256") != rep1.get("input_sha256"):
             raise CriticEvalError("REFUSED: P3 requires the same input_sha256 in both reports")
+
+        skipped_1 = _skipped_ids_from_report(rep1)
+        if set(skipped_0) != set(skipped_1):
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same skipped item ids in both reports ({skipped_0} vs {skipped_1})"
+            )
 
         seed0, seed1 = rep0.get("critic_seed"), rep1.get("critic_seed")
         if (
@@ -1067,8 +1101,31 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
     rule_sets = ("P0", "P2", "P3") if len(eval_runs) == 2 else ("P0", "P2")
     rows_out: list[dict] = []
     by_item: dict[str, dict] = {}
+    eval_skipped_set = set(skipped_0)
+    left_out: list[str] = []
+    skipped_by_type: dict[str, list[str]] = {}
 
     for ki in key_items:
+        iid = ki["item_id"]
+        ptype = ki["perturbation_type"]
+        src = ki["source_row_id"]
+        if ptype in KEY_ONLY_TYPES:
+            expected_ctrl = f"{src}:d"
+            ctrl_id = ki.get("control_item_id") or expected_ctrl
+            if ctrl_id != expected_ctrl:
+                raise CriticEvalError(
+                    f"REFUSED: key-only item {iid!r} has control_item_id {ctrl_id!r}, expected {expected_ctrl!r}"
+                )
+            if iid in eval_skipped_set or ctrl_id in eval_skipped_set:
+                left_out.append(iid)
+                skipped_by_type.setdefault(ptype, []).append(iid)
+                continue
+        elif ptype in GPU_TYPES:
+            if iid in eval_skipped_set:
+                left_out.append(iid)
+                skipped_by_type.setdefault(ptype, []).append(iid)
+                continue
+
         rec0 = _match_eval_record(ki, idx0)
         p0 = score_single_item(gates, rec0, ki, "P0")
         p2 = score_single_item(gates, rec0, ki, "P2")
@@ -1125,6 +1182,7 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
             acc = sum(1 for x in plist if x["accepted"])
             ref = sum(1 for x in plist if x["refused"])
             is_ctrl = ptype in CONTROL_TYPES
+            sk_type = skipped_by_type.get(ptype, [])
             summary[rs][ptype] = {
                 "n": n,
                 "role": "control" if is_ctrl else "perturbed",
@@ -1132,9 +1190,11 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
                 "refused": ref,
                 "accept_rate": round(acc / n, 4) if n else 0.0,
                 "refuse_rate": round(ref / n, 4) if n else 0.0,
+                "skipped_count": len(sk_type),
+                "skipped": list(sk_type),
             }
 
-    table = render_offline_table(summary)
+    table = render_offline_table(summary, skipped=left_out)
     if str(cfg.out).endswith(".jsonl"):
         jsonl_path = Path(cfg.out)
         jsonl_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1147,6 +1207,8 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
     jsonl_path.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r in rows_out), encoding="utf-8")
     report = {
         "rule_sets": list(rule_sets),
+        "skipped_count": len(left_out),
+        "skipped": left_out,
         "summary": summary,
         "by_item": by_item,
         "rows": rows_out,

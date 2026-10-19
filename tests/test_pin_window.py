@@ -967,3 +967,334 @@ def test_a_download_running_at_the_deadline_is_cut_within_one_round(monkeypatch,
     with pytest.raises(pw.DeadlineReached, match="hosted:x was under way at the window's deadline"):
         pw.with_heartbeat(lambda: _t.sleep(30), "hosted:x", 600, watch=tmp_path)
     assert _t.time() - t0 < 4  # cut at the deadline, well inside one 5 s round
+
+
+# ---- PIN_PILOT_LESSONS and write-only pilot (PIN_PILOT_CRITIC=none) (rnd DESIGN §9, 2026-10-19) -------------------------
+
+def _role_set_cmd() -> dict:
+    root = Path(__file__).resolve().parents[1]
+    exe = Path(sys.executable).with_name("role-set.exe" if os.name == "nt" else "role-set")
+    return {"role_set": str(exe) if exe.exists() else f'"{sys.executable}" -m role_set.cli', "src": str(root)}
+
+
+def test_plan_pilot_lessons_merges_in_env_order_screens_c_ids_and_role_set_write_accepts(
+    tmp_path, monkeypatch, domain_table
+):
+    from test_waves import pack_dir as _make_pack_dir  # noqa: F401
+
+    from role_set import waves
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.write import WriteConfig, run
+
+    rs = _role_set_cmd()
+    # Two lessons in env order (T08 then T02, not sorted order)
+    lessons = ["T08", "T02"]
+    slot_ids = "T08-C-01,T08-C-04,T02-C-01,T02-C-06"
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", slot_ids)
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    plan_out = tmp_path / "pilot-plan.json"
+    meta = pw.plan_pilot_lessons(rs, lessons, str(domain_table), plan_out, tmp_path / "work")
+
+    assert meta["lessons"] == ["T08", "T02"]
+    assert list(meta["per_lesson_sha256"]) == ["T08", "T02"]
+    assert all(len(v) == 64 for v in meta["per_lesson_sha256"].values())
+    assert len(meta["exclusion_state_sha256"] or "") == 64
+
+    unscreened = json.loads(plan_out.read_text(encoding="utf-8"))
+    unscreened_lessons = [s["lesson"] for s in unscreened["slots"]]
+    # All T08 slots come before all T02 slots (env order preserved)
+    first_t02 = unscreened_lessons.index("T02")
+    assert all(x == "T08" for x in unscreened_lessons[:first_t02])
+    assert all(x == "T02" for x in unscreened_lessons[first_t02:])
+    assert len(unscreened["figures"]) == 2
+    assert [f["lesson"] for f in unscreened["figures"]] == ["T08", "T02"]
+
+    # Screen keeps C ids across lessons in the merged plan's order (T08 then T02)
+    kept = pw.screen_plan(plan_out, "PIN_PILOT_SLOT_IDS")
+    assert kept == ["T08-C-01", "T08-C-04", "T02-C-01", "T02-C-06"]
+    screened = json.loads(plan_out.read_text(encoding="utf-8"))
+    assert [s["id"] for s in screened["slots"]] == ["T08-C-01", "T08-C-04", "T02-C-01", "T02-C-06"]
+    assert all(s["kind"] == "C" for s in screened["slots"])
+
+    # Verify role-set write accepts the merged C-only plan as is (without loosening any role-set rule)
+    pack = tmp_path / "pack"
+    trait_files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T02.md": "## 2. As a verifier, you go to the source\n\nThe source decides.\n",
+        "traits/T08.md": "## 8. As a verifier, you trace every step\n\nEvery step.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    for name, text in trait_files.items():
+        p = pack / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(trait_files)
+    (pack / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    w0_out = tmp_path / "w0"
+    res = run(WriteConfig(plan=plan_out, pack=pack, out=w0_out, mock=True, partition="trial:j1-wave1", wave="write"))
+    assert res["halted"] is None
+    _, drafts = waves.read(w0_out / "mock" / waves.DRAFTS_FILE)
+    assert len(drafts) == 4
+    assert {d["slot"]["id"] for d in drafts} == {"T08-C-01", "T08-C-04", "T02-C-01", "T02-C-06"}
+    assert all(d["state"] == "awaiting_critique" for d in drafts)
+
+
+def test_plan_pilot_lessons_refusals(tmp_path, monkeypatch, domain_table):
+    rs = _role_set_cmd()
+    plan_out = tmp_path / "pilot-plan.json"
+
+    # 1. PIN_PILOT_LESSONS without PIN_PILOT_SLOT_IDS refuses
+    monkeypatch.delenv("PIN_PILOT_SLOT_IDS", raising=False)
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_LESSONS requires PIN_PILOT_SLOT_IDS"):
+        pw.plan_pilot_lessons(rs, ["T02", "T03"], str(domain_table), plan_out, tmp_path / "w1")
+
+    # 2. PIN_PILOT_TWINS not set to 0 refuses
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "1")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_LESSONS requires PIN_PILOT_TWINS=0"):
+        pw.plan_pilot_lessons(rs, ["T02", "T03"], str(domain_table), plan_out, tmp_path / "w2")
+
+    # 3. A lesson that role-set plan refuses fails
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    with pytest.raises(RuntimeError, match="exit "):
+        pw.plan_pilot_lessons(rs, ["T02", "T99"], str(domain_table), plan_out, tmp_path / "w3")
+
+    # 4. An id missing from every lesson fails in screen_plan
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01,T06-C-01")
+    pw.plan_pilot_lessons(rs, ["T02", "T03"], str(domain_table), plan_out, tmp_path / "w4")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_SLOT_IDS: T06-C-01 not in pilot-plan.json"):
+        pw.screen_plan(plan_out, "PIN_PILOT_SLOT_IDS")
+
+    # 5. Mismatched exclusion_state_sha256 across lesson plans refuses
+    def fake_sh_mismatch(cmd: str, **kw) -> str:
+        out_idx = cmd.split().index("--out") + 1
+        out_p = Path(cmd.split()[out_idx])
+        sha = "a" * 64 if "T02" in cmd else "b" * 64
+        out_p.write_text(
+            json.dumps({"slots": [{"id": "T02-C-01"}], "figures": [], "exclusion_state_sha256": sha}),
+            encoding="utf-8",
+        )
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_sh_mismatch)
+    with pytest.raises(RuntimeError, match="mismatched exclusion_state_sha256"):
+        pw.plan_pilot_lessons(rs, ["T02", "T03"], str(domain_table), plan_out, tmp_path / "w5")
+
+
+def test_write_only_critics_for_and_pilot_batch_no_critic(monkeypatch, tmp_path):
+    # 1. PIN_PILOT_CRITIC=none with waves=1 returns {}
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    assert pw.critics_for(["gemma-4-31b-it"], waves=1) == {}
+
+    # 2. PIN_PILOT_CRITIC=none with waves > 1 refuses
+    with pytest.raises(RuntimeError, match="PIN_PILOT_CRITIC=none is allowed only when PIN_PILOT_WAVES=1"):
+        pw.critics_for(["gemma-4-31b-it"], waves=2)
+
+    # 3. PIN_PILOT_CRITIC=none combined with PIN_PILOT_CRITIC_FOR refuses
+    monkeypatch.setenv("PIN_PILOT_CRITIC_FOR", "gemma-4-31b-it=muse-glimmer-30b")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_CRITIC=none takes no PIN_PILOT_CRITIC_FOR"):
+        pw.critics_for(["gemma-4-31b-it"], waves=1)
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+
+    # 4. Write-only pilot_batch (PILOT_WAVES=1, critic_for={}) fetches and serves ONLY the writer
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    monkeypatch.setattr(pw, "PILOT_WAVES", 1)
+    G = "gemma-4-31b-it"
+    arms = pw.pilot_batch({}, [], plan, tmp_path / "pilot-wo", [G], {}, pool, twins_after=False)
+    assert events == [("fetch", G), ("serve", G), ("write", G, G), ("stop", G)]
+    assert len(arms[G]["waves"]) == 1 and arms[G]["waves"][0]["result"]["states"]["awaiting_critique"] == 1
+
+    # 5. pilot_batch reaching a critique wave with no critic fails its assertion
+    events.clear()
+    monkeypatch.setattr(pw, "PILOT_WAVES", 2)
+    pool2 = pw.Pool({}, {}, {}, tmp_path / "cards.json", tmp_path / "out2")
+    with pytest.raises(AssertionError, match="pilot_batch reached a critique wave with no critic"):
+        pw.pilot_batch({}, [], plan, tmp_path / "pilot-bad", [G], {}, pool2, twins_after=False)
+
+
+def test_pilot_window_write_only_pins_and_prefetches_no_critic(tmp_path, monkeypatch, domain_table):
+    """PIN_PILOT_CRITIC=none with PIN_PILOT_WAVES=1 pins, prefetches, and serves only the writer (no critic),
+    and records result['critic_for'] = 'none (write only)' and plans.lessons / per_lesson_sha256 / pilot_sha256."""
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    pack = content / "pack"
+    pack.mkdir()
+    (pack / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+
+    rs = _role_set_cmd()
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+
+    pinned_names: list[list[str]] = []
+    prefetched_names: list[list[str]] = []
+    batch_calls: list[tuple] = []
+
+    orig_check_pins = pw.check_pins
+
+    def tracking_check_pins(names, listed, policies):
+        pinned_names.append(list(names))
+        return orig_check_pins(names, listed, policies)
+
+    def tracking_prefetch(names, by_name, result):
+        prefetched_names.append(list(names))
+
+    def fake_pilot_batch(rs_arg, common, plan, out_dir, writers, critic_for, pool, **kw):
+        batch_calls.append((list(writers), dict(critic_for), kw.get("twins_after")))
+        return {w: {"waves": [{"wave": "write", "exit": 0}], "last": str(out_dir / w / "w0")} for w in writers}
+
+    orig_sh = pw.sh
+
+    def selective_sh(cmd: str, **kw) -> str:
+        if "pack verify" in cmd or cmd.startswith("tar "):
+            return "verified"
+        if "plan --lessons" in cmd:
+            out_idx = cmd.split().index("--out") + 1
+            out_p = Path(cmd.split()[out_idx])
+            lesson = cmd.split()[cmd.split().index("--lessons") + 1]
+            out_p.write_text(
+                json.dumps({
+                    "slots": [
+                        {"id": f"{lesson}-C-01", "lesson": lesson, "kind": "C"},
+                        {"id": f"{lesson}-C-02", "lesson": lesson, "kind": "C"},
+                    ],
+                    "figures": [{"id": f"{lesson}-fig"}],
+                    "exclusion_state_sha256": "e" * 64,
+                }),
+                encoding="utf-8",
+            )
+            return "planned"
+        return orig_sh(cmd, **kw)
+
+    monkeypatch.setattr(pw, "check_pins", tracking_check_pins)
+    monkeypatch.setattr(pw, "prefetch_hosted", tracking_prefetch)
+    monkeypatch.setattr(pw, "pilot_batch", fake_pilot_batch)
+    monkeypatch.setattr(pw, "sh", selective_sh)
+
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T03,T02")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T03-C-01,T02-C-02")
+
+    result: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, result)
+
+    assert pinned_names == [["gemma-4-31b-it"]]
+    assert prefetched_names == [["gemma-4-31b-it"]]
+    assert batch_calls == [(["gemma-4-31b-it"], {}, False)]
+    assert result["critic_for"] == "none (write only)"
+    assert result["plans"]["lessons"] == ["T03", "T02"]
+    assert list(result["plans"]["per_lesson_sha256"]) == ["T03", "T02"]
+    assert len(result["plans"]["pilot_sha256"]) == 64
+    assert result["plans"]["twins_sha256"] is None
+    assert not (work / "pilot" / "twins-plan.json").exists()
+
+
+def test_pin_window_stub_write_only_lessons_ends_with_awaiting_critique_drafts(tmp_path, monkeypatch):
+    from test_cards import SAMPLING
+
+    from role_set import waves
+    from role_set.pack import PackManifest, pack_hash
+
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+
+    pack_dir = content / "pack"
+    trait_files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T02.md": "## 2. As a verifier, you go to the source\n\nThe source decides.\n",
+        "traits/T03.md": "## 3. As a verifier, you check numbers\n\nNumbers.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    for name, text in trait_files.items():
+        p = pack_dir / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(trait_files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    writer = "gemma-4-31b-it"
+    cards = {
+        "candidates": [
+            {
+                "candidate": writer,
+                "revision": "r1",
+                "sampling": dict(SAMPLING),
+                "chat_template_kwargs": {"enable_thinking": True},
+                "transforms": ["reattach_thinking"],
+            }
+        ]
+    }
+    (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
+
+    rs = _role_set_cmd()
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw.Pool, "proxy", lambda self, name: None)
+    # A free port of its own: under -n auto the window-script tests serve their stub windows on PILOT_PORT at the same
+    # time (CI on #97: "Address already in use").
+    import socket as _socket
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(pw, "PILOT_PORT", s.getsockname()[1])
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d12bae86a22a82567f98e7f2697f1fddb9b1f300")
+    monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
+    monkeypatch.setenv("PIN_PILOT_WRITERS", writer)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T03,T02")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T03-C-01,T02-C-06")
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_WAVE", raising=False)
+    monkeypatch.delenv("PIN_RESUME_DIR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_CALLS_DIR", raising=False)
+
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_GGUF_REPO", "PIN_GGUF_REVISION"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm-hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+
+    res: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res)
+
+    assert res["critic_for"] == "none (write only)"
+    assert res["plans"]["lessons"] == ["T03", "T02"]
+    assert list(res["plans"]["per_lesson_sha256"]) == ["T03", "T02"]
+    assert len(res["plans"]["pilot_sha256"]) == 64
+    assert list(res["serves"]) == [writer]
+    assert res["model_errors"] == 0, res["arms"]
+
+    drafts_path = work / "pilot" / "pilot" / writer / "w0" / waves.DRAFTS_FILE
+    _, drafts = waves.read(drafts_path)
+    assert {d["slot"]["id"] for d in drafts} == {"T03-C-01", "T02-C-06"}
+    assert all(d["state"] == "awaiting_critique" for d in drafts)
+    assert not (work / "pilot" / "pilot" / writer / "w1").exists()
+

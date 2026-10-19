@@ -216,6 +216,40 @@ def test_critic_eval_end_to_end_mock_records_checks_and_makes_no_trait_calls(
             assert row["flaw_check"] is None
 
 
+def test_critic_eval_refuses_a_kind_c_draft_with_no_planted_flaw(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """A write-only wave leaves row null; the gold record's key must carry planted_flaw. With none anywhere, critic-eval
+    refuses the item rather than rebuild a key from the slot (R&D on #97)."""
+
+    h, items = waves.read(eval_items_file)
+    c_items = [i for i, it in enumerate(items) if it["slot"]["kind"] == "C"]
+    assert c_items
+    it = items[c_items[0]]
+    it["row"] = None
+    it["key"].pop("planted_flaw", None)
+    it["key"].pop("flaw", None)
+    it["slot"].pop("planted_flaw", None)
+    cand = json.loads(it["candidate"]["text"])
+    cand.pop("planted_flaw", None)
+    it["candidate"]["text"] = json.dumps(cand)
+    no_flaw = tmp_path / "no-flaw-items.jsonl"
+    waves.write(no_flaw, h, items)
+
+    with pytest.raises(CriticEvalError, match="lacks a valid planted_flaw"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=no_flaw,
+                pack=pack_dir,
+                out=tmp_path / "eval-no-flaw",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=0,
+                mock=True,
+            )
+        )
+
+
 def test_critic_eval_skips_same_family_writer_and_reports_it(
     eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
 ):
@@ -1331,6 +1365,137 @@ def test_critic_eval_and_offline_error_cases_and_extract_item_parts(tmp_path: Pa
         CriticRescoreOfflineConfig(eval_files=(e0, e1), items=base_items, keys=(override_keys,), out=tmp_path / "inh-out", mock=True)
     )
     assert rep_inh["by_item"]["ok:a"]["P2"]["outcome"] == "refuse"
+
+
+def test_offline_rescore_leaves_out_skipped_items_and_checks_p3_skip_sets(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """critic-rescore-offline reads every --eval report's skipped item ids and leaves those items out of scoring:
+    - skipped GPU items (d, b, e, f) are left out under P0, P2, and P3;
+    - a key-only item (a, c, g) whose control_item_id is skipped is left out;
+    - the report and summary give the count left out with their ids;
+    - P3 with different skip sets in the two reports refuses;
+    - an unscored, unskipped item still refuses (skipping never hides a missing reply)."""
+    from role_set.critic_eval import extract_item_parts
+
+    # A kind-C draft with no planted_flaw anywhere (row null, as a write-only wave leaves it) keeps key_flaw None: the
+    # gold record's key carries it explicitly, and nothing rebuilds it from the slot (R&D on #97).
+    awaiting = extract_item_parts({
+        "slot": {"id": "T02-C-01", "lesson": "T02", "kind": "C", "verdict": "unsupported"},
+        "row": None,
+        "material": {"text": "Line 1."},
+        "candidate": {"text": json.dumps({"statement": "S1", "deciding": ["Line 1."], "checker_trace": "T", "checker_verdict": "supported"})},
+    })
+    assert awaiting["key_flaw"] is None
+
+    h, rows = waves.read(eval_items_file)
+    # Mark first source row as written by LIGHTNING (nvidia family) so critic-eval skips all perturbations of rows[0].
+    skipped_src_id = rows[0]["source_row_id"]
+    rows[0]["writer_model"] = LIGHTNING
+    rows[0]["writer_family"] = "nvidia"
+    mixed_gold = tmp_path / "mixed-gold.jsonl"
+    waves.write(mixed_gold, h, rows)
+
+    pert_dir = tmp_path / "pert"
+    perturb.run_perturb(mixed_gold, pert_dir, seed=23)
+    _, gpu_items = waves.read(pert_dir / "items.jsonl")
+    expected_skipped_gpu = [it["item_id"] for it in gpu_items if it["source_row_id"] == skipped_src_id]
+    assert f"{skipped_src_id}:d" in expected_skipped_gpu
+
+    # Run critic-eval at seed 0 and seed 1 with LIGHTNING: items from skipped_src_id are skipped in both reports.
+    eval_s0 = tmp_path / "eval-s0"
+    eval_s1 = tmp_path / "eval-s1"
+    for s_val, out_d in ((0, eval_s0), (1, eval_s1)):
+        rep = run_critic_eval(
+            CriticEvalConfig(
+                items=pert_dir / "items.jsonl",
+                pack=pack_dir,
+                out=out_d,
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=s_val,
+                mock=True,
+            )
+        )
+        assert [s["item_id"] for s in rep["skipped"]] == expected_skipped_gpu
+
+    # 1. Single-run (P0, P2) with --items and --keys keys-a.jsonl: both GPU items and key-only item (a) for skipped_src_id are left out.
+    off_p2 = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(eval_s0 / "critic-eval.jsonl",),
+            items=pert_dir / "items.jsonl",
+            keys=(pert_dir / "keys-a.jsonl", pert_dir / "keys-c.jsonl", pert_dir / "keys-g.jsonl"),
+            out=tmp_path / "off-p2",
+            mock=True,
+        )
+    )
+    _, keys_a = waves.read(pert_dir / "keys-a.jsonl")
+    _, keys_c = waves.read(pert_dir / "keys-c.jsonl")
+    _, keys_g = waves.read(pert_dir / "keys-g.jsonl")
+    expected_skipped_keys = [
+        it["item_id"]
+        for k_list in (keys_a, keys_c, keys_g)
+        for it in k_list
+        if it["source_row_id"] == skipped_src_id
+    ]
+    assert f"{skipped_src_id}:a" in expected_skipped_keys
+    expected_all_skipped = expected_skipped_gpu + expected_skipped_keys
+
+    assert off_p2["skipped_count"] == len(expected_all_skipped)
+    assert off_p2["skipped"] == expected_all_skipped
+    assert f"Skipped ({len(expected_all_skipped)}):" in off_p2["table"]
+    for sid in expected_all_skipped:
+        assert sid not in off_p2["by_item"]
+        assert sid in off_p2["table"]
+    assert off_p2["summary"]["P0"]["d"]["skipped"] == [f"{skipped_src_id}:d"]
+    assert off_p2["summary"]["P2"]["a"]["skipped"] == [f"{skipped_src_id}:a"]
+
+    # 2. Two-run P3 with matching skip sets succeeds and leaves out the same items.
+    off_p3 = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(eval_s0 / "critic-eval.jsonl", eval_s1 / "critic-eval.jsonl"),
+            items=pert_dir / "items.jsonl",
+            keys=(pert_dir / "keys-a.jsonl",),
+            out=tmp_path / "off-p3",
+            mock=True,
+        )
+    )
+    assert off_p3["skipped"] == expected_skipped_gpu + [f"{skipped_src_id}:a"]
+    assert all(sid not in off_p3["by_item"] for sid in off_p3["skipped"])
+
+    # 3. P3 with different skip sets in the two reports refuses!
+    eval_s1_diff = tmp_path / "eval-s1-diff"
+    shutil.copytree(eval_s1, eval_s1_diff)
+    rep1_path = eval_s1_diff / "critic-eval-report.json"
+    rep1_data = json.loads(rep1_path.read_text(encoding="utf-8"))
+    rep1_data["skipped"] = rep1_data["skipped"][1:]  # drop one skipped item so the sets differ
+    rep1_path.write_text(json.dumps(rep1_data, indent=1), encoding="utf-8")
+    with pytest.raises(CriticEvalError, match="P3 requires the same skipped item ids in both reports"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(
+                eval_files=(eval_s0 / "critic-eval.jsonl", eval_s1_diff / "critic-eval.jsonl"),
+                items=pert_dir / "items.jsonl",
+                out=tmp_path / "off-p3-bad",
+                mock=True,
+            )
+        )
+
+    # 4. An unscored, unskipped item still refuses (dropping a scored record from critic-eval.jsonl without it being in skipped).
+    eval_s0_missing = tmp_path / "eval-s0-missing"
+    shutil.copytree(eval_s0, eval_s0_missing)
+    eval_lines = (eval_s0_missing / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+    # Remove the first scored record (which is NOT in skipped)
+    (eval_s0_missing / "critic-eval.jsonl").write_text("\n".join(eval_lines[1:]) + "\n", encoding="utf-8")
+    with pytest.raises(CriticEvalError, match="no recorded critic reply found"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(
+                eval_files=(eval_s0_missing / "critic-eval.jsonl",),
+                items=pert_dir / "items.jsonl",
+                out=tmp_path / "off-unscored",
+                mock=True,
+            )
+        )
+
 
 
 # ---- Window role: PIN_ROLE=critic-eval (Linux / POSIX tests, matching test_rescore_window.py) ----
