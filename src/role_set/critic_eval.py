@@ -8,6 +8,7 @@ model calls.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import re
@@ -23,11 +24,14 @@ from role_set.mock import MockCritic, mock_gates
 from role_set.pack import PackError, verify
 from role_set.prompts import load_pack, parse_json_object
 from role_set.rescore import WINDOW_RE, _window_tokens_from_paths
+from role_set.transport import Completion
 from role_set.write import critic_caller, resolve_critic
 
 STATEMENT_RE = re.compile(r"^Statement:\s*(.+?)\s*$", re.M)
 CHECKER_VERDICT_RE = re.compile(r"^Checker verdict:\s*(\S+)\s*$", re.M)
 CONTROL_TYPES = frozenset({"d", "control", "controls"})
+GPU_TYPES = frozenset({"d", "b", "e", "f", "control", "controls"})
+KEY_ONLY_TYPES = frozenset({"a", "c", "g"})
 
 
 class CriticEvalError(RuntimeError):
@@ -83,8 +87,15 @@ def _flaw_word(reply: str | None) -> str | None:
     return word if word in FLAWS + ("none",) else None
 
 
+def _sum_thinking(values: list[int | None]) -> int | None:
+    """A check's or run's thinking token sum: None if unmeasured (empty or any call is None)."""
+    if not values or any(v is None for v in values):
+        return None
+    return sum(int(v) for v in values if v is not None)
+
+
 def extract_item_parts(d: dict) -> dict:
-    """Extract id, perturbation_type, kind, material, statement, checker_trace, checker_verdict, and key from a draft."""
+    """Extract id, perturbation_type, kind, material, statement, checker_trace, checker_verdict, and key(s) from a draft."""
 
     row = d.get("row") or {}
     slot = d.get("slot") or {}
@@ -134,6 +145,8 @@ def extract_item_parts(d: dict) -> dict:
         key_verdict = str(quiz["verdict"])
     elif "verdict" in row:
         key_verdict = str(row["verdict"])
+    elif fields.get("turn2_verdict"):
+        key_verdict = str(fields["turn2_verdict"])
     elif slot.get("verdict"):
         key_verdict = str(slot["verdict"])
     else:
@@ -147,6 +160,8 @@ def extract_item_parts(d: dict) -> dict:
         key_deciding = list(quiz["deciding"] or [])
     elif "deciding" in row:
         key_deciding = list(row["deciding"] or [])
+    elif isinstance(fields.get("turn2_deciding"), list):
+        key_deciding = list(fields["turn2_deciding"])
     elif isinstance(fields.get("deciding"), list):
         key_deciding = list(fields["deciding"])
     else:
@@ -163,11 +178,62 @@ def extract_item_parts(d: dict) -> dict:
     else:
         key_flaw = None
 
-    seen_material = material
-    if len(turns) > 1 and isinstance(turns[-1], dict) and turns[-1].get("new_material") and key_block.get("turn") != 1:
-        new_lines = turns[-1].get("new_material") or []
-        if new_lines and not all(ln in material for ln in new_lines):
+    if isinstance(d.get("new_material"), list):
+        new_lines = [str(x) for x in d["new_material"]]
+    elif len(turns) > 1 and isinstance(turns[-1], dict) and isinstance(turns[-1].get("new_material"), list):
+        new_lines = [str(x) for x in turns[-1]["new_material"]]
+    elif isinstance(fields.get("turn2_new_material"), list):
+        new_lines = [str(x) for x in fields["turn2_new_material"]]
+    else:
+        new_lines = []
+
+    raw_tk = (
+        key_block.get("turn_keys")
+        if isinstance(key_block.get("turn_keys"), dict)
+        else (
+            d.get("turn_keys")
+            if isinstance(d.get("turn_keys"), dict)
+            else (row.get("turn_keys") if isinstance(row.get("turn_keys"), dict) else None)
+        )
+    )
+
+    turn_keys_out: dict | None = None
+    if isinstance(raw_tk, dict) and isinstance(raw_tk.get("1"), dict):
+        t1 = raw_tk["1"]
+        t1_verdict = str(t1.get("verdict") or "")
+        t1_deciding = list(t1.get("deciding") if "deciding" in t1 else (t1.get("deciding_lines") or []))
+        turn_keys_out = {
+            **copy.deepcopy(raw_tk),
+            "1": {**copy.deepcopy(t1), "verdict": t1_verdict, "deciding": t1_deciding},
+        }
+        t2_seen = (material.rstrip("\n") + "\n" + "\n".join(new_lines)) if new_lines else material
+        verdict_turns = [
+            {
+                "turn": 1,
+                "seen_material": material,
+                "key_verdict": t1_verdict,
+                "key_deciding": t1_deciding,
+            },
+            {
+                "turn": 2,
+                "seen_material": t2_seen,
+                "key_verdict": key_verdict,
+                "key_deciding": key_deciding,
+            },
+        ]
+        seen_material = t2_seen
+    else:
+        seen_material = material
+        if new_lines and key_block.get("turn") != 1 and not all(ln in material for ln in new_lines):
             seen_material = material.rstrip("\n") + "\n" + "\n".join(new_lines)
+        verdict_turns = [
+            {
+                "turn": 1,
+                "seen_material": seen_material,
+                "key_verdict": key_verdict,
+                "key_deciding": key_deciding,
+            }
+        ]
 
     return {
         "item_id": item_id,
@@ -176,6 +242,7 @@ def extract_item_parts(d: dict) -> dict:
         "perturbation_type": perturbation_type,
         "kind": kind,
         "material": material,
+        "new_material": new_lines,
         "seen_material": seen_material,
         "statement": statement,
         "checker_trace": checker_trace,
@@ -183,6 +250,8 @@ def extract_item_parts(d: dict) -> dict:
         "key_verdict": key_verdict,
         "key_deciding": key_deciding,
         "key_flaw": str(key_flaw) if key_flaw is not None else None,
+        "turn_keys": turn_keys_out,
+        "verdict_turns": verdict_turns,
     }
 
 
@@ -193,7 +262,7 @@ def _writer_for_item(d: dict, header: dict, listed: proven.ProvenList | None, *,
     row = d.get("row") if isinstance(d.get("row"), dict) else {}
     cand = d.get("candidate") if isinstance(d.get("candidate"), dict) else {}
 
-    w_pins = {**h_pins, ** {k: v for k, v in receipt.items() if k.startswith(("writer_", "card_"))}, **item_pins}
+    w_pins = {**h_pins, **{k: v for k, v in receipt.items() if k.startswith(("writer_", "card_"))}, **item_pins}
     for key in ("writer_model", "writer_family", "card_candidate", "writer_repo", "writer_gguf_file"):
         if d.get(key):
             w_pins[key] = d[key]
@@ -273,7 +342,7 @@ def _blind_critic(critic, forbidden: set[str], item_id: str):
 
 
 def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
-    """Run the critic's verdict check and (for kind C) flaw check on every item of a sealed set."""
+    """Run the critic's verdict check(s) and (for kind C) flaw check on every item of a sealed set."""
 
     if cfg.pack is not None:
         try:
@@ -343,17 +412,48 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         gates = mock_gates(closed_form=closed_form)
 
     if cfg.mock and critic is None:
-        answers = dict(waves.load_answers(header))
+        header_answers = dict(waves.load_answers(header))
+        answers = dict(header_answers)
+        by_exact_mat: dict[tuple[str, str], tuple[str, list[str]]] = {}
         for d in drafts:
             parts = extract_item_parts(d)
-            first_line = parts["seen_material"].splitlines()[0].strip() if parts["seen_material"].strip() else ""
-            if parts["statement"] and (parts["statement"], first_line) not in answers and parts["key_verdict"]:
-                answers[(parts["statement"], first_line)] = (parts["key_verdict"], list(parts["key_deciding"]))
+            for vt in parts["verdict_turns"]:
+                mat_t = vt["seen_material"].rstrip()
+                first_line = mat_t.splitlines()[0].strip() if mat_t.strip() else ""
+                if parts["statement"] and vt["key_verdict"]:
+                    if vt["turn"] == 1 and (parts["statement"], first_line) not in answers:
+                        answers[(parts["statement"], first_line)] = (vt["key_verdict"], list(vt["key_deciding"]))
+                    elif vt["turn"] == 2:
+                        if ("turn2", parts["statement"], first_line) not in answers:
+                            answers[("turn2", parts["statement"], first_line)] = (vt["key_verdict"], list(vt["key_deciding"]))
+                        if (parts["statement"], first_line) not in header_answers:
+                            by_exact_mat.setdefault((parts["statement"], mat_t), (vt["key_verdict"], list(vt["key_deciding"])))
             if parts["kind"] == "C" and parts["checker_trace"]:
                 trace_line = parts["checker_trace"].splitlines()[0].strip()
                 if ("flaw", trace_line) not in answers and parts["key_flaw"]:
                     answers[("flaw", trace_line)] = parts["key_flaw"]
-        critic = MockCritic(answers=answers)
+        base_mock = MockCritic(answers=answers)
+        if by_exact_mat and hasattr(base_mock, "answers"):
+            def _mock_with_turn_lookup(messages: list[dict], **kwargs):
+                text = messages[-1]["content"] if messages else ""
+                if "Material:\n" in text and "\n\nStatement: " in text:
+                    mat_part, stmt_part = text.split("Material:\n", 1)[1].split("\n\nStatement: ", 1)
+                    stmt = stmt_part.splitlines()[0].strip()
+                    if (stmt, mat_part.rstrip()) in by_exact_mat:
+                        v_ans, d_ans = by_exact_mat[(stmt, mat_part.rstrip())]
+                        body = " | ".join(d_ans) if d_ans else "NONE"
+                        return Completion(
+                            text=f"VERDICT: {v_ans}\nDECIDING: {body}\nESCALATE: no",
+                            prompt_tokens=100,
+                            completion_tokens=50,
+                            model="mock",
+                            seconds=0.01,
+                        )
+                return base_mock(messages, **kwargs)
+
+            critic = _mock_with_turn_lookup
+        else:
+            critic = base_mock
 
     cfg.out.mkdir(parents=True, exist_ok=True)
     journal_path = cfg.call_journal or (cfg.out / callcache.JOURNAL_FILE)
@@ -375,7 +475,9 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
 
     records: list[dict] = []
     skipped: list[dict] = []
-    total_thinking = 0
+    all_call_thinkings: list[int | None] = []
+    thinking_measured_calls = 0
+    thinking_unmeasured_calls = 0
     total_output = 0
     total_prompt = 0
 
@@ -411,49 +513,71 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             raise CriticEvalError(f"REFUSED: item {item_id} has unsupported kind {parts['kind']!r} for critic-eval")
         if not parts["seen_material"].strip() or not parts["statement"].strip():
             raise CriticEvalError(f"REFUSED: item {item_id} lacks material or statement")
-        if parts["key_verdict"] not in VERDICTS:
-            raise CriticEvalError(f"REFUSED: item {item_id} lacks a valid key verdict ({parts['key_verdict']!r})")
+        for vt in parts["verdict_turns"]:
+            if vt["key_verdict"] not in VERDICTS:
+                raise CriticEvalError(
+                    f"REFUSED: item {item_id} turn {vt['turn']} lacks a valid key verdict ({vt['key_verdict']!r})"
+                )
 
         forbidden = _forbidden_for_item(d, header, w_pins, w_entry, listed, base_tokens)
         blinded_critic = _blind_critic(journaled_critic, forbidden, item_id)
 
-        v_msgs = verdict_messages(parts["seen_material"], parts["statement"])
-        v: CriticVerdict | None = None
-        v_raw = ""
-        v_attempts = 0
-        v_voids = 0
-        v_thinking = 0
-        v_output = 0
-        v_prompt = 0
-        for _ask in range(2):
-            v_attempts += 1
-            c = blinded_critic(v_msgs, seed=cfg.critic_seed)
-            v_raw = c.text
-            v_thinking += int(getattr(c, "thinking_tokens", None) or 0)
-            v_output += int(c.completion_tokens or 0)
-            v_prompt += int(c.prompt_tokens or 0)
-            v = compare_verdict(gates, c.text, parts["key_verdict"], parts["key_deciding"], parts["seen_material"])
-            if v.code != "VOID":
-                break
-            v_voids += 1
+        verdict_checks: list[dict] = []
+        item_call_thinkings: list[int | None] = []
+        v_output_total = 0
+        v_prompt_total = 0
 
-        assert v is not None
-        verdict_check = {
-            "code": v.code,
-            "ok": v.ok,
-            "detail": v.detail,
-            "raw_reply": v_raw,
-            "critic_verdict": v.critic_verdict,
-            "critic_deciding": list(v.critic_deciding or []),
-            "attempts": v_attempts,
-            "void_retries": v_voids,
-            "thinking_tokens": v_thinking,
-            "output_tokens": v_output,
-            "prompt_tokens": v_prompt,
-        }
+        for vt in parts["verdict_turns"]:
+            v_msgs = verdict_messages(vt["seen_material"], parts["statement"])
+            v: CriticVerdict | None = None
+            v_raw = ""
+            v_attempts = 0
+            v_voids = 0
+            turn_thinkings: list[int | None] = []
+            v_output = 0
+            v_prompt = 0
+            for _ask in range(2):
+                v_attempts += 1
+                c = blinded_critic(v_msgs, seed=cfg.critic_seed)
+                v_raw = c.text
+                raw_t = getattr(c, "thinking_tokens", None)
+                t_val = int(raw_t) if raw_t is not None else None
+                turn_thinkings.append(t_val)
+                item_call_thinkings.append(t_val)
+                all_call_thinkings.append(t_val)
+                if t_val is not None:
+                    thinking_measured_calls += 1
+                else:
+                    thinking_unmeasured_calls += 1
+                v_output += int(c.completion_tokens or 0)
+                v_prompt += int(c.prompt_tokens or 0)
+                v = compare_verdict(gates, c.text, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
+                if v.code != "VOID":
+                    break
+                v_voids += 1
+
+            assert v is not None
+            v_output_total += v_output
+            v_prompt_total += v_prompt
+            verdict_checks.append({
+                "turn": vt["turn"],
+                "code": v.code,
+                "ok": v.ok,
+                "detail": v.detail,
+                "raw_reply": v_raw,
+                "critic_verdict": v.critic_verdict,
+                "critic_deciding": list(v.critic_deciding or []),
+                "attempts": v_attempts,
+                "void_retries": v_voids,
+                "thinking_tokens": _sum_thinking(turn_thinkings),
+                "output_tokens": v_output,
+                "prompt_tokens": v_prompt,
+            })
+
+        verdict_check = verdict_checks[-1]
 
         flaw_check: dict | None = None
-        f_thinking = 0
+        f_thinking: int | None = None
         f_output = 0
         f_prompt = 0
         critic_flaw: str | None = None
@@ -463,7 +587,14 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             f_msgs = flaw_messages(parts["material"], parts["statement"], parts["checker_trace"], parts["checker_verdict"])
             fc = blinded_critic(f_msgs, seed=cfg.critic_seed)
             f_res = compare_flaw(fc.text, parts["key_flaw"])
-            f_thinking = int(getattr(fc, "thinking_tokens", None) or 0)
+            raw_ft = getattr(fc, "thinking_tokens", None)
+            f_thinking = int(raw_ft) if raw_ft is not None else None
+            item_call_thinkings.append(f_thinking)
+            all_call_thinkings.append(f_thinking)
+            if f_thinking is not None:
+                thinking_measured_calls += 1
+            else:
+                thinking_unmeasured_calls += 1
             f_output = int(fc.completion_tokens or 0)
             f_prompt = int(fc.prompt_tokens or 0)
             critic_flaw = _flaw_word(fc.text)
@@ -478,10 +609,9 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 "prompt_tokens": f_prompt,
             }
 
-        item_thinking = v_thinking + f_thinking
-        item_output = v_output + f_output
-        item_prompt = v_prompt + f_prompt
-        total_thinking += item_thinking
+        item_thinking = _sum_thinking(item_call_thinkings)
+        item_output = v_output_total + f_output
+        item_prompt = v_prompt_total + f_prompt
         total_output += item_output
         total_prompt += item_prompt
 
@@ -492,10 +622,11 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "perturbation_type": parts["perturbation_type"],
             "kind": parts["kind"],
             "seed": cfg.critic_seed,
+            "verdict_checks": verdict_checks,
             "verdict_check": verdict_check,
             "flaw_check": flaw_check,
-            "critic_verdict": v.critic_verdict,
-            "critic_deciding": list(v.critic_deciding or []),
+            "critic_verdict": verdict_check["critic_verdict"],
+            "critic_deciding": list(verdict_check["critic_deciding"] or []),
             "critic_flaw": critic_flaw,
             "thinking_tokens": item_thinking,
             "output_tokens": item_output,
@@ -505,9 +636,11 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         with eval_path.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
 
+    gguf_sha = (c_pins or {}).get("critic_gguf_sha256") or cfg.critic_gguf_sha256 or critic_entry.get("gguf_sha256")
     report = {
         "critic_model": c_model,
         "critic_family": c_family,
+        "critic_gguf_sha256": gguf_sha,
         "critic_seed": cfg.critic_seed,
         "critic_pins": c_pins,
         "critic_card": c_card_pins,
@@ -517,10 +650,11 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         "items_scored": len(records),
         "skipped_count": len(skipped),
         "skipped": skipped,
-        "skipped_same_family": skipped,
         "calls": journal.summary(),
         "tokens": {
-            "thinking_tokens": total_thinking,
+            "thinking_tokens": _sum_thinking(all_call_thinkings),
+            "thinking_measured_calls": thinking_measured_calls,
+            "thinking_unmeasured_calls": thinking_unmeasured_calls,
             "output_tokens": total_output,
             "prompt_tokens": total_prompt,
         },
@@ -531,7 +665,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
 
 # ---- offline re-scorer (P0, P2, P3) -------------------------------------------------------------------------
 
-def _load_key_records(path: Path) -> list[dict]:
+def _load_key_records(path: Path) -> tuple[dict | None, list[dict]]:
     """Read items or alternate keys from a sealed waves file or a JSONL file (checking its .sha256 seal if present)."""
 
     if not path.is_file():
@@ -550,9 +684,9 @@ def _load_key_records(path: Path) -> list[dict]:
     if not lines:
         raise CriticEvalError(f"REFUSED: {path.name} is empty")
     if lines[0].get("type") == "header" and lines[0].get("format") == waves.FORMAT:
-        _, drafts = waves.read(path)
-        return [extract_item_parts(d) for d in drafts]
-    return [extract_item_parts(d) for d in lines]
+        header, drafts = waves.read(path)
+        return header, [extract_item_parts(d) for d in drafts]
+    return None, [extract_item_parts(d) for d in lines]
 
 
 def _load_eval_records(path: Path) -> list[dict]:
@@ -567,114 +701,208 @@ def _load_eval_records(path: Path) -> list[dict]:
     return rows
 
 
+def _load_eval_report(eval_path: Path) -> dict:
+    """Read critic-eval-report.json beside each --eval file."""
+    report_path = eval_path.parent / "critic-eval-report.json"
+    if not report_path.is_file():
+        raise CriticEvalError(f"REFUSED: missing critic-eval-report.json beside {eval_path}")
+    try:
+        data = json.loads(report_path.read_text(encoding="utf-8"))
+    except ValueError as e:
+        raise CriticEvalError(f"REFUSED: cannot parse {report_path.name} ({type(e).__name__})") from e
+    if not isinstance(data, dict):
+        raise CriticEvalError(f"REFUSED: {report_path.name} is not a JSON object")
+    return data
+
+
+def _report_gguf_sha(rep: dict) -> str | None:
+    pins = rep.get("critic_pins") if isinstance(rep.get("critic_pins"), dict) else {}
+    sha = rep.get("critic_gguf_sha256") or pins.get("critic_gguf_sha256") or pins.get("gguf_sha256")
+    return str(sha).strip() if isinstance(sha, str) and sha.strip() else None
+
+
+def _verdict_replies_from_eval(eval_rec: dict, num_turns: int) -> list[str]:
+    """Extract each turn's raw_reply from eval_rec. Never reconstructs a reply from parsed fields."""
+    iid = eval_rec.get("item_id") or eval_rec.get("id")
+    if isinstance(eval_rec.get("verdict_checks"), list) and eval_rec["verdict_checks"]:
+        checks = eval_rec["verdict_checks"]
+    elif isinstance(eval_rec.get("verdict_check"), dict):
+        checks = [eval_rec["verdict_check"]]
+    else:
+        raise CriticEvalError(f"REFUSED: eval record {iid!r} lacks verdict_checks / verdict_check")
+
+    if len(checks) != num_turns:
+        raise CriticEvalError(
+            f"REFUSED: eval record {iid!r} has {len(checks)} verdict check(s), but key has {num_turns} turn(s)"
+        )
+
+    replies: list[str] = []
+    for idx, vc in enumerate(checks, start=1):
+        if not isinstance(vc, dict):
+            raise CriticEvalError(f"REFUSED: eval record {iid!r} turn {idx} check is not a dict")
+        raw = vc.get("raw_reply")
+        if not isinstance(raw, str) or not raw.strip():
+            raise CriticEvalError(
+                f"REFUSED: eval record {iid!r} turn {idx} is missing raw_reply; offline re-scoring never reconstructs replies"
+            )
+        replies.append(raw)
+    return replies
+
+
 def _verdict_reply_from_eval(eval_rec: dict) -> str:
-    vc = eval_rec.get("verdict_check") if isinstance(eval_rec.get("verdict_check"), dict) else {}
-    for k in ("raw_reply", "raw", "reply"):
-        if isinstance(vc.get(k), str):
-            return vc[k]
-        if isinstance(eval_rec.get(k), str):
-            return eval_rec[k]
-    cv = eval_rec.get("critic_verdict") or vc.get("critic_verdict")
-    cd = eval_rec.get("critic_deciding") if "critic_deciding" in eval_rec else vc.get("critic_deciding")
-    if cv:
-        body = " | ".join(cd) if cd else "NONE"
-        return f"VERDICT: {cv}\nDECIDING: {body}\nESCALATE: no"
-    return ""
+    """Single-turn raw_reply extractor; refuses when raw_reply is missing."""
+    return _verdict_replies_from_eval(eval_rec, 1)[0]
 
 
 def _flaw_reply_from_eval(eval_rec: dict) -> str:
+    """Flaw raw_reply extractor; refuses when raw_reply is missing."""
+    iid = eval_rec.get("item_id") or eval_rec.get("id")
     fc = eval_rec.get("flaw_check") if isinstance(eval_rec.get("flaw_check"), dict) else {}
-    for k in ("raw_reply", "raw", "reply"):
-        if isinstance(fc.get(k), str):
-            return fc[k]
-    cf = eval_rec.get("critic_flaw") or fc.get("critic_flaw")
-    return str(cf) if cf is not None else ""
+    raw = fc.get("raw_reply")
+    if not isinstance(raw, str) or not raw.strip():
+        raise CriticEvalError(
+            f"REFUSED: eval record {iid!r} is missing flaw_check.raw_reply; offline re-scoring never reconstructs replies"
+        )
+    return raw
 
 
 def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: str) -> dict:
-    """Score one recorded critic-eval reply against `key_item` under P0 or P2."""
+    """Score one recorded critic-eval record against `key_item` under P0 or P2 across all turns."""
 
-    v_reply = _verdict_reply_from_eval(eval_rec)
-    key_verdict = key_item["key_verdict"]
-    key_deciding = key_item["key_deciding"]
-    material = key_item["seen_material"] or key_item["material"]
+    if rule_set not in ("P0", "P2"):
+        raise CriticEvalError(f"REFUSED: unknown rule set {rule_set!r}")
 
-    v = compare_verdict(gates, v_reply, key_verdict, key_deciding, material)
-    cd = list(v.critic_deciding if v.critic_deciding is not None else _lines(gates.parse_answer(v_reply).get("deciding")))
+    verdict_turns = key_item.get("verdict_turns") or [
+        {
+            "turn": 1,
+            "seen_material": key_item.get("seen_material") or key_item.get("material") or "",
+            "key_verdict": key_item["key_verdict"],
+            "key_deciding": key_item["key_deciding"],
+        }
+    ]
+    multi_turn = len(verdict_turns) > 1
+    v_replies = _verdict_replies_from_eval(eval_rec, len(verdict_turns))
 
-    f_res: CriticVerdict | None = None
-    if key_item["kind"] == "C" and key_item.get("key_flaw"):
+    def _rule_name(turn_num: int, code: str) -> str:
+        return f"turn{turn_num}:{code}" if multi_turn else code
+
+    last_v: CriticVerdict | None = None
+    for vt, v_reply in zip(verdict_turns, v_replies, strict=True):
+        t_num = int(vt.get("turn") or 1)
+        key_verdict = vt["key_verdict"]
+        key_deciding = vt["key_deciding"]
+        material = vt["seen_material"]
+
+        v = compare_verdict(gates, v_reply, key_verdict, key_deciding, material)
+        last_v = v
+        cd = list(v.critic_deciding if v.critic_deciding is not None else _lines(gates.parse_answer(v_reply).get("deciding")))
+
+        if not v.ok:
+            rname = _rule_name(t_num, v.code)
+            return {
+                "outcome": "refuse",
+                "accepted": False,
+                "refused": True,
+                "turn": t_num,
+                "deciding_rule": rname,
+                "rule": v.code,
+                "detail": v.detail,
+            }
+
+        if rule_set == "P2":
+            if key_verdict == "cannot_tell" and len(cd) > 0:
+                rname = _rule_name(t_num, "CANNOT_TELL_DECIDING")
+                return {
+                    "outcome": "refuse",
+                    "accepted": False,
+                    "refused": True,
+                    "turn": t_num,
+                    "deciding_rule": rname,
+                    "rule": "CANNOT_TELL_DECIDING",
+                    "detail": f"turn {t_num}: key is cannot_tell but critic quoted {len(cd)} deciding line(s)",
+                }
+            if key_verdict in ("supported", "unsupported") and len(cd) > len(key_deciding) + 1:
+                rname = _rule_name(t_num, "QUOTE_TOO_LONG")
+                return {
+                    "outcome": "refuse",
+                    "accepted": False,
+                    "refused": True,
+                    "turn": t_num,
+                    "deciding_rule": rname,
+                    "rule": "QUOTE_TOO_LONG",
+                    "detail": f"turn {t_num}: critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
+                }
+
+    if rule_set == "P2" and key_item["kind"] == "C" and key_item.get("key_flaw"):
         f_reply = _flaw_reply_from_eval(eval_rec)
         f_res = compare_flaw(f_reply, key_item["key_flaw"])
-
-    if rule_set == "P0":
-        if not v.ok:
-            return {"outcome": "refuse", "accepted": False, "refused": True, "deciding_rule": v.code, "rule": v.code, "detail": v.detail}
-        return {"outcome": "accept", "accepted": True, "refused": False, "deciding_rule": "AGREE", "rule": "AGREE", "detail": v.detail}
-
-    if rule_set == "P2":
-        if not v.ok:
-            return {"outcome": "refuse", "accepted": False, "refused": True, "deciding_rule": v.code, "rule": v.code, "detail": v.detail}
-        if key_verdict == "cannot_tell" and len(cd) > 0:
+        if not f_res.ok:
             return {
                 "outcome": "refuse",
                 "accepted": False,
                 "refused": True,
-                "deciding_rule": "CANNOT_TELL_DECIDING",
-                "rule": "CANNOT_TELL_DECIDING",
-                "detail": f"key is cannot_tell but critic quoted {len(cd)} deciding line(s)",
-            }
-        if key_verdict in ("supported", "unsupported") and len(cd) > len(key_deciding) + 1:
-            return {
-                "outcome": "refuse",
-                "accepted": False,
-                "refused": True,
-                "deciding_rule": "QUOTE_TOO_LONG",
-                "rule": "QUOTE_TOO_LONG",
-                "detail": f"critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
-            }
-        if f_res is not None and not f_res.ok:
-            return {
-                "outcome": "refuse",
-                "accepted": False,
-                "refused": True,
+                "turn": len(verdict_turns),
                 "deciding_rule": f_res.code,
                 "rule": f_res.code,
                 "detail": f_res.detail,
             }
-        return {"outcome": "accept", "accepted": True, "refused": False, "deciding_rule": "AGREE", "rule": "AGREE", "detail": v.detail}
 
-    raise CriticEvalError(f"REFUSED: unknown rule set {rule_set!r}")
-
-
-def _match_eval_record(key_item: dict, by_id: dict[str, dict], by_control_source: dict[str, dict]) -> dict:
-    for cand_id in (
-        key_item["item_id"],
-        key_item.get("control_item_id") or "",
-        f"{key_item['source_row_id']}:d",
-        key_item["source_row_id"],
-    ):
-        if cand_id and cand_id in by_id:
-            return by_id[cand_id]
-    if key_item["source_row_id"] in by_control_source:
-        return by_control_source[key_item["source_row_id"]]
-    raise CriticEvalError(f"REFUSED: no recorded critic reply found for item {key_item['item_id']!r} (source {key_item['source_row_id']!r})")
+    assert last_v is not None
+    return {
+        "outcome": "accept",
+        "accepted": True,
+        "refused": False,
+        "turn": len(verdict_turns),
+        "deciding_rule": "AGREE",
+        "rule": "AGREE",
+        "detail": last_v.detail,
+    }
 
 
-def _index_eval(rows: list[dict]) -> tuple[dict[str, dict], dict[str, dict]]:
+def _match_eval_record(key_item: dict, by_id: dict[str, dict]) -> dict:
+    """Exact offline matcher:
+    - A GPU item (d, b, e, f) matches only its own item_id.
+    - A key-only item (a, c, g) matches only its control_item_id, which must be <src>:d.
+    - Anything else refuses."""
+
+    iid = key_item["item_id"]
+    ptype = key_item["perturbation_type"]
+    src = key_item["source_row_id"]
+
+    if ptype in GPU_TYPES:
+        if not iid or iid not in by_id:
+            raise CriticEvalError(f"REFUSED: no recorded critic reply found for GPU item {iid!r}")
+        return by_id[iid]
+
+    if ptype in KEY_ONLY_TYPES:
+        expected_ctrl = f"{src}:d"
+        ctrl_id = key_item.get("control_item_id") or expected_ctrl
+        if ctrl_id != expected_ctrl:
+            raise CriticEvalError(
+                f"REFUSED: key-only item {iid!r} has control_item_id {ctrl_id!r}, expected {expected_ctrl!r}"
+            )
+        if ctrl_id not in by_id:
+            raise CriticEvalError(
+                f"REFUSED: no recorded control critic reply {ctrl_id!r} found for key-only item {iid!r}"
+            )
+        rec = by_id[ctrl_id]
+        rec_ptype = str(rec.get("perturbation_type") or rec.get("perturbation") or "d")
+        if rec_ptype not in CONTROL_TYPES:
+            raise CriticEvalError(
+                f"REFUSED: control_item_id {ctrl_id!r} for key-only item {iid!r} has perturbation_type {rec_ptype!r}, not 'd'"
+            )
+        return rec
+
+    raise CriticEvalError(f"REFUSED: unknown perturbation_type {ptype!r} for item {iid!r}")
+
+
+def _index_eval(rows: list[dict]) -> dict[str, dict]:
     by_id: dict[str, dict] = {}
-    by_control_source: dict[str, dict] = {}
     for r in rows:
         iid = str(r.get("item_id") or r.get("id") or "")
         if iid:
             by_id[iid] = r
-        ptype = str(r.get("perturbation_type") or r.get("perturbation") or "d")
-        src = str(r.get("source_row_id") or r.get("source_id") or iid)
-        if ptype in CONTROL_TYPES and src:
-            by_control_source[src] = r
-        elif src and src not in by_control_source:
-            by_control_source[src] = r
-    return by_id, by_control_source
+    return by_id
 
 
 def render_offline_table(summary: dict[str, dict[str, dict]]) -> str:
@@ -695,6 +923,37 @@ def render_offline_table(summary: dict[str, dict[str, dict]]) -> str:
     return "\n".join(lines)
 
 
+def _merge_key_into_base(base: dict, ki: dict) -> dict:
+    """When an alternate key record omits material, inherit material/new_material from its control item and rebuild turns."""
+    mat = ki["material"] or base["material"]
+    new_lines = ki["new_material"] if ki.get("new_material") else list(base.get("new_material") or [])
+    tk = ki.get("turn_keys") if ki.get("turn_keys") is not None else copy.deepcopy(base.get("turn_keys"))
+    if isinstance(tk, dict) and isinstance(tk.get("1"), dict):
+        t1 = tk["1"]
+        t1_verdict = str(t1.get("verdict") or "")
+        t1_deciding = list(t1.get("deciding") if "deciding" in t1 else (t1.get("deciding_lines") or []))
+        t2_seen = (mat.rstrip("\n") + "\n" + "\n".join(new_lines)) if new_lines else mat
+        v_turns = [
+            {"turn": 1, "seen_material": mat, "key_verdict": t1_verdict, "key_deciding": t1_deciding},
+            {"turn": 2, "seen_material": t2_seen, "key_verdict": ki["key_verdict"], "key_deciding": ki["key_deciding"]},
+        ]
+        seen_mat = t2_seen
+    else:
+        seen_mat = (mat.rstrip("\n") + "\n" + "\n".join(new_lines)) if new_lines else (ki["seen_material"] or base["seen_material"] or mat)
+        v_turns = [
+            {"turn": 1, "seen_material": seen_mat, "key_verdict": ki["key_verdict"], "key_deciding": ki["key_deciding"]},
+        ]
+    return {
+        **ki,
+        "kind": ki["kind"] or base["kind"],
+        "material": mat,
+        "new_material": new_lines,
+        "seen_material": seen_mat,
+        "turn_keys": tk,
+        "verdict_turns": v_turns,
+    }
+
+
 def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
     """Re-score recorded critic-eval replies offline under P0, P2, and (when two runs are given) P3."""
 
@@ -702,79 +961,138 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
         raise CriticEvalError("REFUSED: critic-rescore-offline needs at least one --eval <critic-eval.jsonl>")
     if len(cfg.eval_files) > 2:
         raise CriticEvalError("REFUSED: critic-rescore-offline takes one --eval file (P0, P2) or two (P0, P2, P3)")
-    if cfg.items is None and not cfg.keys:
-        raise CriticEvalError("REFUSED: critic-rescore-offline needs --items <items.jsonl> and/or --keys <key.jsonl>")
+    if cfg.items is None:
+        raise CriticEvalError("REFUSED: critic-rescore-offline needs --items <items.jsonl>")
 
+    items_path = Path(cfg.items)
+    items_header, base_items_list = _load_key_records(items_path)
+    items_sha256 = waves.file_sha256(items_path)
+
+    eval_paths = [Path(p) for p in cfg.eval_files]
+    eval_runs = [_load_eval_records(p) for p in eval_paths]
+    eval_reports = [_load_eval_report(p) for p in eval_paths]
+
+    closed_form = (
+        (items_header.get("gates") or {}).get("closed_form")
+        if isinstance(items_header, dict) and isinstance(items_header.get("gates"), dict)
+        else (eval_reports[0].get("gates") or {}).get("closed_form")
+    )
     try:
-        gates: Gates = load_gates()
+        gates: Gates = load_gates(closed_form=closed_form)
     except GatesUnavailable as e:
         if not cfg.mock:
             raise CriticEvalError(str(e)) from e
-        gates = mock_gates()
+        gates = mock_gates(closed_form=closed_form)
 
-    eval_runs = [_load_eval_records(Path(p)) for p in cfg.eval_files]
+    for p, rep in zip(eval_paths, eval_reports, strict=True):
+        rep_gates = rep.get("gates") if isinstance(rep.get("gates"), dict) else {}
+        if (
+            rep_gates.get("version") != gates.version
+            or rep_gates.get("sha256") != gates.sha256
+            or rep_gates.get("closed_form") != gates.closed_form
+        ):
+            raise CriticEvalError(
+                f"REFUSED: {p.parent / 'critic-eval-report.json'} gates "
+                f"{(rep_gates.get('version'), rep_gates.get('sha256'), rep_gates.get('closed_form'))} "
+                f"do not match offline gates {(gates.version, gates.sha256, gates.closed_form)}"
+            )
+        if rep.get("input_sha256") != items_sha256:
+            raise CriticEvalError(
+                f"REFUSED: {p.parent / 'critic-eval-report.json'} input_sha256 ({rep.get('input_sha256')}) "
+                f"does not match --items {items_path.name} ({items_sha256})"
+            )
+
     if len(eval_runs) == 2:
-        seeds0 = {r.get("seed") for r in eval_runs[0] if r.get("seed") is not None}
-        seeds1 = {r.get("seed") for r in eval_runs[1] if r.get("seed") is not None}
-        if seeds0 and seeds1 and seeds0 == seeds1:
-            raise CriticEvalError(f"REFUSED: P3 requires two critic-eval runs at different seeds; both runs have seed {sorted(seeds0)[0]}")
+        rep0, rep1 = eval_reports[0], eval_reports[1]
+        model0, model1 = rep0.get("critic_model"), rep1.get("critic_model")
+        if not model0 or model0 != model1:
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same critic_model in both reports ({model0!r} vs {model1!r})"
+            )
+        gguf0, gguf1 = _report_gguf_sha(rep0), _report_gguf_sha(rep1)
+        if gguf0 != gguf1 or (not cfg.mock and (not gguf0 or not gguf1)):
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same critic gguf_sha256 in both reports ({gguf0!r} vs {gguf1!r})"
+            )
+        if rep0.get("input_sha256") != rep1.get("input_sha256"):
+            raise CriticEvalError("REFUSED: P3 requires the same input_sha256 in both reports")
+
+        seed0, seed1 = rep0.get("critic_seed"), rep1.get("critic_seed")
+        if (
+            seed0 is None
+            or isinstance(seed0, bool)
+            or not isinstance(seed0, int)
+            or seed1 is None
+            or isinstance(seed1, bool)
+            or not isinstance(seed1, int)
+        ):
+            raise CriticEvalError("REFUSED: P3 requires a non-null integer critic_seed in both reports")
+        for run_idx, (run_rows, expected_seed) in enumerate(((eval_runs[0], seed0), (eval_runs[1], seed1))):
+            for r in run_rows:
+                r_seed = r.get("seed")
+                if r_seed is None or isinstance(r_seed, bool) or r_seed != expected_seed:
+                    raise CriticEvalError(
+                        f"REFUSED: P3 run {run_idx} record {r.get('item_id')!r} has missing or mismatched seed {r_seed!r}"
+                    )
+        if seed0 == seed1:
+            raise CriticEvalError(
+                f"REFUSED: P3 requires two critic-eval runs at different seeds; both runs have seed {seed0}"
+            )
 
     key_items: list[dict] = []
     by_item_id: dict[str, int] = {}
-    if cfg.items is not None:
-        for ki in _load_key_records(Path(cfg.items)):
-            by_item_id[ki["item_id"]] = len(key_items)
-            key_items.append(ki)
+    for ki in base_items_list:
+        by_item_id[ki["item_id"]] = len(key_items)
+        key_items.append(ki)
     for kp in cfg.keys:
-        for ki in _load_key_records(Path(kp)):
+        _, k_records = _load_key_records(Path(kp))
+        for ki in k_records:
             if ki["item_id"] in by_item_id:
                 idx = by_item_id[ki["item_id"]]
                 base = dict(key_items[idx])
                 if not ki["material"] and base.get("material"):
-                    ki = {**ki, "material": base["material"], "seen_material": base["seen_material"]}
+                    ki = _merge_key_into_base(base, ki)
                 key_items[idx] = ki
             else:
                 if not ki["material"]:
-                    # Inherit material from control item with same source_row_id if present
                     ctrl_id = ki.get("control_item_id") or f"{ki['source_row_id']}:d"
                     if ctrl_id in by_item_id:
-                        base = key_items[by_item_id[ctrl_id]]
-                        ki = {**ki, "material": base["material"], "seen_material": base["seen_material"], "kind": ki["kind"] or base["kind"]}
-                    elif ki["source_row_id"] in by_item_id:
-                        base = key_items[by_item_id[ki["source_row_id"]]]
-                        ki = {**ki, "material": base["material"], "seen_material": base["seen_material"], "kind": ki["kind"] or base["kind"]}
+                        ki = _merge_key_into_base(key_items[by_item_id[ctrl_id]], ki)
                 by_item_id[ki["item_id"]] = len(key_items)
                 key_items.append(ki)
 
-    idx0, ctrl0 = _index_eval(eval_runs[0])
-    idx1, ctrl1 = _index_eval(eval_runs[1]) if len(eval_runs) == 2 else ({}, {})
+    idx0 = _index_eval(eval_runs[0])
+    idx1 = _index_eval(eval_runs[1]) if len(eval_runs) == 2 else {}
 
     rule_sets = ("P0", "P2", "P3") if len(eval_runs) == 2 else ("P0", "P2")
     rows_out: list[dict] = []
     by_item: dict[str, dict] = {}
 
     for ki in key_items:
-        rec0 = _match_eval_record(ki, idx0, ctrl0)
+        rec0 = _match_eval_record(ki, idx0)
         p0 = score_single_item(gates, rec0, ki, "P0")
         p2 = score_single_item(gates, rec0, ki, "P2")
         item_scores: dict[str, dict] = {"P0": p0, "P2": p2}
 
         if len(eval_runs) == 2:
-            rec1 = _match_eval_record(ki, idx1, ctrl1)
+            rec1 = _match_eval_record(ki, idx1)
             p2_run1 = score_single_item(gates, rec1, ki, "P2")
             if p2["refused"] or p2_run1["refused"]:
                 if p2["refused"] and p2_run1["refused"]:
                     d_rule = p2["deciding_rule"] if p2["deciding_rule"] == p2_run1["deciding_rule"] else f"{p2['deciding_rule']}+{p2_run1['deciding_rule']}"
                     detail = f"run0 refused ({p2['deciding_rule']}); run1 refused ({p2_run1['deciding_rule']})"
+                    turn_num = p2.get("turn", 1)
                 elif p2["refused"]:
                     d_rule = p2["deciding_rule"]
                     detail = f"run0 refused ({p2['deciding_rule']}): {p2['detail']}"
+                    turn_num = p2.get("turn", 1)
                 else:
                     d_rule = p2_run1["deciding_rule"]
                     detail = f"run1 refused ({p2_run1['deciding_rule']}): {p2_run1['detail']}"
-                p3 = {"outcome": "refuse", "accepted": False, "refused": True, "deciding_rule": d_rule, "rule": d_rule, "detail": detail}
+                    turn_num = p2_run1.get("turn", 1)
+                p3 = {"outcome": "refuse", "accepted": False, "refused": True, "turn": turn_num, "deciding_rule": d_rule, "rule": d_rule, "detail": detail}
             else:
-                p3 = {"outcome": "accept", "accepted": True, "refused": False, "deciding_rule": "AGREE", "rule": "AGREE", "detail": "both seeds agreed under P2"}
+                p3 = {"outcome": "accept", "accepted": True, "refused": False, "turn": p2.get("turn", 1), "deciding_rule": "AGREE", "rule": "AGREE", "detail": "both seeds agreed under P2"}
             item_scores["P3"] = p3
 
         by_item[ki["item_id"]] = {

@@ -45,39 +45,49 @@ MUSE = "muse-glimmer-30b"
 
 @pytest.fixture
 def eval_items_file(tmp_path: Path, domain_table: Path, pack_dir: Path) -> Path:  # noqa: F811
-    """Build a sealed items file containing kind C and kind D drafts with per-item keys and perturbation types."""
+    """Build a sealed items file containing kind C, single-turn D, and two-turn D drafts with per-item keys."""
     plan = tmp_path / "plan.json"
     assert main(["plan", "--pilot", "--seed", "0", "--domains", str(domain_table), "--out", str(plan)]) == 0
     data = json.loads(plan.read_text(encoding="utf-8"))
     kept = []
-    counts = {"C": 0, "D": 0}
+    c_count = 0
+    d_single = 0
+    d_two = 0
     for s in data["slots"]:
         k = s["kind"]
-        if k in counts and counts[k] < 2:
+        if k == "C" and c_count < 2:
             kept.append(s)
-            counts[k] += 1
+            c_count += 1
+        elif k == "D" and not s.get("two_turn") and d_single < 1:
+            kept.append(s)
+            d_single += 1
+        elif k == "D" and s.get("two_turn") and d_two < 1:
+            kept.append(s)
+            d_two += 1
     data["slots"] = kept
     plan.write_text(json.dumps(data, indent=1), encoding="utf-8")
 
     w0_out = tmp_path / "w0"
     run(WriteConfig(plan=plan, pack=pack_dir, out=w0_out, mock=True, partition="trial:j1-wave1", wave="write"))
     h0, d0 = waves.read(w0_out / "mock" / waves.DRAFTS_FILE)
-    answers = waves.load_answers(h0)
 
     items = []
     ptypes = ["d", "b", "e", "f"]
     for idx, d in enumerate(d0):
         slot = d["slot"]
         cand = json.loads(d["candidate"]["text"])
-        stmt = cand["statement"]
+        row_obj = d.get("row") or {}
         first_line = d["material"]["text"].splitlines()[0]
-        ans = answers.get((stmt, first_line))
-        if isinstance(ans, tuple) and len(ans) == 2:
-            verdict, deciding = ans[0], list(ans[1])
-        else:
-            verdict = slot.get("verdict") or "supported"
-            deciding = list(cand.get("deciding") or [first_line])
-        planted_flaw = cand.get("planted_flaw") or ("guess" if slot["kind"] == "C" else "none")
+        verdict = row_obj.get("verdict") or slot.get("verdict") or "supported"
+        deciding = list(row_obj.get("deciding") if "deciding" in row_obj else (cand.get("deciding") or [first_line]))
+        planted_flaw = row_obj.get("planted_flaw") or cand.get("planted_flaw") or ("guess" if slot["kind"] == "C" else "none")
+        key_dict: dict = {
+            "verdict": verdict,
+            "deciding": deciding,
+            "planted_flaw": planted_flaw,
+        }
+        if row_obj.get("turn_keys"):
+            key_dict["turn_keys"] = json.loads(json.dumps(row_obj["turn_keys"]))
         item = {
             **d,
             "type": "draft",
@@ -87,11 +97,7 @@ def eval_items_file(tmp_path: Path, domain_table: Path, pack_dir: Path) -> Path:
             "writer_model": "qwen3.8-27b",
             "writer_family": "qwen",
             "window_tag": "release-window13-tag",
-            "key": {
-                "verdict": verdict,
-                "deciding": deciding,
-                "planted_flaw": planted_flaw,
-            },
+            "key": key_dict,
         }
         items.append(item)
 
@@ -106,6 +112,44 @@ def eval_items_file(tmp_path: Path, domain_table: Path, pack_dir: Path) -> Path:
     }
     waves.write(items_path, header, items)
     return items_path
+
+
+def _write_eval_report(
+    eval_path: Path,
+    items_path: Path,
+    *,
+    seed: int | None = 0,
+    critic_model: str = LIGHTNING,
+    critic_gguf_sha256: str = "5bea2069" + "0" * 56,
+    closed_form: dict | None = None,
+    gates_version: str | None = None,
+    gates_sha256: str | None = None,
+) -> Path:
+    from role_set.critic_eval import GatesUnavailable, load_gates, mock_gates
+
+    try:
+        g = load_gates(closed_form=closed_form)
+    except GatesUnavailable:
+        g = mock_gates(closed_form=closed_form)
+    rep_path = eval_path.parent / "critic-eval-report.json"
+    rep_path.write_text(
+        json.dumps(
+            {
+                "critic_model": critic_model,
+                "critic_gguf_sha256": critic_gguf_sha256,
+                "critic_seed": seed,
+                "gates": {
+                    "version": g.version if gates_version is None else gates_version,
+                    "sha256": g.sha256 if gates_sha256 is None else gates_sha256,
+                    "closed_form": g.closed_form,
+                },
+                "input_sha256": waves.file_sha256(items_path),
+            },
+            indent=1,
+        ),
+        encoding="utf-8",
+    )
+    return rep_path
 
 
 def test_critic_eval_end_to_end_mock_records_checks_and_makes_no_trait_calls(
@@ -144,8 +188,11 @@ def test_critic_eval_end_to_end_mock_records_checks_and_makes_no_trait_calls(
     report = json.loads((out_dir / "critic-eval-report.json").read_text(encoding="utf-8"))
 
     assert len(rows) == len(items)
-    expected_calls = sum(2 if it["slot"]["kind"] == "C" else 1 for it in items)
-    # Exactly verdict (1) + flaw for kind C (1); zero trait calls.
+    expected_calls = sum(
+        (2 if (it.get("row") or {}).get("turn_keys") else 1) + (1 if it["slot"]["kind"] == "C" else 0)
+        for it in items
+    )
+    # Exactly verdict turns + flaw for kind C (1); zero trait calls.
     assert len(calls_made) == expected_calls
     assert report["calls"]["called"] == expected_calls
     assert report["input_sha256"] == waves.file_sha256(eval_items_file)
@@ -157,6 +204,9 @@ def test_critic_eval_end_to_end_mock_records_checks_and_makes_no_trait_calls(
         assert row["seed"] == 42
         verdict_chk = row["verdict_check"]
         assert set(verdict_chk) >= {"code", "detail", "raw_reply", "thinking_tokens", "output_tokens"}
+        has_tk = bool((src.get("row") or {}).get("turn_keys"))
+        assert len(row["verdict_checks"]) == (2 if has_tk else 1)
+        assert [vc["turn"] for vc in row["verdict_checks"]] == ([1, 2] if has_tk else [1])
         assert row["critic_verdict"] in ("supported", "unsupported", "cannot_tell")
         assert isinstance(row["critic_deciding"], list)
         if src["slot"]["kind"] == "C":
@@ -190,6 +240,7 @@ def test_critic_eval_skips_same_family_writer_and_reports_it(
     )
     assert report["skipped_count"] == 1
     assert report["skipped"][0]["item_id"] == items[0]["item_id"]
+    assert "skipped_same_family" not in report
     assert report["items_scored"] == len(items) - 1
 
 
@@ -221,8 +272,8 @@ def test_critic_eval_void_reply_retries_once_then_records(
     eval_items_file: Path, pack_dir: Path, tmp_path: Path, monkeypatch  # noqa: F811
 ):
     h, items = waves.read(eval_items_file)
-    # Keep 1 kind-D item so we can test 1 VOID retry succeeding and 2 VOIDs staying VOID.
-    d_item = next(it for it in items if it["slot"]["kind"] == "D")
+    # Keep 1 single-turn kind-D item so we can test 1 VOID retry succeeding and 2 VOIDs staying VOID.
+    d_item = next(it for it in items if it["slot"]["kind"] == "D" and not (it.get("row") or {}).get("turn_keys"))
     one_path = tmp_path / "one-item.jsonl"
     waves.write(one_path, h, [d_item])
 
@@ -356,7 +407,7 @@ def test_critic_eval_real_endpoint_passes_card_and_seed_and_records_tokens(
     monkeypatch.setattr(ce_mod, "load_gates", lambda closed_form=None: ce_mod.mock_gates(closed_form=closed_form))
 
     h, items = waves.read(eval_items_file)
-    d_item = next(it for it in items if it["slot"]["kind"] == "D")
+    d_item = next(it for it in items if it["slot"]["kind"] == "D" and not (it.get("row") or {}).get("turn_keys"))
     one_path = tmp_path / "one-real.jsonl"
     waves.write(one_path, h, [d_item])
 
@@ -390,9 +441,220 @@ def test_critic_eval_real_endpoint_passes_card_and_seed_and_records_tokens(
     assert len(rows) == 1
     assert rows[0]["verdict_check"]["code"] == "AGREE"
     assert rows[0]["output_tokens"] > 0
+    assert rows[0]["thinking_tokens"] is None
+    assert rows[0]["verdict_check"]["thinking_tokens"] is None
     report = json.loads((out_dir / "critic-eval-report.json").read_text(encoding="utf-8"))
     assert report["critic_card"]["card_candidate"] == LIGHTNING
     assert report["critic_seed"] == 9
+    assert report["tokens"]["thinking_tokens"] is None
+    assert report["tokens"]["thinking_measured_calls"] == 0
+    assert report["tokens"]["thinking_unmeasured_calls"] == 1
+
+
+def test_thinking_tokens_null_when_unmeasured_and_counted_in_report(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path, monkeypatch  # noqa: F811
+):
+    """Fix 1: A thinking count that wasn't measured must be null (None), never 0; a check's sum is None if any of its
+    calls is None; the report's totals carry thinking_tokens plus thinking_measured_calls and thinking_unmeasured_calls."""
+    h, items = waves.read(eval_items_file)
+    c_item = next(it for it in items if it["slot"]["kind"] == "C")
+    d_item = next(it for it in items if it["slot"]["kind"] == "D" and not (it.get("row") or {}).get("turn_keys"))
+    sub_path = tmp_path / "thinking-items.jsonl"
+    waves.write(sub_path, h, [c_item, d_item])
+
+    base_critic = MockCritic(answers=waves.load_answers(h))
+    call_idx = {"n": 0}
+
+    import dataclasses
+
+    # Case A: C item has 2 calls (verdict measured=12, flaw unmeasured=None), D item has 1 call (measured=7).
+    def mixed_thinking_critic(messages: list[dict], **kwargs):
+        call_idx["n"] += 1
+        comp = base_critic(messages, **kwargs)
+        if call_idx["n"] == 1:
+            return dataclasses.replace(comp, thinking_tokens=12)
+        if call_idx["n"] == 2:
+            return dataclasses.replace(comp, thinking_tokens=None)
+        return dataclasses.replace(comp, thinking_tokens=7)
+
+    import role_set.critic_eval as ce_mod
+
+    monkeypatch.setattr(ce_mod, "MockCritic", lambda answers: mixed_thinking_critic)
+    out_mixed = tmp_path / "out-mixed"
+    rep_mixed = run_critic_eval(
+        CriticEvalConfig(
+            items=sub_path,
+            pack=pack_dir,
+            out=out_mixed,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            mock=True,
+        )
+    )
+    rows_mixed = [json.loads(x) for x in (out_mixed / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    # First item (C): verdict_check has 12, flaw_check has None -> item thinking_tokens is None!
+    assert rows_mixed[0]["verdict_check"]["thinking_tokens"] == 12
+    assert rows_mixed[0]["flaw_check"]["thinking_tokens"] is None
+    assert rows_mixed[0]["thinking_tokens"] is None
+    # Second item (D): verdict_check has 7 -> item thinking_tokens is 7.
+    assert rows_mixed[1]["verdict_check"]["thinking_tokens"] == 7
+    assert rows_mixed[1]["thinking_tokens"] == 7
+    # Report total has 1 unmeasured call -> thinking_tokens is None, measured=2, unmeasured=1.
+    assert rep_mixed["tokens"]["thinking_tokens"] is None
+    assert rep_mixed["tokens"]["thinking_measured_calls"] == 2
+    assert rep_mixed["tokens"]["thinking_unmeasured_calls"] == 1
+
+    # Case B: All calls measured (12, 8, 7) -> report total is 27, unmeasured=0.
+    call_idx["n"] = 0
+
+    def all_measured_critic(messages: list[dict], **kwargs):
+        call_idx["n"] += 1
+        comp = base_critic(messages, **kwargs)
+        return dataclasses.replace(comp, thinking_tokens=[12, 8, 7][call_idx["n"] - 1])
+
+    monkeypatch.setattr(ce_mod, "MockCritic", lambda answers: all_measured_critic)
+    out_all = tmp_path / "out-all"
+    rep_all = run_critic_eval(
+        CriticEvalConfig(
+            items=sub_path,
+            pack=pack_dir,
+            out=out_all,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            mock=True,
+        )
+    )
+    rows_all = [json.loads(x) for x in (out_all / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert rows_all[0]["thinking_tokens"] == 20
+    assert rows_all[1]["thinking_tokens"] == 7
+    assert rep_all["tokens"]["thinking_tokens"] == 27
+    assert rep_all["tokens"]["thinking_measured_calls"] == 3
+    assert rep_all["tokens"]["thinking_unmeasured_calls"] == 0
+
+
+def test_two_turn_d_item_recorded_on_both_turns_and_turn1_refusal_under_p0(
+    pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """Fix 2: A two-turn D item is checked and recorded on both turns in critic-eval (`verdict_checks: [{turn: 1, ...}, {turn: 2, ...}]`),
+    and offline P0/P2 apply their rules to each turn and refuse if any turn refuses, naming the turn in deciding_rule."""
+    two_turn_item = {
+        "type": "draft",
+        "item_id": "D-TWO:d",
+        "source_row_id": "D-TWO",
+        "perturbation_type": "d",
+        "writer_model": "qwen3.8-27b",
+        "writer_family": "qwen",
+        "slot": {"id": "D-TWO", "kind": "D", "two_turn": "changes", "verdict": "unsupported"},
+        "material": {"text": "The main desk closes at 17:00.\nThe side gate locks at 18:00.", "source": "s1"},
+        "row": {
+            "id": "D-TWO",
+            "kind": "D",
+            "material": "The main desk closes at 17:00.\nThe side gate locks at 18:00.",
+            "turns": [
+                {
+                    "user": "Check:\nMaterial:\nThe main desk closes at 17:00.\nThe side gate locks at 18:00.\nStatement: The main desk stays open until 20:00.",
+                    "thinking": "Turn 1 thinking.",
+                    "reply": "Turn 1 reply.",
+                },
+                {
+                    "user": "Update: On Fridays the main desk stays open until 20:00.",
+                    "new_material": ["On Fridays the main desk stays open until 20:00."],
+                    "thinking": "Turn 2 thinking.",
+                    "reply": "Turn 2 reply.",
+                },
+            ],
+            "turn_keys": {
+                "1": {
+                    "verdict": "unsupported",
+                    "deciding": ["The main desk closes at 17:00."],
+                    "escalate": "no",
+                }
+            },
+            "verdict": "supported",
+            "deciding": ["On Fridays the main desk stays open until 20:00."],
+            "escalate": "no",
+        },
+        "key": {
+            "verdict": "supported",
+            "deciding": ["On Fridays the main desk stays open until 20:00."],
+            "planted_flaw": "none",
+            "turn_keys": {
+                "1": {
+                    "verdict": "unsupported",
+                    "deciding": ["The main desk closes at 17:00."],
+                }
+            },
+        },
+    }
+    items_path = tmp_path / "two-turn-items.jsonl"
+    waves.write(
+        items_path,
+        {
+            "type": "header",
+            "format": waves.FORMAT,
+            "kind": "critic-eval-items",
+            "writer_pins": {"writer_model": "qwen3.8-27b", "writer_family": "qwen"},
+        },
+        [two_turn_item],
+    )
+
+    eval_out = tmp_path / "eval-two-turn"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=items_path,
+            pack=pack_dir,
+            out=eval_out,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            mock=True,
+        )
+    )
+    eval_rows = [json.loads(x) for x in (eval_out / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(eval_rows) == 1
+    rec = eval_rows[0]
+    assert len(rec["verdict_checks"]) == 2
+    assert rec["verdict_checks"][0]["turn"] == 1
+    assert rec["verdict_checks"][0]["code"] == "AGREE"
+    assert rec["verdict_checks"][0]["critic_verdict"] == "unsupported"
+    assert rec["verdict_checks"][1]["turn"] == 2
+    assert rec["verdict_checks"][1]["code"] == "AGREE"
+    assert rec["verdict_checks"][1]["critic_verdict"] == "supported"
+
+    # Both turns agree -> offline P0 and P2 accept.
+    off_ok = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(eval_out / "critic-eval.jsonl",),
+            items=items_path,
+            out=tmp_path / "off-ok",
+            mock=True,
+        )
+    )
+    assert off_ok["by_item"]["D-TWO:d"]["P0"]["outcome"] == "accept"
+    assert off_ok["by_item"]["D-TWO:d"]["P2"]["outcome"] == "accept"
+
+    # Now make turn 1 disagree while turn 2 agrees: P0 must refuse and name turn 1 in deciding_rule!
+    rec_t1_bad = json.loads(json.dumps(rec))
+    rec_t1_bad["verdict_checks"][0]["raw_reply"] = "VERDICT: supported\nDECIDING: The main desk closes at 17:00.\nESCALATE: no"
+    bad_dir = tmp_path / "eval-t1-bad"
+    bad_dir.mkdir()
+    (bad_dir / "critic-eval.jsonl").write_text(json.dumps(rec_t1_bad) + "\n", encoding="utf-8")
+    shutil.copyfile(eval_out / "critic-eval-report.json", bad_dir / "critic-eval-report.json")
+
+    off_t1_bad = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(bad_dir / "critic-eval.jsonl",),
+            items=items_path,
+            out=tmp_path / "off-t1-bad",
+            mock=True,
+        )
+    )
+    p0_res = off_t1_bad["by_item"]["D-TWO:d"]["P0"]
+    assert p0_res["outcome"] == "refuse"
+    assert p0_res["turn"] == 1
+    assert p0_res["deciding_rule"] == "turn1:VERDICT_MISMATCH"
 
 
 def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
@@ -404,8 +666,8 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
     items = [
         {
             "type": "draft",
-            "item_id": "item-flaw:c",
-            "perturbation_type": "c",
+            "item_id": "item-flaw:f",
+            "perturbation_type": "f",
             "slot": {"id": "S1", "kind": "C", "planted_flaw": "guess"},
             "material": {"text": "Line 1.\nLine 2.", "source": "s1"},
             "candidate": {"text": json.dumps({"statement": "Stmt 1.", "checker_trace": "Trace 1.", "checker_verdict": "supported"})},
@@ -422,8 +684,8 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
         },
         {
             "type": "draft",
-            "item_id": "item-long:g",
-            "perturbation_type": "g",
+            "item_id": "item-long:b",
+            "perturbation_type": "b",
             "slot": {"id": "S3", "kind": "D"},
             "material": {"text": "Line A.\nLine B.\nLine C.", "source": "s3"},
             "candidate": {"text": json.dumps({"statement": "Stmt 3."})},
@@ -442,15 +704,10 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
     items_path = tmp_path / "hand-items.jsonl"
     waves.write(items_path, {"type": "header", "format": waves.FORMAT, "kind": "test"}, items)
 
-    # Seed 0 replies:
-    # 1. item-flaw:c -> verdict matches, flaw reply names 'nitpick' (mismatch: P0 accepts, P2 refuses)
-    # 2. item-ct:e -> verdict matches cannot_tell, deciding has ["Line 1."] (P0 accepts, P2 refuses)
-    # 3. item-long:g -> verdict matches supported, deciding has 3 lines vs key's 1 line (P0 accepts, P2 refuses)
-    # 4. item-ctrl:d -> verdict matches supported, deciding has ["Line X."] (P0 and P2 accept)
     eval_s0 = [
         {
-            "item_id": "item-flaw:c",
-            "perturbation_type": "c",
+            "item_id": "item-flaw:f",
+            "perturbation_type": "f",
             "kind": "C",
             "seed": 0,
             "critic_verdict": "unsupported",
@@ -481,8 +738,8 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
             "flaw_check": None,
         },
         {
-            "item_id": "item-long:g",
-            "perturbation_type": "g",
+            "item_id": "item-long:b",
+            "perturbation_type": "b",
             "kind": "D",
             "seed": 0,
             "critic_verdict": "supported",
@@ -509,8 +766,11 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
             "flaw_check": None,
         },
     ]
-    eval_s0_path = tmp_path / "eval-s0.jsonl"
+    s0_dir = tmp_path / "s0"
+    s0_dir.mkdir()
+    eval_s0_path = s0_dir / "critic-eval.jsonl"
     eval_s0_path.write_text("\n".join(json.dumps(r) for r in eval_s0) + "\n", encoding="utf-8")
+    _write_eval_report(eval_s0_path, items_path, seed=0)
 
     # Seed 1 replies: item-ctrl:d is refused on seed 1 so P3 refuses it while seed 0's P2 accepted it.
     eval_s1 = [
@@ -529,8 +789,11 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
             "flaw_check": None,
         },
     ]
-    eval_s1_path = tmp_path / "eval-s1.jsonl"
+    s1_dir = tmp_path / "s1"
+    s1_dir.mkdir()
+    eval_s1_path = s1_dir / "critic-eval.jsonl"
     eval_s1_path.write_text("\n".join(json.dumps(r) for r in eval_s1) + "\n", encoding="utf-8")
+    _write_eval_report(eval_s1_path, items_path, seed=1)
 
     out_dir = tmp_path / "offline-out"
     rc = main([
@@ -550,9 +813,9 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
     by_rule_item = {(r["rule_set"], r["item_id"]): r for r in rows}
 
     # Rule (i): flaw mismatch -> P0 accepts (advisory), P2 refuses with FLAW_MISMATCH
-    assert by_rule_item[("P0", "item-flaw:c")]["outcome"] == "accept"
-    assert by_rule_item[("P2", "item-flaw:c")]["outcome"] == "refuse"
-    assert by_rule_item[("P2", "item-flaw:c")]["deciding_rule"] == "FLAW_MISMATCH"
+    assert by_rule_item[("P0", "item-flaw:f")]["outcome"] == "accept"
+    assert by_rule_item[("P2", "item-flaw:f")]["outcome"] == "refuse"
+    assert by_rule_item[("P2", "item-flaw:f")]["deciding_rule"] == "FLAW_MISMATCH"
 
     # Rule (ii): cannot_tell with non-empty deciding -> P0 accepts, P2 refuses with CANNOT_TELL_DECIDING
     assert by_rule_item[("P0", "item-ct:e")]["outcome"] == "accept"
@@ -560,9 +823,9 @@ def test_critic_rescore_offline_p0_p2_and_p3_rules(tmp_path: Path):
     assert by_rule_item[("P2", "item-ct:e")]["deciding_rule"] == "CANNOT_TELL_DECIDING"
 
     # Rule (iii): quote length > len(key_deciding) + 1 -> P0 accepts, P2 refuses with QUOTE_TOO_LONG
-    assert by_rule_item[("P0", "item-long:g")]["outcome"] == "accept"
-    assert by_rule_item[("P2", "item-long:g")]["outcome"] == "refuse"
-    assert by_rule_item[("P2", "item-long:g")]["deciding_rule"] == "QUOTE_TOO_LONG"
+    assert by_rule_item[("P0", "item-long:b")]["outcome"] == "accept"
+    assert by_rule_item[("P2", "item-long:b")]["outcome"] == "refuse"
+    assert by_rule_item[("P2", "item-long:b")]["deciding_rule"] == "QUOTE_TOO_LONG"
 
     # Control item: P2 accepts on seed 0, but seed 1 refuses -> P3 refuses!
     assert by_rule_item[("P2", "item-ctrl:d")]["outcome"] == "accept"
@@ -622,7 +885,275 @@ def test_critic_rescore_offline_scores_alternate_keys_a_c_g_without_any_model_ca
         ]
         p2_rows = [r for r in rows if r["rule_set"] == "P2" and r["perturbation_type"] == key_type]
         assert p2_rows
-        assert all(r["outcome"] == "refuse" and r["deciding_rule"] == expected_rule for r in p2_rows)
+        assert all(
+            r["outcome"] == "refuse" and (r["deciding_rule"] == expected_rule or r["deciding_rule"] == f"turn2:{expected_rule}")
+            for r in p2_rows
+        )
+
+
+def test_offline_exact_matcher_and_refuses_missing_raw_reply(tmp_path: Path):
+    """Fix 3: A GPU item (d, b, e, f) matches only its own item_id; a key-only item (a, c, g) matches only its
+    control_item_id == <src>:d (and never a (b) or (e) reply via source_row_id). Also refuses when raw_reply is missing."""
+    items_path = tmp_path / "items.jsonl"
+    items_path.write_text(
+        json.dumps(
+            {
+                "item_id": "src1:b",
+                "source_row_id": "src1",
+                "perturbation_type": "b",
+                "kind": "D",
+                "material": "Line 1.",
+                "statement": "Stmt 1.",
+                "key": {"verdict": "supported", "deciding": ["Line 1."]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    eval_dir = tmp_path / "eval"
+    eval_dir.mkdir()
+    eval_path = eval_dir / "critic-eval.jsonl"
+    # Eval file only has src1:b (no src1:d control!).
+    eval_path.write_text(
+        json.dumps(
+            {
+                "item_id": "src1:b",
+                "source_row_id": "src1",
+                "perturbation_type": "b",
+                "kind": "D",
+                "seed": 0,
+                "verdict_check": {
+                    "code": "AGREE",
+                    "detail": "agree",
+                    "raw_reply": "VERDICT: supported\nDECIDING: Line 1.\nESCALATE: no",
+                },
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_eval_report(eval_path, items_path, seed=0)
+
+    # 1. A key-only item src1:a with control_item_id="src1:d" must refuse because src1:d is not in eval (must NOT fall back to src1:b!).
+    key_a_file = tmp_path / "keys-a.jsonl"
+    key_a_file.write_text(
+        json.dumps(
+            {
+                "item_id": "src1:a",
+                "source_row_id": "src1",
+                "control_item_id": "src1:d",
+                "perturbation_type": "a",
+                "kind": "D",
+                "material": "Line 1.",
+                "statement": "Stmt 1.",
+                "key": {"verdict": "unsupported", "deciding": ["Line 1."]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(CriticEvalError, match="no recorded control critic reply"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(eval_files=(eval_path,), items=items_path, keys=(key_a_file,), mock=True)
+        )
+
+    # 2. A key-only item whose control_item_id is not <src>:d (e.g. points at src1:b) must refuse!
+    bad_ctrl_key = tmp_path / "keys-bad-ctrl.jsonl"
+    bad_ctrl_key.write_text(
+        json.dumps(
+            {
+                "item_id": "src1:a",
+                "source_row_id": "src1",
+                "control_item_id": "src1:b",
+                "perturbation_type": "a",
+                "kind": "D",
+                "material": "Line 1.",
+                "statement": "Stmt 1.",
+                "key": {"verdict": "unsupported", "deciding": ["Line 1."]},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(CriticEvalError, match="expected 'src1:d'"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(eval_files=(eval_path,), items=items_path, keys=(bad_ctrl_key,), mock=True)
+        )
+
+    # 3. Missing raw_reply on verdict_check or flaw_check must refuse (never reconstruct from critic_verdict/critic_deciding).
+    no_raw_dir = tmp_path / "eval-no-raw"
+    no_raw_dir.mkdir()
+    no_raw_path = no_raw_dir / "critic-eval.jsonl"
+    no_raw_path.write_text(
+        json.dumps(
+            {
+                "item_id": "src1:b",
+                "source_row_id": "src1",
+                "perturbation_type": "b",
+                "kind": "D",
+                "seed": 0,
+                "critic_verdict": "supported",
+                "critic_deciding": ["Line 1."],
+                "verdict_check": {"code": "AGREE", "detail": "agree"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_eval_report(no_raw_path, items_path, seed=0)
+    with pytest.raises(CriticEvalError, match="missing raw_reply"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(eval_files=(no_raw_path,), items=items_path, mock=True)
+        )
+
+    c_items_path = tmp_path / "c-items.jsonl"
+    c_items_path.write_text(
+        json.dumps(
+            {
+                "item_id": "srcC:d",
+                "source_row_id": "srcC",
+                "perturbation_type": "d",
+                "kind": "C",
+                "material": "Line 1.",
+                "statement": "Stmt 1.",
+                "checker_trace": "Trace.",
+                "checker_verdict": "supported",
+                "key": {"verdict": "unsupported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    no_flaw_raw_dir = tmp_path / "eval-no-flaw-raw"
+    no_flaw_raw_dir.mkdir()
+    no_flaw_raw_path = no_flaw_raw_dir / "critic-eval.jsonl"
+    no_flaw_raw_path.write_text(
+        json.dumps(
+            {
+                "item_id": "srcC:d",
+                "source_row_id": "srcC",
+                "perturbation_type": "d",
+                "kind": "C",
+                "seed": 0,
+                "verdict_check": {
+                    "code": "AGREE",
+                    "detail": "agree",
+                    "raw_reply": "VERDICT: unsupported\nDECIDING: Line 1.\nESCALATE: no",
+                },
+                "flaw_check": {"code": "AGREE", "detail": "agree"},
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    _write_eval_report(no_flaw_raw_path, c_items_path, seed=0)
+    with pytest.raises(CriticEvalError, match="missing flaw_check.raw_reply"):
+        run_critic_rescore_offline(
+            CriticRescoreOfflineConfig(eval_files=(no_flaw_raw_path,), items=c_items_path, mock=True)
+        )
+
+
+def test_offline_gates_and_report_validation_and_p3_seed_checks(tmp_path: Path):
+    """Fix 4: critic-rescore-offline reads critic-eval-report.json beside each --eval file and refuses on gates
+    (version, sha256, closed_form) or input_sha256 mismatch, and for P3 refuses unless both reports share critic_model,
+    critic_gguf_sha256, and input_sha256 and have distinct non-null integer seeds."""
+    items_path = tmp_path / "items.jsonl"
+    cf = {"carry": "either"}
+    waves.write(
+        items_path,
+        {"type": "header", "format": waves.FORMAT, "gates": {"version": "mock", "sha256": "0" * 64, "closed_form": cf}},
+        [
+            {
+                "type": "draft",
+                "item_id": "ok:d",
+                "perturbation_type": "d",
+                "kind": "D",
+                "material": "Line 1.",
+                "statement": "S1",
+                "key": {"verdict": "supported", "deciding": ["Line 1."]},
+            }
+        ],
+    )
+
+    def make_eval_dir(
+        name: str,
+        *,
+        seed=0,
+        rec_seed=0,
+        model=LIGHTNING,
+        gguf="5bea2069" + "0" * 56,
+        closed_form=cf,
+        override_cf=None,
+        g_ver=None,
+        input_sha=None,
+    ):
+        d = tmp_path / name
+        d.mkdir(exist_ok=True)
+        ep = d / "critic-eval.jsonl"
+        ep.write_text(
+            json.dumps(
+                {
+                    "item_id": "ok:d",
+                    "perturbation_type": "d",
+                    "kind": "D",
+                    "seed": rec_seed,
+                    "verdict_check": {
+                        "code": "AGREE",
+                        "detail": "agree",
+                        "raw_reply": "VERDICT: supported\nDECIDING: Line 1.\nESCALATE: no",
+                    },
+                }
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        _write_eval_report(
+            ep,
+            items_path,
+            seed=seed,
+            critic_model=model,
+            critic_gguf_sha256=gguf,
+            closed_form=closed_form,
+            gates_version=g_ver,
+        )
+        if input_sha is not None or override_cf is not None:
+            rep = json.loads((d / "critic-eval-report.json").read_text(encoding="utf-8"))
+            if input_sha is not None:
+                rep["input_sha256"] = input_sha
+            if override_cf is not None:
+                rep["gates"]["closed_form"] = override_cf
+            (d / "critic-eval-report.json").write_text(json.dumps(rep), encoding="utf-8")
+        return ep
+
+    e0 = make_eval_dir("e0", seed=0, rec_seed=0)
+    # 1. Gates closed_form mismatch refuses
+    e_bad_cf = make_eval_dir("e_bad_cf", seed=0, rec_seed=0, override_cf={"carry": "verbatim"})
+    with pytest.raises(CriticEvalError, match="gates"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e_bad_cf,), items=items_path, mock=True))
+
+    # 2. Gates version mismatch refuses
+    e_bad_ver = make_eval_dir("e_bad_ver", seed=0, rec_seed=0, g_ver="9.9.9")
+    with pytest.raises(CriticEvalError, match="gates"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e_bad_ver,), items=items_path, mock=True))
+
+    # 3. input_sha256 mismatch refuses
+    e_bad_sha = make_eval_dir("e_bad_sha", seed=0, rec_seed=0, input_sha="f" * 64)
+    with pytest.raises(CriticEvalError, match="input_sha256"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e_bad_sha,), items=items_path, mock=True))
+
+    # 4. P3 missing seed refuses
+    e_null_seed = make_eval_dir("e_null_seed", seed=None, rec_seed=None)
+    with pytest.raises(CriticEvalError, match="non-null integer critic_seed"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0, e_null_seed), items=items_path, mock=True))
+
+    # 5. P3 different critic_model or critic_gguf_sha256 refuses
+    e_diff_model = make_eval_dir("e_diff_model", seed=1, rec_seed=1, model=MUSE)
+    with pytest.raises(CriticEvalError, match="same critic_model"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0, e_diff_model), items=items_path, mock=True))
+
+    e_diff_gguf = make_eval_dir("e_diff_gguf", seed=1, rec_seed=1, gguf="a" * 64)
+    with pytest.raises(CriticEvalError, match="same critic gguf_sha256"):
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0, e_diff_gguf), items=items_path, mock=True))
 
 
 def test_critic_eval_and_offline_error_cases_and_extract_item_parts(tmp_path: Path):
@@ -679,33 +1210,39 @@ def test_critic_eval_and_offline_error_cases_and_extract_item_parts(tmp_path: Pa
     k_file = tmp_path / "plain-keys.jsonl"
     k_file.write_text(
         "\n".join([
-            json.dumps({"item_id": "ok:d", "perturbation_type": "d", "kind": "D", "material": "Line 1.", "statement": "S1", "key": {"verdict": "supported", "deciding": ["Line 1."]}}),
-            json.dumps({"item_id": "bad:b", "perturbation_type": "b", "kind": "D", "material": "Line 1.", "statement": "S2", "key": {"verdict": "supported", "deciding": ["Line 1."]}}),
+            json.dumps({"item_id": "ok:d", "source_row_id": "ok", "perturbation_type": "d", "kind": "D", "material": "Line 1.", "statement": "S1", "key": {"verdict": "supported", "deciding": ["Line 1."]}}),
+            json.dumps({"item_id": "bad:b", "source_row_id": "bad", "perturbation_type": "b", "kind": "D", "material": "Line 1.", "statement": "S2", "key": {"verdict": "supported", "deciding": ["Line 1."]}}),
         ]) + "\n",
         encoding="utf-8",
     )
-    e0 = tmp_path / "e0.jsonl"
-    e1 = tmp_path / "e1.jsonl"
+    e0_dir = tmp_path / "e0_dir"
+    e1_dir = tmp_path / "e1_dir"
+    e0_dir.mkdir()
+    e1_dir.mkdir()
+    e0 = e0_dir / "critic-eval.jsonl"
+    e1 = e1_dir / "critic-eval.jsonl"
     e0.write_text(
         "\n".join([
-            json.dumps({"item_id": "ok:d", "seed": 0, "critic_verdict": "supported", "critic_deciding": ["Line 1."]}),
-            json.dumps({"item_id": "bad:b", "seed": 0, "critic_verdict": "unsupported", "critic_deciding": ["Line 1."]}),
+            json.dumps({"item_id": "ok:d", "perturbation_type": "d", "seed": 0, "verdict_check": {"code": "AGREE", "detail": "ok", "raw_reply": "VERDICT: supported\nDECIDING: Line 1.\nESCALATE: no"}}),
+            json.dumps({"item_id": "bad:b", "perturbation_type": "b", "seed": 0, "verdict_check": {"code": "VERDICT_MISMATCH", "detail": "no", "raw_reply": "VERDICT: unsupported\nDECIDING: Line 1.\nESCALATE: no"}}),
         ]) + "\n",
         encoding="utf-8",
     )
     e1.write_text(
         "\n".join([
-            json.dumps({"item_id": "ok:d", "seed": 1, "critic_verdict": "supported", "critic_deciding": ["Line 1."]}),
-            json.dumps({"item_id": "bad:b", "seed": 1, "critic_verdict": "cannot_tell", "critic_deciding": ["Line 1."]}),
+            json.dumps({"item_id": "ok:d", "perturbation_type": "d", "seed": 1, "verdict_check": {"code": "AGREE", "detail": "ok", "raw_reply": "VERDICT: supported\nDECIDING: Line 1.\nESCALATE: no"}}),
+            json.dumps({"item_id": "bad:b", "perturbation_type": "b", "seed": 1, "verdict_check": {"code": "VERDICT_MISMATCH", "detail": "no", "raw_reply": "VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no"}}),
         ]) + "\n",
         encoding="utf-8",
     )
+    _write_eval_report(e0, k_file, seed=0)
+    _write_eval_report(e1, k_file, seed=1)
     with pytest.raises(CriticEvalError, match="different seeds"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0, e0), keys=(k_file,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0, e0), items=k_file, mock=True))
 
     out_jsonl = tmp_path / "direct-out.jsonl"
     rep = run_critic_rescore_offline(
-        CriticRescoreOfflineConfig(eval_files=(e0, e1), keys=(k_file,), out=out_jsonl, mock=True)
+        CriticRescoreOfflineConfig(eval_files=(e0, e1), items=k_file, out=out_jsonl, mock=True)
     )
     assert out_jsonl.exists()
     assert rep["by_item"]["ok:d"]["P3"]["outcome"] == "accept"
@@ -716,26 +1253,36 @@ def test_critic_eval_and_offline_error_cases_and_extract_item_parts(tmp_path: Pa
     bad_seal_file.write_text('{"item_id": "1"}\n', encoding="utf-8")
     waves.seal_path(bad_seal_file).write_text("0" * 64 + "  bad-seal.jsonl\n", encoding="utf-8")
     with pytest.raises(CriticEvalError, match="doesn't match its seal"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), keys=(bad_seal_file,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), items=bad_seal_file, mock=True))
 
     empty_file = tmp_path / "empty.jsonl"
     empty_file.write_text("", encoding="utf-8")
     with pytest.raises(CriticEvalError, match="is empty"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), keys=(empty_file,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), items=empty_file, mock=True))
+    empty_eval_dir = tmp_path / "empty_eval_dir"
+    empty_eval_dir.mkdir()
+    empty_eval = empty_eval_dir / "critic-eval.jsonl"
+    empty_eval.write_text("", encoding="utf-8")
+    _write_eval_report(empty_eval, k_file, seed=0)
     with pytest.raises(CriticEvalError, match="holds no critic-eval records"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(empty_file,), keys=(k_file,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(empty_eval,), items=k_file, mock=True))
 
     bad_json = tmp_path / "bad.jsonl"
     bad_json.write_text("{not json\n", encoding="utf-8")
     with pytest.raises(CriticEvalError, match="cannot parse"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), keys=(bad_json,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), items=bad_json, mock=True))
+    bad_eval_dir = tmp_path / "bad_eval_dir"
+    bad_eval_dir.mkdir()
+    bad_eval = bad_eval_dir / "critic-eval.jsonl"
+    bad_eval.write_text("{not json\n", encoding="utf-8")
+    _write_eval_report(bad_eval, k_file, seed=0)
     with pytest.raises(CriticEvalError, match="cannot parse"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(bad_json,), keys=(k_file,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(bad_eval,), items=k_file, mock=True))
 
     unmatched_key = tmp_path / "unmatched.jsonl"
-    unmatched_key.write_text(json.dumps({"item_id": "no-such-id", "source_row_id": "no-such-src", "material": "M", "statement": "S", "key": {"verdict": "supported", "deciding": ["M"]}}) + "\n", encoding="utf-8")
+    unmatched_key.write_text(json.dumps({"item_id": "no-such-id:d", "source_row_id": "no-such-src", "perturbation_type": "d", "material": "M", "statement": "S", "key": {"verdict": "supported", "deciding": ["M"]}}) + "\n", encoding="utf-8")
     with pytest.raises(CriticEvalError, match="no recorded critic reply found"):
-        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), keys=(unmatched_key,), mock=True))
+        run_critic_rescore_offline(CriticRescoreOfflineConfig(eval_files=(e0,), items=k_file, keys=(unmatched_key,), mock=True))
 
     # Validation refusals in run_critic_eval (missing writers, missing cards, bad kind, missing statement/key)
     valid_sealed = tmp_path / "valid-sealed.jsonl"
@@ -770,6 +1317,8 @@ def test_critic_eval_and_offline_error_cases_and_extract_item_parts(tmp_path: Pa
         ]) + "\n",
         encoding="utf-8",
     )
+    _write_eval_report(e0, base_items, seed=0)
+    _write_eval_report(e1, base_items, seed=1)
     override_keys = tmp_path / "override-keys.jsonl"
     override_keys.write_text(
         "\n".join([
@@ -1020,20 +1569,33 @@ def test_window_resumes_from_pin_critic_eval_resume_tar(ce_vm: Path, monkeypatch
     _tar_bytes(
         resume_tar,
         {
-            f"critic-eval-s0/calls/{LIGHTNING}.jsonl": b'{"key":"k0"}\n',
+            # Path 1: critic-eval-out.tar layout for s0
+            "critic-eval/s0/calls-journal.jsonl": b'{"key":"k0"}\n',
+            # Path 2: checkpoints.extract layout for s1
             f"critic-eval-s1/calls/{LIGHTNING}.jsonl": b'{"key":"k1"}\n',
+            # Unrelated s10 journal and stray jsonl that must NOT be picked up for s1 or s2!
+            f"critic-eval-s10/calls/{LIGHTNING}.jsonl": b'{"key":"k10"}\n',
+            "nested/s2/other.jsonl": b'{"key":"k2-bad"}\n',
         },
     )
+    tar_sha = hashlib.sha256(resume_tar.read_bytes()).hexdigest()
     monkeypatch.setenv("PIN_CRITIC_EVAL_RESUME", str(resume_tar))
-    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1")
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1,2")
 
     pw.critic_eval_window({}, result)
+    assert result["critic_eval_resume"]["tar_sha256"] == tar_sha
+    assert set(result["critic_eval_resume"]["journals"]) == {"0", "1"}
+    assert result["critic_eval_resume"]["journals"]["0"].endswith("critic-eval/s0/calls-journal.jsonl")
+    assert result["critic_eval_resume"]["journals"]["1"].endswith(f"critic-eval-s1/calls/{LIGHTNING}.jsonl")
+
     eval_cmds = [e[1] for e in events if isinstance(e, tuple) and e[0] == "eval"]
-    assert len(eval_cmds) == 2
-    for seed, cmd in enumerate(eval_cmds):
-        assert "--reuse-calls" in cmd
-        reuse_arg = cmd[cmd.index("--reuse-calls") + 1]
-        assert f"critic-eval-s{seed}" in reuse_arg
+    assert len(eval_cmds) == 3
+    assert "--reuse-calls" in eval_cmds[0]
+    assert eval_cmds[0][eval_cmds[0].index("--reuse-calls") + 1].endswith("critic-eval/s0/calls-journal.jsonl")
+    assert "--reuse-calls" in eval_cmds[1]
+    assert eval_cmds[1][eval_cmds[1].index("--reuse-calls") + 1].endswith(f"critic-eval-s1/calls/{LIGHTNING}.jsonl")
+    # Seed 2 has no journal at the two exact paths (nested/s2/other.jsonl is ignored) -> no --reuse-calls!
+    assert "--reuse-calls" not in eval_cmds[2]
 
 
 @pytest.mark.skipif(

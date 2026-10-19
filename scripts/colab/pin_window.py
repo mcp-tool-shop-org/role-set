@@ -2145,8 +2145,9 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
     return root, items_path, shas
 
 
-def critic_eval_resume(critic: str, seeds: list[int]) -> dict[int, Path]:
-    """PIN_CRITIC_EVAL_RESUME: a tar of an earlier window's journals; maps each seed to its journal path."""
+def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None) -> dict[int, Path]:
+    """PIN_CRITIC_EVAL_RESUME: a tar of an earlier window's journals; maps each seed to its journal path.
+    Accepts only critic-eval/s{seed}/calls-journal.jsonl and critic-eval-s{seed}/calls/{critic}.jsonl."""
 
     raw = os.environ.get("PIN_CRITIC_EVAL_RESUME")
     if not raw:
@@ -2156,6 +2157,7 @@ def critic_eval_resume(critic: str, seeds: list[int]) -> dict[int, Path]:
         tar = CONTENT / str(tar).removeprefix("/content/")
     if not tar.exists():
         raise RuntimeError(f"REFUSED: PIN_CRITIC_EVAL_RESUME {tar} does not exist")
+    tar_sha = sha256(tar)
     dest = WORK / "critic-eval-resume"
     if dest.exists():
         sh(f"rm -rf {dest}")
@@ -2163,23 +2165,18 @@ def critic_eval_resume(critic: str, seeds: list[int]) -> dict[int, Path]:
     sh(f"tar -xf {tar} -C {dest}")
     found: dict[int, Path] = {}
     for s in seeds:
-        candidates = [
-            dest / f"critic-eval-s{s}" / "calls" / f"{critic}.jsonl",
-            dest / f"s{s}" / "calls-journal.jsonl",
+        for c in (
             dest / "critic-eval" / f"s{s}" / "calls-journal.jsonl",
-            dest / f"calls-s{s}-{critic}.jsonl",
-            dest / "critic-eval" / f"calls-s{s}-{critic}.jsonl",
-            dest / f"s{s}.jsonl",
-            dest / f"seed-{s}.jsonl",
-        ]
-        for c in candidates:
+            dest / f"critic-eval-s{s}" / "calls" / f"{critic}.jsonl",
+        ):
             if c.is_file():
                 found[s] = c
                 break
-        else:
-            matches = sorted(dest.rglob(f"*s{s}*/*.jsonl")) + sorted(dest.rglob(f"*s{s}*.jsonl"))
-            if matches:
-                found[s] = matches[0]
+    if result is not None:
+        result["critic_eval_resume"] = {
+            "tar_sha256": tar_sha,
+            "journals": {str(s): str(p) for s, p in found.items()},
+        }
     return found
 
 
@@ -2206,7 +2203,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
         if critic not in by_name:
             raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
         _, items_path, _ = critic_eval_inputs(result)
-        resumed = critic_eval_resume(critic, seeds)
+        resumed = critic_eval_resume(critic, seeds, result)
         if resumed:
             result["critic_eval_resumed"] = {str(s): str(p) for s, p in resumed.items()}
         pack = CONTENT / "pack"

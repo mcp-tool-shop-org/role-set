@@ -99,7 +99,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 52,
+      "qualifyingSourceCommits": 53,
       "rebaseline": null
     },
     {
@@ -135,7 +135,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 75,
+      "qualifyingSourceCommits": 76,
       "rebaseline": null
     },
     {
@@ -155,7 +155,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 107,
+      "qualifyingSourceCommits": 108,
       "rebaseline": null
     }
   ],
@@ -193,8 +193,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 59,
-        "lines": 332,
+        "commits": 60,
+        "lines": 338,
         "path": "CHANGELOG.md"
       },
       {
@@ -268,8 +268,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 46,
-        "lines": 890,
+        "commits": 47,
+        "lines": 910,
         "path": "atlas/README.md"
       },
       {
@@ -278,18 +278,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 46,
-        "lines": 2990,
+        "commits": 47,
+        "lines": 3055,
         "path": "atlas/page.json"
       },
       {
-        "commits": 46,
-        "lines": 6631,
+        "commits": 47,
+        "lines": 6756,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 46,
-        "lines": 21543,
+        "commits": 47,
+        "lines": 23241,
         "path": "atlas/structure.json"
       },
       {
@@ -393,8 +393,8 @@
         "path": "scripts/colab/mock_job.py"
       },
       {
-        "commits": 50,
-        "lines": 6614,
+        "commits": 51,
+        "lines": 6845,
         "path": "scripts/colab/pin_window.py"
       },
       {
@@ -413,14 +413,19 @@
         "path": "scripts/colab/preflight_window.py"
       },
       {
-        "commits": 33,
-        "lines": 898,
+        "commits": 34,
+        "lines": 902,
         "path": "scripts/colab/smoke_window.sh"
       },
       {
         "commits": 4,
         "lines": 476,
         "path": "scripts/colab/vm_gate.py"
+      },
+      {
+        "commits": 1,
+        "lines": 555,
+        "path": "scripts/critic_signal/perturb.py"
       },
       {
         "commits": 1,
@@ -593,8 +598,8 @@
         "path": "src/role_set/b_packs.json"
       },
       {
-        "commits": 3,
-        "lines": 196,
+        "commits": 4,
+        "lines": 206,
         "path": "src/role_set/callcache.py"
       },
       {
@@ -603,8 +608,8 @@
         "path": "src/role_set/cards.py"
       },
       {
-        "commits": 32,
-        "lines": 794,
+        "commits": 33,
+        "lines": 865,
         "path": "src/role_set/cli.py"
       },
       {
@@ -621,6 +626,11 @@
         "commits": 4,
         "lines": 411,
         "path": "src/role_set/critic_control.py"
+      },
+      {
+        "commits": 1,
+        "lines": 838,
+        "path": "src/role_set/critic_eval.py"
       },
       {
         "commits": 1,
@@ -803,8 +813,8 @@
         "path": "src/role_set/trait_steps.py"
       },
       {
-        "commits": 6,
-        "lines": 229,
+        "commits": 7,
+        "lines": 248,
         "path": "src/role_set/transport.py"
       },
       {
@@ -943,6 +953,11 @@
         "path": "tests/test_critic_control.py"
       },
       {
+        "commits": 1,
+        "lines": 1068,
+        "path": "tests/test_critic_eval.py"
+      },
+      {
         "commits": 2,
         "lines": 244,
         "path": "tests/test_critic_side.py"
@@ -1019,6 +1034,11 @@
       },
       {
         "commits": 1,
+        "lines": 249,
+        "path": "tests/test_perturb.py"
+      },
+      {
+        "commits": 1,
         "lines": 155,
         "path": "tests/test_pilot.py"
       },
@@ -1033,8 +1053,8 @@
         "path": "tests/test_pilot_findings.py"
       },
       {
-        "commits": 29,
-        "lines": 2718,
+        "commits": 30,
+        "lines": 2719,
         "path": "tests/test_pin_window.py"
       },
       {
@@ -1153,51 +1173,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-19T02:25:32.738Z",
+  "generatedAt": "2026-10-19T04:44:11.352Z",
   "generatedFrom": {
-    "commit": "3b9609ce6e22089f3eec016d9639b6a9706ac1db"
+    "commit": "62e47ffccd969092a4510e97c90fe693a4dd5d4f"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 42,
-      "shared": 42,
+      "either": 43,
+      "shared": 43,
       "strength": 1
     },
     {
@@ -1274,16 +1294,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-18T16:14:09-07:00",
+    "headDate": "2026-10-18T22:26:03-04:00",
     "inScopeFiles": 200,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 149,
+    "qualifyingCommits": 150,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-21T23:14:09.000Z",
+    "since": "2026-04-22T02:26:03.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
