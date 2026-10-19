@@ -117,7 +117,10 @@ def test_the_prefetch_needs_a_full_revision_and_a_token(vm, monkeypatch):
 
 
 @pytest.mark.parametrize("card, want", [("---\nlicense: apache-2.0\nlibrary_name: x\n---\n# M\n", "apache-2.0"),
-                                         ("---\nlicense: 'other'\n---\n", "other"), ("# no front matter\n", None)])
+                                         ("---\nlicense: 'other'\n---\n", "other"), ("# no front matter\n", None),
+                                         ("---\nlicense: other\nlicense_name: openmdw-1.1\n---\n", "openmdw-1.1"),
+                                         ("---\nlicense_name: openmdw-1.1\nlicense: other\n---\n", "openmdw-1.1"),
+                                         ("---\nlicense: mit\nlicense_name: ignored\n---\n", "mit")])
 def test_the_cards_licence_field(tmp_path, card, want):
     p = tmp_path / "c.md"
     p.write_text(card, encoding="utf-8")
@@ -249,7 +252,10 @@ class HfApi:
         _log({"call": "init", "token_sha": hashlib.sha256(token.encode()).hexdigest() if token else None})
 
     def repo_info(self, repo):
-        return SimpleNamespace(private=CFG.get("private", True), card_data={"license": CFG.get("repo_licence", "apache-2.0")})
+        data = {"license": CFG.get("repo_licence", "apache-2.0")}
+        if CFG.get("repo_licence_name"):
+            data["license_name"] = CFG["repo_licence_name"]
+        return SimpleNamespace(private=CFG.get("private", True), card_data=data)
 
     def list_repo_files(self, repo, revision=None):
         return CFG.get("files", ["README.md"])
@@ -349,7 +355,9 @@ def test_a_card_only_apache_repo_gets_the_vendored_text_checked_against_its_pin(
     ({"private": False}, "is public"),
     ({"repo_licence": None}, "names no licence"),
     ({"files": ["README.md", "LICENSE"], "card": "---\nlicense: other\nlicense_name: openmdw-1.1\n---\n"},
-     "card licence is 'other'"),
+     "card licence is 'openmdw-1.1'"),
+    ({"files": ["README.md"], "repo_licence": "other", "repo_licence_name": "openmdw-1.1",
+      "card": "---\nlicense: other\nlicense_name: some-other-1.0\n---\n"}, "card licence is 'some-other-1.0'"),
 ])
 def test_the_child_refuses_before_any_upload(vm, monkeypatch, tmp_path, cfg, why):
     # A public repo; a repo card with no licence; Lightning's OpenMDW card in the Apache repo.
@@ -477,3 +485,19 @@ def test_any_token_residue_stops_the_window_before_pool(vm, monkeypatch, tmp_pat
 def test_a_hub_without_the_colab_secret_attribute_reads_clean(monkeypatch):
     monkeypatch.setitem(sys.modules, "huggingface_hub.utils._auth", SimpleNamespace())
     assert pw.token_clean()["no_colab_secret"] is True
+
+
+def test_an_openmdw_repo_takes_an_openmdw_card_with_the_vendored_agreement(vm, monkeypatch, tmp_path):
+    # Super-VL (critic-signal §10): an OpenMDW-1.1 card with no LICENSE file goes to a repo labelled other/openmdw-1.1,
+    # and gets the vendored agreement, checked against its pin.
+    import hashlib
+
+    vendored = Path(__file__).resolve().parents[1] / "scripts" / "colab" / "licences" / "openmdw-1.1.txt"
+    assert hashlib.sha256(vendored.read_bytes()).hexdigest() == pw.LICENCE_FALLBACK["openmdw-1.1"][1]
+    card = "---\nlicense: other\nlicense_name: openmdw-1.1\n---\n# Super-VL\n"
+    result, rows, err = _child_upload(vm, monkeypatch, tmp_path, files=["README.md"], card=card,
+                                      repo_licence="other", repo_licence_name="openmdw-1.1")
+    assert err is None, err
+    up = [r for r in rows if r["call"] == "upload"][0]
+    assert up["license"] == vendored.read_bytes().decode("latin-1")
+    assert result["uploaded"]["licence"] == "openmdw-1.1"

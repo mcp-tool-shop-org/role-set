@@ -449,7 +449,11 @@ _TOKEN: str | None = None  # the value, between the job's start and the step tha
 # Licences stated only in a model card (Gemma 4 and Granite 4.2 ship no LICENSE file): one vendored copy of the text,
 # pinned, so an upload needs no network for it and the text can't drift (R&D, 2026-10-18). Source:
 # https://www.apache.org/licenses/LICENSE-2.0.txt, fetched 2026-10-18.
-LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30")}
+# openmdw-1.1.txt is the agreement alone ("OpenMDW License Agreement, version 1.1" through "Copyright The Linux
+# Foundation and its contributors." plus one LF), cut by R&D from the registry snapshot
+# E:/AI/licence-snapshots/2026-10-17/openmdw-1.1.txt (page-text sha256 c709632b, read 2026-10-17).
+LICENCE_FALLBACK = {"apache-2.0": ("apache-2.0.txt", "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"),
+                    "openmdw-1.1": ("openmdw-1.1.txt", "ac19de4aa4e0216bbf0ca2fc5794490637a6ba786f12afec8fb63f0005c5b27f")}
 DISK_MARGIN_GB = 20  # R&D: a window's peak plus this must fit the VM's free disk
 
 
@@ -564,19 +568,23 @@ def prefetch_hosted(names: list, by_name: dict, result: dict) -> None:
 
 CARD_LICENCE_SRC = """
 def card_licence(card):
-    \"\"\"The `license:` field of a model card's YAML front matter.\"\"\"
+    \"\"\"A model card's licence from its YAML front matter: `license:`, or `license_name:` when the licence is
+    `other` (Super-VL: other / openmdw-1.1), so two different "other" licences never compare equal.\"\"\"
 
     if not card.exists():
         return None
     lines = card.read_text(encoding="utf-8").splitlines()
     if not lines or lines[0].strip() != "---":
         return None
+    fields = {}
     for line in lines[1:]:
         if line.strip() == "---":
             break
-        if line.startswith("license:"):
-            return line.split(":", 1)[1].strip().strip("'\\"")
-    return None
+        for key in ("license", "license_name"):
+            if line.startswith(key + ":"):
+                fields[key] = line.split(":", 1)[1].strip().strip("'\\"")
+    licence = fields.get("license")
+    return fields.get("license_name") or licence if licence == "other" else licence
 """
 exec(CARD_LICENCE_SRC)  # defines card_licence here; the upload child execs the same text
 
@@ -610,7 +618,11 @@ try:
     if not info.private:
         refuse(repo + " is public; pre-built GGUFs go only to a private repo (R&D's licence line)")
     card = getattr(info, "card_data", None) or {}
-    repo_licence = card.get("license") if isinstance(card, dict) else getattr(card, "license", None)
+    get = card.get if isinstance(card, dict) else (lambda k: getattr(card, k, None))
+    repo_licence = get("license")
+    if repo_licence == "other":
+        # The same rule as card_licence: an "other" repo is labelled by its license_name (openmdw-1.1), never "other".
+        repo_licence = get("license_name") or repo_licence
     if not repo_licence:
         refuse(repo + "'s card names no licence; set it before any model goes in")
     stage.mkdir(parents=True, exist_ok=True)
