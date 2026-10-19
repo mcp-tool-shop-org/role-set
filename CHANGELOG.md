@@ -122,6 +122,8 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **Super-VL-120B's pin** (critic-signal §10): `expect_sha256` 6fa3c010… in MODELS and a `critics` entry in writers.json (OpenMDW-1.1, text-only). BF16 then llama-quantize Q8_0; the quantize ran twice from the same BF16 and matched. One conversion, so reproducibility isn't re-proven; 131.6 GB needs a 141 GB card.
+
 - **The wave pilot, from BUILD-SPEC §9.2 and Argon's §9.4 review, findings 7 and 19 (composition ruled by R&D).**
   - **`role-set plan --pilot`:** 20 T02 slots (A 4; B 5, one per solve-first structure; C 4 and D 4 with one two-turn D and no half of a contrast pair; E 3: 2 written, 1 verdict). The floors are reported, not enforced. A pilot write needs a `trial:` partition, refuses `--exemplar-*` (B7's receipt check isn't needed until batch 2), and never enters the exclusion state.
   - **`role-set plan --pilot-twins`:** the pilot's 2 C and 2 D decided T04 apply items, a batch of their own, written after the pilot with its accepted rows as `--training`, so the leakage check runs for real (R&D: "the pilot can't stand in for the full run").

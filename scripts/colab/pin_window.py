@@ -100,9 +100,11 @@ MODELS = [
     # config (NemotronHForCausalLM, latent MoE, one MTP head) and leaves the vision tower out. Saved with transformers
     # 5.12.1 (TokenizersBackend), so Muse's recipe: its own env and the tokenizer checked id by id. The pin comes from the
     # first conversion (PIN_ROLE=convert on the RunPod converter) and is added before any prebuild or serve.
+    # Pinned 2026-10-19 from plan 2 (RTX PRO 6000 Server pod): BF16 1,282 s, then llama-quantize Q8_0 run twice from the
+    # same BF16 (209425cf...), both 6fa3c010 (the second rc 0, 112 s); one conversion, so reproducibility isn't re-proven.
     {"served_as": "nemotron-3.5-super-vl-120b-a12b", "how": "convert", "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
      "revision": "1f8953f7f0935358e3605150d22bc15df062061c", "env": {"transformers": "5.20.1"}, "tokenizer_check": True,
-     "via_bf16": True},
+     "via_bf16": True, "expect_sha256": "6fa3c010ebd015d298d910a2ab6ad4d953155b1cc418b0f54581075aafbeeb02"},
     # NVIDIA's own 24GB quantization-aware GGUF: fetched and hashed, not converted.
     {"served_as": "nemotron-3.5-bolt-74b-a9b", "how": "maker_gguf", "repo": "nvidia/NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB-GGUF",
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
