@@ -23,11 +23,34 @@ import time
 # window, which is still inside a cap's 15%; below that the VM is the problem.
 HF_MEDIAN_MBPS = 258.0
 HF_FLOOR_FRACTION = 0.5
+# Scaled to the window (R&D, 2026-10-19): the flat 129 rejected a 1 GB CPU rung's VMs three times and a 32 GB Muse rung's
+# three times, for a minute or less of extra download. A VM is rejected only when its extra time against the median,
+# over the bytes the window downloads, exceeds the budget: max(300 s, 15% of the window's projected seconds). 20 MB/s
+# under that is the broken-pipe guard.
+HF_BUDGET_MIN_S = 300.0
+HF_BUDGET_SHARE = 0.15
+HF_HARD_FLOOR_MBPS = 20.0
 
 
 def _env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
     return float(raw) if raw not in (None, "") else default
+
+
+def hf_floor() -> dict:
+    """The Hugging Face floor and where it came from: PIN_GATE_MIN_HF_MBPS when set (override); scaled to
+    PIN_GATE_HF_BYTES_WINDOW, the bytes the window will download, and PIN_GATE_PROJECTED_S, its projected seconds
+    (computed); otherwise half the median (default), as before."""
+
+    if os.environ.get("PIN_GATE_MIN_HF_MBPS") not in (None, ""):
+        return {"min_hf_mbps": _env_float("PIN_GATE_MIN_HF_MBPS", 0), "hf_floor_from": "override"}
+    nbytes = _env_float("PIN_GATE_HF_BYTES_WINDOW", 0)
+    if nbytes <= 0:
+        return {"min_hf_mbps": HF_MEDIAN_MBPS * HF_FLOOR_FRACTION, "hf_floor_from": "default"}
+    budget_s = max(HF_BUDGET_MIN_S, HF_BUDGET_SHARE * _env_float("PIN_GATE_PROJECTED_S", 0))
+    mbps = nbytes / (nbytes / (HF_MEDIAN_MBPS * 1e6) + budget_s) / 1e6
+    return {"min_hf_mbps": round(max(HF_HARD_FLOOR_MBPS, mbps), 1), "hf_floor_from": "computed",
+            "hf_window_bytes": int(nbytes), "hf_budget_s": budget_s}
 
 
 def limits() -> dict:
@@ -38,7 +61,7 @@ def limits() -> dict:
             "min_disk_gb": _env_float("PIN_GATE_MIN_DISK_GB", 0),  # smoke_window.sh passes the window's peak + 20
             "min_ram_gb": _env_float("PIN_GATE_MIN_RAM_GB", 50),
             "hf": os.environ.get("PIN_GATE_HF", "1") != "0",
-            "min_hf_mbps": _env_float("PIN_GATE_MIN_HF_MBPS", HF_MEDIAN_MBPS * HF_FLOOR_FRACTION),
+            **hf_floor(),
             "hf_url": os.environ.get("PIN_GATE_HF_URL",
                                      "https://huggingface.co/meta-models/Muse-Glimmer-30B/resolve/main/model-00001-of-00002.safetensors"),
             "hf_bytes": int(_env_float("PIN_GATE_HF_BYTES", 200_000_000))}

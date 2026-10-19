@@ -91,6 +91,9 @@ GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
 # to first-exec deaths after the upload), is stopped and a fresh one asked for, up to PIN_GATE_TRIES. Each attempt is a
 # row in gate.jsonl (readings only, no identity data). It catches VMs that are bad at the start; drops and hangs later
 # in the run are the resume path's and checkpoints.py's. PIN_GATE=0 skips it.
+# The Hugging Face floor scales to the window (R&D, 2026-10-19): set PIN_GATE_HF_BYTES_WINDOW (the bytes the window will
+# download) and PIN_GATE_PROJECTED_S (its projected seconds); every PIN_GATE_* below reaches the gate. Without them the
+# floor stays 129 MB/s; PIN_GATE_MIN_HF_MBPS overrides either.
 GATE_TRIES="${PIN_GATE_TRIES:-3}"; GATE_S="${PIN_GATE_TIMEOUT_S:-180}"
 GATE_ENV=(--env "PIN_GATE_GPU=$([ "${PIN_GPU:-A100}" = CPU ] && echo 0 || echo 1)")
 for v in $(compgen -e | grep '^PIN_GATE_' | grep -v -E '^PIN_GATE_(TRIES|TIMEOUT_S|GPU)$'); do GATE_ENV+=(--env "$v=${!v}"); done
