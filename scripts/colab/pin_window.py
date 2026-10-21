@@ -1497,6 +1497,8 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         endpoint = px.openai_base_url
     check_deadline(f"the {wave} wave at {out}")
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
+    if wave in ("critique", "inline"):
+        cmd += ["--critique-scope", critique_scope()]
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
@@ -2020,6 +2022,24 @@ def twins_enabled() -> bool:
     return os.environ.get("PIN_PILOT_TWINS", "1") != "0"
 
 
+def buffers_enabled() -> bool:
+    """PIN_PILOT_BUFFERS=1: plan T10 with --buffers (40 base + 8 training buffers + 10 apply + 2 apply buffers)."""
+
+    raw = os.environ.get("PIN_PILOT_BUFFERS", "0").strip()
+    if raw not in ("", "0", "1"):
+        raise RuntimeError(f"REFUSED: PIN_PILOT_BUFFERS must be '0' or '1', got {raw!r}")
+    return raw == "1"
+
+
+def critique_scope() -> str:
+    """PIN_CRITIQUE_SCOPE=all|verdict (default 'all'): passed as --critique-scope to role-set write critique waves."""
+
+    scope = (os.environ.get("PIN_CRITIQUE_SCOPE") or "all").strip().lower()
+    if scope not in ("all", "verdict"):
+        raise RuntimeError(f"REFUSED: PIN_CRITIQUE_SCOPE must be 'all' or 'verdict', got {scope!r}")
+    return scope
+
+
 def check_pins(names: list, listed: dict, policies: dict) -> None:
     """Every model the window will set up has a pin in MODELS, equal to writers.json's, before anything downloads (R&D,
     from Argon's review: three writers had none, so a mismatch showed only at w0, after 15-27 minutes of setup). A Q6_K
@@ -2058,11 +2078,17 @@ def twins_skip_reason(a: dict) -> str | None:
 
 def screen_plan(plan: Path, var: str) -> list[str] | None:
     """The w0 screen's frozen slot list (R&D, 2026-10-17): the same slot ids for every arm, set in the window config.
-    The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads."""
+    The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads.
+    PIN_PILOT_SLOT_IDS=ALL keeps every planned slot (requires PIN_PILOT_BUFFERS=1)."""
 
     ids = [x.strip() for x in os.environ.get(var, "").split(",") if x.strip()]
     if not ids:
         return None
+    if ids == ["ALL"] or "ALL" in ids:
+        if ids != ["ALL"] or var != "PIN_PILOT_SLOT_IDS" or not buffers_enabled():
+            raise RuntimeError(f"REFUSED: {var}=ALL requires PIN_PILOT_BUFFERS=1")
+        data = json.loads(plan.read_text(encoding="utf-8"))
+        return [s["id"] for s in data["slots"]]
     data = json.loads(plan.read_text(encoding="utf-8"))
     have = {s["id"] for s in data["slots"]}
     missing = [i for i in ids if i not in have]
@@ -2074,8 +2100,14 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
 
 
 def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, work_dir: Path | None = None) -> dict:
-    """Plan each lesson alone with `role-set plan --lessons <L> --seed <seed> --domains <naics> --out <tmp>` and merge into `out`."""
+    """Plan each lesson alone with `role-set plan --lessons <L> [--buffers] --seed <seed> --domains <naics> --out <tmp>` and merge into `out`."""
 
+    buffers = buffers_enabled()
+    if buffers:
+        if twins_enabled():
+            raise RuntimeError("REFUSED: PIN_PILOT_BUFFERS=1 requires PIN_PILOT_TWINS=0")
+        if not lessons or any(x != "T10" for x in lessons):
+            raise RuntimeError(f"REFUSED: PIN_PILOT_BUFFERS=1 is allowed only for T10, got {lessons!r}")
     slot_ids = [x.strip() for x in os.environ.get("PIN_PILOT_SLOT_IDS", "").split(",") if x.strip()]
     if not slot_ids:
         raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_SLOT_IDS")
@@ -2087,9 +2119,10 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     per_lesson_sha256: dict[str, str] = {}
     plans: list[dict] = []
     excl_shas: dict[str, str | None] = {}
+    buf_flag = " --buffers" if buffers else ""
     for lesson in lessons:
         tmp = tmp_dir / f"lesson-{lesson}-plan.json"
-        sh(f"{rs['role_set']} plan --lessons {lesson} --seed {seed} --domains {domains} --out {tmp}", cwd=rs.get("src"))
+        sh(f"{rs['role_set']} plan --lessons {lesson}{buf_flag} --seed {seed} --domains {domains} --out {tmp}", cwd=rs.get("src"))
         per_lesson_sha256[lesson] = sha256(tmp)
         pdata = json.loads(tmp.read_text(encoding="utf-8"))
         plans.append(pdata)
@@ -2102,6 +2135,7 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     out.write_text(json.dumps(merged, indent=1), encoding="utf-8", newline="\n")
     return {
         "lessons": list(lessons),
+        "buffers": buffers,
         "seed": seed,
         "per_lesson_sha256": per_lesson_sha256,
         "exclusion_state_sha256": merged.get("exclusion_state_sha256"),
@@ -2516,13 +2550,16 @@ def pilot_window(built: dict, result: dict) -> None:
     result["prior_unpacked"] = str(unpack_resume(CONTENT / "prior.tar") or "")
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
+    result["critique_scope"] = critique_scope()
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
         screened_pilot = screen_plan(plan, "PIN_PILOT_SLOT_IDS")
-        result["screen"] = {"pilot": screened_pilot, "twins": None, "waves": PILOT_WAVES}
+        kept_count = len(screened_pilot) if screened_pilot is not None else len(json.loads(plan.read_text(encoding="utf-8"))["slots"])
+        result["screen"] = {"pilot": screened_pilot, "kept": kept_count, "twins": None, "waves": PILOT_WAVES}
         result["plans"] = {
             "lessons": lessons_meta["lessons"],
+            "buffers": lessons_meta["buffers"],
             "seed": lessons_meta["seed"],
             "per_lesson_sha256": lessons_meta["per_lesson_sha256"],
             "pilot_sha256": sha256(plan),
@@ -2530,10 +2567,15 @@ def pilot_window(built: dict, result: dict) -> None:
             "exclusion_state_sha256": lessons_meta["exclusion_state_sha256"],
         }
     else:
+        if buffers_enabled():
+            raise RuntimeError("REFUSED: PIN_PILOT_BUFFERS=1 requires PIN_PILOT_LESSONS=T10")
         pilot_seed = int(os.environ.get("PIN_PILOT_SEED") or "0")
         sh(f"{rs['role_set']} plan --pilot --seed {pilot_seed} --domains {domains} --out {plan}", cwd=rs["src"])
         sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
-        result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
+        screened_pilot = screen_plan(plan, "PIN_PILOT_SLOT_IDS")
+        screened_twins = screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS")
+        kept_count = len(screened_pilot) if screened_pilot is not None else len(json.loads(plan.read_text(encoding="utf-8"))["slots"])
+        result["screen"] = {"pilot": screened_pilot, "kept": kept_count, "twins": screened_twins,
                             "waves": PILOT_WAVES}
         result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
                            # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
@@ -2565,6 +2607,11 @@ def pilot_window(built: dict, result: dict) -> None:
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
     if pool_file is not None:
         common += ["--pool", str(pool_file)]
+    if buffers_enabled():
+        empty_training = base / "training.jsonl"
+        if not empty_training.exists():
+            empty_training.write_text("", encoding="utf-8")
+        common += ["--training", str(empty_training)]
 
     # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
     # result to a late failure, with nothing downloaded).
