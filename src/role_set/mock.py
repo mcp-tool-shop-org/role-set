@@ -216,11 +216,13 @@ def _slot_from_brief(text: str) -> dict:
     written = "Write a quiz item" in text
     struct = re.search(r"The thinking pattern is: ([^.]+)\.", text)
     frame = re.search(r"^Frame: (\w+)\.", text, re.M)
+    trait_word = re.search(r"in one of these exact words: '([^']+)'", text)
     return {
         "id": f"{lesson}-{kind}", "lesson": lesson, "kind": kind, "verdict": verdict.group(1) if verdict else None,
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
         "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
-        "silent_flag": "Add silent_without_deciding" in text,
+        "silent_flag": "Add silent_without_deciding" in text, "r10_twin": "Add r10_twin" in text,
+        "trait_word": trait_word.group(1) if trait_word else "goes to the source",
     }
 
 
@@ -273,7 +275,8 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     second_line = material.splitlines()[1] if material and len(material.splitlines()) > 1 else first_line
     t = lambda j: _tag(n, 200 + j)  # noqa: E731
     if kind == "A":
-        return json.dumps({"passage": "It goes to the source.\n" + _salt("A reader holds the page, not a memory of it. The people relying on the check need the page's own words.", n),
+        tw = slot.get("trait_word") or "goes to the source"
+        return json.dumps({"passage": f"It {tw} in {t(0)}.\n" + _salt("A reader holds the page, not a memory of it. The people relying on the check need the page's own words.", n),
                            "question": _salt("What do you reach for first, and why?", n), "reply": _salt(f"I reach for the {t(9)} record. A recollection is not a line I can point at.", n),
                            "key_points": ["reach for the page first", "a recollection is not a line"]})
     if kind == "B":
@@ -328,6 +331,12 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     if slot.get("silent_flag") and deciding:
         # The brief asks for the twin flag (T01, T04, T14 apply items); the mock's material is silent without its line.
         base["silent_without_deciding"] = True
+    if slot.get("r10_twin"):
+        twin_v = "unsupported" if verdict == "supported" else "supported"
+        twin_stmt = (f"{t(12).title()} reads: The desk is closed on Sundays."
+                     if twin_v == "unsupported" else f"{t(12).title()} reads: {second_line}")
+        answers[(twin_stmt, first_line)] = (twin_v, [second_line])
+        base["r10_twin"] = {"statement": twin_stmt, "verdict": twin_v}
     if kind == "C":
         flaw = "guess" if verdict != "cannot_tell" else "none"
         trace = _salt(f"The other checker skimmed and answered from memory on {statement}", n)
@@ -346,6 +355,26 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     return json.dumps(base)
 
 
+def mock_excerpts(count: int = 16) -> dict[str, list]:
+    """Mock real-source excerpts for `write --mock` and tests when no pool is supplied for a kind."""
+    from role_set.assemble import Material
+    from role_set.plan import CONTENT_KINDS
+
+    out: dict[str, list] = {}
+    for k_idx, kind in enumerate(dict.fromkeys(CONTENT_KINDS)):
+        items = []
+        for i in range(count):
+            n = 3000 + k_idx * 64 + i
+            text = (
+                f"Desk hours at {_tag(n, 0).title()}\n"
+                f"The desk is open on Sundays from 10:00 to 14:00 ({_tag(n, 1)}).\n"
+            )
+            src = {"repo": "x/y", "commit": "0123456", "path": f"{kind}-{i}.txt", "lines": "L1-L2", "licence": "MIT"}
+            items.append(Material(text, src))
+        out[kind] = items
+    return out
+
+
 def mock_gates(closed_form=None):
     """A permissive stand-in for aspire-si-gates, for `write --mock` in CI when the package isn't installed.
     It refuses nothing, so it takes no closed-form settings (`closed_form` is accepted and ignored, and the stand-in's
@@ -359,6 +388,7 @@ def mock_gates(closed_form=None):
     m.DataError = ValueError
     m.check_item = lambda row: None
     m.check_apply_item = lambda row: None
+    m.check_trace_leaks_label = lambda row: None
     m.check_against = lambda row, accepted, models=None: []
     m.load_models = lambda data_path: {}
     m.check_batch = lambda rows, models=None, **kw: None

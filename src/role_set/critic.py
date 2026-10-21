@@ -223,6 +223,19 @@ def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: li
     return CriticVerdict(True, "AGREE", "the readers' evidence agrees under the scorer's rule", cv, cd)
 
 
+def compare_twin_verdict(gates: Gates, reply: str, key_verdict: str) -> CriticVerdict:
+    """Compare only the verdict on an apply item's r10_twin (which carries {statement, verdict} and no deciding lines)."""
+
+    parsed = gates.parse_answer(reply)
+    cv = parsed.get("verdict")
+    cd = _lines(parsed.get("deciding"))
+    if cv not in VERDICTS:
+        return CriticVerdict(False, "VOID", "the critic gave no verdict line on r10_twin", cv, cd)
+    if cv != key_verdict:
+        return CriticVerdict(False, "VERDICT_MISMATCH", f"on r10_twin the critic read {cv}, the key says {key_verdict}", cv, cd)
+    return CriticVerdict(True, "AGREE", "the critic's verdict on r10_twin agrees with the key", cv, cd)
+
+
 def compare_flaw(reply: str, key_flaw: str) -> CriticVerdict:
     word = reply.strip().split()[0].strip(".,:;'\"").lower() if reply.strip() else ""
     if word not in FLAWS + ("none",):

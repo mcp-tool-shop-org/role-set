@@ -1,15 +1,31 @@
+import json
+from pathlib import Path
+
 import pytest
 
+from role_set.cli import VERIFIER_SIDES
+from role_set.write import trait_names_from_pack
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+from role_set.domains import assign as assign_domains, load as load_naics
+from role_set.gates import load_gates
+from role_set.mock import MockCritic, MockWriter, mock_excerpts
 from role_set.plan import (
     KINDS,
     PER_KIND,
     PUZZLE_STRUCTURES,
     PlanError,
     Slot,
+    _resolve_all_silent_real_c,
     check_plan,
+    plan_apply,
+    plan_apply_batch,
     plan_batch,
     plan_lesson,
+    select_and_trim,
 )
+from role_set.runner import Runner
+from role_set.solvefirst import assign as assign_solvefirst, load_packs, lock_skeletons
 
 SIDES = ("quotes the source", "stops at the source")
 
@@ -126,3 +142,175 @@ def test_a_batch_of_three_lessons_needs_a_bigger_menu():
     with pytest.raises(PlanError, match="menu"):
         plan_batch({"T02": SIDES, "T03": SIDES, "T06": SIDES}, seed=0)
     assert len(PUZZLE_STRUCTURES) == PER_KIND
+
+
+def test_no_paired_two_turn_or_paired_two_turn_real_source_across_1000_seeds():
+    for seed in range(1000):
+        for buffers in (False, True):
+            slots = plan_lesson("T10", VERIFIER_SIDES["T10"], seed=seed, buffers=buffers)
+            for s in slots:
+                if s.kind == "D":
+                    assert not (s.pair is not None and s.two_turn is not None), (seed, buffers, s.id)
+                if s.real_source:
+                    assert s.pair is None and not s.two_turn, (seed, buffers, s.id)
+
+
+def test_buffered_plan_slots_and_rare_silent_real_c_branches():
+    sides = VERIFIER_SIDES["T10"]
+    train = plan_lesson("T10", sides, seed=0, buffers=True)
+    apply = plan_apply("T10", sides, seed=0, buffers=True)
+    assert len(train) == 48 and len(apply) == 12
+    assert len(plan_batch({"T10": sides}, seed=0, buffers=True)) == 48
+    assert len(plan_apply_batch({"T10": sides}, seed=0, buffers=True)) == 12
+    buf_ids = [s.id for s in train + apply if s.buffer]
+    assert buf_ids == [
+        "T10-A-09",
+        "T10-E-09",
+        "T10-C-09",
+        "T10-C-10",
+        "T10-C-11",
+        "T10-C-12",
+        "T10-D-09",
+        "T10-D-10",
+        "T10-C-AP-06",
+        "T10-D-AP-06",
+    ]
+    by_id = {s.id: s for s in train + apply}
+    assert by_id["T10-C-09"].pair == "t10-pair-3" and by_id["T10-C-09"].verdict == "cannot_tell"
+    assert by_id["T10-C-10"].pair == "t10-pair-3" and by_id["T10-C-10"].verdict == "unsupported" and by_id["T10-C-10"].multi_line
+    assert by_id["T10-C-11"].verdict == "supported" and by_id["T10-C-11"].escalate.startswith("yes (") and by_id["T10-C-11"].real_source and by_id["T10-C-11"].multi_line
+    assert by_id["T10-C-12"].verdict == "supported" and by_id["T10-C-12"].escalate == "no" and by_id["T10-C-12"].real_source and by_id["T10-C-12"].multi_line
+    assert by_id["T10-D-09"].two_turn == "stands" and by_id["T10-D-09"].verdict == "supported" and by_id["T10-D-09"].escalate.startswith("yes (") and by_id["T10-D-09"].multi_line and not by_id["T10-D-09"].real_source
+    assert by_id["T10-D-10"].two_turn == "changes" and by_id["T10-D-10"].verdict == "cannot_tell" and by_id["T10-D-10"].escalate == "no"
+    assert by_id["T10-C-AP-06"].verdict == "supported" and by_id["T10-C-AP-06"].escalate.startswith("yes (") and by_id["T10-C-AP-06"].multi_line
+    assert by_id["T10-D-AP-06"].verdict == "cannot_tell" and by_id["T10-D-AP-06"].escalate == "no"
+
+    # Forced deal for _resolve_all_silent_real_c branch 1: the swap.
+    forced_swap = [Slot(**s.as_dict()) for s in train if not s.buffer]
+    real_c = [s for s in forced_swap if s.kind == "C" and s.real_source]
+    non_c_bearing = [s for s in forced_swap if s.kind in ("D", "E") and s.verdict is not None]
+    for s in real_c:
+        s.verdict = "cannot_tell"
+    for i, s in enumerate(non_c_bearing):
+        s.verdict = "supported" if i < 6 else "unsupported"
+    _resolve_all_silent_real_c("T10", 613, forced_swap, "legal")
+    assert real_c[0].verdict == "supported"
+    assert non_c_bearing[0].verdict == "cannot_tell"
+    check_plan(forced_swap)
+
+    # Seed 613 in the wild hits the all-cannot_tell real-source C deal and resolves cleanly.
+    s613 = plan_lesson("T10", sides, seed=613, buffers=True)
+    assert any(s.verdict != "cannot_tell" for s in s613 if not s.buffer and s.kind == "C" and s.real_source)
+
+    # Forced deal for _resolve_all_silent_real_c branch 2: the structured PlanError naming lesson and seed.
+    forced_err = [Slot(**s.as_dict()) for s in train if not s.buffer]
+    for s in forced_err:
+        if s.kind == "C" and s.real_source:
+            s.verdict = "cannot_tell"
+        elif s.kind in ("D", "E") and s.verdict is not None:
+            s.verdict = "unsupported"
+    with pytest.raises(PlanError, match=r"REFUSED: T10 \(seed 42\)"):
+        _resolve_all_silent_real_c("T10", 42, forced_err, "legal")
+
+    # Kind B and verdict E may not have buffers.
+    bad_buf = [Slot(**s.as_dict()) for s in train] + [Slot(id="T10-B-09", lesson="T10", kind="B", side=sides[0], tier=1, buffer=True)]
+    with pytest.raises(PlanError, match="kind B and verdict E have no buffers"):
+        check_plan(bad_buf)
+
+
+def test_all_40_single_exclusions_pass_across_1000_seeds():
+    sides = VERIFIER_SIDES["T10"]
+    for seed in range(1000):
+        train = plan_lesson("T10", sides, seed=seed, buffers=True)
+        apply = plan_apply("T10", sides, seed=seed, buffers=True)
+        plan = train + apply
+        rows = [s.as_dict() for s in plan]
+        buffered_base = [
+            s.id
+            for s in plan
+            if not s.buffer and (s.split == "apply" or s.kind in ("A", "C", "D") or (s.kind == "E" and s.e_type == "written"))
+        ]
+        assert len(buffered_base) == 40
+        for eid in buffered_base:
+            trimmed, subs = select_and_trim(rows, plan, {eid})
+            assert len(trimmed) == 50 and subs, (seed, eid)
+
+
+def test_select_and_trim_on_mock_batch_and_refusals(tmp_path: Path):
+    sides = VERIFIER_SIDES["T10"]
+    train = plan_lesson("T10", sides, seed=0, buffers=True)
+    apply = plan_apply("T10", sides, seed=0, buffers=True)
+    plan = train + apply
+    naics = load_naics(REPO_ROOT / "roles" / "domains" / "naics-2022.json")
+    assign_domains(plan, naics, seed=0)
+    b_packs = load_packs()
+    assign_solvefirst(plan, b_packs, seed=0)
+    lock_skeletons(plan, b_packs)
+
+    gates = load_gates()
+    pack = {
+        "traits/T10.md": "## 10. As a verifier, you keep things in proportion\n\nProportion decides.\n",
+        "kinds.md": "kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    answers = {}
+    writer = MockWriter(answers=answers, keyed_order={s.id: i for i, s in enumerate(plan)})
+    critic = MockCritic(answers=answers, trait="T10")
+    runner = Runner(
+        gates=gates,
+        pack=pack,
+        trait_names=trait_names_from_pack(pack),
+        writer=writer,
+        critic=critic,
+        out_dir=tmp_path / "out",
+        excerpts=mock_excerpts(),
+        pins={"writer_revision": "deadbeef"},
+        critique_scope="verdict",
+    )
+    outcomes = runner.run(plan)
+    assert all(o.accepted for o in outcomes), [(o.slot_id, o.refusals) for o in outcomes if not o.accepted]
+    rows = [json.loads(line) for line in (tmp_path / "out" / "accepted.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 60
+
+    # Trimmed 40 + 10 mock batch with 0 exclusions passes check_batch.
+    trimmed0, subs0 = select_and_trim(rows, plan, set(), gates=gates, models=runner.models)
+    assert len(trimmed0) == 50 and subs0 == []
+    gates.check_batch([r for r in trimmed0 if r.get("split") != "apply"], models=runner.models)
+
+    # Every single exclusion of the 40 buffered slots passes check_plan and check_batch.
+    buffered_slots = [
+        s for s in plan if not s.buffer and (s.split == "apply" or s.kind in ("A", "C", "D") or (s.kind == "E" and s.e_type == "written"))
+    ]
+    assert len(buffered_slots) == 40
+    assert any(s.id == "T10-C-01" and s.escalate.startswith("yes (") for s in buffered_slots)
+    assert any(s.kind == "C" and s.real_source for s in buffered_slots)
+    assert any(s.kind == "D" and s.multi_line for s in buffered_slots)
+    assert any(s.split == "apply" and s.kind == "C" and s.escalate.startswith("yes (") for s in buffered_slots)
+    assert any(s.pair == "t10-pair-1" for s in buffered_slots)
+    assert any(s.pair == "t10-pair-2" for s in buffered_slots)
+
+    for s in buffered_slots:
+        trimmed, subs = select_and_trim(rows, plan, {s.id}, gates=gates, models=runner.models)
+        assert len(trimmed) == 50 and subs, s.id
+        gates.check_batch([r for r in trimmed if r.get("split") != "apply"], models=runner.models)
+        if s.pair in ("t10-pair-1", "t10-pair-2"):
+            assert len(subs) == 2 and {x["buffer_id"] for x in subs} == {"T10-C-09", "T10-C-10"}
+
+    # Every single exclusion of an unbuffered slot (8 B and 2 verdict E) is refused with a structured PlanError.
+    unbuffered_slots = [s for s in plan if not s.buffer and (s.kind == "B" or (s.kind == "E" and s.e_type == "verdict"))]
+    assert len(unbuffered_slots) == 10
+    for s in unbuffered_slots:
+        with pytest.raises(PlanError, match="unbuffered"):
+            select_and_trim(rows, plan, {s.id}, gates=gates)
+
+    # Two exclusions needing the same single buffer are refused.
+    with pytest.raises(PlanError, match="no surviving buffer assignment"):
+        select_and_trim(rows, plan, {"T10-A-01", "T10-A-02"}, gates=gates)
+    with pytest.raises(PlanError, match="no surviving buffer assignment"):
+        select_and_trim(rows, plan, {"T10-E-01", "T10-E-02"}, gates=gates)
+    with pytest.raises(PlanError, match="no surviving buffer assignment"):
+        select_and_trim(rows, plan, {"T10-C-AP-01", "T10-C-AP-02"}, gates=gates)
+    p1 = next(s.id for s in buffered_slots if s.pair == "t10-pair-1")
+    p2 = next(s.id for s in buffered_slots if s.pair == "t10-pair-2")
+    with pytest.raises(PlanError, match="buffer pair is unavailable"):
+        select_and_trim(rows, plan, {p1, p2}, gates=gates)

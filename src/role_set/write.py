@@ -30,7 +30,7 @@ from role_set.guards import (
     require_model_allowed,
 )
 from role_set.harvest import load_pool
-from role_set.mock import MockCritic, MockWriter, mock_gates
+from role_set.mock import MockCritic, MockWriter, mock_excerpts, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
 from role_set.prompts import load_pack
@@ -94,6 +94,7 @@ class WriteConfig:
     prior_drafts: Path | None = None  # a rewrite only: the write wave's drafts the critique read, for card pins it lost
     call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
     reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
+    critique_scope: str = "all"  # "all" or "verdict" (design §11 F2: skip A, B and written E when "verdict")
 
 
 def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
@@ -198,6 +199,8 @@ def build(cfg: WriteConfig, *, now=time.time):
     pins: dict = {"plan_sha256": plan_sha, "pack_sha256": manifest.pack_sha256, "pack_commit": manifest.commit}
 
     header = None
+    if cfg.critique_scope not in ("all", "verdict"):
+        raise WriteRefused(f"REFUSED: --critique-scope must be all or verdict, got {cfg.critique_scope!r}")
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
@@ -337,6 +340,9 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
                                     callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
     writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
     excerpts = load_pool(cfg.pool) if cfg.pool else None
+    if cfg.mock:
+        base_mock = mock_excerpts()
+        excerpts = {k: list((excerpts or {}).get(k, [])) + base_mock[k] for k in base_mock}
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
         try:
@@ -363,7 +369,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     pins.pop("_mock_answers", None)
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
+                    critique_scope=cfg.critique_scope)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -418,7 +425,8 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
         run_pins.update({**waves.header_writer_pins(header_in), "writer_host": header_in.get("writer_host")})
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
+                    critique_scope=cfg.critique_scope)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)

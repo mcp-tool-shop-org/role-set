@@ -159,3 +159,30 @@ def test_every_trait_with_sides_plans_on_its_own(tmp_path: Path):
         out = tmp_path / f"{lesson}.json"
         assert main(["plan", "--lessons", lesson, "--seed", "7", "--out", str(out)]) == 0, lesson
         assert len(json.loads(out.read_text(encoding="utf-8"))["slots"]) == 40
+
+
+def test_plan_lesson_t10_buffers_writes_slots_and_sha256(tmp_path: Path, capsys):
+    import hashlib
+
+    from role_set import domains, frames, solvefirst
+    from role_set.plan import Slot
+
+    out = tmp_path / "t10-buffered.json"
+    assert main(["plan", "--lesson", "T10", "--buffers", "--out", str(out)]) == 0
+    sha_file = Path(f"{out}.sha256")
+    assert out.exists() and sha_file.exists()
+    expected_sha = hashlib.sha256(out.read_bytes()).hexdigest()
+    assert sha_file.read_text(encoding="utf-8").strip().split()[0] == expected_sha
+    plan = json.loads(out.read_text(encoding="utf-8"))
+    slots = [Slot(**s) for s in plan["slots"]]
+    assert len(slots) == 60
+    assert sum(1 for s in slots if s.buffer) == 10
+    for s in slots:
+        if domains.bears_domain(s):
+            assert s.domain, s.id
+        if frames.framed(s.kind, s.e_type):
+            assert s.frame, s.id
+        if s.kind == "B":
+            assert s.pack and s.b_seed is not None and s.b_path, s.id
+        if s.kind == "B" and s.b_path == "solve_first":
+            assert s.b_skeleton, s.id
