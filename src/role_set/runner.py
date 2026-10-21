@@ -22,8 +22,9 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
-from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw, compare_trait_votes, compare_verdict,
-                             flaw_messages, teaching_text, trait_messages, verdict_messages)
+from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw,
+                             compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages, teaching_text,
+                             trait_messages, verdict_messages)
 from role_set import solvefirst
 from role_set.frames import check_frame
 from role_set.solvefirst import SolveFirstError
@@ -490,6 +491,7 @@ class Runner:
         training: list[dict] | None = None,  # the whole training set, for apply items' exclusions (aspire-si#127)
         training_models: dict | None = None,  # its sidecar models, {id: model}
         prior=None,  # role_set.exclusion.State: every row earlier batches accepted (BUILD-SPEC B4)
+        critique_scope: str = "all",  # "all" or "verdict" (design §11 F2: skip A, B, and written E when "verdict")
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -499,6 +501,9 @@ class Runner:
         self.training_models = training_models or {}
         self._spent: set[str] | None = None
         self.excerpts = {k: list(v) for k, v in (excerpts or {}).items()}
+        self._slot_excerpt: dict[str, int] = {}
+        self._used_excerpts: dict[str, set[int]] = {}
+        self.critique_scope = critique_scope
         self.pins = pins or {}
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
@@ -650,8 +655,18 @@ class Runner:
         if slot.kind in ("A", "B") or (slot.kind == "E" and slot.e_type == "written"):
             return None
         kind = slot.content_kind or "notice"
-        if slot.real_source and self.excerpts.get(kind):
-            return self.excerpts[kind].pop(0)
+        if slot.real_source:
+            pool = self.excerpts.get(kind) or []
+            if not pool:
+                raise AssemblyError(f"real_source slot {slot.id} ({kind}) has no excerpt in the pool")
+            with self.lock:
+                if slot.id not in self._slot_excerpt:
+                    used = self._used_excerpts.setdefault(kind, set())
+                    start = int(hashlib.sha256(slot.id.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
+                    idx = next(((start + k) % len(pool) for k in range(len(pool)) if (start + k) % len(pool) not in used), start)
+                    self._slot_excerpt[slot.id] = idx
+                    used.add(idx)
+                return pool[self._slot_excerpt[slot.id]]
         needs = f"It must be the kind of text a verdict of '{slot.verdict}' can be reached about for one plain statement."
         c = self._writer_call(material_messages(slot, needs), 0, slot)
         self._count_tokens(c)
@@ -667,6 +682,11 @@ class Runner:
         if getattr(self.writer, "takes_slot_id", False):
             return self.writer(messages, seed=seed, slot_id=slot.id)
         return self.writer(messages, seed=seed)
+
+    def _critic_call(self, messages: list[dict], *, check: str | None = None, **kwargs):
+        if getattr(self.critic, "takes_check", False) and check is not None:
+            return self.critic(messages, check=check, **kwargs)
+        return self.critic(messages, **kwargs)
 
     def _refusal(self, code: str, detail: str) -> dict:
         tmpl = SUGGESTIONS.get(code, "{detail}")
@@ -690,6 +710,8 @@ class Runner:
     def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
         if self.critic is None:
             return None
+        if self.critique_scope == "verdict" and (slot.kind in ("A", "B") or (slot.kind == "E" and slot.e_type == "written")):
+            return None
         with self.lock:
             self._critic_notes[slot.id] = []
         material = row.get("material") or ""
@@ -709,7 +731,7 @@ class Runner:
                 turns.append((material, row["verdict"], row["deciding"]))
             for seen_material, key_verdict, key_deciding in turns:
                 for ask in range(2):
-                    c = self.critic(verdict_messages(seen_material, statement))
+                    c = self._critic_call(verdict_messages(seen_material, statement), check="verdict")
                     self._count_tokens(c)
                     v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
                     if v.code != "VOID":
@@ -719,8 +741,19 @@ class Runner:
                 verdicts.append((v, c.text))
                 if not v.ok:
                     break
+            twin = row.get("r10_twin")
+            if isinstance(twin, dict) and twin.get("statement") and twin.get("verdict"):
+                for ask in range(2):
+                    c = self._critic_call(verdict_messages(material, twin["statement"]), check="twin_verdict")
+                    self._count_tokens(c)
+                    tv = compare_twin_verdict(self.gates, c.text, twin["verdict"])
+                    if tv.code != "VOID":
+                        break
+                    self._log("critic_void", slot=slot.id, detail=tv.detail)
+                self._note(slot, "twin_verdict", tv, c.text)
+                verdicts.append((tv, c.text))
             if slot.kind == "C":
-                c = self.critic(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]))
+                c = self._critic_call(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]), check="flaw")
                 self._count_tokens(c)
                 f = compare_flaw(c.text, row["planted_flaw"])
                 self._note(slot, "flaw", f, c.text)
@@ -732,7 +765,7 @@ class Runner:
                     self._log("flaw_advisory", slot=slot.id, detail=f.detail, critic_raw=c.text[:2000])
         elif slot.kind == "B":
             for ask in range(2):
-                c = self.critic(answer_messages(row["turns"][0]["user"], row["answer"]))
+                c = self._critic_call(answer_messages(row["turns"][0]["user"], row["answer"]), check="answer")
                 self._count_tokens(c)
                 v = compare_answer(c.text, row["answer"])
                 if v.code != "VOID":
@@ -743,7 +776,8 @@ class Runner:
         # The trait is a majority of three calls (R&D, 2026-10-11): one call was unstable on 5 of 20 items.
         votes = []
         for seed in range(TRAIT_VOTES):
-            c = self.critic(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS), temperature=TRAIT_TEMPERATURE, seed=seed)
+            c = self._critic_call(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS),
+                                  check="trait", temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
             votes.append(c.text)
         trait = compare_trait_votes(votes, slot.lesson)
@@ -859,6 +893,8 @@ class Runner:
             try:
                 # An apply item is never trained, so check_item refuses it; it has its own check (gates 1.7.5).
                 (self.gates.check_apply_item if slot.split == "apply" else self.gates.check_item)(row)
+                if slot.kind == "C":
+                    self.gates.check_trace_leaks_label(row)
             except self.gates.error_type() as e:
                 refusal = self._refusal("GATE", str(e))
         if refusal is None:

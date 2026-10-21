@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -74,6 +75,24 @@ VERIFIER_SIDES = {
 }
 
 
+def _check_slot_list_fields(slots: list) -> None:
+    from role_set import frames
+
+    for s in slots:
+        if domains.bears_domain(s) and not s.domain:
+            raise PlanError(f"REFUSED: {s.id} is missing domain")
+        if frames.framed(s.kind, s.e_type) and not s.frame:
+            raise PlanError(f"REFUSED: {s.id} is missing frame")
+        if s.kind == "B":
+            if not s.pack or s.b_seed is None or not s.b_path:
+                raise PlanError(f"REFUSED: {s.id} is missing pack, b_seed or b_path")
+            if s.b_path == "solve_first" and not s.b_skeleton:
+                raise PlanError(f"REFUSED: {s.id} is missing b_skeleton")
+
+
+DEFAULT_DOMAINS = Path(__file__).resolve().parents[2] / "roles" / "domains" / "naics-2022.json"
+
+
 def _plan(args: argparse.Namespace) -> int:
     lessons = {}
     if args.pilot or args.pilot_twins:
@@ -99,10 +118,17 @@ def _plan(args: argparse.Namespace) -> int:
         elif args.pilot_twins:
             slots = plan_pilot_twins(lessons, seed=args.seed)
         else:
-            slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
+            if args.apply:
+                slots = plan_apply_batch(lessons, seed=args.seed, buffers=args.buffers)
+            elif args.buffers:
+                slots = (plan_batch(lessons, seed=args.seed, buffers=True)
+                         + plan_apply_batch(lessons, seed=args.seed, buffers=True))
+            else:
+                slots = plan_batch(lessons, seed=args.seed)
         table = None
-        if args.domains:
-            table = domains.load(Path(args.domains))
+        domains_path = Path(args.domains) if args.domains else (DEFAULT_DOMAINS if args.buffers else None)
+        if domains_path is not None:
+            table = domains.load(domains_path)
             domains.assign(slots, table, seed=args.seed)
             # Kind B: a pack and a seed per slot, and the solve-first path for the structures with a generator (B3).
             packs = solvefirst.load_packs()
@@ -110,6 +136,7 @@ def _plan(args: argparse.Namespace) -> int:
             solvefirst.assign(slots, packs, seed=args.seed, table=table, prior=prior.packs)
             solvefirst.lock_skeletons(slots, packs, prior=prior.skeletons)
             domains.check(slots)
+            _check_slot_list_fields(slots)
     except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError, exclusion.ExclusionError) as e:
         msg = str(e)
         print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
@@ -127,7 +154,13 @@ def _plan(args: argparse.Namespace) -> int:
     if table is not None:
         out["domain_table"] = table.pin()
         out["exclusion_state_sha256"] = prior.sha256
-    Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+    out_path = Path(args.out)
+    out_path.write_text(json.dumps(out, indent=1), encoding="utf-8")
+    if args.buffers:
+        sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
+        out_path.with_name(out_path.name + ".sha256").write_text(
+            f"{sha}  {out_path.name}\n", encoding="utf-8", newline="\n"
+        )
     for f in figures:
         print(json.dumps(f))
     print(f"wrote {len(slots)} slots to {args.out}")
@@ -203,6 +236,7 @@ def _write(args: argparse.Namespace) -> int:
         call_journal=Path(args.call_journal) if args.call_journal else None,
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
+        critique_scope=args.critique_scope,
     )
     try:
         result = run_write(cfg)
@@ -336,7 +370,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("plan", help="fix every slot for a batch; no model call")
     a.add_argument("--role", default="verifier")
-    a.add_argument("--lessons", default=None, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--lessons", "--lesson", dest="lessons", default=None, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--buffers", action="store_true", help="add buffer slots and deal verdicts under the buffered rule")
     a.add_argument("--pilot", action="store_true", help="the 20-slot wave pilot (T02: A4 B5 C4 D4 E3); its T04 apply twins are "
                                                         "--pilot-twins; floors reported, not enforced; write needs a trial: partition")
     a.add_argument("--pilot-twins", action="store_true", help="the pilot's 2 C and 2 D T04 apply twins, a batch of their own, "
@@ -463,6 +498,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--closed-form", type=_closed_form_arg, default=None,
                    help="the gates' closed-form settings as JSON, e.g. '{\"carry\": \"either\"}'; unset takes the pinned gates' "
                         "defaults. Every receipt records the settings used")
+    w.add_argument("--critique-scope", choices=("all", "verdict"), default="all",
+                   help="all checks every slot; verdict skips A, B and written E in _critic_pass (design §11 F2)")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")

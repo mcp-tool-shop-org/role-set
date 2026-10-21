@@ -6,7 +6,7 @@ import pytest
 
 from role_set.assemble import Material
 from role_set.gates import Gates
-from role_set.mock import MockCritic, MockWriter
+from role_set.mock import MockCritic, MockWriter, mock_excerpts
 from role_set.plan import plan_lesson
 from role_set.runner import SUGGESTIONS, RunHalted, Runner, truth_checks
 
@@ -25,6 +25,7 @@ def _gates(refuse_ids=(), against=None, role_words=()):
 
     m.check_item = check_item
     m.check_apply_item = check_item  # gates 1.7.5: apply rows have their own check; the fake treats them alike
+    m.check_trace_leaks_label = lambda row: None
     m.models_seen = []
 
     def check_against(row, accepted, models=None):
@@ -47,7 +48,12 @@ def _runner(tmp_path: Path, **kw):
     answers = {}
     writer = MockWriter(answers=answers, fail_first=kw.pop("fail_first", None))
     critic = MockCritic(answers=answers, disagree=kw.pop("disagree", None), trait="T02")
-    excerpts = {"changelog": [Material("## [1.0.0] - 2026-01-01\n- Added the thing.\n", {"repo": "x/y", "commit": "abc", "path": "C.md", "lines": "L1", "licence": "MIT"})]}
+    excerpts = kw.pop("excerpts", None)
+    if excerpts is None:
+        excerpts = {
+            **mock_excerpts(),
+            "changelog": [Material("## [1.0.0] - 2026-01-01\n- Added the thing.\n", {"repo": "x/y", "commit": "abc", "path": "C.md", "lines": "L1", "licence": "MIT"})],
+        }
     r = Runner(gates=kw.pop("gates", _gates()), pack=PACK, trait_names=TRAITS, writer=writer, critic=critic, out_dir=tmp_path / "out", excerpts=excerpts, pins={"writer_revision": "deadbeef"}, **kw)
     return r, writer, critic
 
@@ -381,3 +387,135 @@ def test_a_draft_that_copies_the_lesson_is_refused_and_the_retry_names_the_span(
     out = r.run_slot(slot)
     assert out.refusals and out.refusals[0]["code"] == "LESSON_COPY"
     assert "Do not use any of these wordings" in asks[1] and "handoff rule 11" in out.refusals[0]["suggestion"]
+
+
+def test_real_source_without_excerpt_raises_assembly_error_and_indexes_deterministically(tmp_path: Path):
+    slots = plan_lesson("T02", SIDES, seed=0)
+    real_slot = next(s for s in slots if s.real_source)
+    r, _, _ = _runner(tmp_path / "missing", excerpts={})
+    out = r.run_slot(real_slot)
+    assert not out.accepted and out.attempts == 0
+    assert len(out.refusals) == 1 and out.refusals[0]["code"] == "ASSEMBLY"
+    assert "has no excerpt in the pool" in out.refusals[0]["detail"]
+
+    # Deterministic indexing by slot id across retries (no pop(0)).
+    r2, _, _ = _runner(tmp_path / "det")
+    before = list(r2.excerpts[real_slot.content_kind])
+    m1 = r2._material_for(real_slot)
+    m2 = r2._material_for(real_slot)
+    assert m1.text == m2.text and m1.source == m2.source
+    assert r2.excerpts[real_slot.content_kind] == before
+
+
+def test_write_time_trace_leak_gate_triggers_rewrite(tmp_path: Path):
+    slots = plan_lesson("T02", SIDES, seed=0)
+    c_slot = next(s for s in slots if s.kind == "C")
+    g = _gates()
+    calls = []
+
+    def check_leak(row):
+        calls.append(row["id"])
+        if len(calls) == 1:
+            raise ValueError("line 1 (T02-C-01): checker_trace names its own planted_flaw 'guess'")
+
+    g.module.check_trace_leaks_label = check_leak
+    r, _, _ = _runner(tmp_path, gates=g)
+    out = r.run_slot(c_slot)
+    assert out.accepted and out.attempts == 2
+    assert out.refusals[0]["code"] == "GATE" and "planted_flaw" in out.refusals[0]["detail"]
+    assert len(calls) == 2
+
+
+def test_r10_twin_verdict_check_and_void_retry_and_journal(tmp_path: Path):
+    from role_set import callcache
+    from role_set.plan import plan_apply
+
+    apply_slot = plan_apply("T10", SIDES, seed=0)[0]
+    r, writer, critic = _runner(tmp_path / "ok")
+    r.pack = {**r.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r.trait_names = {**r.trait_names, "T10": "goes to the source"}
+    critic.trait = "T10"
+    journal = callcache.CallJournal(tmp_path / "ok" / "calls-journal.jsonl")
+    r.writer = journal.wrap("writer", r.writer)
+    base_critic = r.critic
+    verdict_asks = []
+
+    def void_then_different_deciding(messages, **kw):
+        if "VERDICT:" in messages[0]["content"]:
+            verdict_asks.append(messages[-1]["content"])
+            # First ask is main verdict (ask 1); second ask is first twin verdict ask -> return VOID.
+            if len(verdict_asks) == 2:
+                return types.SimpleNamespace(text="not a verdict reply", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+            if len(verdict_asks) == 3:
+                # Retry of twin verdict returns matching verdict but a completely unrelated DECIDING line; twin check compares verdict only.
+                c = base_critic(messages, **kw)
+                verdict_line = next(l for l in c.text.splitlines() if l.startswith("VERDICT:"))
+                return types.SimpleNamespace(
+                    text=f"{verdict_line}\nDECIDING: \"unrelated line not in material\"\nESCALATE: no",
+                    prompt_tokens=1,
+                    completion_tokens=1,
+                    model="m",
+                    seconds=0,
+                )
+        return base_critic(messages, **kw)
+
+    r.critic = journal.wrap("critic", void_then_different_deciding)
+    out = r.run_slot(apply_slot)
+    assert out.accepted and len(verdict_asks) == 3
+    drafts = [json.loads(l) for l in (tmp_path / "ok" / "out" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    checks = [c["check"] for c in drafts[0]["critic"]]
+    assert "twin_verdict" in checks
+    j_rows = [json.loads(l) for l in (tmp_path / "ok" / "calls-journal.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(j.get("check") == "twin_verdict" for j in j_rows)
+
+    # A twin verdict mismatch refuses the draft with VERDICT_MISMATCH.
+    r_bad, _, critic_bad = _runner(tmp_path / "bad")
+    r_bad.pack = {**r_bad.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r_bad.trait_names = {**r_bad.trait_names, "T10": "goes to the source"}
+    critic_bad.trait = "T10"
+    seen_verdicts = []
+
+    def wrong_twin(messages, **kw):
+        if "VERDICT:" in messages[0]["content"]:
+            seen_verdicts.append(messages[-1]["content"])
+            if len(seen_verdicts) % 2 == 0:
+                return types.SimpleNamespace(
+                    text="VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no",
+                    prompt_tokens=1,
+                    completion_tokens=1,
+                    model="m",
+                    seconds=0,
+                )
+        return critic_bad(messages, **kw)
+
+    r_bad.critic = wrong_twin
+    out_bad = r_bad.run_slot(apply_slot)
+    assert not out_bad.accepted and out_bad.refusals[0]["code"] == "VERDICT_MISMATCH"
+
+
+def test_critique_scope_verdict_skips_a_b_and_written_e(tmp_path: Path):
+    slots = plan_lesson("T02", SIDES, seed=0)
+    a_slot = next(s for s in slots if s.kind == "A")
+    b_slot = next(s for s in slots if s.kind == "B")
+    ew_slot = next(s for s in slots if s.kind == "E" and s.e_type == "written")
+    ev_slot = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
+    c_slot = next(s for s in slots if s.kind == "C")
+
+    r, _, critic = _runner(tmp_path / "verdict", critique_scope="verdict")
+    calls = []
+
+    def counting_critic(messages, **kw):
+        calls.append(kw.get("check"))
+        return critic(messages, **kw)
+
+    r.critic = counting_critic
+    for s in (a_slot, b_slot, ew_slot):
+        out = r.run_slot(s)
+        assert out.accepted
+    assert calls == []
+
+    assert r.run_slot(ev_slot).accepted
+    assert len(calls) > 0
+    calls.clear()
+    assert r.run_slot(c_slot).accepted
+    assert len(calls) > 0

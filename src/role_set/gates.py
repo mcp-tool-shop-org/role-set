@@ -81,6 +81,10 @@ class Gates:
     def role_words_in_prompt(self, row: dict) -> list[str]:
         return list(self.module.role_words_in_prompt(row))  # type: ignore[attr-defined]
 
+    def check_trace_leaks_label(self, row: dict) -> None:
+        """The gates' write-time trace-leak check on a kind C row (gates 1.7.6)."""
+        self.module.check_trace_leaks_label(row)  # type: ignore[attr-defined]
+
     def load_models(self, data_path) -> dict:
         """{id: model} from a data file's .models.jsonl sidecar, each line's row_sha256 checked (the gates' own loader)."""
         return dict(self.module.load_models(data_path))  # type: ignore[attr-defined]
@@ -89,7 +93,7 @@ class Gates:
         return self.module.DataError  # type: ignore[attr-defined]
 
 
-REQUIRED_RULES = ("norm", "critic_mismatch", "closed_form_settings", "key_point_share")
+REQUIRED_RULES = ("norm", "critic_mismatch", "closed_form_settings", "key_point_share", "check_trace_leaks_label")
 
 
 def load_gates(importer=importlib.import_module, closed_form: dict | None = None) -> Gates:

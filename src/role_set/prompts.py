@@ -266,6 +266,9 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
     if slot.split == "apply" and slot.lesson == "T09":
         lines.append("Add order_free: true if reversing the order of the material's lines can't change the verdict, false "
                      "otherwise. Its twin is this item with the lines reversed.")
+    if slot.split == "apply" and slot.lesson == "T10":
+        lines.append("Add r10_twin: {\"statement\": \"...\", \"verdict\": \"...\"}, a strengthened or weakened claim on the "
+                     f"same material whose correct verdict differs from {slot.verdict}.")
     if slot.kind == "C":
         # The pilot's writer was never told which flaw the slot plants, so its trace and the assembled verdict disagreed.
         flaw = slot_flaw(slot)

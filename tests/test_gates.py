@@ -30,6 +30,7 @@ def _fake_module():
     m.critic_mismatch = lambda key, critic, material: False
     m.closed_form_settings = _settings
     m.key_point_share = lambda key_point, option: 0.0
+    m.check_trace_leaks_label = lambda row: m.calls.append(("leak", row["id"]))
     return m
 
 

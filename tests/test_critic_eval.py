@@ -79,7 +79,11 @@ def eval_items_file(tmp_path: Path, domain_table: Path, pack_dir: Path) -> Path:
         row_obj = d.get("row") or {}
         first_line = d["material"]["text"].splitlines()[0]
         verdict = row_obj.get("verdict") or slot.get("verdict") or "supported"
-        deciding = list(row_obj.get("deciding") if "deciding" in row_obj else (cand.get("deciding") or [first_line]))
+        deciding = list(
+            row_obj.get("deciding")
+            if "deciding" in row_obj
+            else (cand.get("deciding") if "deciding" in cand else ([] if verdict == "cannot_tell" else [first_line]))
+        )
         planted_flaw = row_obj.get("planted_flaw") or cand.get("planted_flaw") or ("guess" if slot["kind"] == "C" else "none")
         key_dict: dict = {
             "verdict": verdict,

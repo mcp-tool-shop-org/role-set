@@ -108,10 +108,12 @@ class CallJournal:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    def _append(self, key: str, role: str, c: Completion, reused: bool) -> None:
+    def _append(self, key: str, role: str, c: Completion, reused: bool, *, check: str | None = None) -> None:
         payload: dict = {"key": key, "role": role, "reused": reused}
         if self.flaw_prompt is not None:
             payload["flaw_prompt"] = self.flaw_prompt
+        if check is not None:
+            payload["check"] = check
         payload["completion"] = _completion_dict(c)
         line = json.dumps(payload, ensure_ascii=False)
         with self.lock, self.path.open("a", encoding="utf-8", newline="\n") as f:
@@ -123,6 +125,7 @@ class CallJournal:
             return None
 
         def call(*args, **kwargs):
+            check = kwargs.pop("check", None)
             key = request_key(role, args, kwargs)
             with self.lock:
                 queue = self.reuse.get(key)
@@ -130,15 +133,16 @@ class CallJournal:
                 if c is not None:
                     self.counts["reused"] += 1
             if c is not None:
-                self._append(key, role, c, True)
+                self._append(key, role, c, True, check=check)
                 return c
             c = fn(*args, **kwargs)
             with self.lock:
                 self.counts["called"] += 1
-            self._append(key, role, c, False)
+            self._append(key, role, c, False, check=check)
             return c
 
         call.takes_slot_id = getattr(fn, "takes_slot_id", False)  # the keyed mock is told the slot (Runner._writer_call)
+        call.takes_check = True
         return call
 
     def summary(self) -> dict:
