@@ -93,7 +93,14 @@ class Gates:
         return self.module.DataError  # type: ignore[attr-defined]
 
 
-REQUIRED_RULES = ("norm", "critic_mismatch", "closed_form_settings", "key_point_share", "check_trace_leaks_label")
+RULE_VERSIONS = {
+    "norm": "1.1.0",
+    "critic_mismatch": "1.1.0",
+    "closed_form_settings": "1.4.0",
+    "key_point_share": "1.4.0",
+    "check_trace_leaks_label": "1.7.6",
+}
+REQUIRED_RULES = tuple(RULE_VERSIONS)
 
 
 def load_gates(importer=importlib.import_module, closed_form: dict | None = None) -> Gates:
@@ -108,11 +115,15 @@ def load_gates(importer=importlib.import_module, closed_form: dict | None = None
         ) from e
     ident = module.gates_identity()
     # The critic compares quotes with the scorer's `norm` and evidence with `critic_mismatch` (gates 1.1.0); the
-    # closed-form rule is the package's settings (gates 1.4.0). A package without them is refused here, before anything
-    # is sent, rather than falling back to a weaker rule.
+    # closed-form rule is the package's settings (gates 1.4.0); write-time trace-leak checking is `check_trace_leaks_label`
+    # (gates 1.7.6). A package without them is refused here, before anything is sent, rather than falling back.
     missing = [name for name in REQUIRED_RULES if not callable(getattr(module, name, None))]
     if missing:
-        raise GatesUnavailable(f"REFUSED: aspire-si-gates {ident['version']} has no {', '.join(missing)}; pin 1.4.0 or later")
+        needed = max((RULE_VERSIONS[name] for name in missing), key=lambda v: tuple(int(x) for x in v.split(".")))
+        detail = ", ".join(f"{name} ({RULE_VERSIONS[name]})" for name in missing)
+        raise GatesUnavailable(
+            f"REFUSED: aspire-si-gates {ident['version']} has no {', '.join(missing)} (added in {detail}); pin {needed} or later"
+        )
     try:
         settings = dict(module.closed_form_settings(closed_form))
     except ValueError as e:

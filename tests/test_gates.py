@@ -57,10 +57,12 @@ def test_missing_package_is_a_refusal():
 
 
 def test_gates_without_the_scorer_or_closed_form_rules_are_refused_at_load():
-    for missing in ("norm", "critic_mismatch", "closed_form_settings", "key_point_share"):
+    from role_set.gates import RULE_VERSIONS
+
+    for missing, ver in RULE_VERSIONS.items():
         fake = _fake_module()
         delattr(fake, missing)
-        with pytest.raises(GatesUnavailable, match=f"has no {missing}; pin 1.4.0 or later"):
+        with pytest.raises(GatesUnavailable, match=rf"has no {missing} \(added in {missing} \({ver}\)\); pin {ver} or later"):
             load_gates(importer=lambda name, f=fake: f)
 
 

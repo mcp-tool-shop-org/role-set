@@ -1,6 +1,7 @@
 """The Colab window script's own rules that run without a VM."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -380,11 +381,16 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
                              "transforms": ["reattach_thinking"]} for c in [*writers, critic]]}
     (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
 
+    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
+    shutil.copy(committed_pool, content / "pool.jsonl")
+    pool_sha = pw.sha256(content / "pool.jsonl")
+
     slots_pilot = "T02-A-01,T02-C-01,T02-D-01,T02-E-01,T02-B-01,T02-A-02,T02-C-08,T02-D-05"
     monkeypatch.setenv("PIN_STUB", "1")
     monkeypatch.setenv("PIN_ROLE", "pilot")
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
+    monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
     monkeypatch.setenv("PIN_ROLESET_COMMIT", "d12bae86a22a82567f98e7f2697f1fddb9b1f300")
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
@@ -402,7 +408,7 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     assert (work / "pin-result.json").exists()
 
     res = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
-    assert res["ok"] is True and res["stub"] is True
+    assert res["ok"] is True and res["stub"] is True and res["pool_sha256"] == pool_sha
     job_log = (work / "job.log").read_text(encoding="utf-8")
     assert "STUB" in job_log.splitlines()[0]
 
@@ -1297,4 +1303,117 @@ def test_pin_window_stub_write_only_lessons_ends_with_awaiting_critique_drafts(t
     assert {d["slot"]["id"] for d in drafts} == {"T03-C-01", "T02-C-06"}
     assert all(d["state"] == "awaiting_critique" for d in drafts)
     assert not (work / "pilot" / "pilot" / writer / "w1").exists()
+
+
+def test_pilot_window_verifies_pool_sha_before_serving_and_passes_pool_to_common(tmp_path, monkeypatch):
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    pack = content / "pack"
+    pack.mkdir()
+    (pack / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+    pool_file = content / "pool.jsonl"
+    pool_file.write_text('{"text": "a\\nb\\nc\\nd\\n", "content_kind": "changelog", "source": {}}\n', encoding="utf-8")
+    pool_sha = pw.sha256(pool_file)
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    rs = _role_set_cmd()
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+
+    events: list[str] = []
+    seen_common: list[list[str]] = []
+
+    def tracking_check_pins(names, listed, policies):
+        events.append("check_pins")
+
+    def tracking_prefetch(names, by_name, result):
+        events.append("prefetch")
+
+    def fake_pilot_batch(rs_arg, common, plan, out_dir, writers, critic_for, pool, **kw):
+        events.append("pilot_batch")
+        seen_common.append(list(common))
+        return {w: {"waves": [{"wave": "write", "exit": 0}], "last": str(out_dir / w / "w0")} for w in writers}
+
+    def selective_sh(cmd: str, **kw) -> str:
+        if "pack verify" in cmd or cmd.startswith("tar "):
+            return "verified"
+        if "plan --lessons" in cmd:
+            out_idx = cmd.split().index("--out") + 1
+            out_p = Path(cmd.split()[out_idx])
+            lesson = cmd.split()[cmd.split().index("--lessons") + 1]
+            out_p.write_text(
+                json.dumps({
+                    "slots": [
+                        {"id": f"{lesson}-C-01", "lesson": lesson, "kind": "C", "real_source": True, "content_kind": "changelog"},
+                    ],
+                    "figures": [{"id": f"{lesson}-fig"}],
+                    "exclusion_state_sha256": "e" * 64,
+                }),
+                encoding="utf-8",
+            )
+            return "planned"
+        raise AssertionError(f"unexpected sh: {cmd}")
+
+    monkeypatch.setattr(pw, "check_pins", tracking_check_pins)
+    monkeypatch.setattr(pw, "prefetch_hosted", tracking_prefetch)
+    monkeypatch.setattr(pw, "pilot_batch", fake_pilot_batch)
+    monkeypatch.setattr(pw, "sh", selective_sh)
+
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T02")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01")
+
+    # 1. Missing PIN_POOL_SHA256 when plan has real_source slots refuses before check_pins / prefetch / serve.
+    monkeypatch.delenv("PIN_POOL_SHA256", raising=False)
+    monkeypatch.delenv("PIN_POOL", raising=False)
+    with pytest.raises(RuntimeError, match="PIN_POOL_SHA256 is required when the plan has real_source slots"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert events == []
+
+    # 2. Mismatched PIN_POOL_SHA256 refuses before check_pins / prefetch / serve.
+    monkeypatch.setenv("PIN_POOL_SHA256", "0" * 64)
+    with pytest.raises(RuntimeError, match="!= PIN_POOL_SHA256"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert events == []
+
+    # 3. When PIN_POOL is unset, resolve_pilot_pool prefers Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    # over CONTENT / "pool.jsonl", and falls back to CONTENT / "pool.jsonl" when the committed pool does not exist.
+    committed_pool = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    committed_sha = pw.sha256(committed_pool)
+    monkeypatch.delenv("PIN_POOL", raising=False)
+    monkeypatch.setenv("PIN_POOL_SHA256", committed_sha)
+    result_default: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, result_default)
+    assert result_default["pool_sha256"] == committed_sha
+    assert events == ["check_pins", "prefetch", "pilot_batch"]
+    assert seen_common and ["--pool", str(committed_pool)] == seen_common[0][-2:]
+
+    plan_for_fallback = work / "pilot" / "pilot-plan.json"
+    monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
+    got_fb_path, got_fb_sha = pw.resolve_pilot_pool({"src": str(tmp_path / "no-such-repo")}, plan_for_fallback)
+    assert got_fb_path == pool_file and got_fb_sha == pool_sha
+
+    # 4. Explicit PIN_POOL overrides the default and passes --pool in common.
+    events.clear()
+    seen_common.clear()
+    custom_pool = tmp_path / "custom-pool.jsonl"
+    custom_pool.write_bytes(pool_file.read_bytes())
+    monkeypatch.setenv("PIN_POOL", str(custom_pool))
+    monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
+    result: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, result)
+    assert result["pool_sha256"] == pool_sha
+    assert events == ["check_pins", "prefetch", "pilot_batch"]
+    assert seen_common and ["--pool", str(custom_pool)] == seen_common[0][-2:]
 

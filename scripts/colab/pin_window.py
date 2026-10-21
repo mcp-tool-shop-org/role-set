@@ -2451,6 +2451,44 @@ def critic_eval_window(built: dict, result: dict) -> None:
             result["tar_error"] = str(e)[:300]
 
 
+def resolve_pilot_pool(rs: dict, plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
+    """Verify the pool's sha256 before any llama-server starts (Argon F2). When PIN_POOL is unset, defaults to
+    Path(rs['src']) / 'roles' / 'verifier' / 'pool.jsonl' if it exists, falling back to CONTENT / 'pool.jsonl'.
+    PIN_POOL_SHA256 stays required and checked."""
+
+    pool_env = (os.environ.get("PIN_POOL") or "").strip()
+    if pool_env:
+        pool_path = Path(pool_env)
+    else:
+        committed = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+        pool_path = committed if committed.is_file() else (CONTENT / "pool.jsonl")
+    expect_sha = (os.environ.get("PIN_POOL_SHA256") or "").strip().lower()
+    plans_to_check = [plan]
+    if twins_plan is not None and twins_enabled() and twins_plan.is_file():
+        plans_to_check.append(twins_plan)
+    has_real = any(
+        bool(s.get("real_source"))
+        for p in plans_to_check
+        if p.is_file()
+        for s in (json.loads(p.read_text(encoding="utf-8")).get("slots") or [])
+    )
+    if has_real:
+        if not expect_sha:
+            raise RuntimeError("REFUSED: PIN_POOL_SHA256 is required when the plan has real_source slots")
+        if not pool_path.is_file():
+            raise RuntimeError(f"REFUSED: pool file {pool_path} is missing")
+    if expect_sha:
+        if not pool_path.is_file():
+            raise RuntimeError(f"REFUSED: pool file {pool_path} is missing")
+        got_sha = sha256(pool_path).lower()
+        if got_sha != expect_sha:
+            raise RuntimeError(f"REFUSED: pool {pool_path.name} sha256 {got_sha[:12]} != PIN_POOL_SHA256 {expect_sha[:12]}")
+        return pool_path, got_sha
+    if pool_path.is_file():
+        return pool_path, sha256(pool_path).lower()
+    return None, None
+
+
 def pilot_window(built: dict, result: dict) -> None:
     """PIN_ROLE=pilot (R&D, 2026-10-17): the T02 pilot (or the screen's slot list), then its T04 apply twins (the arm's
     accepted rows as --training), for each writer in PIN_PILOT_WRITERS, in that order, each read by its critic
@@ -2502,6 +2540,9 @@ def pilot_window(built: dict, result: dict) -> None:
                            # state, so the shas agree by construction (write refuses a mismatch).
                            "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
+    pool_file, pool_sha = resolve_pilot_pool(rs, plan, twins_plan)
+    result["pool_sha256"] = pool_sha
+
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
     listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
     families = {e["served_as"]: e.get("family") for e in listed["writers"] + listed["critics"]}
@@ -2522,6 +2563,8 @@ def pilot_window(built: dict, result: dict) -> None:
     pool = Pool(built, result, policies, cards_file, WORK / "cards-j1")
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", str(cards_file),
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
+    if pool_file is not None:
+        common += ["--pool", str(pool_file)]
 
     # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
     # result to a late failure, with nothing downloaded).

@@ -50,9 +50,13 @@ def _runner(tmp_path: Path, **kw):
     critic = MockCritic(answers=answers, disagree=kw.pop("disagree", None), trait="T02")
     excerpts = kw.pop("excerpts", None)
     if excerpts is None:
+        base_ex = mock_excerpts()
         excerpts = {
-            **mock_excerpts(),
-            "changelog": [Material("## [1.0.0] - 2026-01-01\n- Added the thing.\n", {"repo": "x/y", "commit": "abc", "path": "C.md", "lines": "L1", "licence": "MIT"})],
+            **base_ex,
+            "changelog": [
+                Material("## [1.0.0] - 2026-01-01\n- Added the thing.\n", {"repo": "x/y", "commit": "abc", "path": "C.md", "lines": "L1", "licence": "MIT"}),
+                *base_ex["changelog"],
+            ],
         }
     r = Runner(gates=kw.pop("gates", _gates()), pack=PACK, trait_names=TRAITS, writer=writer, critic=critic, out_dir=tmp_path / "out", excerpts=excerpts, pins={"writer_revision": "deadbeef"}, **kw)
     return r, writer, critic
@@ -398,13 +402,27 @@ def test_real_source_without_excerpt_raises_assembly_error_and_indexes_determini
     assert len(out.refusals) == 1 and out.refusals[0]["code"] == "ASSEMBLY"
     assert "has no excerpt in the pool" in out.refusals[0]["detail"]
 
-    # Deterministic indexing by slot id across retries (no pop(0)).
+    # Deterministic indexing by slot id across retries (no pop(0)), and exhaustion refuses rather than reusing.
     r2, _, _ = _runner(tmp_path / "det")
     before = list(r2.excerpts[real_slot.content_kind])
     m1 = r2._material_for(real_slot)
     m2 = r2._material_for(real_slot)
     assert m1.text == m2.text and m1.source == m2.source
     assert r2.excerpts[real_slot.content_kind] == before
+
+    from role_set.assemble import AssemblyError
+    from role_set.plan import Slot
+
+    one_pool = {
+        real_slot.content_kind: [
+            Material("## [1.0.0] - 2026-01-01\n- Added the thing.\n", {"repo": "x/y", "commit": "abc", "path": "C.md", "lines": "L1", "licence": "MIT"})
+        ]
+    }
+    r3, _, _ = _runner(tmp_path / "exhaust", excerpts=one_pool)
+    assert r3._material_for(real_slot) is not None
+    second_slot = Slot(id="T02-C-99", lesson="T02", kind="C", side=SIDES[0], tier=3, content_kind=real_slot.content_kind, verdict="supported", real_source=True)
+    with pytest.raises(AssemblyError, match=rf"real_source pool for {real_slot.content_kind!r} exhausted \(1 excerpts\) at T02-C-99"):
+        r3._material_for(second_slot)
 
 
 def test_write_time_trace_leak_gate_triggers_rewrite(tmp_path: Path):

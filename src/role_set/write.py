@@ -97,6 +97,42 @@ class WriteConfig:
     critique_scope: str = "all"  # "all" or "verdict" (design §11 F2: skip A, B and written E when "verdict")
 
 
+def _pool(cfg: WriteConfig, slots: list[Slot], pins: dict) -> dict[str, list] | None:
+    """Load --pool when given (recording pool_sha256 in pins) and, before warmup on a non-mock wave that writes
+    material (inline, write, rewrite), refuse if the plan has real_source slots and the pool is missing or short."""
+
+    excerpts = None
+    if cfg.pool is not None:
+        try:
+            raw = cfg.pool.read_bytes()
+            excerpts = load_pool(cfg.pool)
+        except (OSError, ValueError, KeyError) as e:
+            raise WriteRefused(f"REFUSED: cannot read --pool {cfg.pool}: {e}") from e
+        pins["pool_sha256"] = hashlib.sha256(raw).hexdigest()
+    if not cfg.mock and cfg.wave in ("inline", "write", "rewrite"):
+        need: dict[str, int] = {}
+        for s in slots:
+            if s.real_source:
+                k = s.content_kind or "notice"
+                need[k] = need.get(k, 0) + 1
+        if need:
+            if excerpts is None:
+                kind, req = sorted(need.items())[0]
+                raise WriteRefused(
+                    f"REFUSED: --pool is required when the plan has real_source slots (kind {kind!r}: need {req}, have 0)"
+                )
+            for kind, req in sorted(need.items()):
+                have = len(excerpts.get(kind) or ())
+                if have < req:
+                    raise WriteRefused(
+                        f"REFUSED: real_source pool for kind {kind!r} has {have} excerpt(s), need {req}"
+                    )
+    if cfg.mock:
+        base_mock = mock_excerpts()
+        excerpts = {k: list((excerpts or {}).get(k, [])) + base_mock[k] for k in base_mock}
+    return excerpts
+
+
 def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
     """The whole training set, for an apply plan's exclusions (aspire-si#127): its rows, and its sidecar models through
     the gates' own load_models (each line's row_sha256 checked). An apply plan without it is refused; the files' sha256
@@ -197,6 +233,8 @@ def build(cfg: WriteConfig, *, now=time.time):
     pack = load_pack(cfg.pack)
     trait_names = trait_names_from_pack(pack)
     pins: dict = {"plan_sha256": plan_sha, "pack_sha256": manifest.pack_sha256, "pack_commit": manifest.commit}
+    if cfg.pool is not None and cfg.pool.is_file():
+        pins["pool_sha256"] = hashlib.sha256(cfg.pool.read_bytes()).hexdigest()
 
     header = None
     if cfg.critique_scope not in ("all", "verdict"):
@@ -334,15 +372,12 @@ def require_rehearsal_dir(out: Path, pins: dict) -> None:
 
 def run(cfg: WriteConfig, *, now=time.time) -> dict:
     slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup = build(cfg, now=now)
+    excerpts = _pool(cfg, slots, pins)
     out = output_dir(cfg.out, pins, mock=cfg.mock)
     # Every finished call is journaled as it returns; a resume replays an earlier journal (R&D, 2026-10-17).
     journal = callcache.CallJournal(cfg.call_journal or out / callcache.JOURNAL_FILE,
                                     callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
     writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
-    excerpts = load_pool(cfg.pool) if cfg.pool else None
-    if cfg.mock:
-        base_mock = mock_excerpts()
-        excerpts = {k: list((excerpts or {}).get(k, [])) + base_mock[k] for k in base_mock}
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
         try:
@@ -416,6 +451,8 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
                 card_pins, prior_sha = waves.chain_card_pins(header_in, cfg.prior_drafts)
                 header_in = {**header_in, "writer_pins": {**waves.header_writer_pins(header_in), **card_pins}}
                 chained = {"card_pins_via": "chain", "card_pins_prior_sha256": prior_sha}
+            if cfg.wave == "critique" and "pool_sha256" not in pins and "pool_sha256" in (header_in.get("batch_pins") or {}):
+                pins["pool_sha256"] = header_in["batch_pins"]["pool_sha256"]
             waves.require_same_pins(header_in, pins, gates, cfg.wave)
         except waves.WaveError as e:
             raise WriteRefused(str(e)) from e

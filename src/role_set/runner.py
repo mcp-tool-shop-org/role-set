@@ -663,7 +663,9 @@ class Runner:
                 if slot.id not in self._slot_excerpt:
                     used = self._used_excerpts.setdefault(kind, set())
                     start = int(hashlib.sha256(slot.id.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
-                    idx = next(((start + k) % len(pool) for k in range(len(pool)) if (start + k) % len(pool) not in used), start)
+                    idx = next(((start + k) % len(pool) for k in range(len(pool)) if (start + k) % len(pool) not in used), None)
+                    if idx is None:
+                        raise AssemblyError(f"real_source pool for {kind!r} exhausted ({len(pool)} excerpts) at {slot.id}")
                     self._slot_excerpt[slot.id] = idx
                     used.add(idx)
                 return pool[self._slot_excerpt[slot.id]]
