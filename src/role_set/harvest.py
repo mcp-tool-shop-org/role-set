@@ -10,6 +10,7 @@ from; the clone paths never enter it.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -25,6 +26,17 @@ EXCLUDED_REPOS = {
 }
 PRIVATE_LINE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+|[A-Za-z]:\\|/Users/|/home/|\\\\Users\\\\")
 CODE_SUFFIXES = (".py", ".ts", ".js", ".rs", ".mjs")
+RECORD_SUFFIXES = (".toml", ".json", ".yaml", ".yml", ".csv")
+LOCKFILES = frozenset({"uv.lock", "package-lock.json", "cargo.lock", "pnpm-lock.yaml", "yarn.lock"})
+RECORD_SKIP_PARTS = ("node_modules", "test", "mock", "fixture")
+RECORD_KV_LINE = re.compile(
+    r'^\s*(?:'
+    r'"[^"]+"\s*:\s*\S'
+    r'|[A-Za-z0-9_."-]+\s*=\s*\S'
+    r'|(?:-\s+)?[A-Za-z0-9_."/+-]+\s*:\s*\S'
+    r')'
+)
+RECORD_CSV_LINE = re.compile(r'^\s*[^#"{}\[\]:=\s][^:={}\[\]]*,[^:={}\[\]]+$')
 
 
 class HarvestError(RuntimeError):
@@ -138,6 +150,55 @@ def code_excerpts(text: str) -> list[tuple[str, int, int]]:
     return out
 
 
+def _is_record_line(line: str, *, is_csv: bool = False) -> bool:
+    s = line.strip()
+    if not s or s.startswith("#"):
+        return False
+    if is_csv and "," in s and not s.startswith(("{", "}", "[", "]")):
+        return True
+    return bool(RECORD_KV_LINE.match(line) or RECORD_CSV_LINE.match(line))
+
+
+def _skip_record_path(path: str) -> bool:
+    norm = path.replace("\\", "/")
+    low = norm.lower()
+    base = low.rsplit("/", 1)[-1]
+    if base in LOCKFILES:
+        return True
+    if low and not low.endswith(RECORD_SUFFIXES):
+        return True
+    return any(part in low for part in RECORD_SKIP_PARTS)
+
+
+def record_excerpts(text: str, path: str = "", *, max_lines: int = 12) -> list[tuple[str, int, int]]:
+    """Contiguous blocks of 4 to 12 lines from tracked .toml, .json, .yaml/.yml and .csv files with at least 3
+    key-value or table lines, skipping lockfiles, node_modules, and test/mock/fixture paths, and dropping PRIVATE_LINE
+    lines before slicing."""
+
+    if _skip_record_path(path):
+        return []
+    is_csv = path.lower().endswith(".csv")
+    kept = [(i + 1, line) for i, line in enumerate(text.splitlines()) if not PRIVATE_LINE.search(line)]
+    out: list[tuple[str, int, int]] = []
+    run: list[tuple[int, str]] = []
+
+    def flush(r: list[tuple[int, str]]) -> None:
+        for k in range(0, len(r), max_lines):
+            block = r[k : k + max_lines]
+            if 4 <= len(block) <= max_lines and sum(1 for _, ln in block if _is_record_line(ln, is_csv=is_csv)) >= 3:
+                out.append(("\n".join(ln for _, ln in block) + "\n", block[0][0], block[-1][0]))
+
+    for item in kept:
+        if item[1].strip():
+            run.append(item)
+        elif run:
+            flush(run)
+            run = []
+    if run:
+        flush(run)
+    return out
+
+
 def harvest_repo(repo: Path, commit: str, *, name: str | None = None, max_per_kind: int = 12) -> tuple[list[Excerpt], int]:
     name = name or repo.name
     if name in EXCLUDED_REPOS:
@@ -176,6 +237,11 @@ def harvest_repo(repo: Path, commit: str, *, name: str | None = None, max_per_ki
                 continue
             for text, s, e in code_excerpts(_git(repo, "show", f"{commit}:{path}")):
                 add("code", text, path, s, e)
+        elif not _skip_record_path(path):
+            if counts.get("record", 0) >= max_per_kind:
+                continue
+            for text, s, e in record_excerpts(_git(repo, "show", f"{commit}:{path}"), path):
+                add("record", text, path, s, e)
     return excerpts, dropped
 
 
@@ -199,6 +265,8 @@ def harvest(allow_list: list[dict], clones_root: Path, out: Path) -> HarvestRepo
         for x in pool:
             f.write(json.dumps(x.as_dict(), ensure_ascii=False) + "\n")
             report.by_kind[x.content_kind] = report.by_kind.get(x.content_kind, 0) + 1
+    sha = hashlib.sha256(out.read_bytes()).hexdigest()
+    out.with_name(out.name + ".sha256").write_text(f"{sha}  {out.name}\n", encoding="utf-8", newline="\n")
     report.excerpts = len(pool)
     return report
 

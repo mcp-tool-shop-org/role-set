@@ -271,8 +271,9 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     import json
 
     kind, verdict = slot["kind"], slot["verdict"]
-    first_line = material.splitlines()[0] if material else ""
-    second_line = material.splitlines()[1] if material and len(material.splitlines()) > 1 else first_line
+    non_empty = [ln.strip() for ln in material.splitlines() if ln.strip()]
+    first_line = non_empty[0] if non_empty else ""
+    second_line = non_empty[1] if len(non_empty) > 1 else first_line
     t = lambda j: _tag(n, 200 + j)  # noqa: E731
     if kind == "A":
         tw = slot.get("trait_word") or "goes to the source"

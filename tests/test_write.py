@@ -226,10 +226,11 @@ def test_a_rehearsal_writer_writes_only_under_rehearsal(pack_dir: Path, plan_fil
     (tmp_path / "m").mkdir()
     _, machine = _proven_setup(tmp_path / "m")
     monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
     cfg = WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "o", writers_file=writers, cards=cards_file(tmp_path), endpoint="http://127.0.0.1:8080/v1",
-                      model="small-writer", writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:rehearsal", no_critic=True)
+                      model="small-writer", writer_gguf_sha256=SHA_W, server_sha256=SHA_S, machine=machine, partition="trial:rehearsal", no_critic=True, pool=committed_pool)
     parts = build(cfg)
-    assert parts[7]["rehearsal"] is True
+    assert parts[7]["rehearsal"] is True and len(parts[7]["pool_sha256"]) == 64
     seen = {}
 
     class Stub:
@@ -260,3 +261,76 @@ def test_no_critic_never_runs_on_production(tmp_path: Path, monkeypatch):
     with pytest.raises((WriteRefused, GuardError), match="--no-critic never runs on partition production"):
         w._require_critic_policy(cfg, "production")
     w._require_critic_policy(WriteConfig(plan=tmp_path, pack=tmp_path, out=tmp_path, no_critic=True), "trial:x")
+
+
+def test_real_write_requires_pool_and_sufficient_excerpts_before_warmup_and_pins_pool_sha256(
+    pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch
+):
+    import hashlib
+
+    import role_set.write as w
+    from role_set.mock import mock_gates
+    from test_proven import SHA_S, SHA_W, entry, proven_file
+
+    writers = proven_file(tmp_path, writers=[entry("small-writer", "nemotron", SHA_W)])
+    (tmp_path / "m").mkdir()
+    _, machine = _proven_setup(tmp_path / "m")
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+    writer_calls: list = []
+    monkeypatch.setattr(w, "chat", lambda *a, **kw: writer_calls.append(a))
+
+    base_kw = dict(
+        plan=plan_file,
+        pack=pack_dir,
+        out=tmp_path / "o",
+        writers_file=writers,
+        cards=cards_file(tmp_path),
+        endpoint="http://127.0.0.1:8080/v1",
+        model="small-writer",
+        writer_gguf_sha256=SHA_W,
+        server_sha256=SHA_S,
+        machine=machine,
+        partition="trial:pool-check",
+        no_critic=True,
+    )
+
+    # 1. Missing --pool on a real write with real_source slots refuses before warmup with zero writer calls.
+    with pytest.raises(WriteRefused, match=r"REFUSED: --pool is required when the plan has real_source slots \(kind '.*': need \d+, have 0\)"):
+        run(WriteConfig(**base_kw))
+    assert writer_calls == []
+
+    # 2. A short kind in the pool (fewer excerpts than the plan's real_source slots of that kind) refuses before warmup.
+    short_pool = tmp_path / "short-pool.jsonl"
+    short_pool.write_text(
+        json.dumps({
+            "text": "## [1.0.0] - 2026-01-01\n- Added a flag.\n- Fixed a path.\n- Documented output.\n",
+            "content_kind": "changelog",
+            "source": {"repo": "x/y", "commit": "abc1234", "path": "CHANGELOG.md", "lines": "L1-L4", "licence": "MIT License"},
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(WriteRefused, match=r"REFUSED: real_source pool for kind '.*' has \d+ excerpt\(s\), need \d+"):
+        run(WriteConfig(**base_kw, pool=short_pool))
+    assert writer_calls == []
+
+    # 3. pool_sha256 lands in the pins when cfg.pool is loaded.
+    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
+    expected_sha = hashlib.sha256(committed_pool.read_bytes()).hexdigest()
+    seen_pins: dict = {}
+
+    class StubRunner:
+        def __init__(self, **kw):
+            from role_set.runner import Status
+
+            seen_pins.update(kw["pins"])
+            self.status = Status(started_at=0.0)
+            self.batch_check = None
+
+        def run(self, slots, **kw):
+            return []
+
+    monkeypatch.setattr(w, "Runner", StubRunner)
+    run(WriteConfig(**base_kw, pool=committed_pool))
+    assert seen_pins["pool_sha256"] == expected_sha
+    assert writer_calls == []

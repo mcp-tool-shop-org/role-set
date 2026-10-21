@@ -52,7 +52,8 @@ def real_path(tmp_path: Path, pack_dir: Path, monkeypatch):  # noqa: F811
 def _cfg(rp: dict, out: str, wave: str, *, drafts: Path | None = None) -> WriteConfig:
     w_sha, c_sha, server = _pins()
     common = dict(plan=rp["plan"], pack=rp["pack"], out=rp["tmp"] / out, writers_file=ROOT / "writers.json", cards=CARDS,
-                  partition="trial:chain", machine=rp["machine"], server_sha256=server, wave=wave, drafts=drafts)
+                  partition="trial:chain", machine=rp["machine"], server_sha256=server, wave=wave, drafts=drafts,
+                  pool=ROOT / "roles" / "verifier" / "pool.jsonl")
     if wave == "critique":
         return WriteConfig(**common, critic_endpoint=rp["stub"].url, critic_model=CRITIC, critic_gguf_sha256=c_sha)
     return WriteConfig(**common, endpoint=rp["stub"].url, model=WRITER, writer_gguf_sha256=w_sha)

@@ -15,6 +15,7 @@ from role_set.harvest import (
     harvest_repo,
     load_pool,
     readme_excerpts,
+    record_excerpts,
 )
 
 CHANGELOG = """# Changelog
@@ -57,6 +58,33 @@ def color_enabled(env):
 def tiny():
     return 1
 """
+RECORD_TOML = """[project]
+name = "good-tool"
+version = "0.1.0"
+description = "A small tool"
+authors = [{name = "Dev", email = "dev@example.com"}]
+requires-python = ">=3.12"
+"""
+RECORD_JSON = """{
+  "name": "good-tool",
+  "version": "0.1.0",
+  "packageManager": "npm@10.2.0",
+  "private": true,
+  "type": "module"
+}
+"""
+RECORD_YAML = """version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+"""
+RECORD_CSV = """code,title,tier,active
+311,Food Manufacturing,3,true
+312,Beverage and Tobacco,3,true
+313,Textile Mills,4,false
+"""
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -78,6 +106,7 @@ def clones(tmp_path: Path):
         (repo / "CHANGELOG.md").write_text(CHANGELOG, encoding="utf-8")
         (repo / "README.md").write_text(README, encoding="utf-8")
         (repo / "src" / "color.py").write_text(CODE, encoding="utf-8")
+        (repo / "pyproject.toml").write_text(RECORD_TOML, encoding="utf-8")
         _git(repo, "add", "-A")
         _git(repo, "commit", "-q", "-m", "fixture")
         shas[name] = _git(repo, "rev-parse", "HEAD")
@@ -95,12 +124,31 @@ def test_cutters():
     code = code_excerpts(CODE)
     assert len(code) == 1 and code[0][0].startswith("def color_enabled") and code[0][1] == 4
 
+    # record_excerpts on TOML, JSON, YAML and CSV, dropping email / pkg@ver PRIVATE_LINE lines and skipping lockfiles / test paths.
+    toml_rec = record_excerpts(RECORD_TOML, "pyproject.toml")
+    assert len(toml_rec) == 1 and "dev@example.com" not in toml_rec[0][0]
+    assert toml_rec[0][1] == 1 and toml_rec[0][2] == 6 and 4 <= len(toml_rec[0][0].splitlines()) <= 12
+
+    json_rec = record_excerpts(RECORD_JSON, "package.json")
+    assert len(json_rec) == 1 and "npm@10.2.0" not in json_rec[0][0]
+    assert '"name": "good-tool"' in json_rec[0][0]
+
+    yaml_rec = record_excerpts(RECORD_YAML, ".github/dependabot.yml")
+    assert len(yaml_rec) == 1 and "package-ecosystem: npm" in yaml_rec[0][0]
+
+    csv_rec = record_excerpts(RECORD_CSV, "data/sectors.csv")
+    assert len(csv_rec) == 1 and "Food Manufacturing" in csv_rec[0][0]
+
+    for skipped_path in ("uv.lock", "package-lock.json", "Cargo.lock", "pnpm-lock.yaml", "yarn.lock",
+                         "node_modules/pkg/package.json", "tests/fixtures/data.json", "src/mock/config.toml"):
+        assert record_excerpts(RECORD_JSON, skipped_path) == []
+
 
 def test_harvest_repo_checks_licence_exclusions_and_private_lines(clones):
     root, shas = clones
     got, dropped = harvest_repo(root / "good-tool", shas["good-tool"])
     kinds = {x.content_kind for x in got}
-    assert kinds == {"changelog", "label", "design_note", "code"}
+    assert kinds == {"changelog", "label", "design_note", "code", "record"}
     assert all(x.source["repo"] == "good-tool" and x.source["commit"] == shas["good-tool"] and x.source["licence"] == "MIT License" for x in got)
     assert dropped == 1 and all(PRIVATE_LINE.search(x.text) is None for x in got)
     with pytest.raises(HarvestError, match="not on the allowed list"):
@@ -119,10 +167,73 @@ def test_harvest_writes_a_pool_the_runner_can_load(clones, tmp_path: Path):
     out = tmp_path / "pool.jsonl"
     report = harvest([{"name": "good-tool", "commit": shas["good-tool"]}, {"name": "gpl-tool", "commit": shas["gpl-tool"]}, {"name": "missing", "commit": "a" * 40}], root, out)
     d = report.as_dict()
-    assert d["repos"] == 1 and d["excerpts"] >= 4 and len(d["refused"]) == 2 and d["by_kind"]["changelog"] == 2
+    assert d["repos"] == 1 and d["excerpts"] >= 5 and len(d["refused"]) == 2 and d["by_kind"]["changelog"] == 2 and d["by_kind"]["record"] == 1
+    assert (tmp_path / "pool.jsonl.sha256").is_file()
     pool = load_pool(out)
-    assert set(pool) == {"changelog", "label", "design_note", "code"} and pool["changelog"][0].source["path"] == "CHANGELOG.md"
-    assert not pool["code"][0].invented
+    assert set(pool) == {"changelog", "label", "design_note", "code", "record"} and pool["changelog"][0].source["path"] == "CHANGELOG.md"
+    assert not pool["code"][0].invented and not pool["record"][0].invented
+
+
+def test_committed_pool_lines_sources_and_seal():
+    import hashlib
+
+    repo_root = Path(__file__).resolve().parents[1]
+    pool_path = repo_root / "roles" / "verifier" / "pool.jsonl"
+    seal_path = repo_root / "roles" / "verifier" / "pool.jsonl.sha256"
+    sources_path = repo_root / "roles" / "verifier" / "sources.json"
+    assert pool_path.is_file() and seal_path.is_file()
+    got_sha = hashlib.sha256(pool_path.read_bytes()).hexdigest()
+    want_sha = seal_path.read_text(encoding="utf-8").split()[0].strip().lower()
+    assert got_sha == want_sha
+
+    allowed = {
+        r["name"]: (r["commit"], r["licence"])
+        for r in json.loads(sources_path.read_text(encoding="utf-8"))["repos"]
+    }
+    raw_lines = [ln for ln in pool_path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(raw_lines) >= 180
+    for idx, line in enumerate(raw_lines, 1):
+        d = json.loads(line)
+        text = d["text"]
+        kind = d["content_kind"]
+        src = d["source"]
+        assert PRIVATE_LINE.search(text) is None, (idx, src)
+        assert src["repo"] in allowed, (idx, src)
+        assert src["commit"] == allowed[src["repo"]][0], (idx, src)
+        assert src["licence"] == allowed[src["repo"]][1] == "MIT License", (idx, src)
+        assert ":" not in src["path"] and not src["path"].startswith("/"), (idx, src)
+        n_lines = len(text.splitlines())
+        if kind in ("record", "code"):
+            assert 4 <= n_lines <= 12 and 4 <= len(text.split("\n")) <= 13, (idx, kind, n_lines, src)
+        elif kind == "changelog":
+            assert 3 <= n_lines <= 12, (idx, kind, n_lines, src)
+        elif kind == "design_note":
+            assert 2 <= n_lines <= 6, (idx, kind, n_lines, src)
+        elif kind == "label":
+            assert n_lines >= 3, (idx, kind, n_lines, src)
+        else:
+            raise AssertionError(f"unexpected content_kind {kind!r} at line {idx}")
+
+
+def test_committed_pool_covers_real_source_kinds_and_plans():
+    from role_set.cli import VERIFIER_SIDES
+    from role_set.plan import REAL_SOURCE_KINDS, plan_lesson
+
+    repo_root = Path(__file__).resolve().parents[1]
+    pool = load_pool(repo_root / "roles" / "verifier" / "pool.jsonl")
+    for kind in REAL_SOURCE_KINDS:
+        assert len(pool.get(kind) or ()) >= 6, (kind, len(pool.get(kind) or ()))
+
+    # Every verifier lesson (and buffered T10) has enough excerpts per real_source kind in the committed pool.
+    for lesson, sides in VERIFIER_SIDES.items():
+        for buffers in ((False, True) if lesson == "T10" else (False,)):
+            slots = plan_lesson(lesson, sides, seed=0, buffers=buffers)
+            need: dict[str, int] = {}
+            for s in slots:
+                if s.real_source:
+                    need[s.content_kind] = need.get(s.content_kind, 0) + 1
+            for kind, req in need.items():
+                assert len(pool.get(kind) or ()) >= req, (lesson, buffers, kind, req)
 
 
 def test_exemplars_are_read_pinned_and_picked_from_other_traits(tmp_path: Path):
