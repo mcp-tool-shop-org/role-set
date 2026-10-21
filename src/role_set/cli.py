@@ -483,7 +483,7 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")
     w.add_argument("--no-critic", action="store_true", help="dry runs only; items pass without the second reader")
     w.add_argument("--pool", default=None, help="the harvested excerpt pool (jsonl)")
-    w.add_argument("--training", nargs="*", default=(), help="for an apply plan: the whole training set's data files, each with its .models.jsonl sidecar")
+    w.add_argument("--training", nargs="*", action="extend", default=[], help="for an apply plan: the whole training set's data files, each with its .models.jsonl sidecar")
     w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
     w.add_argument("--exemplar-commit", default=None)
     w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")

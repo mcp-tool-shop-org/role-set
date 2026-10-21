@@ -159,19 +159,21 @@ def cell_key(lesson: str, kind: str) -> str:
 
 
 def interleave(slots: list[Slot]) -> list[Slot]:
-    """The plan's slots in dispatch order: round by round, one slot from every (lesson, kind) cell, kinds in KIND_ORDER
-    and lessons in plan order. Each cell keeps its own order. A short budget then samples every lesson and kind."""
+    """The plan's slots in dispatch order: every training slot (split != "apply") before any apply slot, and within
+    each group round by round, one slot from every (lesson, kind) cell, kinds in KIND_ORDER and lessons in plan
+    order. Each cell keeps its own order. A short budget then samples every lesson and kind."""
 
     lessons: list[str] = []
-    position: dict[tuple[str, str], int] = {}
+    position: dict[tuple[bool, str, str], int] = {}
     keyed = []
     for s in slots:
         if s.lesson not in lessons:
             lessons.append(s.lesson)
-        cell = (s.lesson, s.kind)
+        is_apply = s.split == "apply"
+        cell = (is_apply, s.lesson, s.kind)
         position[cell] = position.get(cell, -1) + 1
         rank = KIND_ORDER.index(s.kind) if s.kind in KIND_ORDER else len(KIND_ORDER)
-        keyed.append(((position[cell], rank, lessons.index(s.lesson)), s))
+        keyed.append(((1 if is_apply else 0, position[cell], rank, lessons.index(s.lesson)), s))
     return [s for _, s in sorted(keyed, key=lambda x: x[0])]
 
 
@@ -500,6 +502,7 @@ class Runner:
         self.training = training or []
         self.training_models = training_models or {}
         self._spent: set[str] | None = None
+        self._extra_spent: set[str] = set()
         self.excerpts = {k: list(v) for k, v in (excerpts or {}).items()}
         self._slot_excerpt: dict[str, int] = {}
         self._used_excerpts: dict[str, set[int]] = {}
@@ -538,10 +541,20 @@ class Runner:
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
         self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
 
+    def note_training_row(self, row: dict) -> None:
+        """Add a surviving training row's 8-word user-turn spans to the SPENT set for apply slots."""
+
+        if row.get("split") == "apply":
+            return
+        with self.lock:
+            self._extra_spent |= _user_spans(row)
+
     def _spent_spans(self) -> set[str]:
-        if self._spent is None:
-            self._spent = trained_spans(self.training)
-        return self._spent
+        with self.lock:
+            if self._spent is None:
+                self._spent = trained_spans(self.training)
+            surviving = [r for r in self.prior_rows + self.accepted if r.get("split") != "apply"]
+            return self._spent | self._extra_spent | trained_spans(surviving)
 
     def _lesson_spans(self, lesson: str) -> set[str]:
         if lesson not in self._spans_by_lesson:
@@ -1137,12 +1150,17 @@ class Runner:
             return out
 
         try:
-            if self.status.concurrency == 1:
-                for s in slots:
-                    outcomes.append(one(s))
-            else:
-                with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
-                    outcomes = list(pool.map(one, slots))
+            train_slots = [s for s in slots if s.split != "apply"]
+            apply_slots = [s for s in slots if s.split == "apply"]
+            for group in (train_slots, apply_slots):
+                if not group:
+                    continue
+                if self.status.concurrency == 1:
+                    for s in group:
+                        outcomes.append(one(s))
+                else:
+                    with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
+                        outcomes.extend(pool.map(one, group))
         finally:
             self._finish(outcomes or self.finished, lessons)
         return outcomes

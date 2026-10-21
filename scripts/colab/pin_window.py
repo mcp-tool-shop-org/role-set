@@ -2142,6 +2142,111 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     }
 
 
+# Stage 1 frozen training files in training order (aspire-si docs/runs/stage1-training-data/FROZEN.md,
+# "## Training files", branch verifier-distill-prereg-draft). Never sort by path: the order is the training order.
+# Each sha256 is over LF-normalized content (CRLF read as LF, matching receipts.sha256_file).
+FROZEN_TRAINING_FILES: tuple[tuple[str, str], ...] = (
+    ("docs/runs/stage1-training-data/pilot-t04.jsonl", "a82c7302b40ae323a853a34cd0ceb7b9adda4414536cd2549db08a4224c0e7e6"),
+    ("docs/runs/stage1-training-data/batch2-t01.jsonl", "f29eea91326bd3fb6da01b82cf94b2aed67bb549a2facd93db69e21d83c66df8"),
+    ("docs/runs/stage1-training-data/batch2-t14.jsonl", "5486a1dc483fcae51c4497e411223fb6d661f5b61a1b2d905472c4d4a226c96d"),
+    ("docs/runs/stage1-training-data/batch2-t16.jsonl", "6dc77b59d7e7ba71792d6afe09ede43605301a89f71c1ccbe6c8fc669b348cd3"),
+    ("docs/runs/stage1-training-data/batch3-t05.jsonl", "fe7325218f9df85a1040f0c833b801806a33f3da7ede45a412c9e78caeaacf06"),
+    ("docs/runs/stage1-training-data/batch3-t13.jsonl", "4f45c013d698022e6e292c1c5410ab42c2efe4ab6fd01501bee18d6e3257cd5a"),
+    ("docs/runs/stage1-training-data/batch3-t17.jsonl", "3411b69b9234974aad22b82127524ba48e49214bedf670593da2d4daa6e14479"),
+    ("docs/runs/stage1-training-data/batch4-t02.jsonl", "3724dddcd31cea00813a1b384757bba080d9f348ec2aeebc8bcb3e9789ccf3af"),
+    ("docs/runs/stage1-training-data/batch4-t03.jsonl", "0f3577654ef4624e3959ec4cfc6d444148aad7b3199a3bb28b46d6ab98297f80"),
+    ("docs/runs/stage1-training-data/batch4-t06.jsonl", "95e9f6f21785fa1220e78e98543580f494536fc9b59df15ef401944f2e512cf1"),
+    ("docs/runs/stage1-training-data/batch5-t07.jsonl", "20e18c67d80859f656ae3721a504b6c742cba587991fc2641085953c238a74a5"),
+    ("docs/runs/stage1-training-data/batch5-t08.jsonl", "01077ee791a5c8cadf5a9ef249d9c9344e0e0e0e39a0ed3a848e4c86fd5ea172"),
+    ("docs/runs/stage1-training-data/batch5-t09.jsonl", "a76b5de018d859f342d0cbd067e0054321d6a3550b9f62b8084e7b94eb9cc7a6"),
+    ("docs/runs/stage1-training-data/batch6-t10.jsonl", "f6c09e47caf62dc215ddd64e18fbc20538e36e96f2c596d58e964ff62ac3b97e"),
+    ("docs/runs/stage1-training-data/batch6-t11.jsonl", "b9e01765264b6f4da75f6a5d2e5322f7feabd356eb8e77fba4b20a64dececdfd"),
+    ("docs/runs/stage1-training-data/batch6-t12.jsonl", "a2db220b9b84ddb16e6af3850d4fb43104cee28bd8f2992393b11ecd760c12ee"),
+    ("docs/runs/stage1-training-data/batch7-t15.jsonl", "9455e6eafe4d53d497186f842a068d4a57066fc401b722c5d27df8d14800fe06"),
+    ("docs/runs/stage1-training-data/batch7-t18.jsonl", "512c38c99078b41b2acf2c2816776025d9e52028ad0e86461c43e5fc8f2e5e5f"),
+    ("docs/runs/stage1-training-data/batch8-l1.jsonl", "a0abcc2bd67c9ef92476a29e584a229567ed8c6224508b4453f133f0a1829f11"),
+    ("docs/runs/stage1-training-data/batch8-l2.jsonl", "b1256d296d3f62eb1c7b84596de097f715e8db0b01496a6beb2494d3c8a7b1c0"),
+    ("docs/runs/stage1-training-data/batch8-l3.jsonl", "cf557a06bf17253269966811b1abf220106b24b3ed5bc2efc1f9ba9c90c9066a"),
+)
+
+
+def sha256_lf(path: Path) -> str:
+    """LF-normalized sha256 (CRLF read as LF), matching aspire-si's receipts.sha256_file and FROZEN.md."""
+
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def plan_has_apply_slots(plan: Path) -> bool:
+    """Whether the screened plan has any slot with split == 'apply'."""
+
+    if not plan.exists():
+        return False
+    data = json.loads(plan.read_text(encoding="utf-8"))
+    return any(s.get("split") == "apply" for s in data.get("slots", []))
+
+
+def training_inputs(result: dict) -> list[Path]:
+    """The frozen Stage 1 training set and its .models.jsonl sidecars, unpacked read-only and sha-checked before any
+    server starts (Argon round 1 F1). Returns the training .jsonl paths in FROZEN.md's training order."""
+
+    import tarfile  # noqa: PLC0415
+
+    raw_shas = os.environ.get("PIN_TRAINING_SHAS", "").strip()
+    shas = dict(x.split("=", 1) for x in raw_shas.split(",") if "=" in x)
+    if not shas:
+        raise RuntimeError("REFUSED: plan has apply slots; PIN_TRAINING_SHAS is required")
+    raw_tar = os.environ.get("PIN_TRAINING_INPUTS", "").strip()
+    tar = Path(raw_tar) if raw_tar else (CONTENT / "training-inputs.tar")
+    if not tar.is_file():
+        raise RuntimeError(f"REFUSED: plan has apply slots; PIN_TRAINING_INPUTS tar not found: {tar}")
+    root = WORK / "training-in"
+    if root.exists():
+        for p in sorted(root.rglob("*")):
+            os.chmod(p, 0o700)
+        os.chmod(root, 0o700)
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    with tarfile.open(tar) as tf:
+        tf.extractall(root, filter="data")
+    unpacked = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    unpinned = [n for n in unpacked if n not in shas]
+    if unpinned:
+        raise RuntimeError(f"REFUSED: no sha256 in PIN_TRAINING_SHAS for {', '.join(unpinned)}")
+    missing = [n for n in shas if not (root / n).is_file()]
+    if missing:
+        raise RuntimeError(f"REFUSED: training input missing from tar: {', '.join(missing)}")
+    data_files = [n for n in shas if n.endswith(".jsonl") and not n.endswith(".models.jsonl")]
+    if not data_files:
+        raise RuntimeError("REFUSED: PIN_TRAINING_SHAS names no training .jsonl files")
+    missing_sidecars = [
+        f"{n[:-len('.jsonl')]}.models.jsonl"
+        for n in data_files
+        if f"{n[:-len('.jsonl')]}.models.jsonl" not in shas or not (root / f"{n[:-len('.jsonl')]}.models.jsonl").is_file()
+    ]
+    if missing_sidecars:
+        raise RuntimeError(f"REFUSED: missing training sidecar: {', '.join(missing_sidecars)}")
+    got = {n: sha256_lf(root / n) for n in shas}
+    bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
+    if bad:
+        raise RuntimeError("REFUSED: training input sha256 mismatch: " + "; ".join(bad))
+    for p in sorted(root.rglob("*"), reverse=True):
+        os.chmod(p, 0o555 if p.is_dir() else 0o444)
+    os.chmod(root, 0o555)
+    frozen_rank: dict[str, int] = {}
+    for idx, (rel_path, _) in enumerate(FROZEN_TRAINING_FILES):
+        frozen_rank[rel_path] = idx
+        frozen_rank[Path(rel_path).name] = idx
+    ordered = sorted(
+        enumerate(data_files),
+        key=lambda item: (0, frozen_rank[item[1]]) if item[1] in frozen_rank else (
+            (0, frozen_rank[Path(item[1]).name]) if Path(item[1]).name in frozen_rank else (1, item[0])
+        ),
+    )
+    ordered_files = [n for _, n in ordered]
+    result["training_inputs"] = {"tar_sha256": sha256(tar), "order": ordered_files, "files": got}
+    return [root / n for n in ordered_files]
+
+
 def rescore_inputs(result: dict) -> tuple[Path, dict]:
     """The rescore's inputs, read-only (R&D, 2026-10-18): one tar the rig uploads (PIN_RESCORE_INPUTS), unpacked into a
     directory of its own and made read-only, and every file named in PIN_RESCORE_SHAS ("<relative path>=<sha256>,...")
@@ -2584,6 +2689,7 @@ def pilot_window(built: dict, result: dict) -> None:
 
     pool_file, pool_sha = resolve_pilot_pool(rs, plan, twins_plan)
     result["pool_sha256"] = pool_sha
+    training_files = training_inputs(result) if plan_has_apply_slots(plan) else []
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
     listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
@@ -2607,11 +2713,8 @@ def pilot_window(built: dict, result: dict) -> None:
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
     if pool_file is not None:
         common += ["--pool", str(pool_file)]
-    if buffers_enabled():
-        empty_training = base / "training.jsonl"
-        if not empty_training.exists():
-            empty_training.write_text("", encoding="utf-8")
-        common += ["--training", str(empty_training)]
+    if training_files:
+        common += ["--training", *(str(f) for f in training_files)]
 
     # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
     # result to a late failure, with nothing downloaded).
