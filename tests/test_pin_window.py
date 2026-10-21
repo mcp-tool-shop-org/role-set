@@ -1,6 +1,7 @@
 """The Colab window script's own rules that run without a VM."""
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
