@@ -514,11 +514,13 @@ def build_parser() -> argparse.ArgumentParser:
     ce.add_argument("--critic-seed", type=int, default=0, help="the critic's sampling seed")
     ce.add_argument("--call-journal", default=None, help="where each finished critic call is journaled")
     ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
+    ce.add_argument("--flaw-prompt", choices=("old", "new"), default="old",
+                    help="critic flaw-check prompt wording ('old' or 'new'; default 'old')")
     ce.add_argument("--out", default="critic-eval", help="directory for critic-eval.jsonl and critic-eval-report.json")
     ce.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
     ce.set_defaults(func=_critic_eval)
 
-    cro = sub.add_parser("critic-rescore-offline", help="re-score recorded critic-eval replies against any key under P0, P2 and P3")
+    cro = sub.add_parser("critic-rescore-offline", help="re-score recorded critic-eval replies against any key under P0, Pc, P2 and P3")
     cro.add_argument("--eval", nargs="+", action="extend", default=[], required=True, help="one or two critic-eval.jsonl files")
     cro.add_argument("--items", default=None, help="the sealed items file")
     cro.add_argument("--keys", nargs="+", action="extend", default=[], help="alternate key file(s)")
@@ -542,6 +544,7 @@ def _critic_eval(args: argparse.Namespace) -> int:
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         out=Path(args.out),
         mock=args.mock,
+        flaw_prompt=args.flaw_prompt,
     )
     try:
         report = run_critic_eval(cfg)

@@ -17,7 +17,15 @@ from pathlib import Path
 
 from role_set import callcache, cards, proven, waves
 from role_set.assemble import FLAWS, VERDICTS
-from role_set.critic import CriticVerdict, _lines, compare_flaw, compare_verdict, flaw_messages, verdict_messages
+from role_set.critic import (
+    FLAW_PROMPT_SETTINGS,
+    CriticVerdict,
+    _lines,
+    compare_flaw,
+    compare_verdict,
+    flaw_messages,
+    verdict_messages,
+)
 from role_set.gates import Gates, GatesUnavailable, load_gates
 from role_set.guards import GuardError
 from role_set.mock import MockCritic, mock_gates
@@ -34,7 +42,7 @@ GPU_TYPES = frozenset({"d", "b", "e", "f", "control", "controls"})
 KEY_ONLY_TYPES = frozenset({"a", "c", "g"})
 
 
-class CriticEvalError(RuntimeError):
+class CriticEvalError(RuntimeError, GuardError):
     """A critic-eval or critic-rescore-offline input, seal, pin, family or blinding check failed."""
 
 
@@ -48,6 +56,7 @@ class CriticEvalConfig:
     critic_model: str | None = None
     critic_gguf_sha256: str | None = None
     critic_seed: int = 0
+    flaw_prompt: str = "old"
     out: Path = Path("critic-eval")
     mock: bool = False
     call_journal: Path | None = None
@@ -346,6 +355,11 @@ def _blind_critic(critic, forbidden: set[str], item_id: str):
 def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     """Run the critic's verdict check(s) and (for kind C) flaw check on every item of a sealed set."""
 
+    if cfg.flaw_prompt not in FLAW_PROMPT_SETTINGS:
+        raise CriticEvalError(
+            f"REFUSED: unknown flaw_prompt {cfg.flaw_prompt!r}; expected one of {FLAW_PROMPT_SETTINGS}"
+        )
+
     if cfg.pack is not None:
         try:
             verify(cfg.pack)
@@ -459,8 +473,15 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
 
     cfg.out.mkdir(parents=True, exist_ok=True)
     journal_path = cfg.call_journal or (cfg.out / callcache.JOURNAL_FILE)
-    reuse = callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None
-    journal = callcache.CallJournal(journal_path, reuse)
+    try:
+        reuse = (
+            callcache.load(cfg.reuse_calls, expected_flaw_prompt=cfg.flaw_prompt)
+            if cfg.reuse_calls
+            else None
+        )
+    except GuardError as e:
+        raise CriticEvalError(str(e)) from e
+    journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
     journaled_critic = journal.wrap("critic", critic)
 
     base_tokens = _window_tokens_from_paths(cfg.items)
@@ -586,7 +607,13 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         if parts["kind"] == "C":
             if not parts["key_flaw"] or parts["key_flaw"] not in FLAWS + ("none",):
                 raise CriticEvalError(f"REFUSED: kind-C item {item_id} lacks a valid planted_flaw key ({parts['key_flaw']!r})")
-            f_msgs = flaw_messages(parts["material"], parts["statement"], parts["checker_trace"], parts["checker_verdict"])
+            f_msgs = flaw_messages(
+                parts["material"],
+                parts["statement"],
+                parts["checker_trace"],
+                parts["checker_verdict"],
+                flaw_prompt=cfg.flaw_prompt,
+            )
             fc = blinded_critic(f_msgs, seed=cfg.critic_seed)
             f_res = compare_flaw(fc.text, parts["key_flaw"])
             raw_ft = getattr(fc, "thinking_tokens", None)
@@ -606,6 +633,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 "detail": f_res.detail,
                 "raw_reply": fc.text,
                 "critic_flaw": critic_flaw,
+                "flaw_prompt": cfg.flaw_prompt,
                 "thinking_tokens": f_thinking,
                 "output_tokens": f_output,
                 "prompt_tokens": f_prompt,
@@ -624,6 +652,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "perturbation_type": parts["perturbation_type"],
             "kind": parts["kind"],
             "seed": cfg.critic_seed,
+            "flaw_prompt": cfg.flaw_prompt,
             "verdict_checks": verdict_checks,
             "verdict_check": verdict_check,
             "flaw_check": flaw_check,
@@ -644,6 +673,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         "critic_family": c_family,
         "critic_gguf_sha256": gguf_sha,
         "critic_seed": cfg.critic_seed,
+        "flaw_prompt": cfg.flaw_prompt,
         "critic_pins": c_pins,
         "critic_card": c_card_pins,
         "gates": {"version": gates.version, "sha256": gates.sha256, "closed_form": gates.closed_form},
@@ -665,7 +695,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     return report
 
 
-# ---- offline re-scorer (P0, P2, P3) -------------------------------------------------------------------------
+# ---- offline re-scorer (P0, Pc, P2, P3) ---------------------------------------------------------------------
 
 def _load_key_records(path: Path) -> tuple[dict | None, list[dict]]:
     """Read items or alternate keys from a sealed waves file or a JSONL file (checking its .sha256 seal if present)."""
@@ -791,9 +821,9 @@ def _flaw_reply_from_eval(eval_rec: dict) -> str:
 
 
 def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: str) -> dict:
-    """Score one recorded critic-eval record against `key_item` under P0 or P2 across all turns."""
+    """Score one recorded critic-eval record against `key_item` under P0, Pc, or P2 across all turns."""
 
-    if rule_set not in ("P0", "P2"):
+    if rule_set not in ("P0", "Pc", "P2"):
         raise CriticEvalError(f"REFUSED: unknown rule set {rule_set!r}")
 
     verdict_turns = key_item.get("verdict_turns") or [
@@ -857,10 +887,33 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                     "detail": f"turn {t_num}: critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
                 }
 
-    if rule_set == "P2" and key_item["kind"] == "C" and key_item.get("key_flaw"):
+    if rule_set in ("Pc", "P2") and key_item["kind"] == "C" and key_item.get("key_flaw"):
+        key_flaw = key_item["key_flaw"]
         f_reply = _flaw_reply_from_eval(eval_rec)
-        f_res = compare_flaw(f_reply, key_item["key_flaw"])
-        if not f_res.ok:
+        f_res = compare_flaw(f_reply, key_flaw)
+        if rule_set == "Pc":
+            if f_res.code == "VOID":
+                return {
+                    "outcome": "refuse",
+                    "accepted": False,
+                    "refused": True,
+                    "turn": len(verdict_turns),
+                    "deciding_rule": "VOID",
+                    "rule": "VOID",
+                    "detail": f_res.detail,
+                }
+            critic_flaw = _flaw_word(f_reply)
+            if (critic_flaw == "none") != (key_flaw == "none"):
+                return {
+                    "outcome": "refuse",
+                    "accepted": False,
+                    "refused": True,
+                    "turn": len(verdict_turns),
+                    "deciding_rule": "FLAW_MISMATCH",
+                    "rule": "FLAW_MISMATCH",
+                    "detail": f"critic flaw {critic_flaw} != key flaw {key_flaw} (coarse)",
+                }
+        elif not f_res.ok:
             return {
                 "outcome": "refuse",
                 "accepted": False,
@@ -982,12 +1035,12 @@ def _merge_key_into_base(base: dict, ki: dict) -> dict:
 
 
 def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
-    """Re-score recorded critic-eval replies offline under P0, P2, and (when two runs are given) P3."""
+    """Re-score recorded critic-eval replies offline under P0, Pc, P2, and (when two runs are given) P3."""
 
     if not cfg.eval_files:
         raise CriticEvalError("REFUSED: critic-rescore-offline needs at least one --eval <critic-eval.jsonl>")
     if len(cfg.eval_files) > 2:
-        raise CriticEvalError("REFUSED: critic-rescore-offline takes one --eval file (P0, P2) or two (P0, P2, P3)")
+        raise CriticEvalError("REFUSED: critic-rescore-offline takes one --eval file (P0, Pc, P2) or two (P0, Pc, P2, P3)")
     if cfg.items is None:
         raise CriticEvalError("REFUSED: critic-rescore-offline needs --items <items.jsonl>")
 
@@ -1044,6 +1097,12 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
             )
         if rep0.get("input_sha256") != rep1.get("input_sha256"):
             raise CriticEvalError("REFUSED: P3 requires the same input_sha256 in both reports")
+        fp0 = str(rep0.get("flaw_prompt") or "old")
+        fp1 = str(rep1.get("flaw_prompt") or "old")
+        if fp0 != fp1:
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same flaw_prompt in both reports ({fp0!r} vs {fp1!r})"
+            )
 
         skipped_1 = _skipped_ids_from_report(rep1)
         if set(skipped_0) != set(skipped_1):
@@ -1098,7 +1157,7 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
     idx0 = _index_eval(eval_runs[0])
     idx1 = _index_eval(eval_runs[1]) if len(eval_runs) == 2 else {}
 
-    rule_sets = ("P0", "P2", "P3") if len(eval_runs) == 2 else ("P0", "P2")
+    rule_sets = ("P0", "Pc", "P2", "P3") if len(eval_runs) == 2 else ("P0", "Pc", "P2")
     rows_out: list[dict] = []
     by_item: dict[str, dict] = {}
     eval_skipped_set = set(skipped_0)
@@ -1128,8 +1187,9 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
 
         rec0 = _match_eval_record(ki, idx0)
         p0 = score_single_item(gates, rec0, ki, "P0")
+        pc = score_single_item(gates, rec0, ki, "Pc")
         p2 = score_single_item(gates, rec0, ki, "P2")
-        item_scores: dict[str, dict] = {"P0": p0, "P2": p2}
+        item_scores: dict[str, dict] = {"P0": p0, "Pc": pc, "P2": p2}
 
         if len(eval_runs) == 2:
             rec1 = _match_eval_record(ki, idx1)
