@@ -2451,13 +2451,17 @@ def critic_eval_window(built: dict, result: dict) -> None:
             result["tar_error"] = str(e)[:300]
 
 
-def resolve_pilot_pool(plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
-    """Verify the pool's sha256 before any llama-server starts (Argon F2). PIN_POOL defaults to CONTENT / 'pool.jsonl',
-    and PIN_POOL_SHA256 gives its expected sha. Refuses on a mismatch or a missing variable when the plan has any
-    real_source slot."""
+def resolve_pilot_pool(rs: dict, plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
+    """Verify the pool's sha256 before any llama-server starts (Argon F2). When PIN_POOL is unset, defaults to
+    Path(rs['src']) / 'roles' / 'verifier' / 'pool.jsonl' if it exists, falling back to CONTENT / 'pool.jsonl'.
+    PIN_POOL_SHA256 stays required and checked."""
 
     pool_env = (os.environ.get("PIN_POOL") or "").strip()
-    pool_path = Path(pool_env) if pool_env else (CONTENT / "pool.jsonl")
+    if pool_env:
+        pool_path = Path(pool_env)
+    else:
+        committed = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+        pool_path = committed if committed.is_file() else (CONTENT / "pool.jsonl")
     expect_sha = (os.environ.get("PIN_POOL_SHA256") or "").strip().lower()
     plans_to_check = [plan]
     if twins_plan is not None and twins_enabled() and twins_plan.is_file():
@@ -2536,7 +2540,7 @@ def pilot_window(built: dict, result: dict) -> None:
                            # state, so the shas agree by construction (write refuses a mismatch).
                            "exclusion_state_sha256": json.loads(plan.read_text(encoding="utf-8")).get("exclusion_state_sha256")}
 
-    pool_file, pool_sha = resolve_pilot_pool(plan, twins_plan)
+    pool_file, pool_sha = resolve_pilot_pool(rs, plan, twins_plan)
     result["pool_sha256"] = pool_sha
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)

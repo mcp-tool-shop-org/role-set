@@ -1387,7 +1387,26 @@ def test_pilot_window_verifies_pool_sha_before_serving_and_passes_pool_to_common
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
     assert events == []
 
-    # 3. Matching PIN_POOL_SHA256 records result["pool_sha256"] and passes --pool in common.
+    # 3. When PIN_POOL is unset, resolve_pilot_pool prefers Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    # over CONTENT / "pool.jsonl", and falls back to CONTENT / "pool.jsonl" when the committed pool does not exist.
+    committed_pool = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    committed_sha = pw.sha256(committed_pool)
+    monkeypatch.delenv("PIN_POOL", raising=False)
+    monkeypatch.setenv("PIN_POOL_SHA256", committed_sha)
+    result_default: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, result_default)
+    assert result_default["pool_sha256"] == committed_sha
+    assert events == ["check_pins", "prefetch", "pilot_batch"]
+    assert seen_common and ["--pool", str(committed_pool)] == seen_common[0][-2:]
+
+    plan_for_fallback = work / "pilot" / "pilot-plan.json"
+    monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
+    got_fb_path, got_fb_sha = pw.resolve_pilot_pool({"src": str(tmp_path / "no-such-repo")}, plan_for_fallback)
+    assert got_fb_path == pool_file and got_fb_sha == pool_sha
+
+    # 4. Explicit PIN_POOL overrides the default and passes --pool in common.
+    events.clear()
+    seen_common.clear()
     custom_pool = tmp_path / "custom-pool.jsonl"
     custom_pool.write_bytes(pool_file.read_bytes())
     monkeypatch.setenv("PIN_POOL", str(custom_pool))
