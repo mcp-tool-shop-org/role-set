@@ -21,6 +21,7 @@ import threading
 from collections import defaultdict, deque
 from pathlib import Path
 
+from .guards import GuardError
 from .transport import Completion
 
 JOURNAL_FILE = "calls-journal.jsonl"
@@ -39,9 +40,27 @@ def _completion_dict(c: Completion) -> dict:
     return out
 
 
-def load(path: Path) -> dict[str, deque]:
+def load(path: Path, *, expected_flaw_prompt: str | None = None) -> dict[str, deque]:
     """An earlier journal, as each request key's completions in journal order. A torn last line (the VM went mid-write)
-    is left out: its call runs again."""
+    is left out: its call runs again. When `expected_flaw_prompt` is given, any journal entry (or adjacent report)
+    written under a different prompt setting refuses the resume."""
+
+    if expected_flaw_prompt is not None:
+        if not path.is_file():
+            raise GuardError(f"REFUSED: cannot read call journal {path}")
+        rep_path = path.parent / "critic-eval-report.json"
+        if rep_path.is_file():
+            try:
+                rep_data = json.loads(rep_path.read_text(encoding="utf-8"))
+            except ValueError:
+                rep_data = {}
+            if isinstance(rep_data, dict) and ("flaw_prompt" in rep_data or "critic_model" in rep_data):
+                rep_fp = str(rep_data.get("flaw_prompt") or "old")
+                if rep_fp != expected_flaw_prompt:
+                    raise GuardError(
+                        f"REFUSED: call journal {path} was written under flaw_prompt={rep_fp!r}, "
+                        f"cannot reuse under flaw_prompt={expected_flaw_prompt!r}"
+                    )
 
     reuse: dict[str, deque] = defaultdict(deque)
     for line in path.read_text(encoding="utf-8").splitlines():
@@ -49,6 +68,13 @@ def load(path: Path) -> dict[str, deque]:
             d = json.loads(line)
         except json.JSONDecodeError:
             continue
+        if expected_flaw_prompt is not None:
+            rec_fp = str(d.get("flaw_prompt") or "old")
+            if rec_fp != expected_flaw_prompt:
+                raise GuardError(
+                    f"REFUSED: call journal {path} was written under flaw_prompt={rec_fp!r}, "
+                    f"cannot reuse under flaw_prompt={expected_flaw_prompt!r}"
+                )
         c = d["completion"]
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
@@ -60,16 +86,34 @@ def load(path: Path) -> dict[str, deque]:
 class CallJournal:
     """Wraps the writer and the critic: journals each finished call and, on a resume, replays the earlier ones."""
 
-    def __init__(self, path: Path, reuse: dict[str, deque] | None = None):
+    def __init__(self, path: Path, reuse: dict[str, deque] | None = None, *, flaw_prompt: str | None = None):
+        if flaw_prompt is not None and path.is_file() and path.stat().st_size > 0:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(d, dict):
+                    rec_fp = str(d.get("flaw_prompt") or "old")
+                    if rec_fp != flaw_prompt:
+                        raise GuardError(
+                            f"REFUSED: call journal {path} was written under flaw_prompt={rec_fp!r}, "
+                            f"cannot append under flaw_prompt={flaw_prompt!r}"
+                        )
         self.path = path
         self.reuse = reuse or {}
+        self.flaw_prompt = flaw_prompt
         self.lock = threading.Lock()
         self.counts = {"reused": 0, "called": 0}
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
     def _append(self, key: str, role: str, c: Completion, reused: bool) -> None:
-        line = json.dumps({"key": key, "role": role, "reused": reused, "completion": _completion_dict(c)}, ensure_ascii=False)
+        payload: dict = {"key": key, "role": role, "reused": reused}
+        if self.flaw_prompt is not None:
+            payload["flaw_prompt"] = self.flaw_prompt
+        payload["completion"] = _completion_dict(c)
+        line = json.dumps(payload, ensure_ascii=False)
         with self.lock, self.path.open("a", encoding="utf-8", newline="\n") as f:
             f.write(line + "\n")
             f.flush()
@@ -99,4 +143,7 @@ class CallJournal:
 
     def summary(self) -> dict:
         left = sum(len(q) for q in self.reuse.values())
-        return {"journal": self.path.name, **self.counts, "unused_from_reuse": left}
+        out = {"journal": self.path.name, **self.counts, "unused_from_reuse": left}
+        if self.flaw_prompt is not None:
+            out["flaw_prompt"] = self.flaw_prompt
+        return out

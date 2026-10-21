@@ -2074,13 +2074,14 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
 
 
 def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, work_dir: Path | None = None) -> dict:
-    """Plan each lesson alone with `role-set plan --lessons <L> --seed 0 --domains <naics> --out <tmp>` and merge into `out`."""
+    """Plan each lesson alone with `role-set plan --lessons <L> --seed <seed> --domains <naics> --out <tmp>` and merge into `out`."""
 
     slot_ids = [x.strip() for x in os.environ.get("PIN_PILOT_SLOT_IDS", "").split(",") if x.strip()]
     if not slot_ids:
         raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_SLOT_IDS")
     if twins_enabled():
         raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_TWINS=0")
+    seed = int(os.environ.get("PIN_PILOT_SEED") or "0")
     tmp_dir = work_dir or out.parent
     tmp_dir.mkdir(parents=True, exist_ok=True)
     per_lesson_sha256: dict[str, str] = {}
@@ -2088,7 +2089,7 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     excl_shas: dict[str, str | None] = {}
     for lesson in lessons:
         tmp = tmp_dir / f"lesson-{lesson}-plan.json"
-        sh(f"{rs['role_set']} plan --lessons {lesson} --seed 0 --domains {domains} --out {tmp}", cwd=rs.get("src"))
+        sh(f"{rs['role_set']} plan --lessons {lesson} --seed {seed} --domains {domains} --out {tmp}", cwd=rs.get("src"))
         per_lesson_sha256[lesson] = sha256(tmp)
         pdata = json.loads(tmp.read_text(encoding="utf-8"))
         plans.append(pdata)
@@ -2101,6 +2102,7 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     out.write_text(json.dumps(merged, indent=1), encoding="utf-8", newline="\n")
     return {
         "lessons": list(lessons),
+        "seed": seed,
         "per_lesson_sha256": per_lesson_sha256,
         "exclusion_state_sha256": merged.get("exclusion_state_sha256"),
     }
@@ -2315,6 +2317,13 @@ def critic_eval_window(built: dict, result: dict) -> None:
         )
         raw_seeds = os.environ.get("PIN_CRITIC_SEEDS") or os.environ.get("PIN_CRITIC_EVAL_SEEDS") or "0"
         seeds = [int(x.strip()) for x in raw_seeds.split(",") if x.strip()]
+        flaw_prompt = (
+            os.environ.get("PIN_CRITIC_FLAW_PROMPT")
+            or os.environ.get("PIN_CRITIC_EVAL_FLAW_PROMPT")
+            or "old"
+        )
+        if flaw_prompt not in ("old", "new"):
+            raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_PROMPT must be 'old' or 'new', got {flaw_prompt!r}")
         by_name = {m["served_as"]: m for m in MODELS}
         if critic not in by_name:
             raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
@@ -2346,7 +2355,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
         srv = pool.serve(critic)
         with srv:
             proxy = pool.proxy(critic)
-            result["critic_eval"] = {"seeds": seeds, "runs": []}
+            result["critic_eval"] = {"seeds": seeds, "flaw_prompt": flaw_prompt, "runs": []}
             for seed in seeds:
                 check_deadline(f"critic-eval seed {seed}")
                 seed_out = out / f"s{seed}"
@@ -2377,6 +2386,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
                     "--critic-model", m["served_as"],
                     "--critic-gguf-sha256", m["gguf_sha256"],
                     "--critic-seed", str(seed),
+                    "--flaw-prompt", flaw_prompt,
                     "--call-journal", str(journal),
                     "--out", str(seed_out),
                 ]
@@ -2424,6 +2434,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
                     raise RuntimeError("the critic-eval report has no critic_card: no number from it may be read (R&D)")
                 result["critic_eval"]["runs"].append({
                     "seed": seed,
+                    "flaw_prompt": report.get("flaw_prompt") or flaw_prompt,
                     "exit": run.returncode,
                     "seconds": round(time.time() - t0),
                     "items_scored": report.get("items_scored"),
@@ -2474,13 +2485,15 @@ def pilot_window(built: dict, result: dict) -> None:
         result["screen"] = {"pilot": screened_pilot, "twins": None, "waves": PILOT_WAVES}
         result["plans"] = {
             "lessons": lessons_meta["lessons"],
+            "seed": lessons_meta["seed"],
             "per_lesson_sha256": lessons_meta["per_lesson_sha256"],
             "pilot_sha256": sha256(plan),
             "twins_sha256": None,
             "exclusion_state_sha256": lessons_meta["exclusion_state_sha256"],
         }
     else:
-        sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
+        pilot_seed = int(os.environ.get("PIN_PILOT_SEED") or "0")
+        sh(f"{rs['role_set']} plan --pilot --seed {pilot_seed} --domains {domains} --out {plan}", cwd=rs["src"])
         sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
         result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
                             "waves": PILOT_WAVES}

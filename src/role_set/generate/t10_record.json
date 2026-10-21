@@ -17,7 +17,7 @@
     "src/role_set/generate/t10_cells.json",
     "src/role_set/generate/t10_capacity.json"
   ],
-  "sha256": "0d2e84e49390cadf0a26a0bb46b70d12923f35017626e43fc082d39e0983cedb",
+  "sha256": "3bd128d01378176384167f13589a8ea22a18723bc23ff0d6bd68e4420da7caee",
   "seeds": [
     1,
     2,
