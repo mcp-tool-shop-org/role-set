@@ -2485,13 +2485,15 @@ def pilot_window(built: dict, result: dict) -> None:
         result["screen"] = {"pilot": screened_pilot, "twins": None, "waves": PILOT_WAVES}
         result["plans"] = {
             "lessons": lessons_meta["lessons"],
+            "seed": lessons_meta["seed"],
             "per_lesson_sha256": lessons_meta["per_lesson_sha256"],
             "pilot_sha256": sha256(plan),
             "twins_sha256": None,
             "exclusion_state_sha256": lessons_meta["exclusion_state_sha256"],
         }
     else:
-        sh(f"{rs['role_set']} plan --pilot --seed 0 --domains {domains} --out {plan}", cwd=rs["src"])
+        pilot_seed = int(os.environ.get("PIN_PILOT_SEED") or "0")
+        sh(f"{rs['role_set']} plan --pilot --seed {pilot_seed} --domains {domains} --out {plan}", cwd=rs["src"])
         sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
         result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
                             "waves": PILOT_WAVES}

@@ -95,7 +95,7 @@ PHASE4_CONTROLS: tuple[str, ...] = (
     "T07-C-08",
     "T08-C-04",
 )
-USED_BEFORE_IDS: frozenset[str] = frozenset(PILOT_USED_C_SLOTS + PHASE4_F_ELIGIBLE + PHASE4_CONTROLS)
+USED_BEFORE_IDS: frozenset[str] = frozenset(PHASE4_F_ELIGIBLE + PHASE4_CONTROLS)
 DECIDED_VERDICTS: frozenset[str] = frozenset(("supported", "unsupported"))
 
 
@@ -131,6 +131,7 @@ class SlotCandidate:
             "frame_fresh": self.frame_fresh,
             "domain_changed": self.domain_seed0 != self.domain_fresh,
             "source_bucket": self.source_bucket,
+            "needs_novelty_check": self.source_bucket == "rewrite_candidate",
         }
 
 
@@ -143,11 +144,11 @@ def _slot_order_key(slot_id: str) -> tuple[int, int]:
 def plan_c_slots_for_lesson(
     lesson: str,
     *,
-    plan_seed: int = 0,
+    plan_seed: int = 1,
     fresh_domain_seed: int = 1,
     domains_path: Path = DEFAULT_DOMAINS,
 ) -> list[SlotCandidate]:
-    """Plan one lesson at `plan_seed`, assign domains at `plan_seed` and `fresh_domain_seed`, and check `slot_flaw`."""
+    """Plan one lesson at `plan_seed`, compute `domain_seed0`/`frame_seed0` at seed 0 always, compute fresh domain/frame at `fresh_domain_seed` if `plan_seed == 0` else `plan_seed`, and check `slot_flaw`."""
     from role_set import domains as dom_mod
     from role_set.assemble import FLAWS, slot_flaw
     from role_set.cli import VERIFIER_SIDES
@@ -157,16 +158,18 @@ def plan_c_slots_for_lesson(
         raise ValueError("REFUSED: T10 is excluded from Track A (pending R&D T10 redesign)")
 
     table = dom_mod.load(domains_path)
-    slots0 = plan_batch({lesson: VERIFIER_SIDES[lesson]}, seed=plan_seed)
-    dom_mod.assign(slots0, table, seed=plan_seed)
 
-    slots_fresh = plan_batch({lesson: VERIFIER_SIDES[lesson]}, seed=plan_seed)
-    dom_mod.assign(slots_fresh, table, seed=fresh_domain_seed)
+    slots_seed0 = plan_batch({lesson: VERIFIER_SIDES[lesson]}, seed=0)
+    dom_mod.assign(slots_seed0, table, seed=0)
+    seed0_by_id = {s.id: s for s in slots_seed0 if s.kind == "C"}
 
-    fresh_by_id = {s.id: s for s in slots_fresh if s.kind == "C"}
+    fresh_seed = fresh_domain_seed if plan_seed == 0 else plan_seed
+    slots_plan = plan_batch({lesson: VERIFIER_SIDES[lesson]}, seed=plan_seed)
+    dom_mod.assign(slots_plan, table, seed=fresh_seed)
+
     out: list[SlotCandidate] = []
-    for s in slots0:
-        if s.kind != "C":
+    for s in slots_plan:
+        if s.kind != "C" or s.id in PILOT_USED_C_SLOTS:
             continue
         flaw = slot_flaw(s)
         num = int(s.id.rsplit("-", 1)[1])
@@ -183,7 +186,7 @@ def plan_c_slots_for_lesson(
         else:
             bucket = "rewrite_candidate"
 
-        sf = fresh_by_id[s.id]
+        s0 = seed0_by_id[s.id]
         out.append(
             SlotCandidate(
                 slot_id=s.id,
@@ -194,10 +197,10 @@ def plan_c_slots_for_lesson(
                 flaw=flaw,
                 content_kind=s.content_kind or "",
                 side=s.side,
-                domain_seed0=s.domain,
-                domain_fresh=sf.domain,
-                frame_seed0=s.frame,
-                frame_fresh=sf.frame,
+                domain_seed0=s0.domain,
+                domain_fresh=s.domain,
+                frame_seed0=s0.frame,
+                frame_fresh=s.frame,
                 source_bucket=bucket,
             )
         )
@@ -206,10 +209,11 @@ def plan_c_slots_for_lesson(
 
 def census_for_seed(
     *,
-    plan_seed: int = 0,
+    plan_seed: int = 1,
     fresh_domain_seed: int = 1,
     domains_path: Path = DEFAULT_DOMAINS,
     target_per_half: int = 24,
+    no_rewrites: bool = False,
 ) -> dict:
     """Compute the full non-T10 C-slot census and select `target_per_half` odd + `target_per_half` even decided slots."""
     from role_set.assemble import FLAWS, slot_flaw
@@ -249,6 +253,15 @@ def census_for_seed(
     if len(selected_even) != target_per_half:
         raise RuntimeError(f"REFUSED: found {len(selected_even)} even decided slots, need {target_per_half}")
 
+    odd_rewrites_taken = sum(1 for c in selected_odd if c.source_bucket == "rewrite_candidate")
+    even_rewrites_taken = sum(1 for c in selected_even if c.source_bucket == "rewrite_candidate")
+    needs_novelty_check_count = odd_rewrites_taken + even_rewrites_taken
+    if no_rewrites and needs_novelty_check_count > 0:
+        raise RuntimeError(
+            f"REFUSED: --no-rewrites forbids rewrite candidates, but seed {plan_seed} requires "
+            f"{needs_novelty_check_count} rewrite slot(s) ({odd_rewrites_taken} odd, {even_rewrites_taken} even)"
+        )
+
     # Re-verify every selected slot directly against role-set's plan_batch and slot_flaw
     by_lesson_plan = {
         l: {s.id: s for s in plan_batch({l: VERIFIER_SIDES[l]}, seed=plan_seed)}
@@ -257,6 +270,8 @@ def census_for_seed(
     for c in selected_odd:
         if c.lesson == "T10" or c.slot_id.startswith("T10-"):
             raise RuntimeError(f"REFUSED: T10 slot {c.slot_id} in selected_odd")
+        if c.slot_id in PILOT_USED_C_SLOTS:
+            raise RuntimeError(f"REFUSED: pilot-used slot {c.slot_id} in selected_odd")
         raw_slot = by_lesson_plan[c.lesson][c.slot_id]
         flaw = slot_flaw(raw_slot)
         if flaw == "none" or flaw not in FLAWS:
@@ -267,6 +282,8 @@ def census_for_seed(
     for c in selected_even:
         if c.lesson == "T10" or c.slot_id.startswith("T10-"):
             raise RuntimeError(f"REFUSED: T10 slot {c.slot_id} in selected_even")
+        if c.slot_id in PILOT_USED_C_SLOTS:
+            raise RuntimeError(f"REFUSED: pilot-used slot {c.slot_id} in selected_even")
         raw_slot = by_lesson_plan[c.lesson][c.slot_id]
         flaw = slot_flaw(raw_slot)
         if flaw != "none":
@@ -281,14 +298,16 @@ def census_for_seed(
 
     return {
         "plan_seed": plan_seed,
-        "fresh_domain_seed": fresh_domain_seed,
+        "fresh_domain_seed": fresh_domain_seed if plan_seed == 0 else plan_seed,
         "lessons": lessons_used,
         "excluded_lessons": ["T10"],
+        "excluded_pilot_slots": list(PILOT_USED_C_SLOTS),
         "slots_per_lesson": 8,
         "f_eligible": [c.slot_id for c in selected_odd_sorted],
         "controls": [c.slot_id for c in selected_even_sorted],
         "slot_ids": [c.slot_id for c in all_selected_sorted],
         "draft_slot_count": len(all_selected_sorted),
+        "needs_novelty_check_count": needs_novelty_check_count,
         "counts": {
             "total_non_t10_c_slots": len(all_c),
             "odd_decided_available": len(decided_odd),
@@ -297,13 +316,13 @@ def census_for_seed(
                 "unused_lessons": len(odd_unused_lesson),
                 "phase4_unused_slots": len(odd_phase4_unused),
                 "rewrite_candidates_available": len(odd_rewrite),
-                "rewrite_candidates_taken": sum(1 for c in selected_odd_sorted if c.source_bucket == "rewrite_candidate"),
+                "rewrite_candidates_taken": odd_rewrites_taken,
             },
             "even_by_bucket": {
                 "unused_lessons": len(even_unused_lesson),
                 "phase4_unused_slots": len(even_phase4_unused),
                 "rewrite_candidates_available": len(even_rewrite),
-                "rewrite_candidates_taken": sum(1 for c in selected_even_sorted if c.source_bucket == "rewrite_candidate"),
+                "rewrite_candidates_taken": even_rewrites_taken,
             },
         },
         "buckets": {
@@ -330,28 +349,31 @@ def census_for_seed(
 
 def build_track_a_slots(
     *,
-    plan_seed: int = 0,
+    plan_seed: int = 1,
     fresh_domain_seed: int = 1,
     domains_path: Path = DEFAULT_DOMAINS,
     out_path: Path | None = None,
+    no_rewrites: bool = False,
 ) -> dict:
-    """Build the Track A Rung 0 frozen slot JSON (and include the alternate seed=1 census for comparison)."""
+    """Build the Track A Rung 0 frozen slot JSON (default seed 1, plus alternate seed census for comparison)."""
     primary = census_for_seed(
         plan_seed=plan_seed,
         fresh_domain_seed=fresh_domain_seed,
         domains_path=domains_path,
+        no_rewrites=no_rewrites,
     )
-    alt_seed = 1 if plan_seed == 0 else 0
+    alt_seed = 0 if plan_seed != 0 else 1
     alt = census_for_seed(
         plan_seed=alt_seed,
         fresh_domain_seed=fresh_domain_seed,
         domains_path=domains_path,
+        no_rewrites=False,
     )
 
     payload = {
         "source": (
-            "PLAN-ROUND4.md §3 and §6 (Track A Rung 0); computed with role-set's plan_lesson, "
-            "domains.assign, and assemble.slot_flaw (T10 excluded)"
+            "PLAN-ROUND4.md §3 and §6 (Track A Rung 0); computed with role-set's plan_batch, "
+            "domains.assign, and assemble.slot_flaw (T10 and pilot C slots excluded)"
         ),
         **primary,
         f"alternate_seed_{alt_seed}_census": {
@@ -359,6 +381,7 @@ def build_track_a_slots(
             "lessons": alt["lessons"],
             "f_eligible": alt["f_eligible"],
             "controls": alt["controls"],
+            "needs_novelty_check_count": alt["needs_novelty_check_count"],
             "counts": alt["counts"],
             "buckets": alt["buckets"],
         },
@@ -371,18 +394,24 @@ def build_track_a_slots(
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--seed", type=int, default=0, help="plan_lesson seed (default: 0)")
-    p.add_argument("--fresh-domain-seed", type=int, default=1, help="domain draw seed for rewrite comparison (default: 1)")
+    p.add_argument("--seed", type=int, default=1, help="plan_batch seed (default: 1)")
+    p.add_argument("--fresh-domain-seed", type=int, default=1, help="domain draw seed when --seed is 0 (default: 1)")
     p.add_argument("--domains", type=Path, default=DEFAULT_DOMAINS, help="NAICS domain table path")
+    p.add_argument("--no-rewrites", action="store_true", help="refuse if any rewrite candidate would be taken")
     p.add_argument("--out", type=Path, default=None, help="write frozen JSON to this file")
     args = p.parse_args(argv)
 
-    payload = build_track_a_slots(
-        plan_seed=args.seed,
-        fresh_domain_seed=args.fresh_domain_seed,
-        domains_path=args.domains,
-        out_path=args.out,
-    )
+    try:
+        payload = build_track_a_slots(
+            plan_seed=args.seed,
+            fresh_domain_seed=args.fresh_domain_seed,
+            domains_path=args.domains,
+            out_path=args.out,
+            no_rewrites=args.no_rewrites,
+        )
+    except RuntimeError as e:
+        print(e, file=sys.stderr)
+        return 2
     print(json.dumps(payload, indent=1, ensure_ascii=False))
     return 0
 

@@ -54,8 +54,8 @@ def load(path: Path, *, expected_flaw_prompt: str | None = None) -> dict[str, de
                 rep_data = json.loads(rep_path.read_text(encoding="utf-8"))
             except ValueError:
                 rep_data = {}
-            if isinstance(rep_data, dict) and rep_data.get("flaw_prompt") is not None:
-                rep_fp = str(rep_data["flaw_prompt"])
+            if isinstance(rep_data, dict) and ("flaw_prompt" in rep_data or "critic_model" in rep_data):
+                rep_fp = str(rep_data.get("flaw_prompt") or "old")
                 if rep_fp != expected_flaw_prompt:
                     raise GuardError(
                         f"REFUSED: call journal {path} was written under flaw_prompt={rep_fp!r}, "
@@ -87,6 +87,19 @@ class CallJournal:
     """Wraps the writer and the critic: journals each finished call and, on a resume, replays the earlier ones."""
 
     def __init__(self, path: Path, reuse: dict[str, deque] | None = None, *, flaw_prompt: str | None = None):
+        if flaw_prompt is not None and path.is_file() and path.stat().st_size > 0:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if isinstance(d, dict):
+                    rec_fp = str(d.get("flaw_prompt") or "old")
+                    if rec_fp != flaw_prompt:
+                        raise GuardError(
+                            f"REFUSED: call journal {path} was written under flaw_prompt={rec_fp!r}, "
+                            f"cannot append under flaw_prompt={flaw_prompt!r}"
+                        )
         self.path = path
         self.reuse = reuse or {}
         self.flaw_prompt = flaw_prompt

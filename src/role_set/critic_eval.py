@@ -479,9 +479,9 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             if cfg.reuse_calls
             else None
         )
+        journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
     except GuardError as e:
         raise CriticEvalError(str(e)) from e
-    journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
     journaled_critic = journal.wrap("critic", critic)
 
     base_tokens = _window_tokens_from_paths(cfg.items)
@@ -887,8 +887,12 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                     "detail": f"turn {t_num}: critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
                 }
 
-    if rule_set in ("Pc", "P2") and key_item["kind"] == "C" and key_item.get("key_flaw"):
-        key_flaw = key_item["key_flaw"]
+    if rule_set in ("Pc", "P2") and key_item["kind"] == "C":
+        key_flaw = key_item.get("key_flaw")
+        if not key_flaw or key_flaw not in FLAWS + ("none",):
+            raise CriticEvalError(
+                f"REFUSED: kind-C item {key_item.get('item_id')!r} lacks a valid key_flaw ({key_flaw!r}) for {rule_set}"
+            )
         f_reply = _flaw_reply_from_eval(eval_rec)
         f_res = compare_flaw(f_reply, key_flaw)
         if rule_set == "Pc":

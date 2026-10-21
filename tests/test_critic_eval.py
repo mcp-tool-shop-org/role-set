@@ -2026,6 +2026,22 @@ def test_track_a_rung1_pc_synthetic_fixture(tmp_path: Path):
     assert by_item["C9-030:d"]["P2"]["outcome"] == "refuse"
     assert by_item["C9-030:d"]["P2"]["deciding_rule"] == "QUOTE_TOO_LONG"
 
+    # 9. F5: kind-C item with missing or invalid key_flaw refuses under Pc and P2 (never silently skips the flaw check)
+    from role_set.critic_eval import score_single_item
+    from role_set.mock import mock_gates
+    gates = mock_gates()
+    for bad_flaw in (None, "", "bogus_flaw"):
+        bad_c_item = {
+            "item_id": "bad-c:d",
+            "kind": "C",
+            "verdict_turns": [{"turn": 1, "seen_material": "Line 1.", "key_verdict": "supported", "key_deciding": ["Line 1."]}],
+            "key_flaw": bad_flaw,
+        }
+        assert score_single_item(gates, eval_rows[0], bad_c_item, "P0")["outcome"] == "accept"
+        for strict_rule in ("Pc", "P2"):
+            with pytest.raises(CriticEvalError, match=r"lacks a valid key_flaw"):
+                score_single_item(gates, eval_rows[0], bad_c_item, strict_rule)
+
 
 def test_track_a_rung2_flaw_prompt_old_byte_identical_and_new_wording(
     eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
@@ -2366,43 +2382,171 @@ def test_track_a_rung3_stub_transport_cut_resume_replay_and_mixed_journal_refusa
                     mock=True,
                 )
             )
+
+        # 7. F3 (1): a second run into the same --out under the other setting, without --reuse-calls, refuses
+        with pytest.raises(CriticEvalError) as exc_append_mismatch:
+            run_critic_eval(
+                CriticEvalConfig(
+                    items=two_items_path,
+                    pack=pack_dir,
+                    writers_file=ROOT / "writers.json",
+                    cards=CARDS,
+                    critic_endpoint=endpoint,
+                    critic_model=LIGHTNING,
+                    critic_gguf_sha256=gguf_sha,
+                    critic_seed=0,
+                    out=old_dir,
+                    flaw_prompt="new",
+                )
+            )
+        assert isinstance(exc_append_mismatch.value, GuardError)
+        msg_append = str(exc_append_mismatch.value)
+        assert "'old'" in msg_append and "'new'" in msg_append and str(old_journal) in msg_append
+
+        # Also check the reverse direction: appending 'old' onto a 'new' journal without --reuse-calls refuses
+        with pytest.raises(CriticEvalError) as exc_append_mismatch_rev:
+            run_critic_eval(
+                CriticEvalConfig(
+                    items=two_items_path,
+                    pack=pack_dir,
+                    writers_file=ROOT / "writers.json",
+                    cards=CARDS,
+                    critic_endpoint=endpoint,
+                    critic_model=LIGHTNING,
+                    critic_gguf_sha256=gguf_sha,
+                    critic_seed=0,
+                    out=resume_dir,
+                    flaw_prompt="old",
+                )
+            )
+        assert isinstance(exc_append_mismatch_rev.value, GuardError)
+        msg_append_rev = str(exc_append_mismatch_rev.value)
+        assert "'new'" in msg_append_rev and "'old'" in msg_append_rev and str(resume_journal) in msg_append_rev
+
+        # 8. F3 (2): a report from before this PR (no "flaw_prompt" key, has "critic_model") reads as "old":
+        #    reusing under "new" refuses (even if the journal itself is empty), and reusing under "old" passes.
+        legacy_dir = tmp_path / "legacy-pre-pr"
+        legacy_dir.mkdir()
+        legacy_journal = legacy_dir / "calls-journal.jsonl"
+        # Write pre-PR journal lines (no flaw_prompt key in journal lines either) and pre-PR report (no flaw_prompt key)
+        pre_pr_lines = []
+        for line in old_journal.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                d = json.loads(line)
+                d.pop("flaw_prompt", None)
+                pre_pr_lines.append(json.dumps(d))
+        legacy_journal.write_text("\n".join(pre_pr_lines) + "\n", encoding="utf-8")
+        legacy_rep = json.loads((old_dir / "critic-eval-report.json").read_text(encoding="utf-8"))
+        legacy_rep.pop("flaw_prompt", None)
+        assert "flaw_prompt" not in legacy_rep and "critic_model" in legacy_rep
+        (legacy_dir / "critic-eval-report.json").write_text(json.dumps(legacy_rep, indent=1), encoding="utf-8")
+
+        # Also test report check in isolation with an empty journal file so load()'s report check is the one that fires
+        legacy_empty_dir = tmp_path / "legacy-empty-journal"
+        legacy_empty_dir.mkdir()
+        legacy_empty_journal = legacy_empty_dir / "calls-journal.jsonl"
+        legacy_empty_journal.write_text("", encoding="utf-8")
+        (legacy_empty_dir / "critic-eval-report.json").write_text(json.dumps(legacy_rep, indent=1), encoding="utf-8")
+        from role_set import callcache
+        with pytest.raises(GuardError, match=r"flaw_prompt='old'.*flaw_prompt='new'"):
+            callcache.load(legacy_empty_journal, expected_flaw_prompt="new")
+        assert callcache.load(legacy_empty_journal, expected_flaw_prompt="old") == {}
+
+        # Full run_critic_eval against pre-PR legacy_journal: refuses under 'new', passes with zero live calls under 'old'
+        with pytest.raises(CriticEvalError) as exc_legacy_new:
+            run_critic_eval(
+                CriticEvalConfig(
+                    items=two_items_path,
+                    pack=pack_dir,
+                    writers_file=ROOT / "writers.json",
+                    cards=CARDS,
+                    critic_endpoint=endpoint,
+                    critic_model=LIGHTNING,
+                    critic_gguf_sha256=gguf_sha,
+                    critic_seed=0,
+                    reuse_calls=legacy_journal,
+                    out=tmp_path / "legacy-under-new",
+                    flaw_prompt="new",
+                )
+            )
+        assert "'old'" in str(exc_legacy_new.value) and "'new'" in str(exc_legacy_new.value)
+
+        server_calls.clear()
+        legacy_under_old_dir = tmp_path / "legacy-under-old"
+        rep_legacy_old = run_critic_eval(
+            CriticEvalConfig(
+                items=two_items_path,
+                pack=pack_dir,
+                writers_file=ROOT / "writers.json",
+                cards=CARDS,
+                critic_endpoint=endpoint,
+                critic_model=LIGHTNING,
+                critic_gguf_sha256=gguf_sha,
+                critic_seed=0,
+                call_journal=legacy_under_old_dir / "calls-journal.jsonl",
+                reuse_calls=legacy_journal,
+                out=legacy_under_old_dir,
+                flaw_prompt="old",
+            )
+        )
+        assert rep_legacy_old["calls"]["called"] == 0
+        assert rep_legacy_old["calls"]["reused"] == len(pre_pr_lines)
+        assert len(server_calls) == 0
     finally:
         httpd.shutdown()
         httpd.server_close()
 
 
-def test_track_a_rung0_slot_script_48_slots_24_even_24_odd_no_t10(tmp_path: Path):
-    """Rung 0: scripts/critic_signal/track_a_slots.py builds 48 kind C slots:
+def test_track_a_rung0_slot_script_48_slots_24_even_24_odd_no_t10(tmp_path: Path, monkeypatch):
+    """Rung 0: scripts/critic_signal/track_a_slots.py builds 48 kind C slots at default seed 1:
     - 24 even (slot_flaw == 'none', decided) and 24 odd (slot_flaw != 'none', decided);
-    - zero T10 slots;
-    - verified directly with role-set's plan_batch and slot_flaw."""
+    - zero T10 slots and zero pilot-used slots (T02-C-01, T02-C-08);
+    - verified directly with role-set's plan_batch, domains.assign, and slot_flaw;
+    - marks rewrite candidates with needs_novelty_check and refuses on --no-rewrites;
+    - pin_window.py passes PIN_PILOT_SEED=1 to role-set plan --seed 1."""
     import track_a_slots as tas
+    from role_set import domains
     from role_set.assemble import FLAWS, slot_flaw
     from role_set.cli import VERIFIER_SIDES
     from role_set.plan import plan_batch
+
+    assert tas.PILOT_USED_C_SLOTS == ("T02-C-01", "T02-C-08")
+    assert set(tas.PILOT_USED_C_SLOTS).isdisjoint(tas.USED_BEFORE_IDS)
 
     out_json = tmp_path / "track-a-slots.json"
     assert tas.main(["--out", str(out_json)]) == 0
     data = json.loads(out_json.read_text(encoding="utf-8"))
 
+    # F2 (2): default plan_seed is 1, and fresh_domain_seed is 1
+    assert data["plan_seed"] == 1
+    assert data["fresh_domain_seed"] == 1
     assert data["draft_slot_count"] == 48
     assert len(data["slot_ids"]) == 48
     assert len(data["f_eligible"]) == 24
     assert len(data["controls"]) == 24
     assert "T10" not in data["lessons"]
     assert all(not sid.startswith("T10-") for sid in data["slot_ids"])
+    assert set(tas.PILOT_USED_C_SLOTS).isdisjoint(set(data["slot_ids"]))
     assert set(data["f_eligible"]).isdisjoint(set(data["controls"]))
     assert set(data["f_eligible"]) | set(data["controls"]) == set(data["slot_ids"])
 
-    # Verify every slot with role-set's own plan_batch and slot_flaw
-    plans_by_lesson = {
-        l: {s.id: s for s in plan_batch({l: VERIFIER_SIDES[l]}, seed=0)}
-        for l in data["lessons"]
-    }
+    # Verify every slot with role-set's own plan_batch(seed=1), domains.assign(seed=1), and seed-0 baseline (F2 (1))
+    naics = domains.load(tas.DEFAULT_DOMAINS)
+    plans_s1_by_lesson = {}
+    plans_s0_by_lesson = {}
+    for l in data["lessons"]:
+        s1_list = plan_batch({l: VERIFIER_SIDES[l]}, seed=1)
+        domains.assign(s1_list, naics, seed=1)
+        plans_s1_by_lesson[l] = {s.id: s for s in s1_list}
+
+        s0_list = plan_batch({l: VERIFIER_SIDES[l]}, seed=0)
+        domains.assign(s0_list, naics, seed=0)
+        plans_s0_by_lesson[l] = {s.id: s for s in s0_list}
+
     for sid in data["f_eligible"]:
         lesson, kind, num_s = sid.split("-")
         assert kind == "C" and lesson != "T10" and int(num_s) % 2 == 1
-        slot_obj = plans_by_lesson[lesson][sid]
+        slot_obj = plans_s1_by_lesson[lesson][sid]
         assert slot_obj.verdict in ("supported", "unsupported")
         flaw = slot_flaw(slot_obj)
         assert flaw != "none" and flaw in FLAWS
@@ -2410,36 +2554,98 @@ def test_track_a_rung0_slot_script_48_slots_24_even_24_odd_no_t10(tmp_path: Path
     for sid in data["controls"]:
         lesson, kind, num_s = sid.split("-")
         assert kind == "C" and lesson != "T10" and int(num_s) % 2 == 0
-        slot_obj = plans_by_lesson[lesson][sid]
+        slot_obj = plans_s1_by_lesson[lesson][sid]
         assert slot_obj.verdict in ("supported", "unsupported")
         assert slot_flaw(slot_obj) == "none"
 
-    # Verify bucket counts reported at seed 0 and alternate seed 1
+    # F1 (2) & F2 (1): verify needs_novelty_check, needs_novelty_check_count, and domain_seed0 vs domain_fresh on every slot record
+    all_slot_records = list(data["slot_details"].values())
+    assert len(all_slot_records) == 48
+    for rec in all_slot_records:
+        sid = rec["id"]
+        lesson = rec["lesson"]
+        assert rec["needs_novelty_check"] is (rec["source_bucket"] == "rewrite_candidate")
+        s0_obj = plans_s0_by_lesson[lesson][sid]
+        s1_obj = plans_s1_by_lesson[lesson][sid]
+        assert rec["domain_seed0"] == s0_obj.domain
+        assert rec["frame_seed0"] == s0_obj.frame
+        assert rec["domain_fresh"] == s1_obj.domain
+        assert rec["frame_fresh"] == s1_obj.frame
+        assert rec["domain_changed"] is (rec["domain_seed0"] != rec["domain_fresh"])
+
+    # F1 (1): verify census counts at seed 1 (default) and alternate seed 0
+    assert data["counts"]["total_non_t10_c_slots"] == 86
+    assert data["counts"]["odd_decided_available"] == 33
+    assert data["counts"]["even_decided_available"] == 30
+    assert data["needs_novelty_check_count"] == 10
+    assert sum(1 for r in all_slot_records if r["needs_novelty_check"]) == 10
     assert data["counts"]["odd_by_bucket"] == {
-        "unused_lessons": 3,
-        "phase4_unused_slots": 0,
-        "rewrite_candidates_available": 25,
-        "rewrite_candidates_taken": 21,
-    }
-    assert data["counts"]["even_by_bucket"] == {
-        "unused_lessons": 6,
-        "phase4_unused_slots": 11,
-        "rewrite_candidates_available": 12,
-        "rewrite_candidates_taken": 7,
-    }
-    alt1 = data["alternate_seed_1_census"]
-    assert len(alt1["f_eligible"]) == 24
-    assert len(alt1["controls"]) == 24
-    assert alt1["counts"]["odd_by_bucket"] == {
         "unused_lessons": 5,
         "phase4_unused_slots": 10,
         "rewrite_candidates_available": 18,
         "rewrite_candidates_taken": 9,
     }
-    assert alt1["counts"]["even_by_bucket"] == {
+    assert data["counts"]["even_by_bucket"] == {
         "unused_lessons": 5,
         "phase4_unused_slots": 18,
-        "rewrite_candidates_available": 8,
+        "rewrite_candidates_available": 7,
         "rewrite_candidates_taken": 1,
     }
+    alt0 = data["alternate_seed_0_census"]
+    assert len(alt0["f_eligible"]) == 24
+    assert len(alt0["controls"]) == 24
+    assert alt0["counts"]["total_non_t10_c_slots"] == 86
+    assert alt0["counts"]["odd_decided_available"] == 27
+    assert alt0["counts"]["even_decided_available"] == 28
+    assert alt0["needs_novelty_check_count"] == 28
+    assert alt0["counts"]["odd_by_bucket"] == {
+        "unused_lessons": 3,
+        "phase4_unused_slots": 0,
+        "rewrite_candidates_available": 24,
+        "rewrite_candidates_taken": 21,
+    }
+    assert alt0["counts"]["even_by_bucket"] == {
+        "unused_lessons": 6,
+        "phase4_unused_slots": 11,
+        "rewrite_candidates_available": 11,
+        "rewrite_candidates_taken": 7,
+    }
+
+    # F1 (2): --no-rewrites raises a structured refusal when rewrite candidates would be taken
+    with pytest.raises(RuntimeError, match=r"REFUSED: --no-rewrites forbids rewrite candidates, but seed 1 requires 10 rewrite slot\(s\)"):
+        tas.build_track_a_slots(no_rewrites=True)
+    assert tas.main(["--no-rewrites", "--out", str(tmp_path / "no-rewrites.json")]) == 2
+
+    # F2 (2): pin_window.py passes PIN_PILOT_SEED=1 to role-set plan --seed 1
+    recorded_cmds: list[str] = []
+
+    def fake_sh(cmd: str, **kwargs):
+        recorded_cmds.append(cmd)
+        # Extract --out <path> and --lessons <L> to write a minimal valid lesson plan JSON
+        parts = cmd.split()
+        lesson = parts[parts.index("--lessons") + 1]
+        out_p = Path(parts[parts.index("--out") + 1])
+        out_p.write_text(
+            json.dumps({
+                "seed": int(parts[parts.index("--seed") + 1]),
+                "exclusion_state_sha256": None,
+                "slots": [{"id": f"{lesson}-C-01", "lesson": lesson, "kind": "C"}],
+                "figures": [],
+            }),
+            encoding="utf-8",
+        )
+        return ""
+
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01,T04-C-01")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_SEED", "1")
+    merged_out = tmp_path / "merged-plan.json"
+    meta = pw.plan_pilot_lessons({"role_set": "role-set"}, ["T02", "T04"], str(tmp_path / "naics.xlsx"), merged_out)
+    assert meta["seed"] == 1
+    assert len(recorded_cmds) == 2
+    assert all("--seed 1" in c for c in recorded_cmds)
+    merged_plan = json.loads(merged_out.read_text(encoding="utf-8"))
+    assert merged_plan["seed"] == 1
+
 
