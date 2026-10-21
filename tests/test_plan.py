@@ -14,6 +14,7 @@ from role_set.plan import (
     KINDS,
     PER_KIND,
     PUZZLE_STRUCTURES,
+    REAL_SOURCE_KINDS,
     PlanError,
     Slot,
     _resolve_all_silent_real_c,
@@ -144,15 +145,50 @@ def test_a_batch_of_three_lessons_needs_a_bigger_menu():
     assert len(PUZZLE_STRUCTURES) == PER_KIND
 
 
-def test_no_paired_two_turn_or_paired_two_turn_real_source_across_1000_seeds():
-    for seed in range(1000):
-        for buffers in (False, True):
-            slots = plan_lesson("T10", VERIFIER_SIDES["T10"], seed=seed, buffers=buffers)
-            for s in slots:
-                if s.kind == "D":
-                    assert not (s.pair is not None and s.two_turn is not None), (seed, buffers, s.id)
-                if s.real_source:
-                    assert s.pair is None and not s.two_turn, (seed, buffers, s.id)
+def test_every_verifier_lesson_across_1000_seeds_has_valid_real_source_and_two_turn():
+    for lesson, sides in VERIFIER_SIDES.items():
+        buf_modes = (False, True) if lesson == "T10" else (False,)
+        for buffers in buf_modes:
+            for seed in range(1000):
+                slots = plan_lesson(lesson, sides, seed=seed, buffers=buffers)
+                check_plan(slots)
+                for s in slots:
+                    if s.kind == "D":
+                        assert not (s.pair is not None and s.two_turn is not None), (lesson, seed, buffers, s.id)
+                    if s.real_source:
+                        assert s.pair is None and not s.two_turn and s.content_kind in REAL_SOURCE_KINDS, (
+                            lesson,
+                            seed,
+                            buffers,
+                            s.id,
+                            s.content_kind,
+                        )
+
+
+def test_t08_and_t12_seed_1_do_not_put_real_source_on_notice_and_check_plan_refuses_bad_real_source():
+    t08 = {s.id: s for s in plan_lesson("T08", VERIFIER_SIDES["T08"], seed=1)}
+    t12 = {s.id: s for s in plan_lesson("T12", VERIFIER_SIDES["T12"], seed=1)}
+    assert t08["T08-C-05"].content_kind == "notice" and t08["T08-C-05"].real_source is False
+    assert t12["T12-C-06"].content_kind == "notice" and t12["T12-C-06"].real_source is False
+
+    base = plan_lesson("T08", VERIFIER_SIDES["T08"], seed=1)
+    notice_slots = [Slot(**s.as_dict()) for s in base]
+    notice_slot = next(s for s in notice_slots if s.kind == "C" and s.content_kind == "notice" and s.pair is None)
+    notice_slot.real_source = True
+    with pytest.raises(PlanError, match=notice_slot.id):
+        check_plan(notice_slots)
+
+    paired_slots = [Slot(**s.as_dict()) for s in base]
+    paired_slot = next(s for s in paired_slots if s.pair is not None)
+    paired_slot.real_source = True
+    with pytest.raises(PlanError, match=paired_slot.id):
+        check_plan(paired_slots)
+
+    two_turn_slots = [Slot(**s.as_dict()) for s in base]
+    two_turn_slot = next(s for s in two_turn_slots if s.two_turn is not None)
+    two_turn_slot.real_source = True
+    with pytest.raises(PlanError, match=two_turn_slot.id):
+        check_plan(two_turn_slots)
 
 
 def test_buffered_plan_slots_and_rare_silent_real_c_branches():

@@ -224,19 +224,17 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
             silent[i].pair = pid
             contradicted[i].pair = pid
 
-        # Two two-turn D items: one stands under pressure, one changes on new material (skipping contrast pairs).
-        d_items = [s for s in slots if s.kind == "D" and s.pair is None]
+        # At least four real-source C or D items per lesson, skipping contrast pairs.
+        real = [s for s in cd if s.content_kind in REAL_SOURCE_KINDS and s.pair is None][:4]
+        for s in real:
+            s.real_source = True
+
+        # Two two-turn D items: one stands under pressure, one changes on new material (skipping contrast pairs and real-source items).
+        d_items = [s for s in slots if s.kind == "D" and s.pair is None and not s.real_source]
         d_items[0].two_turn = "stands"
         d_items[1].two_turn = "changes"
 
         _assign_escalate_and_multi_line(slots, esc_domain)
-
-        # At least four real-source C or D items per lesson, skipping pairs and two-turn items.
-        eligible_real = [s for s in cd if s.pair is None and not s.two_turn]
-        real_pref = [s for s in eligible_real if s.content_kind in REAL_SOURCE_KINDS]
-        real = (real_pref + [s for s in eligible_real if s not in real_pref])[:4]
-        for s in real:
-            s.real_source = True
 
     check_plan(slots)
     return slots
@@ -335,8 +333,11 @@ def check_plan(slots: list[Slot]) -> dict:
         raise PlanError("a puzzle structure repeats within the lesson")
     if sum(1 for s in puzzles if s.verification is False) < MIN_NON_VERIFICATION:
         raise PlanError("fewer than three non-verification puzzles")
-    if any(s.real_source and (s.pair or s.two_turn) for s in base):
-        raise PlanError("a real-source item cannot be paired or two-turn")
+    bad_real = [s.id for s in slots if s.real_source and (s.pair or s.two_turn or s.content_kind not in REAL_SOURCE_KINDS)]
+    if bad_real:
+        raise PlanError(
+            f"a real-source item cannot be paired, two-turn, or outside REAL_SOURCE_KINDS: {', '.join(bad_real)}"
+        )
     real = sum(1 for s in base if s.real_source)
     if real < 4:
         raise PlanError(f"real-source items {real} of 4")
