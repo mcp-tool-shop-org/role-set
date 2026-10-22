@@ -464,3 +464,113 @@ def test_unsealed_or_keyless_input_refuses(tmp_path: Path):
     with pytest.raises(perturb.PerturbError, match="REFUSED: input row .* lacks a valid key verdict"):
         perturb.run_perturb(keyless, tmp_path / "out2", seed=0)
 
+
+def test_planted_none_draft_written_with_blank_checker_verdict_perturbs(tmp_path: Path):
+    from role_set.assemble import Material, assemble
+    from role_set.mock import mock_gates
+    from role_set.plan import Slot
+    from role_set.runner import Runner
+    from role_set.transport import Completion
+    from role_set.waves import write_wave
+
+    slot = Slot(
+        id="T18-C-02",
+        lesson="T18",
+        kind="C",
+        side="doesn't rewrite the statement",
+        tier=2,
+        content_kind="label",
+        verdict="unsupported",
+        escalate="no",
+        real_source=True,
+    )
+    mat = Material(
+        "Pure Cotton Blend\nMachine wash cold with like colors.\nTumble dry low.\nDo not bleach.\n",
+        {"repo": "x/y", "commit": "abc", "path": "label.txt", "lines": "L1-L4", "licence": "MIT"},
+    )
+    raw_fields = {
+        "framing": "Looking at the care label for this apron, which line settles the claim?",
+        "statement": "The apron is made from a synthetic blend and should be tumble dried on high.",
+        "checker_trace": (
+            "The label says 'Pure Cotton Blend', contradicting 'synthetic blend', and 'Tumble dry low.', "
+            "contradicting 'tumble dried on high', so the claim is unsupported."
+        ),
+        "checker_verdict": "",
+        "deciding": ["Pure Cotton Blend", "Tumble dry low."],
+        "thinking": (
+            "Line 1 states 'Pure Cotton Blend' and line 3 states 'Tumble dry low.', which contradict the claim without "
+            "needing to rewrite the statement."
+        ),
+        "reply": "The other checker identified both contradictions and reached unsupported without rewriting the claim.",
+    }
+
+    # Direct assemble fills fields["checker_verdict"] with the same value row["checker_verdict"] gets.
+    fields_copy = dict(raw_fields)
+    built_row = assemble(slot, "doesn't fix things", fields_copy, mat)
+    assert built_row["checker_verdict"] == "unsupported"
+    assert fields_copy["checker_verdict"] == "unsupported"
+
+    # Write wave with a blank checker_verdict on a planted-none slot writes the filled checker_verdict into candidate.text
+    pack = {
+        "traits/T18.md": "## 18. As a verifier, you don't fix things\n\nJudge the statement as written.\n",
+        "kinds.md": "kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+
+    def writer(messages, seed=0):
+        text = messages[-1]["content"]
+        if "In your own words: the trait's main point" in text:
+            return Completion(
+                text=json.dumps({
+                    "main_point": "doesn't fix things: judge as written",
+                    "counterweight": "still quote the deciding line",
+                    "deciding_case": "a care label contradiction",
+                }),
+                prompt_tokens=10,
+                completion_tokens=10,
+                model="mock",
+                seconds=0.01,
+            )
+        return Completion(
+            text=json.dumps(raw_fields),
+            prompt_tokens=20,
+            completion_tokens=20,
+            model="mock",
+            seconds=0.01,
+        )
+
+    runner = Runner(
+        gates=mock_gates(),
+        pack=pack,
+        trait_names={"T18": "doesn't fix things"},
+        writer=writer,
+        critic=None,
+        out_dir=tmp_path / "w0",
+        excerpts={"label": [mat]},
+    )
+    drafts = write_wave(runner, [slot])
+    assert len(drafts) == 1
+    d = drafts[0]
+    assert d["state"] == "awaiting_critique"
+    assert d["row"] is None
+    assert json.loads(d["candidate"]["text"])["checker_verdict"] == "unsupported"
+
+    # Attach gold key (as in Track A) and run perturb: perturbs cleanly without loosening perturb's check
+    d_keyed = {
+        **d,
+        "key": {
+            "verdict": "unsupported",
+            "deciding": ["Pure Cotton Blend", "Tumble dry low."],
+            "planted_flaw": "none",
+        },
+    }
+    in_path = tmp_path / "t18-c-02.jsonl"
+    waves.write(in_path, {"type": "header", "format": waves.FORMAT}, [d_keyed])
+    out_dir = tmp_path / "t18-perturb"
+    manifest = perturb.run_perturb(in_path, out_dir, seed=0)
+    assert manifest["counts"]["d"] == 1
+    _, gpu_items = waves.read(out_dir / "items.jsonl")
+    ctrl = next(it for it in gpu_items if it["perturbation_type"] == "d")
+    assert ctrl["checker_verdict"] == "unsupported"
+
+

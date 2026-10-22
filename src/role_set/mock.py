@@ -208,7 +208,7 @@ def _slot_from_brief(text: str) -> dict:
         rest = text[i:]
         j = rest.find("\n\n## ", 1)
         text = rest if j < 0 else rest[:j]
-    m = re.search(r"Lesson (T\d\d), kind ([A-E]), side: ([^,]+), tier (\d+)", text)
+    m = re.search(r"Lesson (T\d\d), kind ([A-E]), side: (.+?), tier (\d+)", text)
     lesson, kind, side, tier = m.groups() if m else ("T02", "D", "x", "3")
     verdict = re.search(r"The correct verdict is (\w+)", text)
     two = "verdict stands" in text and "Two turns" in text

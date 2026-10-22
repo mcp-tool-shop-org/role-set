@@ -796,7 +796,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 )
                 match_votes = sum(1 for w in vote_words if w == parts["key_flaw"])
                 p2_ok = match_votes >= 2
-                p2_code = "AGREE" if p2_ok else ("VOID" if void_votes >= 2 else "FLAW_MISMATCH")
+                p2_code = "AGREE" if p2_ok else ("FLAW_MISMATCH" if (flaw_label_votes + none_votes - match_votes) >= 2 else "VOID")
                 v0_word = votes[0]["critic_flaw"]
                 v0_pc_ok = v0_word is not None and ((v0_word == "none") == (parts["key_flaw"] == "none"))
                 v0_pc_code = "VOID" if v0_word is None else ("AGREE" if v0_pc_ok else "FLAW_MISMATCH")
@@ -1218,7 +1218,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
             else:
                 match_votes = sum(1 for w in words if w == key_flaw)
                 if match_votes < 2:
-                    code = "VOID" if void_votes >= 2 else "FLAW_MISMATCH"
+                    code = "FLAW_MISMATCH" if (flaw_label_votes + none_votes - match_votes) >= 2 else "VOID"
                     return {
                         "outcome": "refuse",
                         "accepted": False,

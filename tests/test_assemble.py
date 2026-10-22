@@ -500,3 +500,96 @@ def test_mark_atom_re_and_resolve_verbatim_line_are_linear_on_adversarial_lines(
         assert dt_resolve < 0.5, f"{name} resolve_verbatim_line took {dt_resolve:.3f}s"
 
 
+def test_verbatim_repair_preserves_dunders_and_globs_in_code_record_and_fences():
+    from role_set.assemble import _strip_inline_marks, resolve_verbatim_line
+    from role_set.critic import compare_verdict
+
+    # 1. A quote `def init(self):` is NOT repaired to `def __init__(self):` in code/record or inside a code fence.
+    code_material = "class Loader:\n    def __init__(self):\n        self.ready = True\n"
+    assert resolve_verbatim_line("def init(self):", "    def __init__(self):", content_kind="code") is None
+    assert resolve_verbatim_line("def init(self):", "    def __init__(self):", content_kind="record") is None
+    assert resolve_verbatim_line("def init(self):", "```python\n    def __init__(self):\n```") is None
+    assert _strip_inline_marks("    def __init__(self):", in_code_fence=True) == "def __init__(self):"
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(["def init(self):"], code_material, content_kind="code")
+
+    fenced_doc = (
+        "## Setup\n\n"
+        "```python\n"
+        "class Loader:\n"
+        "    def __init__(self):\n"
+        "        pass\n"
+        "```\n"
+        "- Call `Loader()` after **setup**.\n"
+    )
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(["def init(self):"], fenced_doc, content_kind="readme")
+    # Prose line outside the fence still repairs bold/backtick marks as usual.
+    assert list(verbatim_lines(["- Call Loader() after setup."], fenced_doc, content_kind="readme")) == [
+        "- Call `Loader()` after **setup**."
+    ]
+    # Backtick-stripped quote inside a code fence or code material still repairs backticks without stripping dunders.
+    tilde_fenced = "~~~\n# run `pytest __init__.py` first\n~~~\n"
+    assert list(verbatim_lines(["# run pytest __init__.py first"], tilde_fenced, content_kind="readme")) == [
+        "# run `pytest __init__.py` first"
+    ]
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(["# run pytest init.py first"], tilde_fenced, content_kind="readme")
+
+    # 2. A `docs/**/*.md` glob survives in record/code materials and inside code fences.
+    assert (
+        _strip_inline_marks("- include: `docs/**/*.md` in the bundle", content_kind="record")
+        == "- include: docs/**/*.md in the bundle"
+    )
+    assert (
+        _strip_inline_marks("glob = 'docs/**/*.md'", content_kind="code")
+        == "glob = 'docs/**/*.md'"
+    )
+    glob_material = (
+        "- include: `docs/**/*.md` in the bundle\n"
+        "paths = \"docs/**/*.md\"\n"
+    )
+    assert list(verbatim_lines(["- include: docs/**/*.md in the bundle"], glob_material, content_kind="record")) == [
+        "- include: `docs/**/*.md` in the bundle"
+    ]
+    assert list(verbatim_lines(['paths = "docs/**/*.md"'], glob_material, content_kind="record")) == [
+        'paths = "docs/**/*.md"'
+    ]
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(["- include: docs//*.md in the bundle"], glob_material, content_kind="record")
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(['paths = "docs//*.md"'], glob_material, content_kind="record")
+
+    # 3. End-to-end through `assemble` and `compare_verdict` with content_kind="code".
+    from role_set.mock import mock_gates
+
+    s_code = _slots()["D"]
+    s_code.two_turn = None
+    s_code.verdict = "supported"
+    s_code.content_kind = "code"
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        assemble(
+            s_code,
+            "goes to the source",
+            {
+                "framing": "Check loader init:",
+                "statement": "Loader sets ready in init.",
+                "deciding": ["def init(self):"],
+                "thinking": "Line 2 defines __init__.",
+                "reply": "Defined on line 2.",
+            },
+            Material(code_material, {"invented": "code"}),
+        )
+    cv = compare_verdict(
+        mock_gates(),
+        "VERDICT: supported\nDECIDING: def init(self):\nESCALATE: no",
+        "supported",
+        ["    def __init__(self):"],
+        code_material,
+        content_kind="code",
+    )
+    assert cv.repairs == []
+    assert cv.critic_deciding == ["def init(self):"]
+
+
+

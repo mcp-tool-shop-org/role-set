@@ -33,7 +33,7 @@ from role_set.plan import Slot
 from role_set.puzzle import PuzzleError, check_puzzle
 from role_set.prompts import FIELDS, kind_key, material_messages, parse_json_object, warmup_messages, writer_messages
 from role_set.trait_steps import TRAIT_STEPS
-from role_set.transport import TransportError
+from role_set.transport import Completion, TransportError
 
 MAX_ATTEMPTS = 3  # the first draft, then two replacement requests
 # A B puzzle whose asked answer follows from its 'is' facts alone is a lookup, not a puzzle: one per lesson (R&D, PR H).
@@ -767,7 +767,14 @@ class Runner:
                 for ask in range(2):
                     c = self._critic_call(verdict_messages(seen_material, statement), check="verdict")
                     self._count_tokens(c)
-                    v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
+                    v = compare_verdict(
+                        self.gates,
+                        c.text,
+                        key_verdict,
+                        key_deciding,
+                        seen_material,
+                        content_kind=slot.content_kind,
+                    )
                     if v.code != "VOID":
                         break
                     self._log("critic_void", slot=slot.id, detail=v.detail)
@@ -869,8 +876,10 @@ class Runner:
         row = None
         glyphs = 0
         fields: dict = {}
+        raw_fields: dict = {}
         try:
-            fields, glyphs = normalize_glyphs(parse_json_object(c.text))
+            raw_fields = parse_json_object(c.text)
+            fields, glyphs = normalize_glyphs(raw_fields)
         except ValueError as e:
             refusal = self._refusal("TRUNCATED" if getattr(c, "finish_reason", None) == "length" else "PARSE", str(e))
         if refusal is None and row_shaped(fields, slot):
@@ -907,6 +916,18 @@ class Runner:
                 row = assemble(slot, trait, fields, material, repairs=repairs)
             except AssemblyError as e:
                 refusal = self._refusal("ASSEMBLY", str(e))
+            else:
+                if slot.kind == "C" and str(raw_fields.get("checker_verdict") or "").strip() != fields["checker_verdict"]:
+                    raw_fields = {**raw_fields, "checker_verdict": fields["checker_verdict"]}
+                    c = Completion(
+                        text=json.dumps(raw_fields, ensure_ascii=False),
+                        prompt_tokens=getattr(c, "prompt_tokens", None),
+                        completion_tokens=getattr(c, "completion_tokens", None),
+                        model=getattr(c, "model", ""),
+                        seconds=getattr(c, "seconds", 0.0),
+                        finish_reason=getattr(c, "finish_reason", None),
+                        thinking_tokens=getattr(c, "thinking_tokens", None),
+                    )
             if repairs:
                 with self.lock:
                     self._verbatim_repairs[slot.id] = list(repairs)
