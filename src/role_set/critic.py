@@ -41,7 +41,7 @@ FLAW_DEFINITIONS = {
     "reject_by_default": "treated silence as a denial: called the claim unsupported because the material doesn't mention it",
 }
 
-FLAW_PROMPT_SETTINGS = ("old", "new")
+FLAW_PROMPT_SETTINGS = ("old", "new", "trackb")
 FLAW_NONE_OLD = "the check was right"
 FLAW_NONE_NEW = (
     "quoted the deciding lines, reasoned only from what they state (with no outside assumption and no misreading of "
@@ -55,6 +55,31 @@ FLAW_GUESS_NEW = (
 FLAW_DEFINITIONS_NEW = {
     **FLAW_DEFINITIONS,
     "guess": FLAW_GUESS_NEW,
+}
+FLAW_NONE_TRACKB = (
+    "reasoned only from what the material states and reached its verdict: it quoted or faithfully restated the "
+    "deciding lines, and any step it took (comparing a stated time, date, number or range; a direct consequence; a "
+    "plain synonym; or a stated rule that contradicts the statement) follows from those lines alone"
+)
+FLAW_GUESS_TRACKB = (
+    "relied on a claim the material doesn't state: an assumption, what usually happens, general knowledge, or a "
+    "misreading of what a line says. A conclusion drawn only from stated lines (by quote, faithful restatement, "
+    "comparison against a stated time, date, number or range, direct consequence, or plain synonym) is never a guess"
+)
+FLAW_RUBBER_STAMP_TRACKB = (
+    "approved without checking: cited or restated no line of the material and gave no reason beyond agreement "
+    "(restated the statement, deferred, or said it looks right)"
+)
+FLAW_REJECT_BY_DEFAULT_TRACKB = (
+    "treated silence as a denial: called the claim unsupported because the material doesn't mention it. A stated "
+    "time, date, range or rule that contradicts the statement is not silence; using it is none"
+)
+FLAW_DEFINITIONS_TRACKB = {
+    **FLAW_DEFINITIONS,
+    "none": FLAW_NONE_TRACKB,
+    "guess": FLAW_GUESS_TRACKB,
+    "rubber_stamp": FLAW_RUBBER_STAMP_TRACKB,
+    "reject_by_default": FLAW_REJECT_BY_DEFAULT_TRACKB,
 }
 
 
@@ -82,8 +107,15 @@ def flaw_messages(
 ) -> list[dict]:
     if flaw_prompt not in FLAW_PROMPT_SETTINGS:
         raise ValueError(f"unknown flaw_prompt {flaw_prompt!r}; expected one of {FLAW_PROMPT_SETTINGS}")
-    defs = FLAW_DEFINITIONS if flaw_prompt == "old" else FLAW_DEFINITIONS_NEW
-    none_def = FLAW_NONE_OLD if flaw_prompt == "old" else FLAW_NONE_NEW
+    if flaw_prompt == "old":
+        defs = FLAW_DEFINITIONS
+        none_def = FLAW_NONE_OLD
+    elif flaw_prompt == "new":
+        defs = FLAW_DEFINITIONS_NEW
+        none_def = FLAW_NONE_NEW
+    else:
+        defs = FLAW_DEFINITIONS_TRACKB
+        none_def = FLAW_DEFINITIONS_TRACKB["none"]
     body = (
         f"Material:\n{material.rstrip()}\n\nStatement: {statement.strip()}\n\n"
         f"The other checker answered: {checker_verdict}\nThe other checker wrote: {checker_trace.strip()}"

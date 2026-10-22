@@ -2653,3 +2653,686 @@ def test_track_a_rung0_slot_script_48_slots_24_even_24_odd_no_t10(tmp_path: Path
     assert merged_plan["seed"] == 1
 
 
+# ---- Track B: flaw-prompt 'trackb', 3-sample flaw vote, and --verdict-from ----
+
+def test_track_b_flaw_prompt_labels_sha_and_byte_identity():
+    """Track B §1:
+    - FLAW_PROMPT_SETTINGS includes 'trackb';
+    - FLAW_DEFINITIONS_TRACKB replaces only 'none', 'guess', 'rubber_stamp' and 'reject_by_default';
+    - the four Track B strings dumped as json.dumps(d, ensure_ascii=False, sort_keys=True, indent=1) hash to
+      ad3c6f9715b5b54054d4a9a2e8447e8cf1fa2db29051faa755e526bd2f63d0b1;
+    - every other label and every verdict prompt stays byte-identical to 'old';
+    - 'old' and 'new' stay byte-identical to main."""
+    from role_set.critic import (
+        FLAW_DEFINITIONS,
+        FLAW_DEFINITIONS_NEW,
+        FLAW_DEFINITIONS_TRACKB,
+        FLAW_GUESS_TRACKB,
+        FLAW_NONE_TRACKB,
+        FLAW_PROMPT_SETTINGS,
+        FLAW_REJECT_BY_DEFAULT_TRACKB,
+        FLAW_RUBBER_STAMP_TRACKB,
+        flaw_messages,
+        verdict_messages,
+    )
+
+    assert FLAW_PROMPT_SETTINGS == ("old", "new", "trackb")
+
+    four_trackb = {
+        "none": FLAW_DEFINITIONS_TRACKB["none"],
+        "guess": FLAW_DEFINITIONS_TRACKB["guess"],
+        "rubber_stamp": FLAW_DEFINITIONS_TRACKB["rubber_stamp"],
+        "reject_by_default": FLAW_DEFINITIONS_TRACKB["reject_by_default"],
+    }
+    assert four_trackb == {
+        "none": FLAW_NONE_TRACKB,
+        "guess": FLAW_GUESS_TRACKB,
+        "rubber_stamp": FLAW_RUBBER_STAMP_TRACKB,
+        "reject_by_default": FLAW_REJECT_BY_DEFAULT_TRACKB,
+    }
+    dumped = json.dumps(four_trackb, ensure_ascii=False, sort_keys=True, indent=1)
+    assert hashlib.sha256(dumped.encode("utf-8")).hexdigest() == (
+        "ad3c6f9715b5b54054d4a9a2e8447e8cf1fa2db29051faa755e526bd2f63d0b1"
+    )
+
+    # Every other label in FLAW_DEFINITIONS_TRACKB is byte-identical to FLAW_DEFINITIONS ('old')
+    changed_keys = {"none", "guess", "rubber_stamp", "reject_by_default"}
+    assert set(FLAW_DEFINITIONS_TRACKB) == set(FLAW_DEFINITIONS) | {"none"}
+    for k, old_val in FLAW_DEFINITIONS.items():
+        if k in changed_keys:
+            assert FLAW_DEFINITIONS_TRACKB[k] == four_trackb[k]
+            assert FLAW_DEFINITIONS_TRACKB[k] != old_val
+        else:
+            assert FLAW_DEFINITIONS_TRACKB[k] == old_val
+
+    mat = "Line 1: The server starts on port 8080.\nLine 2: TLS is disabled by default."
+    stmt = "The server starts on port 8080."
+    trace = 'Line 1 states: "The server starts on port 8080." Therefore the statement is supported.'
+    c_verdict = "supported"
+
+    msgs_old = flaw_messages(mat, stmt, trace, c_verdict, flaw_prompt="old")
+    msgs_new = flaw_messages(mat, stmt, trace, c_verdict, flaw_prompt="new")
+    msgs_tb = flaw_messages(mat, stmt, trace, c_verdict, flaw_prompt="trackb")
+
+    # User message is byte-identical across old, new, and trackb
+    assert msgs_old[1] == msgs_new[1] == msgs_tb[1]
+
+    tb_sys = msgs_tb[0]["content"]
+    assert f"- rubber_stamp: {FLAW_RUBBER_STAMP_TRACKB}\n" in tb_sys
+    assert f"- guess: {FLAW_GUESS_TRACKB}\n" in tb_sys
+    assert f"- reject_by_default: {FLAW_REJECT_BY_DEFAULT_TRACKB}\n" in tb_sys
+    assert f"- none: {FLAW_NONE_TRACKB}\n" in tb_sys
+    for k in ("loop", "nitpick", "fix", "obeyed_material", "caved"):
+        assert f"- {k}: {FLAW_DEFINITIONS[k]}\n" in tb_sys
+        assert FLAW_DEFINITIONS_NEW[k] == FLAW_DEFINITIONS[k]
+
+    # Substituting the 4 Track B strings in msgs_tb[0]["content"] back to 'old' produces msgs_old[0]["content"] byte-for-byte
+    reverted = (
+        tb_sys.replace(f"- rubber_stamp: {FLAW_RUBBER_STAMP_TRACKB}\n", f"- rubber_stamp: {FLAW_DEFINITIONS['rubber_stamp']}\n")
+        .replace(f"- guess: {FLAW_GUESS_TRACKB}\n", f"- guess: {FLAW_DEFINITIONS['guess']}\n")
+        .replace(
+            f"- reject_by_default: {FLAW_REJECT_BY_DEFAULT_TRACKB}\n",
+            f"- reject_by_default: {FLAW_DEFINITIONS['reject_by_default']}\n",
+        )
+        .replace(f"- none: {FLAW_NONE_TRACKB}\n", "- none: the check was right\n")
+    )
+    assert reverted == msgs_old[0]["content"]
+    assert verdict_messages(mat, stmt) == [
+        {"role": "system", "content": verdict_messages(mat, stmt)[0]["content"]},
+        {"role": "user", "content": f"Material:\n{mat}\n\nStatement: {stmt}"},
+    ]
+
+
+def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Path):
+    """Track B §2 & §4:
+    - Under N = 3, coarse Pc refuses iff >= 2 of 3 votes name a label other than 'none';
+    - 1 of 3 non-'none' does NOT refuse;
+    - VOID counts as a flaw (so ['VOID', 'none', 'none'] has 1 flaw vote and does NOT refuse on key 'none',
+      while ['VOID', 'guess', 'none'] and ['VOID', 'VOID', 'none'] have 2 flaw votes and DO refuse on key 'none');
+    - Exact-label scoring (P2) under N = 3 needs >= 2 of 3 matching labels;
+    - The 1-vote slice (seed base_seed, votes[0]) is scored on its own as Pc_1vote / one_vote."""
+    items = [
+        {
+            "type": "draft",
+            "item_id": "c-none-1flaw:d",
+            "source_row_id": "c-none-1flaw",
+            "perturbation_type": "d",
+            "slot": {"id": "c-none-1flaw", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "none"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-none-2flaw-split:d",
+            "source_row_id": "c-none-2flaw-split",
+            "perturbation_type": "d",
+            "slot": {"id": "c-none-2flaw-split", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "none"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-none-1void:d",
+            "source_row_id": "c-none-1void",
+            "perturbation_type": "d",
+            "slot": {"id": "c-none-1void", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "none"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-none-void-plus-flaw:d",
+            "source_row_id": "c-none-void-plus-flaw",
+            "perturbation_type": "d",
+            "slot": {"id": "c-none-void-plus-flaw", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "none"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-flaw-split-labels:d",
+            "source_row_id": "c-flaw-split-labels",
+            "perturbation_type": "d",
+            "slot": {"id": "c-flaw-split-labels", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-flaw-exact-2of3:d",
+            "source_row_id": "c-flaw-exact-2of3",
+            "perturbation_type": "d",
+            "slot": {"id": "c-flaw-exact-2of3", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
+    ]
+    items_path = tmp_path / "vote-items.jsonl"
+    waves.write(
+        items_path,
+        {"type": "header", "format": waves.FORMAT, "writer_pins": {"writer_model": "qwen3.8-27b", "writer_family": "qwen"}},
+        items,
+    )
+
+    # Map each item's 3 flaw calls (at seeds 10, 11, 12) to specific replies:
+    # 1. c-none-1flaw:d -> ["guess", "none", "none"] -> 3-vote Pc accepts (1/3 non-none), 1-vote Pc refuses (vote 0 is "guess")
+    # 2. c-none-2flaw-split:d -> ["none", "guess", "loop"] -> 3-vote Pc refuses (2/3 non-none), 1-vote Pc accepts (vote 0 is "none")
+    # 3. c-none-1void:d -> ["not_a_label", "none", "none"] -> 3-vote Pc accepts (1/3 VOID+flaw), 1-vote Pc refuses VOID
+    # 4. c-none-void-plus-flaw:d -> ["not_a_label", "guess", "none"] -> 3-vote Pc refuses (VOID counts as flaw -> 2/3 non-none)
+    # 5. c-flaw-split-labels:d (key=guess) -> ["guess", "loop", "none"] -> 3-vote Pc accepts (2/3 non-none), P2 refuses (1/3 == guess)
+    # 6. c-flaw-exact-2of3:d (key=guess) -> ["none", "guess", "guess"] -> 3-vote Pc accepts (2/3 non-none), P2 accepts (2/3 == guess), 1-vote Pc refuses
+    scripted_votes = [
+        ["guess", "none", "none"],
+        ["none", "guess", "loop"],
+        ["not_a_label", "none", "none"],
+        ["not_a_label", "guess", "none"],
+        ["guess", "loop", "none"],
+        ["none", "guess", "guess"],
+    ]
+    item_flaw_idx = {"item": 0, "vote": 0}
+    seen_seeds: list[int] = []
+
+    def scripted_critic(messages: list[dict], **kwargs):
+        sys_text = messages[0]["content"]
+        if "Name the single flaw" in sys_text:
+            seen_seeds.append(kwargs.get("seed"))
+            i_idx = item_flaw_idx["item"]
+            v_idx = item_flaw_idx["vote"]
+            reply = scripted_votes[i_idx][v_idx]
+            if v_idx == 2:
+                item_flaw_idx["item"] += 1
+                item_flaw_idx["vote"] = 0
+            else:
+                item_flaw_idx["vote"] += 1
+            return Completion(text=reply, prompt_tokens=20, completion_tokens=4, model="mock", seconds=0.01)
+        return Completion(
+            text="VERDICT: supported\nDECIDING: Line 1.\nESCALATE: no",
+            prompt_tokens=30,
+            completion_tokens=10,
+            model="mock",
+            seconds=0.01,
+        )
+
+    eval_out = tmp_path / "eval-3vote"
+    online_rep = run_critic_eval(
+        CriticEvalConfig(
+            items=items_path,
+            out=eval_out,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=10,
+            flaw_prompt="trackb",
+            flaw_votes=3,
+            mock=True,
+        ),
+        critic=scripted_critic,
+    )
+
+    assert seen_seeds == [10, 11, 12] * 6
+    assert online_rep["flaw_votes"] == 3
+    assert online_rep["flaw_prompt"] == "trackb"
+
+    off_out = tmp_path / "off-3vote"
+    offline_rep = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(eval_out / "critic-eval.jsonl",),
+            items=items_path,
+            out=off_out,
+            mock=True,
+        )
+    )
+
+    # Offline rescore matches online scoring across all rule sets (P0, Pc, Pc_1vote, P2)
+    assert offline_rep["rule_sets"] == ["P0", "Pc", "Pc_1vote", "P2"]
+    assert offline_rep["summary"] == online_rep["summary"]
+    assert offline_rep["by_item"] == online_rep["by_item"]
+    assert offline_rep["one_vote"] == online_rep["one_vote"]
+
+    by_id = offline_rep["by_item"]
+    # 1. ["guess", "none", "none"] on key="none": 1 of 3 non-none does NOT refuse under 3-vote Pc, but refuses under 1-vote slice
+    assert by_id["c-none-1flaw:d"]["Pc"]["outcome"] == "accept"
+    assert by_id["c-none-1flaw:d"]["P2"]["outcome"] == "accept"
+    assert by_id["c-none-1flaw:d"]["Pc_1vote"]["outcome"] == "refuse"
+
+    # 2. ["none", "guess", "loop"] on key="none": 2 of 3 non-none REFUSES under 3-vote Pc, but accepts under 1-vote slice
+    assert by_id["c-none-2flaw-split:d"]["Pc"]["outcome"] == "refuse"
+    assert by_id["c-none-2flaw-split:d"]["P2"]["outcome"] == "refuse"
+    assert by_id["c-none-2flaw-split:d"]["Pc_1vote"]["outcome"] == "accept"
+
+    # 3. ["VOID", "none", "none"] on key="none": 1 VOID + 2 none -> 1 of 3 non-none does NOT refuse under 3-vote Pc
+    assert by_id["c-none-1void:d"]["Pc"]["outcome"] == "accept"
+    assert by_id["c-none-1void:d"]["Pc_1vote"]["outcome"] == "refuse"
+    assert by_id["c-none-1void:d"]["Pc_1vote"]["deciding_rule"] == "VOID"
+
+    # 4. ["VOID", "guess", "none"] on key="none": VOID counts as a flaw -> 2 of 3 non-none REFUSES under 3-vote Pc
+    assert by_id["c-none-void-plus-flaw:d"]["Pc"]["outcome"] == "refuse"
+    assert by_id["c-none-void-plus-flaw:d"]["P2"]["outcome"] == "refuse"
+
+    # 5. ["guess", "loop", "none"] on key="guess": 2 of 3 non-none -> Pc accepts, but P2 refuses (only 1 of 3 == "guess")
+    assert by_id["c-flaw-split-labels:d"]["Pc"]["outcome"] == "accept"
+    assert by_id["c-flaw-split-labels:d"]["P2"]["outcome"] == "refuse"
+    assert by_id["c-flaw-split-labels:d"]["Pc_1vote"]["outcome"] == "accept"
+
+    # 6. ["none", "guess", "guess"] on key="guess": 2 of 3 == "guess" -> both 3-vote Pc and P2 accept, while 1-vote slice refuses
+    assert by_id["c-flaw-exact-2of3:d"]["Pc"]["outcome"] == "accept"
+    assert by_id["c-flaw-exact-2of3:d"]["P2"]["outcome"] == "accept"
+    assert by_id["c-flaw-exact-2of3:d"]["Pc_1vote"]["outcome"] == "refuse"
+
+
+def test_track_b_3votes_journaled_replayed_with_zero_calls_and_mixed_setting_refused(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """Track B §2 & §5:
+    - 3 flaw votes per kind-C item get 3 distinct journal keys (seeds base_seed + 0, +1, +2);
+    - resume replays all calls with 0 live calls;
+    - mixed-setting guard refuses reusing a 'trackb' journal under 'old' or 'new' (and vice versa)."""
+    h, items = waves.read(eval_items_file)
+    base_critic = MockCritic(answers=waves.load_answers(h))
+    live_calls: list[int | None] = []
+
+    def tracking_critic(messages: list[dict], **kwargs):
+        live_calls.append(kwargs.get("seed"))
+        return base_critic(messages, **kwargs)
+
+    out1 = tmp_path / "tb-run1"
+    j1 = out1 / "calls-journal.jsonl"
+    rep1 = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=out1,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=100,
+            flaw_prompt="trackb",
+            flaw_votes=3,
+            call_journal=j1,
+            mock=True,
+        ),
+        critic=tracking_critic,
+    )
+    c_items = sum(1 for it in items if it["slot"]["kind"] == "C")
+    verdict_calls = sum(2 if (it.get("row") or {}).get("turn_keys") else 1 for it in items)
+    expected_total_calls = verdict_calls + 3 * c_items
+    assert len(live_calls) == expected_total_calls
+    assert rep1["calls"]["called"] == expected_total_calls
+
+    j_entries = [json.loads(x) for x in j1.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(j_entries) == expected_total_calls
+    assert len({e["key"] for e in j_entries}) == expected_total_calls
+    assert all(e["flaw_prompt"] == "trackb" for e in j_entries)
+
+    # Replay with --reuse-calls: 0 live calls
+    def forbidden_critic(messages: list[dict], **kwargs):
+        raise AssertionError("No live call should be made on full journal replay")
+
+    out2 = tmp_path / "tb-run2"
+    rep2 = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=out2,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=100,
+            flaw_prompt="trackb",
+            flaw_votes=3,
+            reuse_calls=j1,
+            mock=True,
+        ),
+        critic=forbidden_critic,
+    )
+    assert rep2["calls"]["called"] == 0
+    assert rep2["calls"]["reused"] == expected_total_calls
+    assert (out1 / "critic-eval.jsonl").read_text(encoding="utf-8") == (
+        out2 / "critic-eval.jsonl"
+    ).read_text(encoding="utf-8")
+
+    # Mixed-setting guard refuses reusing 'trackb' journal under 'old' or 'new'
+    for other_prompt in ("old", "new"):
+        with pytest.raises(CriticEvalError, match=f"flaw_prompt='trackb'.*flaw_prompt={other_prompt!r}"):
+            run_critic_eval(
+                CriticEvalConfig(
+                    items=eval_items_file,
+                    pack=pack_dir,
+                    out=tmp_path / f"bad-{other_prompt}",
+                    writers_file=ROOT / "writers.json",
+                    critic_model=LIGHTNING,
+                    critic_seed=100,
+                    flaw_prompt=other_prompt,
+                    flaw_votes=3,
+                    reuse_calls=j1,
+                    mock=True,
+                ),
+                critic=forbidden_critic,
+            )
+
+
+def test_track_b_verdict_from_zero_verdict_calls_and_refusals(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """Track B §3 & §5:
+    - --verdict-from reuses verdict replies from an earlier critic-eval run and makes 0 verdict calls (only flaw calls run);
+    - records verdict_from_sha256 and verdict_reused_count in the report and on every record;
+    - refuses before any call if:
+      (a) items sha differs;
+      (b) seed differs;
+      (c) any scored item is missing;
+      (d) an earlier record has no verdict_checks[].raw_reply."""
+    h, items = waves.read(eval_items_file)
+    base_critic = MockCritic(answers=waves.load_answers(h))
+
+    # Run 1: baseline run (verdicts + 3 'old' flaw votes)
+    run1_dir = tmp_path / "run1-old"
+    rep1 = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=run1_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=7,
+            flaw_prompt="old",
+            flaw_votes=3,
+            mock=True,
+        ),
+        critic=base_critic,
+    )
+    vf_file = run1_dir / "critic-eval.jsonl"
+    vf_sha = waves.file_sha256(vf_file)
+
+    # Run 2: treatment run (--verdict-from run1 + 3 'trackb' flaw votes). Must make 0 verdict calls!
+    run2_calls: list[str] = []
+
+    def flaw_only_critic(messages: list[dict], **kwargs):
+        sys_text = messages[0]["content"]
+        if "Name the single flaw" not in sys_text:
+            raise AssertionError("Verdict call made despite --verdict-from!")
+        run2_calls.append(sys_text)
+        return base_critic(messages, **kwargs)
+
+    run2_dir = tmp_path / "run2-trackb"
+    rc = main([
+        "critic-eval",
+        "--items", str(eval_items_file),
+        "--pack", str(pack_dir),
+        "--writers", str(ROOT / "writers.json"),
+        "--critic-model", LIGHTNING,
+        "--critic-seed", "7",
+        "--flaw-prompt", "trackb",
+        "--flaw-votes", "3",
+        "--verdict-from", str(vf_file),
+        "--out", str(run2_dir),
+        "--mock",
+    ])
+    assert rc == 0
+
+    # Also verify via run_critic_eval with flaw_only_critic that 0 verdict calls are made
+    run2b_dir = tmp_path / "run2b-trackb"
+    rep2 = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=run2b_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=7,
+            flaw_prompt="trackb",
+            flaw_votes=3,
+            verdict_from=vf_file,
+            mock=True,
+        ),
+        critic=flaw_only_critic,
+    )
+    c_items = sum(1 for it in items if it["slot"]["kind"] == "C")
+    assert len(run2_calls) == 3 * c_items
+    assert rep2["calls"]["called"] == 3 * c_items
+    assert rep2["verdict_from_sha256"] == vf_sha
+    assert rep2["verdict_reused_count"] == len(items)
+    assert rep2["summary"]["P0"] == rep1["summary"]["P0"]
+
+    rows2 = [json.loads(x) for x in (run2b_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(rows2) == len(items)
+    for r in rows2:
+        assert r["verdict_from_sha256"] == vf_sha
+        assert r["verdict_reused_count"] == len(r["verdict_checks"])
+
+    # Offline rescore on run2 matches online scoring
+    off2 = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(run2b_dir / "critic-eval.jsonl",),
+            items=eval_items_file,
+            out=tmp_path / "off-run2",
+            mock=True,
+        )
+    )
+    assert off2["summary"] == rep2["summary"]
+    assert off2["by_item"] == rep2["by_item"]
+
+    # Refusal checks (must all refuse BEFORE any model call):
+    def never_called_critic(messages: list[dict], **kwargs):
+        raise AssertionError("Critic must not be called when --verdict-from preflight fails")
+
+    # (a) Mismatched seed
+    with pytest.raises(CriticEvalError, match="seed"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "bad-seed",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=99,
+                flaw_prompt="trackb",
+                flaw_votes=3,
+                verdict_from=vf_file,
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # (b) Mismatched items sha
+    other_items_path = tmp_path / "other-items.jsonl"
+    waves.write(other_items_path, h, items[:-1])
+    with pytest.raises(CriticEvalError, match="input_sha256"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=other_items_path,
+                pack=pack_dir,
+                out=tmp_path / "bad-sha",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=7,
+                flaw_prompt="trackb",
+                flaw_votes=3,
+                verdict_from=vf_file,
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # (c) Missing item in --verdict-from
+    missing_item_dir = tmp_path / "vf-missing-item"
+    missing_item_dir.mkdir()
+    vf_lines = vf_file.read_text(encoding="utf-8").splitlines()
+    (missing_item_dir / "critic-eval.jsonl").write_text("\n".join(vf_lines[:-1]) + "\n", encoding="utf-8")
+    shutil.copyfile(run1_dir / "critic-eval-report.json", missing_item_dir / "critic-eval-report.json")
+    with pytest.raises(CriticEvalError, match="missing from --verdict-from"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "bad-missing",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=7,
+                flaw_prompt="trackb",
+                flaw_votes=3,
+                verdict_from=missing_item_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # (d) Missing verdict_checks[].raw_reply on the LAST item (proving preflight refuses before item 0's flaw calls!)
+    no_raw_dir = tmp_path / "vf-no-raw"
+    no_raw_dir.mkdir()
+    bad_last = json.loads(vf_lines[-1])
+    bad_last["verdict_checks"][0].pop("raw_reply", None)
+    (no_raw_dir / "critic-eval.jsonl").write_text(
+        "\n".join([*vf_lines[:-1], json.dumps(bad_last)]) + "\n",
+        encoding="utf-8",
+    )
+    shutil.copyfile(run1_dir / "critic-eval-report.json", no_raw_dir / "critic-eval-report.json")
+    with pytest.raises(CriticEvalError, match="missing raw_reply"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "bad-no-raw",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=7,
+                flaw_prompt="trackb",
+                flaw_votes=3,
+                verdict_from=no_raw_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+
+def test_track_b_n1_output_byte_identical_to_main(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path  # noqa: F811
+):
+    """Track B §2 & §5: N = 1 without --verdict-from is byte-identical in records and scores to main."""
+    out_dir = tmp_path / "n1-eval"
+    rep = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=out_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            flaw_prompt="old",
+            flaw_votes=1,
+            mock=True,
+        )
+    )
+    # Report keys for N=1 without verdict_from are the exact main keys
+    assert set(rep.keys()) == {
+        "critic_model",
+        "critic_family",
+        "critic_gguf_sha256",
+        "critic_seed",
+        "flaw_prompt",
+        "critic_pins",
+        "critic_card",
+        "gates",
+        "input_sha256",
+        "items_total",
+        "items_scored",
+        "skipped_count",
+        "skipped",
+        "calls",
+        "tokens",
+    }
+    rows = [json.loads(x) for x in (out_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    for r in rows:
+        assert set(r.keys()) == {
+            "item_id",
+            "id",
+            "source_row_id",
+            "perturbation_type",
+            "kind",
+            "seed",
+            "flaw_prompt",
+            "verdict_checks",
+            "verdict_check",
+            "flaw_check",
+            "critic_verdict",
+            "critic_deciding",
+            "critic_flaw",
+            "thinking_tokens",
+            "output_tokens",
+            "prompt_tokens",
+        }
+        if r["kind"] == "C":
+            assert set(r["flaw_check"].keys()) == {
+                "code",
+                "ok",
+                "detail",
+                "raw_reply",
+                "critic_flaw",
+                "flaw_prompt",
+                "thinking_tokens",
+                "output_tokens",
+                "prompt_tokens",
+            }
+
+    off_dir = tmp_path / "n1-off"
+    off_rep = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(out_dir / "critic-eval.jsonl",),
+            items=eval_items_file,
+            out=off_dir,
+            mock=True,
+        )
+    )
+    assert off_rep["rule_sets"] == ["P0", "Pc", "P2"]
+    assert set(off_rep.keys()) == {"rule_sets", "skipped_count", "skipped", "summary", "by_item", "rows", "table"}
+
+
+def test_track_b_pin_window_passes_new_settings_and_refuses_unpinned_verdict_from(
+    ce_vm: Path, monkeypatch
+):
+    """Track B §1, §2, §3 & §5:
+    - pin_window passes --flaw-prompt trackb, --flaw-votes 3, and --verdict-from <path>;
+    - pin_window refuses an unpinned PIN_CRITIC_EVAL_VERDICT_FROM file before any model setup or serve."""
+    events: list = []
+    result: dict = {}
+    _fake_ce_pool(monkeypatch, events)
+    _fake_ce_eval(monkeypatch, events)
+
+    items_bytes = b'{"type":"header"}\n'
+    vf_bytes = b'{"item_id":"i1","seed":0}\n'
+    shas = _tar_bytes(
+        ce_vm / "critic-eval-inputs.tar",
+        {"items.jsonl": items_bytes, "s0-verdicts.jsonl": vf_bytes},
+    )
+
+    # 1. Unpinned PIN_CRITIC_EVAL_VERDICT_FROM refuses before Pool.get / serve / eval
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={shas['items.jsonl']}")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_VERDICT_FROM", "s0-verdicts.jsonl")
+    monkeypatch.setenv("PIN_CRITIC_FLAW_PROMPT", "trackb")
+    monkeypatch.setenv("PIN_CRITIC_FLAW_VOTES", "3")
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0")
+    with pytest.raises(RuntimeError, match="REFUSED: no sha256 in PIN_CRITIC_EVAL_SHAS for s0-verdicts.jsonl"):
+        pw.critic_eval_window({}, {})
+    assert events == []
+
+    # 2. Pinned PIN_CRITIC_EVAL_VERDICT_FROM passes --flaw-prompt trackb, --flaw-votes 3, and --verdict-from
+    monkeypatch.setenv(
+        "PIN_CRITIC_EVAL_SHAS",
+        f"items.jsonl={shas['items.jsonl']},s0-verdicts.jsonl={shas['s0-verdicts.jsonl']}",
+    )
+    pw.critic_eval_window({}, result)
+    eval_events = [e for e in events if isinstance(e, tuple) and e[0] == "eval"]
+    assert len(eval_events) == 1
+    cmd = eval_events[0][1]
+    assert cmd[cmd.index("--flaw-prompt") + 1] == "trackb"
+    assert cmd[cmd.index("--flaw-votes") + 1] == "3"
+    assert cmd[cmd.index("--verdict-from") + 1] == str(ce_vm / "pin" / "critic-eval-in" / "s0-verdicts.jsonl")
+    assert result["critic_eval"]["flaw_prompt"] == "trackb"
+    assert result["critic_eval"]["flaw_votes"] == 3
+    assert result["critic_eval_inputs"]["verdict_from_sha256"] == shas["s0-verdicts.jsonl"]
+
+
+

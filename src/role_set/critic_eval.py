@@ -57,6 +57,8 @@ class CriticEvalConfig:
     critic_gguf_sha256: str | None = None
     critic_seed: int = 0
     flaw_prompt: str = "old"
+    flaw_votes: int = 1
+    verdict_from: Path | None = None
     out: Path = Path("critic-eval")
     mock: bool = False
     call_journal: Path | None = None
@@ -359,6 +361,10 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         raise CriticEvalError(
             f"REFUSED: unknown flaw_prompt {cfg.flaw_prompt!r}; expected one of {FLAW_PROMPT_SETTINGS}"
         )
+    if cfg.flaw_votes not in (1, 3):
+        raise CriticEvalError(
+            f"REFUSED: unknown flaw_votes {cfg.flaw_votes!r}; expected 1 or 3"
+        )
 
     if cfg.pack is not None:
         try:
@@ -372,6 +378,49 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     except waves.WaveError as e:
         raise CriticEvalError(str(e)) from e
     input_sha256 = waves.file_sha256(cfg.items)
+
+    verdict_from_sha256: str | None = None
+    verdict_from_by_id: dict[str, dict] = {}
+    if cfg.verdict_from is not None:
+        vf_path = Path(cfg.verdict_from)
+        vf_rows = _load_eval_records(vf_path)
+        verdict_from_sha256 = waves.file_sha256(vf_path)
+        vf_report_path = vf_path.parent / "critic-eval-report.json"
+        has_verified_input_sha = False
+        if vf_report_path.is_file():
+            vf_rep = _load_eval_report(vf_path)
+            if vf_rep.get("input_sha256") != input_sha256:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from {vf_path.name} report input_sha256 ({vf_rep.get('input_sha256')}) "
+                    f"does not match --items {cfg.items.name} ({input_sha256})"
+                )
+            has_verified_input_sha = True
+            vf_rep_seed = vf_rep.get("critic_seed")
+            if vf_rep_seed is None or isinstance(vf_rep_seed, bool) or vf_rep_seed != cfg.critic_seed:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from {vf_path.name} report critic_seed ({vf_rep_seed!r}) "
+                    f"does not match --critic-seed ({cfg.critic_seed})"
+                )
+        for r in vf_rows:
+            if "input_sha256" in r:
+                if r.get("input_sha256") != input_sha256:
+                    raise CriticEvalError(
+                        f"REFUSED: --verdict-from record {r.get('item_id')!r} input_sha256 ({r.get('input_sha256')}) "
+                        f"does not match --items {cfg.items.name} ({input_sha256})"
+                    )
+                has_verified_input_sha = True
+            r_seed = r.get("seed")
+            if r_seed is None or isinstance(r_seed, bool) or r_seed != cfg.critic_seed:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from record {r.get('item_id')!r} has seed {r_seed!r}, "
+                    f"expected {cfg.critic_seed}"
+                )
+        if not has_verified_input_sha:
+            raise CriticEvalError(
+                f"REFUSED: --verdict-from {vf_path.name} has no input_sha256 "
+                f"(missing critic-eval-report.json beside it and no input_sha256 on records)"
+            )
+        verdict_from_by_id = _index_eval(vf_rows)
 
     listed: proven.ProvenList | None = None
     if cfg.writers_file and cfg.writers_file.exists():
@@ -471,6 +520,27 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         else:
             critic = base_mock
 
+    if cfg.verdict_from is not None:
+        for idx, d in enumerate(drafts):
+            parts = extract_item_parts(d)
+            item_id = parts["item_id"] or f"item-{idx}"
+            w_pins, w_entry = _writer_for_item(d, header, listed, mock=cfg.mock)
+            w_model = w_pins.get("writer_model") or w_entry.get("served_as") or ""
+            w_family = (w_entry.get("family") or w_pins.get("writer_family") or "").strip() or None
+            if w_family and c_family:
+                try:
+                    proven.require_other_family(
+                        {**w_entry, "served_as": w_model or "writer", "family": w_family},
+                        {**critic_entry, "served_as": c_model or "critic", "family": c_family},
+                    )
+                except GuardError:
+                    continue
+            if item_id not in verdict_from_by_id:
+                raise CriticEvalError(
+                    f"REFUSED: item {item_id!r} is missing from --verdict-from {Path(cfg.verdict_from).name}"
+                )
+            _verdict_replies_from_eval(verdict_from_by_id[item_id], len(parts["verdict_turns"]))
+
     cfg.out.mkdir(parents=True, exist_ok=True)
     journal_path = cfg.call_journal or (cfg.out / callcache.JOURNAL_FILE)
     try:
@@ -503,6 +573,10 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     thinking_unmeasured_calls = 0
     total_output = 0
     total_prompt = 0
+    verdict_reused_count = 0
+    online_parts_by_id: dict[str, dict] = {}
+    skipped_by_type: dict[str, list[str]] = {}
+    has_trackb_ext = cfg.flaw_votes == 3 or cfg.verdict_from is not None
 
     for idx, d in enumerate(drafts):
         parts = extract_item_parts(d)
@@ -530,6 +604,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                     "critic_family": c_family,
                     "reason": str(e),
                 })
+                skipped_by_type.setdefault(parts["perturbation_type"], []).append(item_id)
                 continue
 
         if parts["kind"] not in ("C", "D", "E"):
@@ -550,55 +625,84 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         v_output_total = 0
         v_prompt_total = 0
 
-        for vt in parts["verdict_turns"]:
-            v_msgs = verdict_messages(vt["seen_material"], parts["statement"])
-            v: CriticVerdict | None = None
-            v_raw = ""
-            v_attempts = 0
-            v_voids = 0
-            turn_thinkings: list[int | None] = []
-            v_output = 0
-            v_prompt = 0
-            for _ask in range(2):
-                v_attempts += 1
-                c = blinded_critic(v_msgs, seed=cfg.critic_seed)
-                v_raw = c.text
-                raw_t = getattr(c, "thinking_tokens", None)
-                t_val = int(raw_t) if raw_t is not None else None
-                turn_thinkings.append(t_val)
-                item_call_thinkings.append(t_val)
-                all_call_thinkings.append(t_val)
-                if t_val is not None:
-                    thinking_measured_calls += 1
-                else:
-                    thinking_unmeasured_calls += 1
-                v_output += int(c.completion_tokens or 0)
-                v_prompt += int(c.prompt_tokens or 0)
-                v = compare_verdict(gates, c.text, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
-                if v.code != "VOID":
-                    break
-                v_voids += 1
+        if cfg.verdict_from is not None:
+            vf_rec = verdict_from_by_id[item_id]
+            vf_replies = _verdict_replies_from_eval(vf_rec, len(parts["verdict_turns"]))
+            vf_orig_checks = (
+                vf_rec["verdict_checks"]
+                if isinstance(vf_rec.get("verdict_checks"), list) and vf_rec["verdict_checks"]
+                else [vf_rec["verdict_check"]]
+            )
+            for vt, v_raw, orig_vc in zip(parts["verdict_turns"], vf_replies, vf_orig_checks, strict=True):
+                v = compare_verdict(gates, v_raw, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
+                vc_entry = {
+                    "turn": vt["turn"],
+                    "code": v.code,
+                    "ok": v.ok,
+                    "detail": v.detail,
+                    "raw_reply": v_raw,
+                    "critic_verdict": v.critic_verdict,
+                    "critic_deciding": list(v.critic_deciding or []),
+                    "attempts": int(orig_vc.get("attempts", 1)),
+                    "void_retries": int(orig_vc.get("void_retries", 0)),
+                    "thinking_tokens": orig_vc.get("thinking_tokens"),
+                    "output_tokens": int(orig_vc.get("output_tokens") or 0),
+                    "prompt_tokens": int(orig_vc.get("prompt_tokens") or 0),
+                }
+                if v.repairs:
+                    vc_entry["repairs"] = list(v.repairs)
+                verdict_checks.append(vc_entry)
+            verdict_reused_count += 1
+        else:
+            for vt in parts["verdict_turns"]:
+                v_msgs = verdict_messages(vt["seen_material"], parts["statement"])
+                v: CriticVerdict | None = None
+                v_raw = ""
+                v_attempts = 0
+                v_voids = 0
+                turn_thinkings: list[int | None] = []
+                v_output = 0
+                v_prompt = 0
+                for _ask in range(2):
+                    v_attempts += 1
+                    c = blinded_critic(v_msgs, seed=cfg.critic_seed)
+                    v_raw = c.text
+                    raw_t = getattr(c, "thinking_tokens", None)
+                    t_val = int(raw_t) if raw_t is not None else None
+                    turn_thinkings.append(t_val)
+                    item_call_thinkings.append(t_val)
+                    all_call_thinkings.append(t_val)
+                    if t_val is not None:
+                        thinking_measured_calls += 1
+                    else:
+                        thinking_unmeasured_calls += 1
+                    v_output += int(c.completion_tokens or 0)
+                    v_prompt += int(c.prompt_tokens or 0)
+                    v = compare_verdict(gates, c.text, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
+                    if v.code != "VOID":
+                        break
+                    v_voids += 1
 
-            assert v is not None
-            v_output_total += v_output
-            v_prompt_total += v_prompt
-            vc_entry = {
-                "turn": vt["turn"],
-                "code": v.code,
-                "ok": v.ok,
-                "detail": v.detail,
-                "raw_reply": v_raw,
-                "critic_verdict": v.critic_verdict,
-                "critic_deciding": list(v.critic_deciding or []),
-                "attempts": v_attempts,
-                "void_retries": v_voids,
-                "thinking_tokens": _sum_thinking(turn_thinkings),
-                "output_tokens": v_output,
-                "prompt_tokens": v_prompt,
-            }
-            if v.repairs:
-                vc_entry["repairs"] = list(v.repairs)
-            verdict_checks.append(vc_entry)
+                assert v is not None
+                v_output_total += v_output
+                v_prompt_total += v_prompt
+                vc_entry = {
+                    "turn": vt["turn"],
+                    "code": v.code,
+                    "ok": v.ok,
+                    "detail": v.detail,
+                    "raw_reply": v_raw,
+                    "critic_verdict": v.critic_verdict,
+                    "critic_deciding": list(v.critic_deciding or []),
+                    "attempts": v_attempts,
+                    "void_retries": v_voids,
+                    "thinking_tokens": _sum_thinking(turn_thinkings),
+                    "output_tokens": v_output,
+                    "prompt_tokens": v_prompt,
+                }
+                if v.repairs:
+                    vc_entry["repairs"] = list(v.repairs)
+                verdict_checks.append(vc_entry)
 
         verdict_check = verdict_checks[-1]
 
@@ -617,30 +721,114 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 parts["checker_verdict"],
                 flaw_prompt=cfg.flaw_prompt,
             )
-            fc = blinded_critic(f_msgs, seed=cfg.critic_seed)
-            f_res = compare_flaw(fc.text, parts["key_flaw"])
-            raw_ft = getattr(fc, "thinking_tokens", None)
-            f_thinking = int(raw_ft) if raw_ft is not None else None
-            item_call_thinkings.append(f_thinking)
-            all_call_thinkings.append(f_thinking)
-            if f_thinking is not None:
-                thinking_measured_calls += 1
+            if cfg.flaw_votes == 1:
+                fc = blinded_critic(f_msgs, seed=cfg.critic_seed)
+                f_res = compare_flaw(fc.text, parts["key_flaw"])
+                raw_ft = getattr(fc, "thinking_tokens", None)
+                f_thinking = int(raw_ft) if raw_ft is not None else None
+                item_call_thinkings.append(f_thinking)
+                all_call_thinkings.append(f_thinking)
+                if f_thinking is not None:
+                    thinking_measured_calls += 1
+                else:
+                    thinking_unmeasured_calls += 1
+                f_output = int(fc.completion_tokens or 0)
+                f_prompt = int(fc.prompt_tokens or 0)
+                critic_flaw = _flaw_word(fc.text)
+                flaw_check = {
+                    "code": f_res.code,
+                    "ok": f_res.ok,
+                    "detail": f_res.detail,
+                    "raw_reply": fc.text,
+                    "critic_flaw": critic_flaw,
+                    "flaw_prompt": cfg.flaw_prompt,
+                    "thinking_tokens": f_thinking,
+                    "output_tokens": f_output,
+                    "prompt_tokens": f_prompt,
+                }
             else:
-                thinking_unmeasured_calls += 1
-            f_output = int(fc.completion_tokens or 0)
-            f_prompt = int(fc.prompt_tokens or 0)
-            critic_flaw = _flaw_word(fc.text)
-            flaw_check = {
-                "code": f_res.code,
-                "ok": f_res.ok,
-                "detail": f_res.detail,
-                "raw_reply": fc.text,
-                "critic_flaw": critic_flaw,
-                "flaw_prompt": cfg.flaw_prompt,
-                "thinking_tokens": f_thinking,
-                "output_tokens": f_output,
-                "prompt_tokens": f_prompt,
-            }
+                votes: list[dict] = []
+                vote_thinkings: list[int | None] = []
+                for vote_idx in range(cfg.flaw_votes):
+                    vote_seed = cfg.critic_seed + vote_idx
+                    fc_k = blinded_critic(f_msgs, seed=vote_seed)
+                    f_res_k = compare_flaw(fc_k.text, parts["key_flaw"])
+                    raw_ft_k = getattr(fc_k, "thinking_tokens", None)
+                    f_thinking_k = int(raw_ft_k) if raw_ft_k is not None else None
+                    vote_thinkings.append(f_thinking_k)
+                    item_call_thinkings.append(f_thinking_k)
+                    all_call_thinkings.append(f_thinking_k)
+                    if f_thinking_k is not None:
+                        thinking_measured_calls += 1
+                    else:
+                        thinking_unmeasured_calls += 1
+                    f_out_k = int(fc_k.completion_tokens or 0)
+                    f_prm_k = int(fc_k.prompt_tokens or 0)
+                    f_output += f_out_k
+                    f_prompt += f_prm_k
+                    c_flaw_k = _flaw_word(fc_k.text)
+                    votes.append({
+                        "vote": vote_idx,
+                        "seed": vote_seed,
+                        "code": f_res_k.code,
+                        "ok": f_res_k.ok,
+                        "detail": f_res_k.detail,
+                        "raw_reply": fc_k.text,
+                        "critic_flaw": c_flaw_k,
+                        "thinking_tokens": f_thinking_k,
+                        "output_tokens": f_out_k,
+                        "prompt_tokens": f_prm_k,
+                    })
+                f_thinking = _sum_thinking(vote_thinkings)
+                vote_words = [v["critic_flaw"] for v in votes]
+                non_none_votes = sum(1 for w in vote_words if w != "none")
+                void_votes = sum(1 for w in vote_words if w is None)
+                flaw_refuses = non_none_votes >= 2
+                key_has_flaw = parts["key_flaw"] != "none"
+                pc_ok = flaw_refuses == key_has_flaw
+                pc_code = "AGREE" if pc_ok else ("VOID" if void_votes >= 2 else "FLAW_MISMATCH")
+                pc_detail = (
+                    f"votes {[w or 'VOID' for w in vote_words]} ({non_none_votes}/3 non-none) vs key {parts['key_flaw']}"
+                )
+                match_votes = sum(1 for w in vote_words if w == parts["key_flaw"])
+                p2_ok = match_votes >= 2
+                p2_code = "AGREE" if p2_ok else ("VOID" if void_votes >= 2 else "FLAW_MISMATCH")
+                v0_word = votes[0]["critic_flaw"]
+                v0_pc_ok = v0_word is not None and ((v0_word == "none") == (parts["key_flaw"] == "none"))
+                v0_pc_code = "VOID" if v0_word is None else ("AGREE" if v0_pc_ok else "FLAW_MISMATCH")
+                # Pick majority label if >=2 votes agree on a label; else "none" if not flaw_refuses, else first non-none label
+                maj_word = next((w for w in vote_words if w is not None and vote_words.count(w) >= 2), None)
+                if maj_word is not None:
+                    critic_flaw = maj_word
+                elif not flaw_refuses:
+                    critic_flaw = "none"
+                else:
+                    critic_flaw = next((w for w in vote_words if w is not None and w != "none"), None)
+                flaw_check = {
+                    "code": pc_code,
+                    "ok": pc_ok,
+                    "detail": pc_detail,
+                    "p2_code": p2_code,
+                    "p2_ok": p2_ok,
+                    "raw_reply": votes[0]["raw_reply"],
+                    "critic_flaw": critic_flaw,
+                    "flaw_prompt": cfg.flaw_prompt,
+                    "flaw_votes": cfg.flaw_votes,
+                    "non_none_votes": non_none_votes,
+                    "flaw_refuses": flaw_refuses,
+                    "votes": votes,
+                    "one_vote": {
+                        "code": v0_pc_code,
+                        "ok": v0_pc_ok,
+                        "p2_code": votes[0]["code"],
+                        "p2_ok": votes[0]["ok"],
+                        "raw_reply": votes[0]["raw_reply"],
+                        "critic_flaw": v0_word,
+                    },
+                    "thinking_tokens": f_thinking,
+                    "output_tokens": f_output,
+                    "prompt_tokens": f_prompt,
+                }
 
         item_thinking = _sum_thinking(item_call_thinkings)
         item_output = v_output_total + f_output
@@ -666,6 +854,19 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "output_tokens": item_output,
             "prompt_tokens": item_prompt,
         }
+        if has_trackb_ext:
+            rec["input_sha256"] = input_sha256
+            rec["flaw_votes"] = cfg.flaw_votes
+            if verdict_from_sha256 is not None:
+                rec["verdict_from_sha256"] = verdict_from_sha256
+                rec["verdict_reused_count"] = len(verdict_checks)
+            online_parts_by_id[item_id] = {**parts, "item_id": item_id}
+            rec["scores"] = {
+                "P0": score_single_item(gates, rec, online_parts_by_id[item_id], "P0"),
+                "Pc": score_single_item(gates, rec, online_parts_by_id[item_id], "Pc"),
+                "Pc_1vote": score_single_item(gates, rec, online_parts_by_id[item_id], "Pc_1vote"),
+                "P2": score_single_item(gates, rec, online_parts_by_id[item_id], "P2"),
+            }
         records.append(rec)
         with eval_path.open("a", encoding="utf-8", newline="\n") as fh:
             fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -694,6 +895,37 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "prompt_tokens": total_prompt,
         },
     }
+    if has_trackb_ext:
+        report["flaw_votes"] = cfg.flaw_votes
+        if verdict_from_sha256 is not None:
+            report["verdict_from_sha256"] = verdict_from_sha256
+            report["verdict_reused_count"] = verdict_reused_count
+        online_rule_sets = ("P0", "Pc", "Pc_1vote", "P2")
+        online_rows: list[dict] = []
+        online_by_item: dict[str, dict] = {}
+        for rec in records:
+            iid = rec["item_id"]
+            sc_map = rec["scores"]
+            online_by_item[iid] = {
+                "item_id": iid,
+                "source_row_id": rec["source_row_id"],
+                "perturbation_type": rec["perturbation_type"],
+                "kind": rec["kind"],
+                **sc_map,
+            }
+            for rs_name in online_rule_sets:
+                online_rows.append({
+                    "item_id": iid,
+                    "source_row_id": rec["source_row_id"],
+                    "perturbation_type": rec["perturbation_type"],
+                    "kind": rec["kind"],
+                    "rule_set": rs_name,
+                    **sc_map[rs_name],
+                })
+        online_summary = _summarize_scores(online_rows, online_rule_sets, skipped_by_type)
+        report["summary"] = online_summary
+        report["by_item"] = online_by_item
+        report["one_vote"] = {"Pc": online_summary["Pc_1vote"]}
     (cfg.out / "critic-eval-report.json").write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     return report
 
@@ -823,10 +1055,34 @@ def _flaw_reply_from_eval(eval_rec: dict) -> str:
     return raw
 
 
-def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: str) -> dict:
-    """Score one recorded critic-eval record against `key_item` under P0, Pc, or P2 across all turns."""
+def _flaw_votes_from_eval(eval_rec: dict) -> list[str]:
+    """Extract flaw vote raw replies from eval_rec (1 or 3 votes). Never reconstructs a reply from parsed fields."""
+    iid = eval_rec.get("item_id") or eval_rec.get("id")
+    fc = eval_rec.get("flaw_check") if isinstance(eval_rec.get("flaw_check"), dict) else {}
+    votes = fc.get("votes")
+    if votes is not None:
+        if not isinstance(votes, list) or len(votes) not in (1, 3):
+            raise CriticEvalError(
+                f"REFUSED: eval record {iid!r} has invalid flaw_check.votes (expected 1 or 3 entries)"
+            )
+        replies: list[str] = []
+        for idx, v in enumerate(votes):
+            if not isinstance(v, dict):
+                raise CriticEvalError(f"REFUSED: eval record {iid!r} flaw vote {idx} is not a dict")
+            raw = v.get("raw_reply")
+            if not isinstance(raw, str) or not raw.strip():
+                raise CriticEvalError(
+                    f"REFUSED: eval record {iid!r} flaw vote {idx} is missing raw_reply; offline re-scoring never reconstructs replies"
+                )
+            replies.append(raw)
+        return replies
+    return [_flaw_reply_from_eval(eval_rec)]
 
-    if rule_set not in ("P0", "Pc", "P2"):
+
+def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: str) -> dict:
+    """Score one recorded critic-eval record against `key_item` under P0, Pc, Pc_1vote, or P2 across all turns."""
+
+    if rule_set not in ("P0", "Pc", "Pc_1vote", "P2", "P2_1vote"):
         raise CriticEvalError(f"REFUSED: unknown rule set {rule_set!r}")
 
     verdict_turns = key_item.get("verdict_turns") or [
@@ -866,7 +1122,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                 "detail": v.detail,
             }
 
-        if rule_set == "P2":
+        if rule_set in ("P2", "P2_1vote"):
             if key_verdict == "cannot_tell" and len(cd) > 0:
                 rname = _rule_name(t_num, "CANNOT_TELL_DECIDING")
                 return {
@@ -890,46 +1146,78 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                     "detail": f"turn {t_num}: critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
                 }
 
-    if rule_set in ("Pc", "P2") and key_item["kind"] == "C":
+    if rule_set in ("Pc", "Pc_1vote", "P2", "P2_1vote") and key_item["kind"] == "C":
         key_flaw = key_item.get("key_flaw")
         if not key_flaw or key_flaw not in FLAWS + ("none",):
             raise CriticEvalError(
                 f"REFUSED: kind-C item {key_item.get('item_id')!r} lacks a valid key_flaw ({key_flaw!r}) for {rule_set}"
             )
-        f_reply = _flaw_reply_from_eval(eval_rec)
-        f_res = compare_flaw(f_reply, key_flaw)
-        if rule_set == "Pc":
-            if f_res.code == "VOID":
+        vote_replies = _flaw_votes_from_eval(eval_rec)
+        if rule_set in ("Pc_1vote", "P2_1vote") or len(vote_replies) == 1:
+            f_reply = vote_replies[0]
+            f_res = compare_flaw(f_reply, key_flaw)
+            if rule_set in ("Pc", "Pc_1vote"):
+                if f_res.code == "VOID":
+                    return {
+                        "outcome": "refuse",
+                        "accepted": False,
+                        "refused": True,
+                        "turn": len(verdict_turns),
+                        "deciding_rule": "VOID",
+                        "rule": "VOID",
+                        "detail": f_res.detail,
+                    }
+                critic_flaw = _flaw_word(f_reply)
+                if (critic_flaw == "none") != (key_flaw == "none"):
+                    return {
+                        "outcome": "refuse",
+                        "accepted": False,
+                        "refused": True,
+                        "turn": len(verdict_turns),
+                        "deciding_rule": "FLAW_MISMATCH",
+                        "rule": "FLAW_MISMATCH",
+                        "detail": f"critic flaw {critic_flaw} != key flaw {key_flaw} (coarse)",
+                    }
+            elif not f_res.ok:
                 return {
                     "outcome": "refuse",
                     "accepted": False,
                     "refused": True,
                     "turn": len(verdict_turns),
-                    "deciding_rule": "VOID",
-                    "rule": "VOID",
+                    "deciding_rule": f_res.code,
+                    "rule": f_res.code,
                     "detail": f_res.detail,
                 }
-            critic_flaw = _flaw_word(f_reply)
-            if (critic_flaw == "none") != (key_flaw == "none"):
-                return {
-                    "outcome": "refuse",
-                    "accepted": False,
-                    "refused": True,
-                    "turn": len(verdict_turns),
-                    "deciding_rule": "FLAW_MISMATCH",
-                    "rule": "FLAW_MISMATCH",
-                    "detail": f"critic flaw {critic_flaw} != key flaw {key_flaw} (coarse)",
-                }
-        elif not f_res.ok:
-            return {
-                "outcome": "refuse",
-                "accepted": False,
-                "refused": True,
-                "turn": len(verdict_turns),
-                "deciding_rule": f_res.code,
-                "rule": f_res.code,
-                "detail": f_res.detail,
-            }
+        else:
+            words = [_flaw_word(r) for r in vote_replies]
+            void_votes = sum(1 for w in words if w is None)
+            if rule_set == "Pc":
+                non_none_votes = sum(1 for w in words if w != "none")
+                flaw_refuses = non_none_votes >= 2
+                if flaw_refuses != (key_flaw != "none"):
+                    code = "VOID" if void_votes >= 2 else "FLAW_MISMATCH"
+                    return {
+                        "outcome": "refuse",
+                        "accepted": False,
+                        "refused": True,
+                        "turn": len(verdict_turns),
+                        "deciding_rule": code,
+                        "rule": code,
+                        "detail": f"votes {[w or 'VOID' for w in words]} ({non_none_votes}/3 non-none) != key flaw {key_flaw} (coarse)",
+                    }
+            else:
+                match_votes = sum(1 for w in words if w == key_flaw)
+                if match_votes < 2:
+                    code = "VOID" if void_votes >= 2 else "FLAW_MISMATCH"
+                    return {
+                        "outcome": "refuse",
+                        "accepted": False,
+                        "refused": True,
+                        "turn": len(verdict_turns),
+                        "deciding_rule": code,
+                        "rule": code,
+                        "detail": f"votes {[w or 'VOID' for w in words]} ({match_votes}/3 match {key_flaw})",
+                    }
 
     assert last_v is not None
     return {
@@ -941,6 +1229,37 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
         "rule": "AGREE",
         "detail": last_v.detail,
     }
+
+
+def _summarize_scores(
+    rows_out: list[dict],
+    rule_sets: tuple[str, ...],
+    skipped_by_type: dict[str, list[str]],
+) -> dict[str, dict[str, dict]]:
+    summary: dict[str, dict[str, dict]] = {}
+    for rs in rule_sets:
+        by_type: dict[str, list[dict]] = {}
+        for r in rows_out:
+            if r["rule_set"] == rs:
+                by_type.setdefault(r["perturbation_type"], []).append(r)
+        summary[rs] = {}
+        for ptype, plist in sorted(by_type.items()):
+            n = len(plist)
+            acc = sum(1 for x in plist if x["accepted"])
+            ref = sum(1 for x in plist if x["refused"])
+            is_ctrl = ptype in CONTROL_TYPES
+            sk_type = skipped_by_type.get(ptype, [])
+            summary[rs][ptype] = {
+                "n": n,
+                "role": "control" if is_ctrl else "perturbed",
+                "accepted": acc,
+                "refused": ref,
+                "accept_rate": round(acc / n, 4) if n else 0.0,
+                "refuse_rate": round(ref / n, 4) if n else 0.0,
+                "skipped_count": len(sk_type),
+                "skipped": list(sk_type),
+            }
+    return summary
 
 
 def _match_eval_record(key_item: dict, by_id: dict[str, dict]) -> dict:
@@ -1164,7 +1483,19 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
     idx0 = _index_eval(eval_runs[0])
     idx1 = _index_eval(eval_runs[1]) if len(eval_runs) == 2 else {}
 
-    rule_sets = ("P0", "Pc", "P2", "P3") if len(eval_runs) == 2 else ("P0", "Pc", "P2")
+    has_3votes = any(
+        int(rep.get("flaw_votes") or 1) == 3
+        for rep in eval_reports
+    ) or any(
+        isinstance((r.get("flaw_check") or {}).get("votes"), list) and len(r["flaw_check"]["votes"]) == 3
+        for run_rows in eval_runs
+        for r in run_rows
+    )
+    if has_3votes:
+        rule_sets = ("P0", "Pc", "Pc_1vote", "P2", "P3") if len(eval_runs) == 2 else ("P0", "Pc", "Pc_1vote", "P2")
+    else:
+        rule_sets = ("P0", "Pc", "P2", "P3") if len(eval_runs) == 2 else ("P0", "Pc", "P2")
+
     rows_out: list[dict] = []
     by_item: dict[str, dict] = {}
     eval_skipped_set = set(skipped_0)
@@ -1197,6 +1528,8 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
         pc = score_single_item(gates, rec0, ki, "Pc")
         p2 = score_single_item(gates, rec0, ki, "P2")
         item_scores: dict[str, dict] = {"P0": p0, "Pc": pc, "P2": p2}
+        if has_3votes:
+            item_scores["Pc_1vote"] = score_single_item(gates, rec0, ki, "Pc_1vote")
 
         if len(eval_runs) == 2:
             rec1 = _match_eval_record(ki, idx1)
@@ -1237,29 +1570,7 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
                 **sc,
             })
 
-    summary: dict[str, dict[str, dict]] = {}
-    for rs in rule_sets:
-        by_type: dict[str, list[dict]] = {}
-        for r in rows_out:
-            if r["rule_set"] == rs:
-                by_type.setdefault(r["perturbation_type"], []).append(r)
-        summary[rs] = {}
-        for ptype, plist in sorted(by_type.items()):
-            n = len(plist)
-            acc = sum(1 for x in plist if x["accepted"])
-            ref = sum(1 for x in plist if x["refused"])
-            is_ctrl = ptype in CONTROL_TYPES
-            sk_type = skipped_by_type.get(ptype, [])
-            summary[rs][ptype] = {
-                "n": n,
-                "role": "control" if is_ctrl else "perturbed",
-                "accepted": acc,
-                "refused": ref,
-                "accept_rate": round(acc / n, 4) if n else 0.0,
-                "refuse_rate": round(ref / n, 4) if n else 0.0,
-                "skipped_count": len(sk_type),
-                "skipped": list(sk_type),
-            }
+    summary = _summarize_scores(rows_out, rule_sets, skipped_by_type)
 
     table = render_offline_table(summary, skipped=left_out)
     if str(cfg.out).endswith(".jsonl"):
@@ -1281,5 +1592,7 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
         "rows": rows_out,
         "table": table,
     }
+    if has_3votes:
+        report["one_vote"] = {"Pc": summary["Pc_1vote"]}
     report_path.write_text(json.dumps(report, indent=1, ensure_ascii=False), encoding="utf-8")
     return report
