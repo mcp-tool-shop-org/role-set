@@ -66,7 +66,7 @@ def test_a_batch_leaves_its_state_and_the_next_batch_checks_against_it(domain_ta
     state = exclusion.load(state_path)
     assert first["accepted"] == 40 and first["exclusion_state"] == state.sha256
     assert len(state.rows) == 40 and len(state.batches) == 1 and sum(state.frames.values()) == 18
-    assert sum(sum(v.values()) for v in state.skeletons.values()) == 5  # the five solve-first B slots
+    assert sum(sum(v.values()) for v in state.skeletons.values()) == 8  # the eight solve-first B slots
     # The same rows under another batch id: the rerun's identical drafts are refused against them.
     copy = exclusion.State(batches=["earlier"], rows=state.rows, models=state.models)
     prior = tmp_path / "prior.json"
