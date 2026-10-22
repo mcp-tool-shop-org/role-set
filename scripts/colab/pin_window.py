@@ -1497,6 +1497,8 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
         endpoint = px.openai_base_url
     check_deadline(f"the {wave} wave at {out}")
     cmd = [rs["role_set"], "write", *common, "--wave", wave, "--out", str(out)]
+    if wave in ("critique", "inline"):
+        cmd += ["--critique-scope", critique_scope()]
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
@@ -2020,6 +2022,24 @@ def twins_enabled() -> bool:
     return os.environ.get("PIN_PILOT_TWINS", "1") != "0"
 
 
+def buffers_enabled() -> bool:
+    """PIN_PILOT_BUFFERS=1: plan T10 with --buffers (40 base + 8 training buffers + 10 apply + 2 apply buffers)."""
+
+    raw = os.environ.get("PIN_PILOT_BUFFERS", "0").strip()
+    if raw not in ("", "0", "1"):
+        raise RuntimeError(f"REFUSED: PIN_PILOT_BUFFERS must be '0' or '1', got {raw!r}")
+    return raw == "1"
+
+
+def critique_scope() -> str:
+    """PIN_CRITIQUE_SCOPE=all|verdict (default 'all'): passed as --critique-scope to role-set write critique waves."""
+
+    scope = (os.environ.get("PIN_CRITIQUE_SCOPE") or "all").strip().lower()
+    if scope not in ("all", "verdict"):
+        raise RuntimeError(f"REFUSED: PIN_CRITIQUE_SCOPE must be 'all' or 'verdict', got {scope!r}")
+    return scope
+
+
 def check_pins(names: list, listed: dict, policies: dict) -> None:
     """Every model the window will set up has a pin in MODELS, equal to writers.json's, before anything downloads (R&D,
     from Argon's review: three writers had none, so a mismatch showed only at w0, after 15-27 minutes of setup). A Q6_K
@@ -2058,11 +2078,17 @@ def twins_skip_reason(a: dict) -> str | None:
 
 def screen_plan(plan: Path, var: str) -> list[str] | None:
     """The w0 screen's frozen slot list (R&D, 2026-10-17): the same slot ids for every arm, set in the window config.
-    The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads."""
+    The plan keeps only those slots, in its own order; an id the plan lacks fails the window before any model loads.
+    PIN_PILOT_SLOT_IDS=ALL keeps every planned slot (requires PIN_PILOT_BUFFERS=1)."""
 
     ids = [x.strip() for x in os.environ.get(var, "").split(",") if x.strip()]
     if not ids:
         return None
+    if ids == ["ALL"] or "ALL" in ids:
+        if ids != ["ALL"] or var != "PIN_PILOT_SLOT_IDS" or not buffers_enabled():
+            raise RuntimeError(f"REFUSED: {var}=ALL requires PIN_PILOT_BUFFERS=1")
+        data = json.loads(plan.read_text(encoding="utf-8"))
+        return [s["id"] for s in data["slots"]]
     data = json.loads(plan.read_text(encoding="utf-8"))
     have = {s["id"] for s in data["slots"]}
     missing = [i for i in ids if i not in have]
@@ -2074,8 +2100,14 @@ def screen_plan(plan: Path, var: str) -> list[str] | None:
 
 
 def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, work_dir: Path | None = None) -> dict:
-    """Plan each lesson alone with `role-set plan --lessons <L> --seed <seed> --domains <naics> --out <tmp>` and merge into `out`."""
+    """Plan each lesson alone with `role-set plan --lessons <L> [--buffers] --seed <seed> --domains <naics> --out <tmp>` and merge into `out`."""
 
+    buffers = buffers_enabled()
+    if buffers:
+        if twins_enabled():
+            raise RuntimeError("REFUSED: PIN_PILOT_BUFFERS=1 requires PIN_PILOT_TWINS=0")
+        if not lessons or any(x != "T10" for x in lessons):
+            raise RuntimeError(f"REFUSED: PIN_PILOT_BUFFERS=1 is allowed only for T10, got {lessons!r}")
     slot_ids = [x.strip() for x in os.environ.get("PIN_PILOT_SLOT_IDS", "").split(",") if x.strip()]
     if not slot_ids:
         raise RuntimeError("REFUSED: PIN_PILOT_LESSONS requires PIN_PILOT_SLOT_IDS")
@@ -2087,9 +2119,10 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     per_lesson_sha256: dict[str, str] = {}
     plans: list[dict] = []
     excl_shas: dict[str, str | None] = {}
+    buf_flag = " --buffers" if buffers else ""
     for lesson in lessons:
         tmp = tmp_dir / f"lesson-{lesson}-plan.json"
-        sh(f"{rs['role_set']} plan --lessons {lesson} --seed {seed} --domains {domains} --out {tmp}", cwd=rs.get("src"))
+        sh(f"{rs['role_set']} plan --lessons {lesson}{buf_flag} --seed {seed} --domains {domains} --out {tmp}", cwd=rs.get("src"))
         per_lesson_sha256[lesson] = sha256(tmp)
         pdata = json.loads(tmp.read_text(encoding="utf-8"))
         plans.append(pdata)
@@ -2102,10 +2135,130 @@ def plan_pilot_lessons(rs: dict, lessons: list[str], domains: str, out: Path, wo
     out.write_text(json.dumps(merged, indent=1), encoding="utf-8", newline="\n")
     return {
         "lessons": list(lessons),
+        "buffers": buffers,
         "seed": seed,
         "per_lesson_sha256": per_lesson_sha256,
         "exclusion_state_sha256": merged.get("exclusion_state_sha256"),
     }
+
+
+# Stage 1 frozen training files in training order (aspire-si docs/runs/stage1-training-data/FROZEN.md,
+# "## Training files", branch verifier-distill-prereg-draft). Never sort by path: the order is the training order.
+# Each sha256 is over LF-normalized content (CRLF read as LF, matching receipts.sha256_file).
+FROZEN_TRAINING_FILES: tuple[tuple[str, str], ...] = (
+    ("docs/runs/stage1-training-data/pilot-t04.jsonl", "a82c7302b40ae323a853a34cd0ceb7b9adda4414536cd2549db08a4224c0e7e6"),
+    ("docs/runs/stage1-training-data/batch2-t01.jsonl", "f29eea91326bd3fb6da01b82cf94b2aed67bb549a2facd93db69e21d83c66df8"),
+    ("docs/runs/stage1-training-data/batch2-t14.jsonl", "5486a1dc483fcae51c4497e411223fb6d661f5b61a1b2d905472c4d4a226c96d"),
+    ("docs/runs/stage1-training-data/batch2-t16.jsonl", "6dc77b59d7e7ba71792d6afe09ede43605301a89f71c1ccbe6c8fc669b348cd3"),
+    ("docs/runs/stage1-training-data/batch3-t05.jsonl", "fe7325218f9df85a1040f0c833b801806a33f3da7ede45a412c9e78caeaacf06"),
+    ("docs/runs/stage1-training-data/batch3-t13.jsonl", "4f45c013d698022e6e292c1c5410ab42c2efe4ab6fd01501bee18d6e3257cd5a"),
+    ("docs/runs/stage1-training-data/batch3-t17.jsonl", "3411b69b9234974aad22b82127524ba48e49214bedf670593da2d4daa6e14479"),
+    ("docs/runs/stage1-training-data/batch4-t02.jsonl", "3724dddcd31cea00813a1b384757bba080d9f348ec2aeebc8bcb3e9789ccf3af"),
+    ("docs/runs/stage1-training-data/batch4-t03.jsonl", "0f3577654ef4624e3959ec4cfc6d444148aad7b3199a3bb28b46d6ab98297f80"),
+    ("docs/runs/stage1-training-data/batch4-t06.jsonl", "95e9f6f21785fa1220e78e98543580f494536fc9b59df15ef401944f2e512cf1"),
+    ("docs/runs/stage1-training-data/batch5-t07.jsonl", "20e18c67d80859f656ae3721a504b6c742cba587991fc2641085953c238a74a5"),
+    ("docs/runs/stage1-training-data/batch5-t08.jsonl", "01077ee791a5c8cadf5a9ef249d9c9344e0e0e0e39a0ed3a848e4c86fd5ea172"),
+    ("docs/runs/stage1-training-data/batch5-t09.jsonl", "a76b5de018d859f342d0cbd067e0054321d6a3550b9f62b8084e7b94eb9cc7a6"),
+    ("docs/runs/stage1-training-data/batch6-t10.jsonl", "f6c09e47caf62dc215ddd64e18fbc20538e36e96f2c596d58e964ff62ac3b97e"),
+    ("docs/runs/stage1-training-data/batch6-t11.jsonl", "b9e01765264b6f4da75f6a5d2e5322f7feabd356eb8e77fba4b20a64dececdfd"),
+    ("docs/runs/stage1-training-data/batch6-t12.jsonl", "a2db220b9b84ddb16e6af3850d4fb43104cee28bd8f2992393b11ecd760c12ee"),
+    ("docs/runs/stage1-training-data/batch7-t15.jsonl", "9455e6eafe4d53d497186f842a068d4a57066fc401b722c5d27df8d14800fe06"),
+    ("docs/runs/stage1-training-data/batch7-t18.jsonl", "512c38c99078b41b2acf2c2816776025d9e52028ad0e86461c43e5fc8f2e5e5f"),
+    ("docs/runs/stage1-training-data/batch8-l1.jsonl", "a0abcc2bd67c9ef92476a29e584a229567ed8c6224508b4453f133f0a1829f11"),
+    ("docs/runs/stage1-training-data/batch8-l2.jsonl", "b1256d296d3f62eb1c7b84596de097f715e8db0b01496a6beb2494d3c8a7b1c0"),
+    ("docs/runs/stage1-training-data/batch8-l3.jsonl", "cf557a06bf17253269966811b1abf220106b24b3ed5bc2efc1f9ba9c90c9066a"),
+)
+
+
+def sha256_lf(path: Path) -> str:
+    """LF-normalized sha256 (CRLF read as LF), matching aspire-si's receipts.sha256_file and FROZEN.md."""
+
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
+
+
+def plan_has_apply_slots(plan: Path) -> bool:
+    """Whether the screened plan has any slot with split == 'apply'."""
+
+    if not plan.exists():
+        return False
+    data = json.loads(plan.read_text(encoding="utf-8"))
+    return any(s.get("split") == "apply" for s in data.get("slots", []))
+
+
+def training_inputs(result: dict) -> list[Path]:
+    """The frozen Stage 1 training set and its .models.jsonl sidecars, unpacked read-only and sha-checked before any
+    server starts (Argon round 1 F1, round 2 F1). Returns the training .jsonl paths in FROZEN.md's training order."""
+
+    import tarfile  # noqa: PLC0415
+
+    raw_shas = os.environ.get("PIN_TRAINING_SHAS", "").strip()
+    shas = dict(x.split("=", 1) for x in raw_shas.split(",") if "=" in x)
+    if not shas:
+        raise RuntimeError("REFUSED: plan has apply slots; PIN_TRAINING_SHAS is required")
+    raw_tar = os.environ.get("PIN_TRAINING_INPUTS", "").strip()
+    tar = Path(raw_tar) if raw_tar else (CONTENT / "training-inputs.tar")
+    if not tar.is_file():
+        raise RuntimeError(f"REFUSED: plan has apply slots; PIN_TRAINING_INPUTS tar not found: {tar}")
+    root = WORK / "training-in"
+    if root.exists():
+        for p in sorted(root.rglob("*")):
+            os.chmod(p, 0o700)
+        os.chmod(root, 0o700)
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    with tarfile.open(tar) as tf:
+        tf.extractall(root, filter="data")
+    unpacked = sorted(p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file())
+    unpinned = [n for n in unpacked if n not in shas]
+    if unpinned:
+        raise RuntimeError(f"REFUSED: no sha256 in PIN_TRAINING_SHAS for {', '.join(unpinned)}")
+    missing = [n for n in shas if not (root / n).is_file()]
+    if missing:
+        raise RuntimeError(f"REFUSED: training input missing from tar: {', '.join(missing)}")
+    data_files = [n for n in shas if n.endswith(".jsonl") and not n.endswith(".models.jsonl")]
+    if not data_files:
+        raise RuntimeError("REFUSED: PIN_TRAINING_SHAS names no training .jsonl files")
+    ordered_files: list[str] = []
+    expected_frozen_sha: dict[str, str] = {}
+    missing_frozen: list[str] = []
+    claimed: set[str] = set()
+    for rel_path, frozen_sha in FROZEN_TRAINING_FILES:
+        fname = Path(rel_path).name
+        match = next((n for n in data_files if n not in claimed and n in (rel_path, fname)), None)
+        if match is None:
+            missing_frozen.append(rel_path)
+        else:
+            claimed.add(match)
+            ordered_files.append(match)
+            expected_frozen_sha[match] = frozen_sha
+    if missing_frozen:
+        raise RuntimeError(f"REFUSED: missing frozen training file: {', '.join(missing_frozen)}")
+    extra_data = [n for n in data_files if n not in claimed]
+    if extra_data:
+        raise RuntimeError(f"REFUSED: extra training .jsonl file not in FROZEN_TRAINING_FILES: {', '.join(extra_data)}")
+    missing_sidecars = [
+        f"{n[:-len('.jsonl')]}.models.jsonl"
+        for n in ordered_files
+        if f"{n[:-len('.jsonl')]}.models.jsonl" not in shas or not (root / f"{n[:-len('.jsonl')]}.models.jsonl").is_file()
+    ]
+    if missing_sidecars:
+        raise RuntimeError(f"REFUSED: missing training sidecar: {', '.join(missing_sidecars)}")
+    got = {n: sha256_lf(root / n) for n in shas}
+    bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
+    if bad:
+        raise RuntimeError("REFUSED: training input sha256 mismatch: " + "; ".join(bad))
+    bad_frozen = [
+        f"{n} is {got[n][:12]}, not FROZEN_TRAINING_FILES {expected_frozen_sha[n][:12]}"
+        for n in ordered_files
+        if got[n] != expected_frozen_sha[n]
+    ]
+    if bad_frozen:
+        raise RuntimeError("REFUSED: frozen training sha256 mismatch: " + "; ".join(bad_frozen))
+    for p in sorted(root.rglob("*"), reverse=True):
+        os.chmod(p, 0o555 if p.is_dir() else 0o444)
+    os.chmod(root, 0o555)
+    result["training_inputs"] = {"tar_sha256": sha256(tar), "order": ordered_files, "files": got}
+    return [root / n for n in ordered_files]
 
 
 def rescore_inputs(result: dict) -> tuple[Path, dict]:
@@ -2516,13 +2669,16 @@ def pilot_window(built: dict, result: dict) -> None:
     result["prior_unpacked"] = str(unpack_resume(CONTENT / "prior.tar") or "")
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
+    result["critique_scope"] = critique_scope()
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
         screened_pilot = screen_plan(plan, "PIN_PILOT_SLOT_IDS")
-        result["screen"] = {"pilot": screened_pilot, "twins": None, "waves": PILOT_WAVES}
+        kept_count = len(screened_pilot) if screened_pilot is not None else len(json.loads(plan.read_text(encoding="utf-8"))["slots"])
+        result["screen"] = {"pilot": screened_pilot, "kept": kept_count, "twins": None, "waves": PILOT_WAVES}
         result["plans"] = {
             "lessons": lessons_meta["lessons"],
+            "buffers": lessons_meta["buffers"],
             "seed": lessons_meta["seed"],
             "per_lesson_sha256": lessons_meta["per_lesson_sha256"],
             "pilot_sha256": sha256(plan),
@@ -2530,10 +2686,15 @@ def pilot_window(built: dict, result: dict) -> None:
             "exclusion_state_sha256": lessons_meta["exclusion_state_sha256"],
         }
     else:
+        if buffers_enabled():
+            raise RuntimeError("REFUSED: PIN_PILOT_BUFFERS=1 requires PIN_PILOT_LESSONS=T10")
         pilot_seed = int(os.environ.get("PIN_PILOT_SEED") or "0")
         sh(f"{rs['role_set']} plan --pilot --seed {pilot_seed} --domains {domains} --out {plan}", cwd=rs["src"])
         sh(f"{rs['role_set']} plan --pilot-twins --seed 7 --domains {domains} --out {twins_plan}", cwd=rs["src"])
-        result["screen"] = {"pilot": screen_plan(plan, "PIN_PILOT_SLOT_IDS"), "twins": screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS"),
+        screened_pilot = screen_plan(plan, "PIN_PILOT_SLOT_IDS")
+        screened_twins = screen_plan(twins_plan, "PIN_PILOT_TWIN_IDS")
+        kept_count = len(screened_pilot) if screened_pilot is not None else len(json.loads(plan.read_text(encoding="utf-8"))["slots"])
+        result["screen"] = {"pilot": screened_pilot, "kept": kept_count, "twins": screened_twins,
                             "waves": PILOT_WAVES}
         result["plans"] = {"pilot_sha256": sha256(plan), "twins_sha256": sha256(twins_plan),
                            # Made with --domains and no --exclusion-state: both plans and every write load role-set's empty
@@ -2542,6 +2703,7 @@ def pilot_window(built: dict, result: dict) -> None:
 
     pool_file, pool_sha = resolve_pilot_pool(rs, plan, twins_plan)
     result["pool_sha256"] = pool_sha
+    training_files = training_inputs(result) if plan_has_apply_slots(plan) else []
 
     policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
     listed = json.loads((Path(rs["src"]) / "writers.json").read_text(encoding="utf-8"))
@@ -2565,6 +2727,8 @@ def pilot_window(built: dict, result: dict) -> None:
               "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
     if pool_file is not None:
         common += ["--pool", str(pool_file)]
+    if training_files:
+        common += ["--training", *(str(f) for f in training_files)]
 
     # Whatever happens in the waves, the wave directories come back: the tar is made in finally (window 10c lost its
     # result to a late failure, with nothing downloaded).

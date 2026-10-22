@@ -90,7 +90,7 @@ class MockWriter:
             body = "The desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00."
             if _is_apply(slot_id):
                 n += APPLY_N
-                body = _salt(body, n)
+            body = _salt(body, n)
             return _done(f"Desk hours at {_tag(n, 0).title()}\n{body}")
         if "## The locked puzzle" in text:
             return _done(_locked_fields(text))
@@ -104,7 +104,7 @@ class MockWriter:
             n, b = self._keyed(slot_id, seed, puzzle=slot["kind"] == "B")
         else:
             n, b = self._next(puzzle=slot["kind"] == "B")
-        if _is_apply(slot_id):
+        if _is_apply(slot_id) or slot.get("apply"):
             n, slot["apply"] = n + APPLY_N, True
         return _done(_fields(slot, material, self.answers, n, b))
 
@@ -222,6 +222,7 @@ def _slot_from_brief(text: str) -> dict:
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
         "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
         "silent_flag": "Add silent_without_deciding" in text, "r10_twin": "Add r10_twin" in text,
+        "apply": any(x in text for x in ("Add silent_without_deciding", "Add r10_twin", "Add order_free")),
         "trait_word": trait_word.group(1) if trait_word else "goes to the source",
     }
 
@@ -368,7 +369,8 @@ def mock_excerpts(count: int = 16) -> dict[str, list]:
             n = 3000 + k_idx * 64 + i
             text = (
                 f"Desk hours at {_tag(n, 0).title()}\n"
-                f"The desk is open on Sundays from 10:00 to 14:00 ({_tag(n, 1)}).\n"
+                + _salt("The desk is open on Sundays from 10:00 to 14:00.", n)
+                + f" ({_tag(n, 1)}).\n"
             )
             src = {"repo": "x/y", "commit": "0123456", "path": f"{kind}-{i}.txt", "lines": "L1-L2", "licence": "MIT"}
             items.append(Material(text, src))

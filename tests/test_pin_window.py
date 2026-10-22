@@ -391,7 +391,7 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
     monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d12bae86a22a82567f98e7f2697f1fddb9b1f300")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
     monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
@@ -1270,7 +1270,7 @@ def test_pin_window_stub_write_only_lessons_ends_with_awaiting_critique_drafts(t
 
     monkeypatch.setenv("PIN_STUB", "1")
     monkeypatch.setenv("PIN_ROLE", "pilot")
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d12bae86a22a82567f98e7f2697f1fddb9b1f300")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", writer)
     monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
@@ -1416,4 +1416,565 @@ def test_pilot_window_verifies_pool_sha_before_serving_and_passes_pool_to_common
     assert result["pool_sha256"] == pool_sha
     assert events == ["check_pins", "prefetch", "pilot_batch"]
     assert seen_common and ["--pool", str(custom_pool)] == seen_common[0][-2:]
+
+
+# ---- T10 window plumbing: PIN_PILOT_BUFFERS=1, PIN_PILOT_SLOT_IDS=ALL, PIN_CRITIQUE_SCOPE (DESIGN §8/§11, 2026-10-21) ---
+
+
+def test_t10_buffers_plan_and_screen_all_keeps_60_slots_and_refusals(tmp_path, monkeypatch, domain_table):
+    rs = _role_set_cmd()
+    plan_out = tmp_path / "t10-plan.json"
+    seen_cmds: list[str] = []
+    orig_sh = pw.sh
+
+    def tracking_sh(cmd: str, **kw) -> str:
+        seen_cmds.append(cmd)
+        return orig_sh(cmd, **kw)
+
+    monkeypatch.setattr(pw, "sh", tracking_sh)
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "1")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T10")
+    monkeypatch.setenv("PIN_PILOT_SEED", "0")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "ALL")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    meta = pw.plan_pilot_lessons(rs, ["T10"], str(domain_table), plan_out, tmp_path / "work")
+    assert any("--lessons T10 --buffers --seed 0" in c for c in seen_cmds), seen_cmds
+    assert meta["buffers"] is True
+    assert meta["lessons"] == ["T10"]
+    assert len(meta["per_lesson_sha256"]["T10"]) == 64
+
+    kept = pw.screen_plan(plan_out, "PIN_PILOT_SLOT_IDS")
+    assert kept is not None and len(kept) == 60
+    screened = json.loads(plan_out.read_text(encoding="utf-8"))
+    slot_ids = [s["id"] for s in screened["slots"]]
+    assert len(slot_ids) == 60 and slot_ids == kept
+    for buf_id in ("T10-C-09", "T10-C-10", "T10-C-11", "T10-C-12", "T10-C-AP-06", "T10-D-AP-06"):
+        assert buf_id in slot_ids, buf_id
+    assert sum(1 for s in screened["slots"] if s.get("real_source")) == 6
+
+    # Refusals:
+    # 1. Non-T10 lesson with PIN_PILOT_BUFFERS=1
+    with pytest.raises(RuntimeError, match="PIN_PILOT_BUFFERS=1 is allowed only for T10"):
+        pw.plan_pilot_lessons(rs, ["T02"], str(domain_table), tmp_path / "bad1.json", tmp_path / "w1")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_BUFFERS=1 is allowed only for T10"):
+        pw.plan_pilot_lessons(rs, ["T10", "T02"], str(domain_table), tmp_path / "bad2.json", tmp_path / "w2")
+
+    # 2. Twins on with PIN_PILOT_BUFFERS=1
+    monkeypatch.setenv("PIN_PILOT_TWINS", "1")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_BUFFERS=1 requires PIN_PILOT_TWINS=0"):
+        pw.plan_pilot_lessons(rs, ["T10"], str(domain_table), tmp_path / "bad3.json", tmp_path / "w3")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    # 3. PIN_PILOT_SLOT_IDS=ALL without PIN_PILOT_BUFFERS=1
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "0")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_SLOT_IDS=ALL requires PIN_PILOT_BUFFERS=1"):
+        pw.screen_plan(plan_out, "PIN_PILOT_SLOT_IDS")
+
+    # 4. Invalid PIN_PILOT_BUFFERS value
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "2")
+    with pytest.raises(RuntimeError, match="PIN_PILOT_BUFFERS must be '0' or '1'"):
+        pw.buffers_enabled()
+
+
+def test_critique_scope_passes_to_critique_waves_only_and_refuses_bad_value_before_serving(tmp_path, monkeypatch):
+    from subprocess import CompletedProcess
+
+    seen_cmds: list[list[str]] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, '{"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}\n', "")
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    monkeypatch.delenv("PIN_DEADLINE", raising=False)
+    rs = {"role_set": "role-set", "src": str(tmp_path)}
+    writer = {"served_as": "gemma-4-31b-it", "gguf_sha256": "a" * 64}
+    critic = {"served_as": "muse-glimmer-30b", "gguf_sha256": "b" * 64}
+
+    monkeypatch.setenv("PIN_CRITIQUE_SCOPE", "verdict")
+    pw.write_wave(rs, ["--plan", "p.json"], "write", tmp_path / "arm" / "w0", writer=writer)
+    pw.write_wave(rs, ["--plan", "p.json"], "critique", tmp_path / "arm" / "w1", critic=critic, drafts=tmp_path / "d.jsonl")
+    pw.write_wave(rs, ["--plan", "p.json"], "rewrite", tmp_path / "arm" / "w2", writer=writer, drafts=tmp_path / "d.jsonl")
+
+    assert "--critique-scope" not in seen_cmds[0]
+    assert "--critique-scope" in seen_cmds[1]
+    idx = seen_cmds[1].index("--critique-scope")
+    assert seen_cmds[1][idx + 1] == "verdict"
+    assert "--critique-scope" not in seen_cmds[2]
+
+    # Bad PIN_CRITIQUE_SCOPE refuses before check_pins / prefetch / serve in pilot_window.
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "sh", lambda cmd, **kw: "ok")
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_CRITIQUE_SCOPE", "everything")
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_CRITIQUE_SCOPE must be 'all' or 'verdict'"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+
+def _make_training_tar(tar_path: Path, files: dict[str, bytes]) -> dict[str, str]:
+    import hashlib
+    import io
+    import tarfile
+
+    shas: dict[str, str] = {}
+    with tarfile.open(tar_path, "w") as tf:
+        for name, raw in files.items():
+            info = tarfile.TarInfo(name)
+            info.size = len(raw)
+            tf.addfile(info, io.BytesIO(raw))
+            shas[name] = hashlib.sha256(raw.replace(b"\r\n", b"\n")).hexdigest()
+    return shas
+
+
+def test_training_inputs_refuses_missing_vars_sidecar_or_sha_mismatch_before_serving_and_orders_by_frozen_md(tmp_path, monkeypatch):
+    real_frozen = pw.FROZEN_TRAINING_FILES
+    rs = _role_set_cmd()
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "resolve_pilot_pool", lambda *a, **kw: (None, None))
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run before training_inputs"))
+    monkeypatch.setattr(pw, "Pool", lambda *a, **kw: pytest.fail("Pool must not be created before training_inputs"))
+
+    # Unbuffered plan that still has an apply slot (gating on split == 'apply', not buffers_enabled()).
+    def fake_sh(cmd, **kw):
+        if "plan --lessons T10" in cmd:
+            out = Path(cmd.split("--out ", 1)[1].split()[0])
+            out.write_text(
+                json.dumps({
+                    "slots": [
+                        {"id": "T10-C-01", "lesson": "T10", "kind": "C", "real_source": False},
+                        {"id": "T10-C-AP-01", "lesson": "T10", "kind": "C", "split": "apply", "real_source": False},
+                    ],
+                    "exclusion_state_sha256": "0" * 64,
+                }),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T10")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T10-C-01,T10-C-AP-01")
+    monkeypatch.delenv("PIN_TRAINING_INPUTS", raising=False)
+    monkeypatch.delenv("PIN_TRAINING_SHAS", raising=False)
+
+    # 1. Missing PIN_TRAINING_SHAS
+    with pytest.raises(RuntimeError, match="REFUSED: plan has apply slots; PIN_TRAINING_SHAS is required"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 2. Missing tar file
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={'a' * 64},pilot-t04.models.jsonl={'b' * 64}")
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(tmp_path / "absent.tar"))
+    with pytest.raises(RuntimeError, match="REFUSED: plan has apply slots; PIN_TRAINING_INPUTS tar not found"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 3. File in tar without a sha in PIN_TRAINING_SHAS
+    tar_path = tmp_path / "training.tar"
+    shas = _make_training_tar(tar_path, {"pilot-t04.jsonl": b"{}\n", "pilot-t04.models.jsonl": b"", "extra.jsonl": b"{}\n"})
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(tar_path))
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas['pilot-t04.jsonl']},pilot-t04.models.jsonl={shas['pilot-t04.models.jsonl']}")
+    with pytest.raises(RuntimeError, match="REFUSED: no sha256 in PIN_TRAINING_SHAS for extra.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 4. Missing frozen file from FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (
+            ("docs/runs/stage1-training-data/pilot-t04.jsonl", shas["pilot-t04.jsonl"]),
+            ("docs/runs/stage1-training-data/batch2-t01.jsonl", "c" * 64),
+        ),
+    )
+    shas_one = _make_training_tar(tar_path, {"pilot-t04.jsonl": b"{}\n", "pilot-t04.models.jsonl": b""})
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_one['pilot-t04.jsonl']},pilot-t04.models.jsonl={shas_one['pilot-t04.models.jsonl']}")
+    with pytest.raises(RuntimeError, match=r"REFUSED: missing frozen training file: docs/runs/stage1-training-data/batch2-t01\.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 5. Extra training .jsonl data file not in FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", shas["pilot-t04.jsonl"]),),
+    )
+    shas_extra = _make_training_tar(
+        tar_path,
+        {
+            "pilot-t04.jsonl": b"{}\n",
+            "pilot-t04.models.jsonl": b"",
+            "extra.jsonl": b"{}\n",
+            "extra.models.jsonl": b"",
+        },
+    )
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in shas_extra.items()))
+    with pytest.raises(RuntimeError, match=r"REFUSED: extra training \.jsonl file not in FROZEN_TRAINING_FILES: extra\.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 6. Missing .models.jsonl sidecar refuses before serving
+    shas_no_sidecar = _make_training_tar(tar_path, {"pilot-t04.jsonl": b"{}\n"})
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_no_sidecar['pilot-t04.jsonl']}")
+    with pytest.raises(RuntimeError, match=r"REFUSED: missing training sidecar: pilot-t04\.models\.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 7. SHA mismatch against PIN_TRAINING_SHAS refuses before serving
+    shas_ok = _make_training_tar(tar_path, {"pilot-t04.jsonl": b'{"id":"T04-A-01"}\r\n', "pilot-t04.models.jsonl": b""})
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", shas_ok["pilot-t04.jsonl"]),),
+    )
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={'0' * 64},pilot-t04.models.jsonl={shas_ok['pilot-t04.models.jsonl']}")
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: training input sha256 mismatch: pilot-t04\.jsonl is {shas_ok['pilot-t04.jsonl'][:12]}, not 000000000000",
+    ):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 8. Data file whose sha matches PIN_TRAINING_SHAS (env) but not hard-coded FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", "f" * 64),),
+    )
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_ok['pilot-t04.jsonl']},pilot-t04.models.jsonl={shas_ok['pilot-t04.models.jsonl']}")
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: frozen training sha256 mismatch: pilot-t04\.jsonl is {shas_ok['pilot-t04.jsonl'][:12]}, not FROZEN_TRAINING_FILES ffffffffffff",
+    ):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 9. LF-normalized sha matches CRLF bytes, unpacks read-only, and orders in FROZEN.md training order (not sorted path order).
+    tar_files: dict[str, bytes] = {}
+    for rel_path, _ in real_frozen:
+        name = Path(rel_path).name
+        stem = name[:-len(".jsonl")]
+        tar_files[name] = f'{{"id": "{stem}"}}\r\n'.encode("utf-8")
+        tar_files[f"{stem}.models.jsonl"] = b""
+    all_shas = _make_training_tar(tar_path, tar_files)
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        tuple((rel_path, all_shas[Path(rel_path).name]) for rel_path, _ in real_frozen),
+    )
+    # Pass PIN_TRAINING_SHAS in sorted (alphabetical) order, which puts batch2-t01 before pilot-t04.
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={all_shas[k]}" for k in sorted(all_shas)))
+    res: dict = {}
+    paths = pw.training_inputs(res)
+    expected_order = [Path(rel).name for rel, _ in real_frozen]
+    assert [p.name for p in paths] == expected_order
+    assert res["training_inputs"]["order"] == expected_order
+    assert not os.access(paths[0], os.W_OK)
+
+
+def test_training_inputs_with_real_frozen_training_files_refuses_tar_missing_a_file(tmp_path, monkeypatch):
+    assert len(pw.FROZEN_TRAINING_FILES) == 21
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+
+    tar_files: dict[str, bytes] = {}
+    for rel_path, _ in pw.FROZEN_TRAINING_FILES[:-1]:
+        name = Path(rel_path).name
+        stem = name[:-len(".jsonl")]
+        tar_files[name] = f'{{"id": "{stem}"}}\n'.encode("utf-8")
+        tar_files[f"{stem}.models.jsonl"] = b""
+    tar_path = tmp_path / "missing-one.tar"
+    shas = _make_training_tar(tar_path, tar_files)
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(tar_path))
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in shas.items()))
+    with pytest.raises(
+        RuntimeError,
+        match=r"REFUSED: missing frozen training file: docs/runs/stage1-training-data/batch8-l3\.jsonl",
+    ):
+        pw.training_inputs({})
+
+
+def test_t10_stub_end_to_end_write_only_then_critique_resume_with_scope_verdict(tmp_path, monkeypatch):
+    from test_cards import SAMPLING
+
+    from role_set import waves
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.runner import models_line
+
+    content = tmp_path / "content"
+    work1 = content / "pin-w0"
+    work2 = content / "pin-w1"
+    content.mkdir()
+    work1.mkdir()
+    work2.mkdir()
+
+    pack_dir = content / "pack"
+    trait_files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you test whether the reason holds\n\nTest the link.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    for name, text in trait_files.items():
+        p = pack_dir / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(trait_files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    writer = "gemma-4-31b-it"
+    critic = "muse-glimmer-30b"
+    cards = {
+        "candidates": [
+            {
+                "candidate": c,
+                "revision": "r1",
+                "sampling": dict(SAMPLING),
+                "chat_template_kwargs": {"enable_thinking": True},
+                "transforms": ["reattach_thinking"],
+            }
+            for c in (writer, critic)
+        ]
+    }
+    (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
+
+    # Build a non-empty --training fixture tar with two files in FROZEN.md and their .models.jsonl sidecars.
+    # Include a kind-B row with its stamped sidecar and a kind-D row carrying a known 8-word span.
+    pinned_span = "harbor master logbook on the west pier states"
+    t04_d_row = {
+        "id": "T04-D-01",
+        "lesson": "T04",
+        "trait": "calibrates confidence",
+        "kind": "D",
+        "side": "calibrate",
+        "content_kind": "notice",
+        "tier": 3,
+        "sources": [{"invented": "fixture"}],
+        "invented": True,
+        "key_basis": "construction",
+        "tags": [],
+        "material": "Pier hours\nThe west pier opens at 06:00.\n",
+        "verdict": "unsupported",
+        "deciding": ["The west pier opens at 06:00."],
+        "escalate": "no",
+        "turns": [{
+            "user": f"Check the claim.\nMaterial:\nPier hours\nThe west pier opens at 06:00.\nStatement: The {pinned_span} the pier is shut.",
+            "thinking": "The line says 06:00.",
+            "reply": "It opens at 06:00.\nVERDICT: unsupported\nDECIDING: The west pier opens at 06:00.\nESCALATE: no",
+        }],
+    }
+    t01_b_model = {
+        "entities": ["Ash", "Briar", "Cole"],
+        "attributes": {"turn": {"values": ["turn 1", "turn 2", "turn 3"], "ordered": True}},
+        "facts": [{"line": 2, "rule": ["is_not", "Ash", "turn", "turn 1"]}, {"line": 3, "rule": ["after", "Briar", "Ash", "turn"]}],
+        "flavour": [1],
+        "asks": {"attribute": "turn"},
+    }
+    t01_b_row = {
+        "id": "T01-B-01",
+        "lesson": "T01",
+        "trait": "skeptical",
+        "kind": "B",
+        "side": "skeptical",
+        "content_kind": "puzzle",
+        "tier": 3,
+        "sources": [{"invented": "fixture"}],
+        "invented": True,
+        "key_basis": "construction",
+        "tags": [],
+        "answer": "ash=turn 2; briar=turn 3; cole=turn 1",
+        "structure": "constraint_grid",
+        "turns": [{"user": "1. Three canoes.\nQuestion: Which turn?", "thinking": "1. Step.", "reply": "1. Step.\nAnswer: ash=turn 2; briar=turn 3; cole=turn 1"}],
+    }
+    t01_b_line = json.dumps(t01_b_row, ensure_ascii=False)
+    t01_b_sidecar = json.dumps(models_line("T01-B-01", "constraint_grid", t01_b_line, t01_b_model), ensure_ascii=False) + "\n"
+    training_tar = content / "training-inputs.tar"
+    training_shas = _make_training_tar(
+        training_tar,
+        {
+            "batch2-t01.jsonl": (t01_b_line + "\n").encode("utf-8"),
+            "batch2-t01.models.jsonl": t01_b_sidecar.encode("utf-8"),
+            "pilot-t04.jsonl": (json.dumps(t04_d_row, ensure_ascii=False) + "\n").encode("utf-8"),
+            "pilot-t04.models.jsonl": b"",
+        },
+    )
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (
+            ("docs/runs/stage1-training-data/pilot-t04.jsonl", training_shas["pilot-t04.jsonl"]),
+            ("docs/runs/stage1-training-data/batch2-t01.jsonl", training_shas["batch2-t01.jsonl"]),
+        ),
+    )
+
+    rs = _role_set_cmd()
+    committed_pool = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    committed_pool_sha = pw.sha256(committed_pool)
+
+    # Plant the training fixture's 8-word span into the first apply slot's first draft to prove SPENT refuses it.
+    from role_set.mock import MockWriter
+
+    base_mock = MockWriter()
+    first_apply_planted = {"done": False}
+
+    class _PlantingWriter:
+        def __init__(self, inner: MockWriter):
+            self.inner = inner
+            self.answers = inner.answers
+
+        def __call__(self, messages, seed=0, slot_id=None):
+            c = self.inner(messages, seed=seed, slot_id=slot_id)
+            user_text = messages[-1]["content"] if messages else ""
+            if not first_apply_planted["done"] and "Add r10_twin" in user_text and not user_text.startswith("Refused:"):
+                first_apply_planted["done"] = True
+                data = json.loads(c.text)
+                data["statement"] = f"The {pinned_span} the desk is closed on Sundays."
+                return type(c)(
+                    text=json.dumps(data),
+                    prompt_tokens=c.prompt_tokens,
+                    completion_tokens=c.completion_tokens,
+                    model=c.model,
+                    seconds=c.seconds,
+                    finish_reason=c.finish_reason,
+                )
+            return c
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw.Pool, "proxy", lambda self, name: None)
+    monkeypatch.setattr(pw, "_STUB_WRITER", _PlantingWriter(base_mock))
+
+    import socket as _socket
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(pw, "PILOT_PORT", s.getsockname()[1])
+
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_GGUF_REPO", "PIN_GGUF_REVISION", "PIN_POOL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm-hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+
+    # Window 1: T10 write-only with PIN_PILOT_BUFFERS=1 and PIN_PILOT_SLOT_IDS=ALL
+    monkeypatch.setattr(pw, "WORK", work1)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
+    monkeypatch.setenv("PIN_PILOT_WRITERS", writer)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "1")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T10")
+    monkeypatch.setenv("PIN_PILOT_SEED", "0")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "ALL")
+    monkeypatch.setenv("PIN_POOL_SHA256", committed_pool_sha)
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(training_tar))
+    # Pass batch2-t01 before pilot-t04 in PIN_TRAINING_SHAS to verify FROZEN.md ordering puts pilot-t04 first.
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in training_shas.items()))
+    monkeypatch.delenv("PIN_CRITIQUE_SCOPE", raising=False)
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_WAVE", raising=False)
+    monkeypatch.delenv("PIN_RESUME_DIR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_CALLS_DIR", raising=False)
+
+    res1: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res1)
+    assert res1["model_errors"] == 0, res1["arms"]
+    assert res1["plans"]["buffers"] is True
+    assert res1["plans"]["lessons"] == ["T10"]
+    assert len(res1["plans"]["per_lesson_sha256"]["T10"]) == 64
+    assert res1["screen"]["kept"] == 60 and len(res1["screen"]["pilot"]) == 60
+    assert res1["pool_sha256"] == committed_pool_sha
+    assert res1["critique_scope"] == "all"
+    assert res1["training_inputs"]["order"] == ["pilot-t04.jsonl", "batch2-t01.jsonl"]
+
+    w0_drafts_path = work1 / "pilot" / "pilot" / writer / "w0" / waves.DRAFTS_FILE
+    w0_header, w0_drafts = waves.read(w0_drafts_path)
+    assert len(w0_drafts) == 60
+    assert [x["file"] for x in w0_header["batch_pins"]["training"]] == ["pilot-t04.jsonl", "batch2-t01.jsonl"]
+    # All 48 training slots come before all 12 apply slots, and the first apply slot was refused SPENT against the fixture on attempt 1.
+    assert [d["slot"].get("split") == "apply" for d in w0_drafts] == [False] * 48 + [True] * 12
+    assert w0_drafts[48]["attempt"] == 2
+    assert w0_drafts[48]["refusals"][0]["code"] == "SPENT"
+    assert w0_drafts[48]["refusals"][0]["detail"] == pinned_span
+
+    # Window 2: Critique resume with PIN_CRITIQUE_SCOPE=verdict
+    resume_dir = tmp_path / "resume-w0"
+    resume_dir.mkdir()
+    shutil.copyfile(w0_drafts_path, resume_dir / f"{writer}.jsonl")
+    shutil.copyfile(w0_drafts_path.with_name(w0_drafts_path.name + ".sha256"), resume_dir / f"{writer}.jsonl.sha256")
+
+    monkeypatch.setattr(pw, "WORK", work2)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
+    monkeypatch.setenv("PIN_PILOT_WAVES", "2")
+    monkeypatch.setenv("PIN_CRITIQUE_SCOPE", "verdict")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "0")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(resume_dir))
+
+    res2: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res2)
+    assert res2["model_errors"] == 0, res2["arms"]
+    assert res2["critique_scope"] == "verdict"
+    assert res2["training_inputs"]["order"] == ["pilot-t04.jsonl", "batch2-t01.jsonl"]
+    assert list(res2["serves"]) == [critic]
+
+    w1_dir = work2 / "pilot" / "pilot" / writer / "w1"
+    w1_header, w1_drafts = waves.read(w1_dir / waves.DRAFTS_FILE)
+    assert len(w1_drafts) == 60
+    assert [x["file"] for x in w1_header["batch_pins"]["training"]] == ["pilot-t04.jsonl", "batch2-t01.jsonl"]
+
+    # Kinds A, B, and written E get no critic call in the critique wave's call journal or review records.
+    critic_journal = work2 / "pilot" / "pilot" / writer / f"calls-w1-{critic}.jsonl"
+    journal_entries = [json.loads(ln) for ln in critic_journal.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert journal_entries
+    checks = [e.get("check") for e in journal_entries]
+    assert "answer" not in checks
+    assert checks.count("twin_verdict") == 12
+    assert checks.count("trait") == 36 * 3
+    review_by_id = {
+        r["id"]: r["critic"]
+        for r in (json.loads(ln) for ln in (w1_dir / "review.jsonl").read_text(encoding="utf-8").splitlines() if ln.strip())
+    }
+    for d in w1_drafts:
+        slot = d["slot"]
+        assert d["state"] == "accepted", slot["id"]
+        if slot["kind"] in ("A", "B") or (slot["kind"] == "E" and slot.get("e_type") == "written"):
+            assert review_by_id[slot["id"]] == [], slot["id"]
+        else:
+            assert len(review_by_id[slot["id"]]) > 0, slot["id"]
+
+
 

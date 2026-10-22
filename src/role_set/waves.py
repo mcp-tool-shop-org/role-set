@@ -223,9 +223,35 @@ def load_andon(runner: Runner, andon: dict) -> None:
     runner.halt_order = [(lesson, tuple(key)) for lesson, key in (andon.get("halt_order") or [])]
 
 
-def preload(runner: Runner, drafts: list[dict]) -> None:
+def _draft_row(runner: Runner, d: dict) -> dict | None:
+    """Assemble the candidate row of a surviving training draft (accepted or awaiting_critique) without mutating runner."""
+
+    if isinstance(d.get("row"), dict):
+        return d["row"]
+    if not isinstance(d.get("candidate"), dict):
+        return None
+    from role_set.assemble import AssemblyError, assemble, slot_flaw  # noqa: PLC0415
+    from role_set.prompts import parse_json_object  # noqa: PLC0415
+    from role_set.runner import normalize_glyphs  # noqa: PLC0415
+    from role_set.solvefirst import SolveFirstError  # noqa: PLC0415
+
+    st, c = state_of(d), completion_of(d)
+    try:
+        fields, _ = normalize_glyphs(parse_json_object(c.text))
+        locked = runner.locked_for(st.slot)
+        if locked is not None:
+            fields["model"], fields["answer"] = locked.model, locked.key
+        if st.slot.kind == "C" and "planted_flaw" not in fields:
+            fields["planted_flaw"] = slot_flaw(st.slot)
+        trait = runner.trait_names.get(st.slot.lesson, st.slot.lesson)
+        return assemble(st.slot, trait, fields, st.material)
+    except (ValueError, AssemblyError, SolveFirstError):
+        return None
+
+
+def preload(runner: Runner, drafts: list[dict], *, include_awaiting: bool = True) -> None:
     """The batch's accepted rows, in the order they were accepted: the acceptance checks of a later wave run
-    against them, as they would inline."""
+    against them, as they would inline. Surviving non-rewritten training drafts also seed the SPENT set."""
 
     done = sorted((d for d in drafts if d["state"] == "accepted"), key=lambda d: d["accepted_seq"])
     for d in done:
@@ -238,6 +264,12 @@ def preload(runner: Runner, drafts: list[dict]) -> None:
         framing = row["turns"][0]["user"].split("\n", 1)[0]
         if framing and slot.kind in ("C", "D", "E"):
             runner.avoid.append(framing)
+    if include_awaiting:
+        for d in drafts:
+            if d["state"] == "awaiting_critique" and d["slot"].get("split") != "apply":
+                row = _draft_row(runner, d)
+                if row is not None:
+                    runner.note_training_row(row)
     for d in drafts:
         runner.avoid.extend(x for x in d.get("spent") or [] if x not in runner.avoid)
     # The earlier waves' counts carry over, so the last wave's report is the batch's (Argon §9.4 #8).
@@ -271,6 +303,7 @@ def _write_one(runner: Runner, st: SlotState) -> dict:
     cand = runner.write_step(st)
     if cand is None:
         return _drop(runner, st)
+    runner.note_training_row(cand.row)
     # Every writer call is logged; this one waits for the critic.
     runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material)
     return record(st, "awaiting_critique", completion=cand.completion, lookup=cand.lookup)
@@ -377,7 +410,10 @@ def write_wave(runner: Runner, slots: list[Slot], *, stop_after_s: float | None 
             return bare(slot, "dropped", refusals=st.refusals)
         return _write_one(runner, st)
 
-    return _each(runner, ordered, fn, halted_state=lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot"))
+    train_slots = [s for s in ordered if s.split != "apply"]
+    apply_slots = [s for s in ordered if s.split == "apply"]
+    halted_fn = lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot")  # noqa: E731
+    return _each(runner, train_slots, fn, halted_state=halted_fn) + _each(runner, apply_slots, fn, halted_state=halted_fn)
 
 
 def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | None, drafts_in: list[dict] | None,
@@ -400,15 +436,20 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
                             f"{len(want_slots)} in order; a wave continues only its own batch, whole")
         load_andon(runner, header_in.get("andon") or {})
         runner.plan_kinds = {Slot(**d["slot"]).kind for d in drafts_in}
-        preload(runner, drafts_in)
+        preload(runner, drafts_in, include_awaiting=(wave != "critique"))
         want = "awaiting_critique" if wave == "critique" else "needs_rewrite"
         todo = [i for i, d in enumerate(drafts_in) if d["state"] == want]
         if not todo:
             raise WaveError(f"REFUSED: no draft is {want.replace('_', ' ')}; nothing for a {wave} wave")
         fn = _critique_one if wave == "critique" else _rewrite_one
-        done = _each(runner, [drafts_in[i] for i in todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+        train_todo = [i for i in todo if drafts_in[i]["slot"].get("split") != "apply"]
+        apply_todo = [i for i in todo if drafts_in[i]["slot"].get("split") == "apply"]
+        done = (
+            _each(runner, [drafts_in[i] for i in train_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+            + _each(runner, [drafts_in[i] for i in apply_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+        )
         drafts = list(drafts_in)
-        for i, d in zip(todo, done):
+        for i, d in zip(train_todo + apply_todo, done):
             drafts[i] = d
     header = dict(header_in or {})
     header["andon"] = save_andon(runner)

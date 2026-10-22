@@ -151,6 +151,8 @@ def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[l
         rows += [json.loads(x) for x in text.splitlines() if x.strip()]
         models.update(gates.load_models(path))
         pins["training"].append({"file": path.name, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+    if not rows:
+        raise WriteRefused("REFUSED: --training loaded 0 training rows; an apply plan needs a non-empty training set")
     return rows, models
 
 

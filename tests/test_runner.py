@@ -537,3 +537,207 @@ def test_critique_scope_verdict_skips_a_b_and_written_e(tmp_path: Path):
     calls.clear()
     assert r.run_slot(c_slot).accepted
     assert len(calls) > 0
+
+
+def test_runner_orders_every_training_slot_before_any_apply_slot_inline_and_across_waves(tmp_path: Path):
+    from role_set import waves
+    from role_set.plan import plan_apply
+    from role_set.runner import interleave
+
+    train = [s for s in plan_lesson("T10", SIDES, seed=0) if s.kind in ("C", "D")][:4]
+    apply = plan_apply("T10", SIDES, seed=0)[:4]
+    mixed = [apply[0], train[0], apply[1], train[1], apply[2], train[2], apply[3], train[3]]
+
+    ordered = interleave(mixed)
+    splits = [s.split or "train" for s in ordered]
+    assert splits == ["train"] * 4 + ["apply"] * 4
+
+    for mode in ("inline", "write", "rewrite"):
+        r, base_writer, critic = _runner(tmp_path / mode, concurrency=2)
+        r.pack = {**r.pack, "traits/T10.md": PACK["traits/T02.md"]}
+        r.trait_names = {**r.trait_names, "T10": "goes to the source"}
+        critic.trait = "T10"
+        r.writer.keyed_order = {s.id: i for i, s in enumerate(ordered)}
+        drafted_order: list[str] = []
+
+        def tracking_writer(messages, seed=0, slot_id=None, _base=base_writer, _log=drafted_order):
+            text = messages[-1]["content"]
+            if "## This slot" in text or text.startswith("Refused:"):
+                _log.append(slot_id)
+            return _base(messages, seed=seed, slot_id=slot_id)
+
+        tracking_writer.takes_slot_id = True
+        r.writer = tracking_writer
+
+        if mode == "inline":
+            outcomes = r.run(mixed)
+            assert all(o.accepted for o in outcomes)
+        elif mode == "write":
+            drafts = waves.write_wave(r, mixed)
+            assert all(d["state"] == "awaiting_critique" for d in drafts)
+        else:
+            r_w0, w0_writer, _ = _runner(tmp_path / "rewrite-w0")
+            r_w0.pack = {**r_w0.pack, "traits/T10.md": PACK["traits/T02.md"]}
+            r_w0.trait_names = {**r_w0.trait_names, "T10": "goes to the source"}
+            w0_writer.keyed_order = {s.id: i for i, s in enumerate(ordered)}
+            w0_drafts = waves.write_wave(r_w0, mixed)
+            for d in w0_drafts:
+                d["state"] = "needs_rewrite"
+            _, rw_drafts = waves.run_wave(r, "rewrite", slots=mixed, header_in={}, drafts_in=w0_drafts)
+            assert all(d["state"] == "awaiting_critique" for d in rw_drafts)
+
+        train_positions = [i for i, sid in enumerate(drafted_order) if "-AP-" not in sid]
+        apply_positions = [i for i, sid in enumerate(drafted_order) if "-AP-" in sid]
+        assert train_positions and apply_positions
+        assert max(train_positions) < min(apply_positions), (mode, drafted_order)
+
+
+def test_apply_draft_copying_span_from_in_run_or_prior_wave_training_row_is_refused_spent(tmp_path: Path):
+    from role_set import exclusion, waves
+    from role_set.plan import plan_apply
+
+    train_d = next(s for s in plan_lesson("T10", SIDES, seed=0) if s.kind == "D" and not s.two_turn and s.verdict == "unsupported")
+    dropped_c = next(s for s in plan_lesson("T10", SIDES, seed=0) if s.kind == "C" and s.verdict == "unsupported")
+    apply_d = next(s for s in plan_apply("T10", SIDES, seed=0) if s.kind == "D" and s.verdict == "unsupported")
+
+    # 1. Inline run: accepted in-run training row's 8-word span is refused SPENT on the apply slot; dropped training row's span is not.
+    r, base_writer, critic = _runner(tmp_path / "inline", gates=_gates(refuse_ids={dropped_c.id}))
+    r.pack = {**r.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r.trait_names = {**r.trait_names, "T10": "goes to the source"}
+    critic.trait = "T10"
+    ordered = [dropped_c, train_d, apply_d]
+    base_writer.keyed_order = {s.id: i for i, s in enumerate(ordered)}
+
+    in_run_span = "aaaa schedule board at the north lobby states"
+    dropped_span = "aaaa parcel locker by the loading bay stays"
+    apply_tries = {"n": 0}
+
+    def _rekey_statement(answers: dict, old_stmt: str, new_stmt: str) -> None:
+        for (stmt, fl), val in list(answers.items()):
+            if stmt == old_stmt:
+                answers[(new_stmt, fl)] = val
+
+    def inline_writer(messages, seed=0, slot_id=None):
+        c = base_writer(messages, seed=seed, slot_id=slot_id)
+        if not any("## This slot" in m["content"] for m in messages if m["role"] == "user"):
+            return c
+        data = json.loads(c.text)
+        old_stmt = data["statement"]
+        if slot_id == dropped_c.id:
+            data["statement"] = f"The {dropped_span} noon on Sundays."
+        elif slot_id == train_d.id:
+            data["statement"] = f"The {in_run_span} the desk is closed on Sundays."
+        elif slot_id == apply_d.id:
+            apply_tries["n"] += 1
+            if apply_tries["n"] == 1:
+                data["statement"] = f"Notice: the {in_run_span} the counter is shut on Sundays."
+            else:
+                data["statement"] = f"Notice: the {dropped_span} noon and the desk is closed on Sundays."
+        _rekey_statement(base_writer.answers, old_stmt, data["statement"])
+        return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+
+    inline_writer.takes_slot_id = True
+    r.writer = inline_writer
+    outcomes = {o.slot_id: o for o in r.run(ordered)}
+    assert not outcomes[dropped_c.id].accepted
+    assert outcomes[train_d.id].accepted
+    assert outcomes[apply_d.id].accepted and outcomes[apply_d.id].attempts == 2
+    assert outcomes[apply_d.id].refusals[0]["code"] == "SPENT"
+    assert outcomes[apply_d.id].refusals[0]["detail"] == in_run_span
+    assert dropped_span not in r._spent_spans()
+
+    # 2. Prior rows from an earlier batch (exclusion.State): apply draft copying a prior training span is refused SPENT.
+    prior_span = "aaaa harbor dispatch log from morning watch confirms"
+    prior_row = {
+        **outcomes[train_d.id].row,
+        "id": "T02-D-01",
+        "lesson": "T02",
+        "turns": [{"user": f"Check this.\nMaterial:\nDesk hours\nStatement: The {prior_span} the gate is shut.", "thinking": "t", "reply": "r"}],
+    }
+    prior_state = exclusion.State(batches=[], rows=[prior_row], models={})
+    r_prior, prior_writer, critic_p = _runner(tmp_path / "prior", prior=prior_state)
+    r_prior.pack = {**r_prior.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r_prior.trait_names = {**r_prior.trait_names, "T10": "goes to the source"}
+    critic_p.trait = "T10"
+    prior_writer.keyed_order = {apply_d.id: 0}
+    prior_tries = {"n": 0}
+
+    def prior_check_writer(messages, seed=0, slot_id=None):
+        c = prior_writer(messages, seed=seed, slot_id=slot_id)
+        if not any("## This slot" in m["content"] for m in messages if m["role"] == "user"):
+            return c
+        prior_tries["n"] += 1
+        if prior_tries["n"] == 1:
+            data = json.loads(c.text)
+            data["statement"] = f"The {prior_span} the desk is closed on Sundays."
+            return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+        return c
+
+    prior_check_writer.takes_slot_id = True
+    r_prior.writer = prior_check_writer
+    out_prior = r_prior.run_slot(apply_d)
+    assert out_prior.accepted and out_prior.attempts == 2
+    assert out_prior.refusals[0]["code"] == "SPENT" and out_prior.refusals[0]["detail"] == prior_span
+
+    # 3. Wave mode (write and rewrite): surviving training drafts carried in from an earlier wave and rewritten training rows both seed SPENT.
+    train_c = next(s for s in plan_lesson("T10", SIDES, seed=0) if s.kind == "C" and s.verdict == "unsupported")
+    wave_slots = [train_c, train_d, apply_d]
+    r_w0, w0_writer, critic_w0 = _runner(tmp_path / "w0")
+    r_w0.pack = {**r_w0.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r_w0.trait_names = {**r_w0.trait_names, "T10": "goes to the source"}
+    critic_w0.trait = "T10"
+    w0_writer.keyed_order = {s.id: i for i, s in enumerate(wave_slots)}
+    carried_span = "aaaa archive ledger on the third shelf records"
+    rewritten_span = "aaaa boiler room gauge beside east valve shows"
+
+    def w0_call(messages, seed=0, slot_id=None):
+        c = w0_writer(messages, seed=seed, slot_id=slot_id)
+        if not any("## This slot" in m["content"] for m in messages if m["role"] == "user"):
+            return c
+        data = json.loads(c.text)
+        if slot_id == train_c.id:
+            data["statement"] = f"The {carried_span} the desk is closed on Sundays."
+        return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+
+    w0_call.takes_slot_id = True
+    r_w0.writer = w0_call
+    _, w0_drafts = waves.run_wave(r_w0, "write", slots=wave_slots, header_in=None, drafts_in=None)
+    # Mark train_d and apply_d as needs_rewrite while train_c stays a non-rewritten surviving draft from w0.
+    w0_drafts[1]["state"] = "needs_rewrite"
+    w0_drafts[2]["state"] = "needs_rewrite"
+    w0_drafts[2]["attempt"] = 0
+
+    r_rw, rw_writer, critic_rw = _runner(tmp_path / "rw")
+    r_rw.pack = {**r_rw.pack, "traits/T10.md": PACK["traits/T02.md"]}
+    r_rw.trait_names = {**r_rw.trait_names, "T10": "goes to the source"}
+    critic_rw.trait = "T10"
+    rw_writer.keyed_order = {s.id: i for i, s in enumerate(wave_slots)}
+    rw_apply_tries = {"n": 0}
+
+    def rw_call(messages, seed=0, slot_id=None):
+        c = rw_writer(messages, seed=seed, slot_id=slot_id)
+        if not any("## This slot" in m["content"] for m in messages if m["role"] == "user"):
+            return c
+        data = json.loads(c.text)
+        if slot_id == train_d.id:
+            data["statement"] = f"The {rewritten_span} the desk is closed on Sundays."
+            return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+        if slot_id == apply_d.id:
+            rw_apply_tries["n"] += 1
+            if rw_apply_tries["n"] == 1:
+                data["statement"] = f"The {carried_span} the counter is shut on Sundays."
+                return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+            if rw_apply_tries["n"] == 2:
+                data["statement"] = f"The {rewritten_span} the counter is shut on Sundays."
+                return types.SimpleNamespace(**{**c.__dict__, "text": json.dumps(data)})
+        return c
+
+    rw_call.takes_slot_id = True
+    r_rw.writer = rw_call
+    _, rw_drafts = waves.run_wave(r_rw, "rewrite", slots=wave_slots, header_in={}, drafts_in=w0_drafts)
+    apply_rec = rw_drafts[2]
+    assert apply_rec["state"] == "awaiting_critique"
+    spent_codes = [(x["code"], x["detail"]) for x in apply_rec["refusals"]]
+    assert ("SPENT", carried_span) in spent_codes
+    assert ("SPENT", rewritten_span) in spent_codes
+
