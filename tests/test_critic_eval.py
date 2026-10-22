@@ -3469,4 +3469,312 @@ def test_track_b_pin_window_passes_new_settings_and_refuses_unpinned_verdict_fro
     assert result["critic_eval_inputs"]["verdict_from_sha256"] == shas["s0-verdicts.jsonl"]
 
 
+# ---- Track B Rung 0: bank V slot list and post-write material check ----
+
+
+def _write_frozen_track_a_fixture(path: Path) -> str:
+    """Write a frozen Track A slots JSON matching `track-a-slots-10c1ebf.json`'s slot_ids and slots[].real_source."""
+    import track_a_slots as tas
+    from role_set.cli import VERIFIER_SIDES
+    from role_set.plan import plan_batch
+
+    ta = tas.build_track_a_slots(plan_seed=1)
+    s1_by_id = {
+        s.id: s
+        for l in tas.NON_T10_LESSONS
+        for s in plan_batch({l: VERIFIER_SIDES[l]}, seed=1)
+        if s.kind == "C"
+    }
+    slots_list = []
+    for sid in ta["slot_ids"]:
+        s_obj = s1_by_id[sid]
+        slots_list.append({
+            **s_obj.as_dict(),
+            **ta["slot_details"][sid],
+        })
+    payload = {
+        "what": "Track A frozen 48-slot list fixture",
+        "role_set_commit": "10c1ebf0a39172120f8e65e8311b567f34cd45ea",
+        "plan_seed": 1,
+        "slot_ids": ta["slot_ids"],
+        "slots": slots_list,
+    }
+    raw = (json.dumps(payload, indent=1, ensure_ascii=False) + "\n").encode("utf-8")
+    path.write_bytes(raw)
+    return hashlib.sha256(raw).hexdigest()
+
+
+def test_track_b_vslots_determinism_24_plus_24_priority_and_real_source_skips(tmp_path: Path):
+    """Track B V-slots §1 & §3:
+    - deterministic: two runs give byte-identical JSON;
+    - 24 odd and 24 even, with no T10 and no pilot slots;
+    - every odd slot has slot_flaw in FLAWS, and every even slot 'none';
+    - the priority order holds (new -> phase4_only -> track_a, in lesson then slot id order);
+    - a real-source slot whose id D used as real-source is skipped and recorded;
+    - reproduces R&D's seed-2 census counts (odd 28: 4, 9, 15 with 3 skips -> 25 usable; even 33: 6, 6, 21 with 0 skips);
+    - per-lesson plan sha256s are over LF bytes."""
+    import track_a_slots as tas
+    import track_b_slots as tbs
+    from role_set import domains, exclusion, solvefirst
+    from role_set.assemble import FLAWS, slot_flaw
+    from role_set.cli import VERIFIER_SIDES
+    from role_set.plan import check_plan, plan_batch
+
+    ta_path = tmp_path / "track-a-slots.json"
+    ta_sha = _write_frozen_track_a_fixture(ta_path)
+    ta_data = json.loads(ta_path.read_text(encoding="utf-8"))
+    ta_ids = set(ta_data["slot_ids"])
+    ta_rs_ids = {s["id"] for s in ta_data["slots"] if s["real_source"]}
+    p4_ids = {sid for sid in tas.USED_BEFORE_IDS if not sid.startswith("T10-")}
+    p4_rs_ids = set(tbs.phase4_real_source_slot_ids())
+
+    out1 = tmp_path / "v-slots-1.json"
+    out2 = tmp_path / "v-slots-2.json"
+    assert tbs.main([
+        "--track-a-slots", str(ta_path),
+        "--track-a-slots-sha256", ta_sha,
+        "--out", str(out1),
+    ]) == 0
+    assert tbs.main([
+        "--track-a-slots", str(ta_path),
+        "--track-a-slots-sha256", ta_sha,
+        "--out", str(out2),
+    ]) == 0
+
+    # 1. Deterministic: two runs produce byte-identical JSON
+    raw1 = out1.read_bytes()
+    raw2 = out2.read_bytes()
+    assert raw1 == raw2
+    assert b"\r\n" not in raw1
+
+    data = json.loads(raw1.decode("utf-8"))
+    assert data["plan_seed"] == 2
+    assert data["track_a_slots_sha256"] == ta_sha
+    assert data["draft_slot_count"] == 48
+    assert len(data["slot_ids"]) == 48
+    assert len(data["f_eligible"]) == 24
+    assert len(data["controls"]) == 24
+    assert len(data["slots"]) == 48
+
+    # 2. No T10 and no pilot slots
+    assert "T10" not in data["lessons"]
+    assert all(not sid.startswith("T10-") for sid in data["slot_ids"])
+    assert set(tas.PILOT_USED_C_SLOTS).isdisjoint(set(data["slot_ids"]))
+    assert set(data["f_eligible"]).isdisjoint(set(data["controls"]))
+    assert set(data["f_eligible"]) | set(data["controls"]) == set(data["slot_ids"])
+
+    # 3. Verify every selected slot directly against role-set's plan_batch(seed=2), domains.assign(seed=2), and slot_flaw
+    naics = domains.load(tas.DEFAULT_DOMAINS)
+    packs = solvefirst.load_packs()
+    prior = exclusion.load(None)
+    s2_by_lesson = {}
+    for lesson in data["lessons"]:
+        l_slots = plan_batch({lesson: VERIFIER_SIDES[lesson]}, seed=2)
+        domains.assign(l_slots, naics, seed=2)
+        solvefirst.assign(l_slots, packs, seed=2, table=naics, prior=prior.packs)
+        solvefirst.lock_skeletons(l_slots, packs, prior=prior.skeletons)
+        s2_by_lesson[lesson] = {s.id: s for s in l_slots}
+
+        # Verify LF per-lesson plan sha256 matches role-set plan output normalised to LF
+        plan_obj = {
+            "role": "verifier",
+            "seed": 2,
+            "figures": [check_plan(l_slots)],
+            "slots": [s.as_dict() for s in l_slots],
+            "domain_table": naics.pin(),
+            "exclusion_state_sha256": prior.sha256,
+        }
+        expected_lf_sha = hashlib.sha256(
+            json.dumps(plan_obj, indent=1).replace("\r\n", "\n").encode("utf-8")
+        ).hexdigest()
+        assert data["per_lesson_plan_sha256"][lesson] == expected_lf_sha
+
+    for sid in data["f_eligible"]:
+        lesson, kind, num_s = sid.split("-")
+        assert kind == "C" and lesson != "T10" and int(num_s) % 2 == 1
+        raw_s = s2_by_lesson[lesson][sid]
+        assert raw_s.verdict in ("supported", "unsupported")
+        flaw = slot_flaw(raw_s)
+        assert flaw in FLAWS and flaw != "none"
+        rec = data["slot_details"][sid]
+        assert rec["flaw"] == flaw
+        assert rec["domain_fresh"] == raw_s.domain
+        assert rec["frame_fresh"] == raw_s.frame
+        assert rec["real_source"] is raw_s.real_source
+
+    for sid in data["controls"]:
+        lesson, kind, num_s = sid.split("-")
+        assert kind == "C" and lesson != "T10" and int(num_s) % 2 == 0
+        raw_s = s2_by_lesson[lesson][sid]
+        assert raw_s.verdict in ("supported", "unsupported")
+        assert slot_flaw(raw_s) == "none"
+        rec = data["slot_details"][sid]
+        assert rec["flaw"] == "none"
+        assert rec["domain_fresh"] == raw_s.domain
+        assert rec["frame_fresh"] == raw_s.frame
+        assert rec["real_source"] is raw_s.real_source
+
+    # 4. Verify R&D's seed-2 census counts and priority order
+    counts = data["counts"]
+    assert counts["total_non_t10_c_slots"] == 86
+    assert counts["odd_decided_available"] == 28
+    assert counts["odd_real_source_skipped"] == 3
+    assert counts["odd_usable"] == 25
+    assert counts["even_decided_available"] == 33
+    assert counts["even_real_source_skipped"] == 0
+    assert counts["even_usable"] == 33
+    assert counts["odd_by_bucket"] == {
+        "new_available": 4,
+        "new_usable": 4,
+        "new_taken": 4,
+        "phase4_only_available": 9,
+        "phase4_only_usable": 9,
+        "phase4_only_taken": 9,
+        "track_a_available": 15,
+        "track_a_usable": 12,
+        "track_a_taken": 11,
+    }
+    assert counts["even_by_bucket"] == {
+        "new_available": 6,
+        "new_usable": 6,
+        "new_taken": 6,
+        "phase4_only_available": 6,
+        "phase4_only_usable": 6,
+        "phase4_only_taken": 6,
+        "track_a_available": 21,
+        "track_a_usable": 21,
+        "track_a_taken": 12,
+    }
+
+    # Priority order: every usable 'new' and 'phase4_only' slot is taken, and 'track_a_taken' is the exact prefix of 'track_a_usable'
+    for half_key, chosen_ids in (("odd", data["f_eligible"]), ("even", data["controls"])):
+        b_info = data["buckets"][half_key]
+        assert set(b_info["new"]).issubset(set(chosen_ids))
+        assert set(b_info["phase4_only"]).issubset(set(chosen_ids))
+        n_ta = len(b_info["track_a_taken"])
+        assert b_info["track_a_taken"] == b_info["track_a_usable"][:n_ta]
+        for sid in b_info["new"]:
+            assert sid not in p4_ids and sid not in ta_ids
+        for sid in b_info["phase4_only"]:
+            assert sid in p4_ids and sid not in ta_ids
+        for sid in b_info["track_a_available"]:
+            assert sid in ta_ids
+
+    # 5. Real-source rule: skipped slots are recorded with reason, and no chosen real_source slot was real_source in D
+    skipped = data["real_source_skipped"]
+    assert [s["id"] for s in skipped] == ["T02-C-05", "T07-C-07", "T18-C-07"]
+    assert skipped[0]["used_as_real_source_in"] == ["phase4", "track_a"]
+    assert skipped[1]["used_as_real_source_in"] == ["track_a"]
+    assert skipped[2]["used_as_real_source_in"] == ["track_a"]
+    assert all("Runner._material_for" in s["reason"] for s in skipped)
+    assert set(s["id"] for s in skipped).isdisjoint(set(data["slot_ids"]))
+    for s_rec in data["slots"]:
+        if s_rec["real_source"]:
+            assert s_rec["id"] not in p4_rs_ids
+            assert s_rec["id"] not in ta_rs_ids
+
+
+def test_track_b_vslots_refusals_wrong_sha_and_short_half(tmp_path: Path, capsys):
+    """Track B V-slots §3:
+    - a wrong --track-a-slots-sha256 refuses;
+    - a half short of 24 refuses and prints the census without relaxing any rule."""
+    import track_b_slots as tbs
+
+    ta_path = tmp_path / "track-a-slots.json"
+    ta_sha = _write_frozen_track_a_fixture(ta_path)
+
+    # 1. Wrong sha256 refuses
+    assert tbs.main([
+        "--track-a-slots", str(ta_path),
+        "--track-a-slots-sha256", "0" * 64,
+        "--out", str(tmp_path / "bad-sha.json"),
+    ]) == 2
+    err_sha = capsys.readouterr().err
+    assert "REFUSED" in err_sha and "sha256 mismatch" in err_sha
+
+    # 2. Half short of target refuses and includes census in the refusal message
+    ta_data = json.loads(ta_path.read_text(encoding="utf-8"))
+    # Mark two more seed-2 odd real_source slots (T07-C-03, T07-C-05) as real_source in Track A so usable odd drops from 25 to 23 (< 24)
+    for entry in ta_data["slots"]:
+        if entry["id"] in ("T07-C-03", "T07-C-05"):
+            entry["real_source"] = True
+    short_ta_path = tmp_path / "track-a-short.json"
+    short_raw = (json.dumps(ta_data, indent=1) + "\n").encode("utf-8")
+    short_ta_path.write_bytes(short_raw)
+    short_sha = hashlib.sha256(short_raw).hexdigest()
+
+    assert tbs.main([
+        "--track-a-slots", str(short_ta_path),
+        "--track-a-slots-sha256", short_sha,
+        "--out", str(tmp_path / "short-out.json"),
+    ]) == 2
+    err_short = capsys.readouterr().err
+    assert "REFUSED: cannot reach 24 + 24 at seed 2 (usable odd=23, usable even=33)" in err_short
+    assert '"odd_real_source_skipped": 5' in err_short
+    assert not (tmp_path / "short-out.json").exists()
+
+
+def test_track_b_vslots_check_material_catches_shared_and_passes_distinct(tmp_path: Path, capsys):
+    """Track B V-slots §2 & §3:
+    - --check-material passes (exits 0 with counts) when V and D materials are distinct;
+    - --check-material exits 1 and names the pairs if any V material equals any D material (whitespace-normalised)."""
+    import track_b_slots as tbs
+
+    v_file = tmp_path / "v-drafts.jsonl"
+    d1_file = tmp_path / "d-phase4.jsonl"
+    d2_file = tmp_path / "d-tracka.jsonl"
+
+    v_rows = [
+        {"type": "header", "format": "waves-v1"},
+        {"id": "V-T04-C-05", "material": {"text": "Alpha line 1.\nAlpha line 2.", "source": "s1"}},
+        {"id": "V-T12-C-03", "material": {"text": "Beta   line   1.\r\nBeta line 2.", "source": "s2"}},
+    ]
+    d1_rows = [
+        {"type": "header", "format": "waves-v1"},
+        {"item_id": "P4-T02-C-03:d", "material": {"text": "Gamma line 1.\nGamma line 2.", "source": "s3"}},
+    ]
+    d2_distinct_rows = [
+        {"item_id": "TA-T03-C-01:d", "row": {"id": "TA-T03-C-01", "material": "Delta line 1.\nDelta line 2."}},
+    ]
+
+    v_file.write_text("\n".join(json.dumps(r) for r in v_rows) + "\n", encoding="utf-8")
+    d1_file.write_text("\n".join(json.dumps(r) for r in d1_rows) + "\n", encoding="utf-8")
+    d2_file.write_text("\n".join(json.dumps(r) for r in d2_distinct_rows) + "\n", encoding="utf-8")
+
+    # 1. Distinct materials -> exits 0 with counts
+    rc_ok = tbs.main([
+        "--check-material", str(v_file),
+        "--against", str(d1_file), str(d2_file),
+    ])
+    assert rc_ok == 0
+    out_ok = json.loads(capsys.readouterr().out)
+    assert out_ok["ok"] is True
+    assert out_ok["v_rows"] == 2
+    assert out_ok["d_rows"] == 2
+    assert out_ok["shared_count"] == 0
+    assert out_ok["shared_pairs"] == []
+
+    # 2. Shared material (with different whitespace/line breaks) -> exits 1 and names the pair
+    d2_shared_rows = [
+        {"item_id": "TA-T03-C-01:d", "material": {"text": "Beta line 1.   Beta\nline 2.", "source": "s4"}},
+    ]
+    d2_file.write_text("\n".join(json.dumps(r) for r in d2_shared_rows) + "\n", encoding="utf-8")
+
+    rc_shared = tbs.main([
+        "--check-material", str(v_file),
+        "--against", str(d1_file), str(d2_file),
+    ])
+    assert rc_shared == 1
+    captured = capsys.readouterr()
+    out_shared = json.loads(captured.out)
+    assert out_shared["ok"] is False
+    assert out_shared["shared_count"] == 1
+    assert len(out_shared["shared_pairs"]) == 1
+    pair = out_shared["shared_pairs"][0]
+    assert pair["v_id"] == "V-T12-C-03"
+    assert pair["d_id"] == "TA-T03-C-01:d"
+    assert "V-T12-C-03==TA-T03-C-01:d" in captured.err
+
+
+
 
