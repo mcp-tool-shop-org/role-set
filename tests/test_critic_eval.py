@@ -3593,6 +3593,8 @@ def test_track_b_vslots_determinism_24_plus_24_priority_and_real_source_skips(tm
     from role_set.cli import VERIFIER_SIDES
     from role_set.plan import plan_batch
 
+    assert "Excerpt-collision rule" in (tbs.__doc__ or "") and "excerpt_collision" in (tbs.__doc__ or "")
+
     ta_path = tmp_path / "track-a-slots.json"
     ta_sha = _write_frozen_track_a_fixture(ta_path, include_real_source=False)
     ta_data = json.loads(ta_path.read_text(encoding="utf-8"))
