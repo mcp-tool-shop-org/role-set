@@ -305,7 +305,7 @@ def _write_one(runner: Runner, st: SlotState) -> dict:
         return _drop(runner, st)
     runner.note_training_row(cand.row)
     # Every writer call is logged; this one waits for the critic.
-    runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material)
+    runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material, repairs=cand.repairs)
     return record(st, "awaiting_critique", completion=cand.completion, lookup=cand.lookup)
 
 

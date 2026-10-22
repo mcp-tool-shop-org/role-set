@@ -283,6 +283,7 @@ class Candidate:
     row: dict
     glyphs: int
     lookup: bool
+    repairs: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -540,6 +541,7 @@ class Runner:
         self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
         self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
+        self._verbatim_repairs: dict[str, list[dict]] = {}  # slot id -> verbatim_lines repairs on the current attempt
 
     def note_training_row(self, row: dict) -> None:
         """Add a surviving training row's 8-word user-turn spans to the SPENT set for apply slots."""
@@ -585,7 +587,17 @@ class Runner:
             record["critic_raw"] = refusal["critic_raw"]
         self._append("refusals.jsonl", record)
 
-    def _record_call(self, slot: Slot, attempt: int, c, outcome: str, glyphs: int, material) -> None:
+    def _record_call(
+        self,
+        slot: Slot,
+        attempt: int,
+        c,
+        outcome: str,
+        glyphs: int,
+        material,
+        *,
+        repairs: list[dict] | None = None,
+    ) -> None:
         """One line per writer call, on both paths: the raw draft, tokens, latency, the outcome, glyphs normalised, and
         the frozen stuck rule's measures on the draft's thinking. Then the systemic check over the last SYSTEMIC_WINDOW calls."""
         text = c.text if c is not None else ""
@@ -596,6 +608,10 @@ class Runner:
         # on a paid run can be read per draft. Absent when the draft never reached the critic.
         with self.lock:
             checks = self._critic_notes.pop(slot.id, None)
+            recorded_repairs = self._verbatim_repairs.pop(slot.id, None)
+        effective_repairs = repairs if repairs is not None else recorded_repairs
+        if effective_repairs:
+            record["verbatim_repairs"] = list(effective_repairs)
         if checks is not None:
             record["critic"] = checks
         if self.stuck is not None and text:
@@ -719,8 +735,11 @@ class Runner:
         self._log(action, slot=slot.id, code=v.code, detail=v.detail, critic_raw=raw[:2000])
 
     def _note(self, slot: Slot, check: str, v, raw: str) -> None:
+        entry = {"check": check, "code": v.code, "detail": v.detail, "raw": raw[:2000]}
+        if getattr(v, "repairs", None):
+            entry["repairs"] = list(v.repairs)
         with self.lock:
-            self._critic_notes.setdefault(slot.id, []).append({"check": check, "code": v.code, "detail": v.detail, "raw": raw[:2000]})
+            self._critic_notes.setdefault(slot.id, []).append(entry)
 
     def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
         if self.critic is None:
@@ -878,13 +897,19 @@ class Runner:
                 measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
                 if measures.get("stuck"):
                     refusal = self._refusal("STUCK", ", ".join(f"{k} {measures[k]}" for k in ("bursts", "hedges") if k in measures) or "stuck rule")
+        repairs: list[dict] = []
+        with self.lock:
+            self._verbatim_repairs.pop(slot.id, None)
         if refusal is None:
             if slot.kind == "C" and "planted_flaw" not in fields:
                 fields["planted_flaw"] = slot_flaw(slot)
             try:
-                row = assemble(slot, trait, fields, material)
+                row = assemble(slot, trait, fields, material, repairs=repairs)
             except AssemblyError as e:
                 refusal = self._refusal("ASSEMBLY", str(e))
+            if repairs:
+                with self.lock:
+                    self._verbatim_repairs[slot.id] = list(repairs)
         if refusal is None:
             t = truth_checks(row, facts)
             if t:
@@ -918,7 +943,7 @@ class Runner:
                 refusal = self._refusal("ROLE_WORDS", ", ".join(words))
         if refusal is not None:
             return refusal, None, glyphs
-        return None, Candidate(completion=c, fields=fields, row=row, glyphs=glyphs, lookup=lookup), glyphs
+        return None, Candidate(completion=c, fields=fields, row=row, glyphs=glyphs, lookup=lookup, repairs=repairs), glyphs
 
     def write_step(self, st: SlotState) -> Candidate | None:
         """Writer calls until a draft passes the mechanical checks, inside the slot's attempt budget. A mechanical
@@ -973,11 +998,11 @@ class Runner:
                 return self._refusal("PUZZLE", lookup_full(slot))
             if slot.kind == "B":
                 self.models[row["id"]] = fields["model"]
-            self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs)
+            self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs, repairs=cand.repairs)
             self.accept_order[slot.id] = len(self.accepted) - 1
             if cand.lookup:
                 self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
-            self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material)
+            self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material, repairs=cand.repairs)
             return None
 
     def refuse(self, st: SlotState, c, refusal: dict, glyphs: int) -> None:
@@ -1021,12 +1046,22 @@ class Runner:
                 return self.outcome_of(st, cand.row)
             self.refuse(st, cand.completion, refusal, cand.glyphs)
 
-    def _accept(self, slot: Slot, row: dict, completion, attempt: int, glyphs: int = 0) -> None:
+    def _accept(
+        self,
+        slot: Slot,
+        row: dict,
+        completion,
+        attempt: int,
+        glyphs: int = 0,
+        *,
+        repairs: list[dict] | None = None,
+    ) -> None:
         self.accepted.append(row)
         self.status.accepted += 1
         framing = row["turns"][0]["user"].split("\n", 1)[0]
         if framing and slot.kind in ("C", "D", "E"):
             self.avoid.append(framing)
+        effective_repairs = repairs if repairs is not None else self._verbatim_repairs.get(slot.id)
         receipt = {
             "slot": slot.as_dict(),
             "writer_model": completion.model,
@@ -1036,6 +1071,9 @@ class Runner:
             "glyphs_normalized": glyphs,
             **self.pins,
         }
+        if effective_repairs:
+            receipt["verbatim_repairs"] = list(effective_repairs)
+            self._log("verbatim_repair", slot=slot.id, attempt=attempt, repairs=list(effective_repairs))
         if slot.kind == "B":
             locked = self._locked.get(slot.id)
             receipt["b"] = locked.receipt() if locked is not None else {"b_path": slot.b_path or "freehand", "pack": slot.pack}

@@ -179,20 +179,129 @@ def three_lines(verdict: str, deciding: list[str], escalate: str) -> str:
     return f"VERDICT: {verdict}\nDECIDING: {body}\nESCALATE: {escalate}"
 
 
+MATERIAL_LINE_CHARS = 20  # a material line this long, found in the framing, is the material repeated
+MARKDOWN_LINK = re.compile(r"\[([^\[\]]+)\]\([^)\n]+\)")
+_MARK_ATOM_RE = re.compile(
+    r"\[[^\[\]]+\]\([^)\n]+\)"
+    r"|\*\*(?:`[^`\n]+`|[^*\n])+\*\*"
+    r"|__(?:`[^`\n]+`|[^_\n])+__"
+    r"|`[^`\n]+`"
+    r"|\S"
+)
+
+
 def _ws(x: str) -> str:
     return " ".join(x.split())
 
 
-def verbatim_lines(lines: list[str], material: str) -> list[str]:
-    """Every DECIDING line the writer proposes must be a verbatim line of the material (whitespace aside)."""
+def _strip_inline_marks(s: str) -> str:
+    """Remove backticks, ** and __, replace [text](url) with text, and collapse whitespace."""
+
+    s = MARKDOWN_LINK.sub(r"\1", s)
+    s = s.replace("`", "").replace("**", "").replace("__", "")
+    return _ws(s)
+
+
+def _extract_exact_span(mat_line: str, q_stripped: str) -> str | None:
+    atoms = [m for m in _MARK_ATOM_RE.finditer(mat_line) if _strip_inline_marks(m.group(0))]
+    spans: list[str] = []
+    for i in range(len(atoms)):
+        for j in range(i + 1, len(atoms) + 1):
+            cand = mat_line[atoms[i].start():atoms[j - 1].end()]
+            if _strip_inline_marks(cand) == q_stripped:
+                spans.append(cand)
+    return spans[0] if len(spans) == 1 else None
+
+
+def _first_diff(a: str, b: str) -> int:
+    for i, (ca, cb) in enumerate(zip(a, b)):
+        if ca != cb:
+            return i
+    return min(len(a), len(b))
+
+
+def _closest_material_line(line: str, material: str) -> tuple[str, int]:
+    from difflib import SequenceMatcher  # noqa: PLC0415
+
+    q = _ws(line)
+    candidates = [_ws(m) for m in material.splitlines() if m.strip()]
+    if not candidates:
+        return "", 0
+    best = max(candidates, key=lambda m: (_first_diff(q, m), SequenceMatcher(None, q, m).ratio()))
+    return best, _first_diff(q, best)
+
+
+def resolve_verbatim_line(line: str, material: str) -> tuple[str, dict | None] | None:
+    """Resolve one DECIDING quote against `material`:
+    - If strict (`_ws(line) in _ws(material)`), returns `(line.strip("\\n"), None)`.
+    - Otherwise compares `_strip_inline_marks(line)` against non-empty lines of `material.splitlines()`.
+      A material line matches when its stripped form equals the stripped quote, or when it is not a table row and
+      the stripped quote (at least `MATERIAL_LINE_CHARS` chars) is a substring of its stripped form.
+    - When exactly one material line matches, returns `(repaired_text, {"from": line.strip("\\n"), "to": repaired_text})`.
+    - When zero or two or more material lines match (or a substring span cannot be extracted unambiguously), returns `None`.
+    """
+
+    cleaned = line.strip("\n")
+    flat = _ws(material)
+    if _ws(cleaned) and _ws(cleaned) in flat:
+        return cleaned, None
+    q_stripped = _strip_inline_marks(cleaned)
+    if not q_stripped:
+        return None
+    mat_lines = [m.strip() for m in material.splitlines() if m.strip()]
+    matches: list[tuple[str, bool]] = []
+    for m in mat_lines:
+        m_stripped = _strip_inline_marks(m)
+        if q_stripped == m_stripped:
+            matches.append((m, True))
+        elif (
+            len(q_stripped) >= MATERIAL_LINE_CHARS
+            and not m.lstrip().startswith("|")
+            and q_stripped in m_stripped
+        ):
+            matches.append((m, False))
+    if len(matches) != 1:
+        return None
+    matched_line, is_full = matches[0]
+    if is_full:
+        return matched_line, {"from": cleaned, "to": matched_line}
+    span = _extract_exact_span(matched_line, q_stripped)
+    if span is None:
+        return None
+    return span, {"from": cleaned, "to": span}
+
+
+class VerbatimLines(list):
+    """A list[str] of resolved DECIDING lines carrying `.repairs` (`[{"from": quote, "to": material_text}, ...]`)."""
+
+    def __init__(self, items: list[str], repairs: list[dict] | None = None) -> None:
+        super().__init__(items)
+        self.repairs: list[dict] = list(repairs or [])
+
+
+def verbatim_lines(lines: list[str], material: str, repairs: list[dict] | None = None) -> VerbatimLines:
+    """Every DECIDING line the writer proposes must be a verbatim line of the material (whitespace aside), or resolve
+    unambiguously to a single material line when inline markdown marks (backticks, **, __, [text](url)) are ignored."""
 
     if not isinstance(lines, list) or not all(isinstance(x, str) and x.strip() for x in lines):
         raise AssemblyError("DECIDING must be a list of non-empty strings")
-    flat = _ws(material)
+    out: list[str] = []
+    recorded: list[dict] = []
     for line in lines:
-        if _ws(line) not in flat:
-            raise AssemblyError(f"DECIDING line is not verbatim in the material: {line[:60]!r}")
-    return [x.strip("\n") for x in lines]
+        res = resolve_verbatim_line(line, material)
+        if res is None:
+            closest, diff_at = _closest_material_line(line, material)
+            raise AssemblyError(
+                f"DECIDING line is not verbatim in the material (first differs at char {diff_at}); "
+                f"line: {line.strip(chr(10))!r}; closest material line: {closest!r}"
+            )
+        resolved, repair = res
+        out.append(resolved)
+        if repair is not None:
+            recorded.append(repair)
+            if repairs is not None:
+                repairs.append(repair)
+    return VerbatimLines(out, recorded)
 
 
 def _require(fields: dict, *names: str) -> None:
@@ -204,7 +313,6 @@ def _require(fields: dict, *names: str) -> None:
 THREE_LINES = re.compile(r"^\s*\**\s*(VERDICT|DECIDING|ESCALATE)\s*\**\s*:", re.I | re.M)
 VERDICT_WORDS = {"supported": re.compile(r"(?<!un)\bsupported\b", re.I), "unsupported": re.compile(r"\bunsupported\b", re.I),
                  "cannot_tell": re.compile(r"\bcannot[_ ]tell\b", re.I)}
-MATERIAL_LINE_CHARS = 20  # a material line this long, found in the framing, is the material repeated
 
 
 def _reply_prose(text: str, field: str) -> str:
@@ -315,7 +423,7 @@ def _apply_fields(slot: Slot, fields: dict, row: dict) -> None:
     row["r10_twin"] = {"statement": twin["statement"].strip(), "verdict": twin["verdict"]}
 
 
-def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = None) -> dict:
+def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = None, repairs: list[dict] | None = None) -> dict:
     """One row from one slot. Raises AssemblyError with a reason the runner can hand back."""
 
     k = slot.kind
@@ -364,7 +472,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
         flaw = fields.get("planted_flaw", slot_flaw(slot))
         if flaw not in FLAWS + ("none",):
             raise AssemblyError(f"planted_flaw {flaw!r}")
-        deciding = verbatim_lines(fields.get("deciding", []), material.text) if slot.verdict != "cannot_tell" else []
+        deciding = list(verbatim_lines(fields.get("deciding", []), material.text, repairs=repairs)) if slot.verdict != "cannot_tell" else []
         proposed = str(fields.get("checker_verdict") or "").strip()
         if flaw == "none":
             checker_verdict = slot.verdict
@@ -401,7 +509,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
 
     if k == "D":
         _require(fields, "framing", "statement", "thinking", "reply")
-        deciding = verbatim_lines(fields.get("deciding", []), material.text) if slot.verdict != "cannot_tell" else []
+        deciding = list(verbatim_lines(fields.get("deciding", []), material.text, repairs=repairs)) if slot.verdict != "cannot_tell" else []
         tags: list[str] = []
         # In a two-turn item the pushback is turn 2's user turn. R&D's pilot-2 key-check found 6 of 7 D items with the
         # pressure line pasted into turn 0 as well, so turn 1 only repeated it; turn 0 now carries no pressure line.
@@ -431,7 +539,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                 if v2 not in VERDICTS or v2 == slot.verdict:
                     raise AssemblyError("a 'changes' item needs a different turn2_verdict")
                 available = material.text + "\n" + "\n".join(new_lines)
-                d2 = verbatim_lines(fields.get("turn2_deciding", []), available) if v2 != "cannot_tell" else []
+                d2 = list(verbatim_lines(fields.get("turn2_deciding", []), available, repairs=repairs)) if v2 != "cannot_tell" else []
                 if v2 != "cannot_tell" and not any(_ws(x) in _ws("\n".join(new_lines)) for x in d2):
                     raise AssemblyError("a 'changes' item must quote the new line in its turn-2 DECIDING")
                 for line in new_lines:
@@ -476,7 +584,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
                              "reply": _reply_prose(fields["reply"], "reply")}]
             return row
         _require(fields, "framing", "statement", "thinking", "reply", "variant_user")
-        deciding = verbatim_lines(fields.get("deciding", []), material.text) if slot.verdict != "cannot_tell" else []
+        deciding = list(verbatim_lines(fields.get("deciding", []), material.text, repairs=repairs)) if slot.verdict != "cannot_tell" else []
         row = _base(slot, trait, sources, invented, content_kind, [])
         row["material"] = material.text
         row["quiz"] = {"type": "verdict", "verdict": slot.verdict, "deciding": deciding, "escalate": _escalate(slot)}
