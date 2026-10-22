@@ -180,11 +180,11 @@ def three_lines(verdict: str, deciding: list[str], escalate: str) -> str:
 
 
 MATERIAL_LINE_CHARS = 20  # a material line this long, found in the framing, is the material repeated
-MARKDOWN_LINK = re.compile(r"\[([^\[\]]+)\]\([^)\n]+\)")
+MARKDOWN_LINK = re.compile(r"\[([^\[\]\n]+)\]\([^)\n]+\)")
 _MARK_ATOM_RE = re.compile(
-    r"\[[^\[\]]+\]\([^)\n]+\)"
-    r"|\*\*(?:`[^`\n]+`|[^*\n])+\*\*"
-    r"|__(?:`[^`\n]+`|[^_\n])+__"
+    r"\[[^\[\]\n]+\]\([^)\n]+\)"
+    r"|\*\*(?:`[^`\n]+`|[^*`\n])+\*\*"
+    r"|__(?:`[^`\n]+`|[^_`\n])+__"
     r"|`[^`\n]+`"
     r"|\S"
 )
@@ -203,13 +203,34 @@ def _strip_inline_marks(s: str) -> str:
 
 
 def _extract_exact_span(mat_line: str, q_stripped: str) -> str | None:
-    atoms = [m for m in _MARK_ATOM_RE.finditer(mat_line) if _strip_inline_marks(m.group(0))]
+    raw_atoms = [(m, _strip_inline_marks(m.group(0))) for m in _MARK_ATOM_RE.finditer(mat_line)]
+    atoms = [(m, s) for m, s in raw_atoms if s]
+    if not atoms:
+        return None
+    has_space_before = [
+        i > 0 and any(c.isspace() for c in mat_line[atoms[i - 1][0].end():atoms[i][0].start()])
+        for i in range(len(atoms))
+    ]
+    target_len = len(q_stripped)
     spans: list[str] = []
-    for i in range(len(atoms)):
-        for j in range(i + 1, len(atoms) + 1):
-            cand = mat_line[atoms[i].start():atoms[j - 1].end()]
-            if _strip_inline_marks(cand) == q_stripped:
-                spans.append(cand)
+    for i, (m_start, s_start) in enumerate(atoms):
+        if not q_stripped.startswith(s_start):
+            continue
+        cur_len = 0
+        for j in range(i, len(atoms)):
+            m_end, s_end = atoms[j]
+            if j > i and has_space_before[j]:
+                cur_len += 1
+            cur_len += len(s_end)
+            if cur_len < target_len:
+                continue
+            if cur_len == target_len and q_stripped.endswith(s_end):
+                cand = mat_line[m_start.start():m_end.end()]
+                if _strip_inline_marks(cand) == q_stripped:
+                    spans.append(cand)
+                    if len(spans) > 1:
+                        return None
+            break
     return spans[0] if len(spans) == 1 else None
 
 

@@ -472,3 +472,31 @@ def test_verbatim_repair_refuses_ambiguous_or_unmatched_and_leaves_strict_untouc
     assert "verbatim_repairs" not in d_by_slot["T02-D-02"]
     assert "verbatim_repairs" not in r_by_slot["T02-D-02"]
 
+
+def test_mark_atom_re_and_resolve_verbatim_line_are_linear_on_adversarial_lines():
+    import time
+
+    from role_set.assemble import _MARK_ATOM_RE, resolve_verbatim_line
+
+    mixed_unit = "**bold `code`_x_[link](https://example.com/a)__under `tick` *[unclosed "
+    mixed_5000 = (mixed_unit * (5000 // len(mixed_unit) + 1))[:5000]
+    assert len(mixed_5000) == 5000
+
+    cases = [
+        ("star_backtick", "**" + "`)" * 5000, ")" * 25),
+        ("under_backtick", "__" + "`^" * 5000, "^" * 25),
+        ("mixed_5000", mixed_5000, "bold code_x_linkunder tick *[unclosed"),
+    ]
+    for name, adv_line, probe_quote in cases:
+        t0 = time.perf_counter()
+        atoms = list(_MARK_ATOM_RE.finditer(adv_line))
+        dt_finditer = time.perf_counter() - t0
+        assert atoms
+        assert dt_finditer < 0.5, f"{name} _MARK_ATOM_RE.finditer took {dt_finditer:.3f}s"
+
+        t1 = time.perf_counter()
+        _ = resolve_verbatim_line(probe_quote, adv_line)
+        dt_resolve = time.perf_counter() - t1
+        assert dt_resolve < 0.5, f"{name} resolve_verbatim_line took {dt_resolve:.3f}s"
+
+
