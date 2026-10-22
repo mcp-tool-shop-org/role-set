@@ -2187,7 +2187,7 @@ def plan_has_apply_slots(plan: Path) -> bool:
 
 def training_inputs(result: dict) -> list[Path]:
     """The frozen Stage 1 training set and its .models.jsonl sidecars, unpacked read-only and sha-checked before any
-    server starts (Argon round 1 F1). Returns the training .jsonl paths in FROZEN.md's training order."""
+    server starts (Argon round 1 F1, round 2 F1). Returns the training .jsonl paths in FROZEN.md's training order."""
 
     import tarfile  # noqa: PLC0415
 
@@ -2218,9 +2218,27 @@ def training_inputs(result: dict) -> list[Path]:
     data_files = [n for n in shas if n.endswith(".jsonl") and not n.endswith(".models.jsonl")]
     if not data_files:
         raise RuntimeError("REFUSED: PIN_TRAINING_SHAS names no training .jsonl files")
+    ordered_files: list[str] = []
+    expected_frozen_sha: dict[str, str] = {}
+    missing_frozen: list[str] = []
+    claimed: set[str] = set()
+    for rel_path, frozen_sha in FROZEN_TRAINING_FILES:
+        fname = Path(rel_path).name
+        match = next((n for n in data_files if n not in claimed and n in (rel_path, fname)), None)
+        if match is None:
+            missing_frozen.append(rel_path)
+        else:
+            claimed.add(match)
+            ordered_files.append(match)
+            expected_frozen_sha[match] = frozen_sha
+    if missing_frozen:
+        raise RuntimeError(f"REFUSED: missing frozen training file: {', '.join(missing_frozen)}")
+    extra_data = [n for n in data_files if n not in claimed]
+    if extra_data:
+        raise RuntimeError(f"REFUSED: extra training .jsonl file not in FROZEN_TRAINING_FILES: {', '.join(extra_data)}")
     missing_sidecars = [
         f"{n[:-len('.jsonl')]}.models.jsonl"
-        for n in data_files
+        for n in ordered_files
         if f"{n[:-len('.jsonl')]}.models.jsonl" not in shas or not (root / f"{n[:-len('.jsonl')]}.models.jsonl").is_file()
     ]
     if missing_sidecars:
@@ -2229,20 +2247,16 @@ def training_inputs(result: dict) -> list[Path]:
     bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
     if bad:
         raise RuntimeError("REFUSED: training input sha256 mismatch: " + "; ".join(bad))
+    bad_frozen = [
+        f"{n} is {got[n][:12]}, not FROZEN_TRAINING_FILES {expected_frozen_sha[n][:12]}"
+        for n in ordered_files
+        if got[n] != expected_frozen_sha[n]
+    ]
+    if bad_frozen:
+        raise RuntimeError("REFUSED: frozen training sha256 mismatch: " + "; ".join(bad_frozen))
     for p in sorted(root.rglob("*"), reverse=True):
         os.chmod(p, 0o555 if p.is_dir() else 0o444)
     os.chmod(root, 0o555)
-    frozen_rank: dict[str, int] = {}
-    for idx, (rel_path, _) in enumerate(FROZEN_TRAINING_FILES):
-        frozen_rank[rel_path] = idx
-        frozen_rank[Path(rel_path).name] = idx
-    ordered = sorted(
-        enumerate(data_files),
-        key=lambda item: (0, frozen_rank[item[1]]) if item[1] in frozen_rank else (
-            (0, frozen_rank[Path(item[1]).name]) if Path(item[1]).name in frozen_rank else (1, item[0])
-        ),
-    )
-    ordered_files = [n for _, n in ordered]
     result["training_inputs"] = {"tar_sha256": sha256(tar), "order": ordered_files, "files": got}
     return [root / n for n in ordered_files]
 

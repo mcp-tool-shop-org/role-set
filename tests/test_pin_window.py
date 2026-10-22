@@ -1542,6 +1542,7 @@ def _make_training_tar(tar_path: Path, files: dict[str, bytes]) -> dict[str, str
 
 
 def test_training_inputs_refuses_missing_vars_sidecar_or_sha_mismatch_before_serving_and_orders_by_frozen_md(tmp_path, monkeypatch):
+    real_frozen = pw.FROZEN_TRAINING_FILES
     rs = _role_set_cmd()
     content = tmp_path / "content"
     work = content / "pin"
@@ -1606,34 +1607,119 @@ def test_training_inputs_refuses_missing_vars_sidecar_or_sha_mismatch_before_ser
     with pytest.raises(RuntimeError, match="REFUSED: no sha256 in PIN_TRAINING_SHAS for extra.jsonl"):
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
 
-    # 4. Missing .models.jsonl sidecar
+    # 4. Missing frozen file from FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (
+            ("docs/runs/stage1-training-data/pilot-t04.jsonl", shas["pilot-t04.jsonl"]),
+            ("docs/runs/stage1-training-data/batch2-t01.jsonl", "c" * 64),
+        ),
+    )
+    shas_one = _make_training_tar(tar_path, {"pilot-t04.jsonl": b"{}\n", "pilot-t04.models.jsonl": b""})
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_one['pilot-t04.jsonl']},pilot-t04.models.jsonl={shas_one['pilot-t04.models.jsonl']}")
+    with pytest.raises(RuntimeError, match=r"REFUSED: missing frozen training file: docs/runs/stage1-training-data/batch2-t01\.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 5. Extra training .jsonl data file not in FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", shas["pilot-t04.jsonl"]),),
+    )
+    shas_extra = _make_training_tar(
+        tar_path,
+        {
+            "pilot-t04.jsonl": b"{}\n",
+            "pilot-t04.models.jsonl": b"",
+            "extra.jsonl": b"{}\n",
+            "extra.models.jsonl": b"",
+        },
+    )
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in shas_extra.items()))
+    with pytest.raises(RuntimeError, match=r"REFUSED: extra training \.jsonl file not in FROZEN_TRAINING_FILES: extra\.jsonl"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 6. Missing .models.jsonl sidecar refuses before serving
     shas_no_sidecar = _make_training_tar(tar_path, {"pilot-t04.jsonl": b"{}\n"})
     monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_no_sidecar['pilot-t04.jsonl']}")
     with pytest.raises(RuntimeError, match=r"REFUSED: missing training sidecar: pilot-t04\.models\.jsonl"):
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
 
-    # 5. SHA mismatch
+    # 7. SHA mismatch against PIN_TRAINING_SHAS refuses before serving
     shas_ok = _make_training_tar(tar_path, {"pilot-t04.jsonl": b'{"id":"T04-A-01"}\r\n', "pilot-t04.models.jsonl": b""})
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", shas_ok["pilot-t04.jsonl"]),),
+    )
     monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={'0' * 64},pilot-t04.models.jsonl={shas_ok['pilot-t04.models.jsonl']}")
-    with pytest.raises(RuntimeError, match="REFUSED: training input sha256 mismatch: pilot-t04.jsonl"):
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: training input sha256 mismatch: pilot-t04\.jsonl is {shas_ok['pilot-t04.jsonl'][:12]}, not 000000000000",
+    ):
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
 
-    # 6. LF-normalized sha matches CRLF bytes, unpacks read-only, and orders in FROZEN.md training order (not sorted path order).
+    # 8. Data file whose sha matches PIN_TRAINING_SHAS (env) but not hard-coded FROZEN_TRAINING_FILES refuses before serving
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/pilot-t04.jsonl", "f" * 64),),
+    )
+    monkeypatch.setenv("PIN_TRAINING_SHAS", f"pilot-t04.jsonl={shas_ok['pilot-t04.jsonl']},pilot-t04.models.jsonl={shas_ok['pilot-t04.models.jsonl']}")
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: frozen training sha256 mismatch: pilot-t04\.jsonl is {shas_ok['pilot-t04.jsonl'][:12]}, not FROZEN_TRAINING_FILES ffffffffffff",
+    ):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+    # 9. LF-normalized sha matches CRLF bytes, unpacks read-only, and orders in FROZEN.md training order (not sorted path order).
     tar_files: dict[str, bytes] = {}
-    for rel_path, _ in pw.FROZEN_TRAINING_FILES:
+    for rel_path, _ in real_frozen:
         name = Path(rel_path).name
         stem = name[:-len(".jsonl")]
         tar_files[name] = f'{{"id": "{stem}"}}\r\n'.encode("utf-8")
         tar_files[f"{stem}.models.jsonl"] = b""
     all_shas = _make_training_tar(tar_path, tar_files)
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        tuple((rel_path, all_shas[Path(rel_path).name]) for rel_path, _ in real_frozen),
+    )
     # Pass PIN_TRAINING_SHAS in sorted (alphabetical) order, which puts batch2-t01 before pilot-t04.
     monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={all_shas[k]}" for k in sorted(all_shas)))
     res: dict = {}
     paths = pw.training_inputs(res)
-    expected_order = [Path(rel).name for rel, _ in pw.FROZEN_TRAINING_FILES]
+    expected_order = [Path(rel).name for rel, _ in real_frozen]
     assert [p.name for p in paths] == expected_order
     assert res["training_inputs"]["order"] == expected_order
     assert not os.access(paths[0], os.W_OK)
+
+
+def test_training_inputs_with_real_frozen_training_files_refuses_tar_missing_a_file(tmp_path, monkeypatch):
+    assert len(pw.FROZEN_TRAINING_FILES) == 21
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+
+    tar_files: dict[str, bytes] = {}
+    for rel_path, _ in pw.FROZEN_TRAINING_FILES[:-1]:
+        name = Path(rel_path).name
+        stem = name[:-len(".jsonl")]
+        tar_files[name] = f'{{"id": "{stem}"}}\n'.encode("utf-8")
+        tar_files[f"{stem}.models.jsonl"] = b""
+    tar_path = tmp_path / "missing-one.tar"
+    shas = _make_training_tar(tar_path, tar_files)
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(tar_path))
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in shas.items()))
+    with pytest.raises(
+        RuntimeError,
+        match=r"REFUSED: missing frozen training file: docs/runs/stage1-training-data/batch8-l3\.jsonl",
+    ):
+        pw.training_inputs({})
 
 
 def test_t10_stub_end_to_end_write_only_then_critique_resume_with_scope_verdict(tmp_path, monkeypatch):
@@ -1739,6 +1825,14 @@ def test_t10_stub_end_to_end_write_only_then_critique_resume_with_scope_verdict(
             "pilot-t04.jsonl": (json.dumps(t04_d_row, ensure_ascii=False) + "\n").encode("utf-8"),
             "pilot-t04.models.jsonl": b"",
         },
+    )
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (
+            ("docs/runs/stage1-training-data/pilot-t04.jsonl", training_shas["pilot-t04.jsonl"]),
+            ("docs/runs/stage1-training-data/batch2-t01.jsonl", training_shas["batch2-t01.jsonl"]),
+        ),
     )
 
     rs = _role_set_cmd()
