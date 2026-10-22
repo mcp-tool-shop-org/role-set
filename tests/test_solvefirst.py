@@ -41,7 +41,8 @@ def test_every_generator_proves_its_puzzles(structure: str):
         if structure == "tree_with_pruning":
             assert locked.key in ("supported", "unsupported") and locked.subject is None
         if structure == "stopping_problem":
-            assert locked.key == str(got.stop_at) and got.stop_at == locked.model["facts"][-1]["line"]
+            last = locked.model["facts"][-1]["line"]
+            assert locked.key == str(got.stop_at) and last - 2 <= got.stop_at <= last
             assert "After which numbered line" in locked.question
         if structure == "falsifier_first":
             assert locked.key == "unsupported" and locked.subject is None
@@ -316,6 +317,8 @@ PACK_CHUNKS = [tuple(sorted(PACKS)[i:i + 6]) for i in range(0, len(PACKS), 6)]
 def test_new_generators_prove_and_prune_seeds_1_to_200_in_every_pack(structure: str, pack_ids: tuple[str, ...]):
     for pid in pack_ids:
         pack = PACKS[pid]
+        saw_trailing = False
+        saw_exact = False
         for seed in range(1, 201):
             locked = solvefirst.generate(structure, pack, seed)
             fields = {**solvefirst.render_for_mock(locked), "model": locked.model, "answer": locked.key}
@@ -323,11 +326,82 @@ def test_new_generators_prove_and_prune_seeds_1_to_200_in_every_pack(structure: 
             assert got.answer == locked.key and not got.lookup
             assert solvefirst.answer_early(locked, fields["thinking"]) is None
             if structure == "stopping_problem":
-                assert got.stop_at == locked.model["facts"][-1]["line"] and locked.key == str(got.stop_at)
+                last = locked.model["facts"][-1]["line"]
+                assert locked.key == str(got.stop_at) and last - 2 <= got.stop_at <= last
+                saw_trailing = saw_trailing or (got.stop_at < last)
+                saw_exact = saw_exact or (got.stop_at == last)
             elif structure == "falsifier_first":
                 assert locked.key == "unsupported" and "claim" in locked.model and "asks" in locked.model
             elif structure == "when_to_stop":
                 assert locked.key in ("supported", "unsupported") and "claim" in locked.model and got.stop_at is None
+        if structure == "stopping_problem":
+            assert saw_trailing and saw_exact, pid
+
+
+def test_answer_early_stopping_problem_rules_and_brief():
+    locked = next(
+        solvefirst.generate("stopping_problem", PACKS["clinic-rota"], s)
+        for s in range(1, 50)
+        if int(solvefirst.generate("stopping_problem", PACKS["clinic-rota"], s).key)
+        < solvefirst.generate("stopping_problem", PACKS["clinic-rota"], s).model["facts"][-1]["line"]
+    )
+    subject = locked.subject
+    attr = locked.model["asks"]["attribute"]
+    stop_at = int(locked.key)
+    all_lines = [f["line"] for f in locked.model["facts"]]
+    needed = [n for n in all_lines if n < stop_at]
+    trailing = [n for n in all_lines if n > stop_at]
+    assert len(needed) >= 2 and len(trailing) >= 1
+
+    want_msg = f"the thinking pairs {subject} with line {stop_at} before citing every earlier needed line"
+
+    # 1. Upfront spoiler refused.
+    cites_all = " ".join(f"Line {n} narrows it." for n in all_lines)
+    spoiler = f"{subject}'s {attr} is settled at line {stop_at}, as I'll show. {cites_all}"
+    assert solvefirst.answer_early(locked, spoiler) == want_msg
+
+    # 2. Skipped needed line refused.
+    skipped = (
+        f"Line {needed[0]} narrows it. So {subject}'s {attr} is settled at line {stop_at}. "
+        + " ".join(f"Line {n} applies." for n in all_lines[1:])
+    )
+    assert solvefirst.answer_early(locked, skipped) == want_msg
+
+    # 3. Honest early settle accepted (even before 2/3 of the thinking), followed by trailing lines.
+    prefix = " ".join(f"Line {n} trims the options." for n in needed)
+    settle_step = f"Line {stop_at} rules out the other option, so {subject} is settled at line {stop_at}."
+    tail_steps = " ".join(
+        f"Line {n} changes nothing after line {stop_at} and leaves the rest of the rota consistent." for n in trailing
+    )
+    closing = "Every remaining line has been checked and nothing changes the stopping point."
+    honest = f"{prefix} {settle_step} {tail_steps} {closing}"
+    assert honest.index(settle_step) < len(honest) * solvefirst.LATE_SHARE
+    assert solvefirst.answer_early(locked, honest) is None
+
+    # 4. A clock-time digit isn't a citation of line {stop_at}.
+    clock = (
+        f"{subject} is at {stop_at}.30 pm (line {needed[0]}). "
+        + " ".join(f"Line {n} trims it." for n in needed[1:])
+        + f" {settle_step} {tail_steps} {closing}"
+    )
+    assert solvefirst.answer_early(locked, clock) is None
+
+    # 5. A candidate list naming both line {stop_at} and a rival fact line is allowed before stop_at.
+    cand = (
+        f"Whether {subject} is settled at line {needed[0]} or line {stop_at} starts at line {needed[0]}. "
+        + " ".join(f"Line {n} trims it." for n in needed[1:])
+        + f" {settle_step} {tail_steps} {closing}"
+    )
+    assert solvefirst.answer_early(locked, cand) is None
+
+    # 6. Brief wording for stopping_problem vs the other seven structures.
+    b_stop = solvefirst.brief(locked)
+    assert "it may say the answer is settled at the settling line once it has cited every earlier line, then works through any remaining lines" in b_stop
+    assert "it reaches the answer only at its end" not in b_stop
+    for other in solvefirst.SOLVE_FIRST:
+        if other != "stopping_problem":
+            b_other = solvefirst.brief(solvefirst.generate(other, PACKS["clinic-rota"], 1))
+            assert "it reaches the answer only at its end" in b_other
 
 
 ORIGINAL_FIVE_PINS = {
@@ -398,6 +472,7 @@ def test_original_five_structures_are_byte_unchanged_from_main():
     import random
 
     assert solvefirst._grow_and_prune(random.Random(0), [], lambda f: {}, lambda p: True) is None
+    assert solvefirst._grow_and_prune(random.Random(0), [["bad"]], lambda f: {"entities": []}, lambda p: True) is None
     for (structure, pid, seed), want in ORIGINAL_FIVE_PINS.items():
         locked = solvefirst.generate(structure, PACKS[pid], seed)
         assert (locked.sha256, locked.key, locked.question, locked.tries) == want
@@ -425,16 +500,22 @@ def test_t10_replan_changes_only_b05_b07_b08_and_journal_replays_unchanged_slots
     old_sha = hashlib.sha256(old_plan.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     new_sha = hashlib.sha256(new_plan.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     assert old_sha == "a7432da695eda2f08145b9da2a30ab5c80ea011ccea35176aac2a92e26b98649"
-    assert new_sha == "e7e1bd3396a73292da436057f355df1d3da8470be1e1f0a58cce769eff7bfd2c"
+    assert new_sha == "421a38119dc9524ccf9f1b9a9d36eb68c0322ee54d955ea5e0dd6e536908191a"
 
     assert t10_replan_check.main(["--old", str(old_plan), "--new", str(new_plan)]) == 0
     out_text = capsys.readouterr().out
-    assert "T10-B-05 (stopping_problem):" in out_text
-    assert "T10-B-07 (falsifier_first):" in out_text
-    assert "T10-B-08 (when_to_stop):" in out_text
+    assert "T10-B-05 (stopping_problem):" in out_text and "'3edb2792cd00290d'" in out_text
+    assert "T10-B-07 (falsifier_first):" in out_text and "'9e3af05fbe55def0'" in out_text
+    assert "T10-B-08 (when_to_stop):" in out_text and "'c43dbf8eea6e2b34'" in out_text
     assert "unchanged: 57/60 slots byte-identical" in out_text
 
-    # Negative checks for t10_replan_check.py: touching another slot, a forbidden field, or slot count fails.
+    # Negative checks for t10_replan_check.py: touching top-level, another slot, a forbidden field, b_skeleton, or slot count fails.
+    bad_top = tmp_path / "bad-top.json"
+    dt = json.loads(new_plan.read_text(encoding="utf-8"))
+    dt["seed"] = 99
+    bad_top.write_text(json.dumps(dt), encoding="utf-8")
+    assert t10_replan_check.main(["--old", str(old_plan), "--new", str(bad_top)]) == 1
+
     bad_slot = tmp_path / "bad-slot.json"
     d = json.loads(new_plan.read_text(encoding="utf-8"))
     d["slots"][0]["framing_seed"] = 999999
@@ -448,6 +529,14 @@ def test_t10_replan_changes_only_b05_b07_b08_and_journal_replays_unchanged_slots
             s["pack"] = "other-pack"
     bad_field.write_text(json.dumps(d2), encoding="utf-8")
     assert t10_replan_check.main(["--old", str(old_plan), "--new", str(bad_field)]) == 1
+
+    bad_skel = tmp_path / "bad-skel.json"
+    ds = json.loads(new_plan.read_text(encoding="utf-8"))
+    for s in ds["slots"]:
+        if s["id"] == "T10-B-05":
+            s["b_skeleton"] = ""
+    bad_skel.write_text(json.dumps(ds), encoding="utf-8")
+    assert t10_replan_check.main(["--old", str(old_plan), "--new", str(bad_skel)]) == 1
 
     bad_order = tmp_path / "bad-order.json"
     d3 = json.loads(new_plan.read_text(encoding="utf-8"))

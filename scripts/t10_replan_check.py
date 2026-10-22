@@ -26,6 +26,11 @@ def check_plans(old_path: Path, new_path: Path) -> tuple[bool, list[str]]:
         f"old: {old_path.name} (sha256={_file_sha256(old_path)})",
         f"new: {new_path.name} (sha256={_file_sha256(new_path)})",
     ]
+    top_keys = sorted((set(old_data) | set(new_data)) - {"slots"})
+    top_diffs = [k for k in top_keys if json.dumps(old_data.get(k), sort_keys=True) != json.dumps(new_data.get(k), sort_keys=True)]
+    if top_diffs:
+        lines.append(f"FAIL: top-level fields outside 'slots' differ: {top_diffs}")
+        return False, lines
     old_ids = [s.get("id") for s in old_slots]
     new_ids = [s.get("id") for s in new_slots]
     if old_ids != new_ids:
@@ -34,6 +39,7 @@ def check_plans(old_path: Path, new_path: Path) -> tuple[bool, list[str]]:
 
     changed_ids: list[str] = []
     unexpected_fields: dict[str, list[str]] = {}
+    bad_targets: list[str] = []
     for old_s, new_s in zip(old_slots, new_slots):
         sid = str(old_s.get("id"))
         if json.dumps(old_s, ensure_ascii=False) == json.dumps(new_s, ensure_ascii=False):
@@ -47,6 +53,9 @@ def check_plans(old_path: Path, new_path: Path) -> tuple[bool, list[str]]:
         bad = [k for k in diffs if k not in ALLOWED_FIELDS]
         if bad:
             unexpected_fields[sid] = bad
+        skel = new_s.get("b_skeleton")
+        if new_s.get("b_path") != "solve_first" or not isinstance(skel, str) or not skel.strip():
+            bad_targets.append(f"{sid}: b_path={new_s.get('b_path')!r}, b_skeleton={skel!r}")
 
     unchanged = len(old_slots) - len(changed_ids)
     lines.append(f"unchanged: {unchanged}/{len(old_slots)} slots byte-identical")
@@ -55,6 +64,9 @@ def check_plans(old_path: Path, new_path: Path) -> tuple[bool, list[str]]:
         return False, lines
     if unexpected_fields:
         lines.append(f"FAIL: unexpected fields changed: {unexpected_fields}")
+        return False, lines
+    if bad_targets:
+        lines.append(f"FAIL: changed slot missing solve_first b_path or b_skeleton: {bad_targets}")
         return False, lines
     return True, lines
 

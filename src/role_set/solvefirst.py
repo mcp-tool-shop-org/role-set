@@ -200,7 +200,10 @@ def _grow_and_prune(rng, pool: list, build, goal) -> list | None:
     rng.shuffle(pool)
     if not pool:
         return None
-    m = parse_model(build(pool))
+    try:
+        m = parse_model(build(pool))
+    except PuzzleError:
+        return None
     t = Table(m)
     projs_of = t.projections if m.claim is None else (lambda mask: {t.verdict(mask)})
     mask = 0
@@ -326,6 +329,9 @@ def _stopping(rng, pack):
     last = safe[-1]
     if last != len(facts) - 1:
         facts = [r for i, r in enumerate(facts) if i != last] + [facts[last]]
+    extra = rng.choice([0, 1, 2])
+    rest = [r for r in pool if r not in facts]
+    facts += rng.sample(rest, min(extra, len(rest)))
     return build(facts), target, attr
 
 
@@ -561,6 +567,11 @@ def check_pack_uses(slots: list, prior: dict | None = None) -> None:
 # ---- the writer's brief and the late-answer gate -----------------------------------------------------------------
 def brief(locked: Locked) -> str:
     lines = "\n".join(f"{n}. {g}" for n, g in locked.glosses.items())
+    when = (
+        "it may say the answer is settled at the settling line once it has cited every earlier line, then works through any remaining lines"
+        if locked.structure == "stopping_problem"
+        else "it reaches the answer only at its end"
+    )
     return (
         "## The locked puzzle (made and solved in code; you render it, you never change it)\n"
         f"The model, as data:\n{json.dumps(locked.model, ensure_ascii=False)}\n\n"
@@ -569,8 +580,8 @@ def brief(locked: Locked) -> str:
         f"Then a last line that begins 'Question:' and asks: {locked.question}\n\n"
         f"The answer key is fixed: {locked.key}\n"
         "Return only 'puzzle', 'thinking' and 'reply'. The thinking works through the lines in order and cites each "
-        "fact line as 'line N' inside a sentence, for example '(line 3)', never opening every step the same way; it "
-        "reaches the answer only at its end. The reply ends with 'Answer: ' and the key."
+        f"fact line as 'line N' inside a sentence, for example '(line 3)', never opening every step the same way; {when}. "
+        "The reply ends with 'Answer: ' and the key."
     )
 
 
@@ -587,15 +598,17 @@ def _named(name: str, text: str) -> bool:
     return re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text, re.IGNORECASE) is not None
 
 
+def _cited_lines(text: str) -> set[int]:
+    return {int(x) for m in LINE_REF.finditer(text) for x in re.findall(r"\d+", m.group(0))}
+
+
 def _rivals(locked: Locked) -> list[str]:
     """The answers the thinking could still be weighing: the asked attribute's other values, or for an entity_with
-    question the other entities (or for a stopping problem, the other fact line numbers)."""
+    question the other entities."""
 
     asks = locked.model.get("asks") or {}
     keyed = {k.lower() for k in locked.keyed}
-    if locked.structure == "stopping_problem":
-        pool = [str(f["line"]) for f in locked.model["facts"]]
-    elif "entity_with" in asks:
+    if "entity_with" in asks:
         pool = locked.model["entities"]
     elif "attribute" in asks:
         pool = locked.model["attributes"][asks["attribute"]]["values"]
@@ -608,40 +621,56 @@ def answer_early(locked: Locked, thinking: str) -> str | None:
     """Why the thinking reaches the answer too early, or None (R&D's ANSWER_EARLY, 2026-10-16).
 
     The keyed answer, paired with what is asked (the asked entity, or the claim's verdict), may not appear in a
-    positive step before the thinking's final third; and every fact line of the locked model is cited as 'line N'."""
+    positive step before the thinking's final third (or for a stopping problem, before every earlier needed line has
+    been cited); and every fact line of the locked model is cited as 'line N'."""
 
     text = thinking or ""
     if not text.strip():
         return "the thinking is empty"
-    cut = len(text) * LATE_SHARE
-    rivals = _rivals(locked)
-    pos = 0
-    for step in _steps(text):
-        at = text.find(step, pos)
-        pos = at + len(step)
-        if at >= cut:
-            continue
-        # Clause by clause (Argon §9.4 #12): a negation rules out only its own clause, so "X is not A, so X is B"
-        # still states B.
-        for clause in CLAUSE_SPLIT.split(step):
-            low = clause.lower()
-            if not low.strip() or NEGATION.search(clause):
+    raw_facts = locked.model["facts"]
+    if locked.structure == "stopping_problem":
+        stop_line = int(locked.key)
+        prior_needed = {f["line"] for f in raw_facts if f["line"] < stop_line}
+        rival_lines = {f["line"] for f in raw_facts if f["line"] != stop_line}
+        seen_lines: set[int] = set()
+        for step in _steps(text):
+            for clause in CLAUSE_SPLIT.split(step):
+                clause_cited = _cited_lines(clause)
+                seen_lines |= clause_cited
+                low = clause.lower()
+                if not low.strip() or NEGATION.search(clause):
+                    continue
+                if locked.subject.lower() in low and stop_line in clause_cited and not (clause_cited & rival_lines):
+                    if not (prior_needed <= seen_lines):
+                        return f"the thinking pairs {locked.subject} with line {stop_line} before citing every earlier needed line"
+    else:
+        cut = len(text) * LATE_SHARE
+        rivals = _rivals(locked)
+        pos = 0
+        for step in _steps(text):
+            at = text.find(step, pos)
+            pos = at + len(step)
+            if at >= cut:
                 continue
-            if locked.subject is None:  # a claim: the verdict word itself
-                if re.search(rf"\b{re.escape(locked.key)}\b", low):
-                    return f"the thinking gives the verdict '{locked.key}' before its final third"
-            elif locked.subject.lower() in low and all(_named(k, clause) for k in locked.keyed) \
-                    and not any(_named(r, clause) for r in rivals):
-                # A clause that still names a rival answer lists candidates ("A or B", "whether X or Y"); it
-                # doesn't state the answer.
-                return f"the thinking pairs {locked.subject} with the answer before its final third"
+            # Clause by clause (Argon §9.4 #12): a negation rules out only its own clause, so "X is not A, so X is B"
+            # still states B.
+            for clause in CLAUSE_SPLIT.split(step):
+                low = clause.lower()
+                if not low.strip() or NEGATION.search(clause):
+                    continue
+                if locked.subject is None:  # a claim: the verdict word itself
+                    if re.search(rf"\b{re.escape(locked.key)}\b", low):
+                        return f"the thinking gives the verdict '{locked.key}' before its final third"
+                elif locked.subject.lower() in low and all(_named(k, clause) for k in locked.keyed) \
+                        and not any(_named(r, clause) for r in rivals):
+                    # A clause that still names a rival answer lists candidates ("A or B", "whether X or Y"); it
+                    # doesn't state the answer.
+                    return f"the thinking pairs {locked.subject} with the answer before its final third"
     # Citations in any form and anywhere in a sentence ("(line 3)", "line 3 says", "lines 2 and 4"), so no one form
     # becomes the new formula (R&D, 2026-10-16). Every cited number is one of the puzzle's lines, and the distinct fact
     # lines cited reach the pruned set's size: every fact is needed, so every fact is used.
-    cited: set[int] = set()
-    for m in LINE_REF.finditer(text):
-        cited |= {int(x) for x in re.findall(r"\d+", m.group(0))}
-    facts = {f["line"] for f in locked.model["facts"]}
+    cited = _cited_lines(text)
+    facts = {f["line"] for f in raw_facts}
     lines = facts | set(locked.model.get("flavour") or [])
     stray = sorted(cited - lines)
     if stray:
@@ -671,8 +700,9 @@ def render_for_mock(locked: Locked) -> dict:
     # Citations sit inside the sentence, never as its opener: the gates count a lesson's shared sentence openers.
     steps = [f"{i}. {locked.glosses[n][0].upper() + locked.glosses[n][1:]}, which {verbs[(k + i) % len(verbs)]} (line {n})."
              for i, n in enumerate(facts, 1)]
-    e0, e1 = locked.model["entities"][:2]
-    steps.append(f"{len(facts) + 1}. With {e0} and {e1} placed, {ends[k % len(ends)].lower()}.")
+    used = [e for e in locked.model["entities"] if any(e in rule_names(f["rule"]) for f in locked.model["facts"])]
+    e0, e1 = (used + locked.model["entities"])[:2]
+    steps.append(f"{len(facts) + 1}. With {e0} and {e1} in view, {ends[k % len(ends)].lower()}.")
     last = locked.glosses[facts[-1]]
     reply = f"{last[0].upper() + last[1:]}, and that {closes[k % len(closes)]}.\nAnswer: {locked.key}"
     return {"puzzle": puzzle, "thinking": "\n".join(steps), "reply": reply}
