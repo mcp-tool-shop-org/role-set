@@ -582,7 +582,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             assert v is not None
             v_output_total += v_output
             v_prompt_total += v_prompt
-            verdict_checks.append({
+            vc_entry = {
                 "turn": vt["turn"],
                 "code": v.code,
                 "ok": v.ok,
@@ -595,7 +595,10 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 "thinking_tokens": _sum_thinking(turn_thinkings),
                 "output_tokens": v_output,
                 "prompt_tokens": v_prompt,
-            })
+            }
+            if v.repairs:
+                vc_entry["repairs"] = list(v.repairs)
+            verdict_checks.append(vc_entry)
 
         verdict_check = verdict_checks[-1]
 

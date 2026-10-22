@@ -13,9 +13,9 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
-from role_set.assemble import FLAWS, VERDICTS, bare, closed_answer
+from role_set.assemble import FLAWS, VERDICTS, bare, closed_answer, resolve_verbatim_line
 from role_set.gates import Gates
 
 CRITIC_SYSTEM = (
@@ -65,6 +65,7 @@ class CriticVerdict:
     detail: str
     critic_verdict: str | None = None
     critic_deciding: list[str] | None = None
+    repairs: list[dict] = field(default_factory=list)
 
 
 def verdict_messages(material: str, statement: str) -> list[dict]:
@@ -200,27 +201,38 @@ def _lines(deciding: str | None) -> list[str]:
 def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: list[str], material: str) -> CriticVerdict:
     parsed = gates.parse_answer(reply)
     cv = parsed.get("verdict")
-    cd = _lines(parsed.get("deciding"))
+    raw_cd = _lines(parsed.get("deciding"))
     if cv not in VERDICTS:
-        return CriticVerdict(False, "VOID", "the critic gave no verdict line", cv, cd)
+        return CriticVerdict(False, "VOID", "the critic gave no verdict line", cv, raw_cd)
     # Compare as the frozen scorer does (gates `norm`: whitespace and ** / __ emphasis dropped), so a quote
     # copied without its markdown is still the material's words. Window A voided three good answers on this.
     n = getattr(gates.module, "norm", None)
     if n is None:
-        return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no norm rule; pin aspire-si-gates 1.1.0 or later", cv, cd)
+        return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no norm rule; pin aspire-si-gates 1.1.0 or later", cv, raw_cd)
+    repairs: list[dict] = []
+    cd: list[str] = []
+    for x in raw_cd:
+        res = resolve_verbatim_line(x, material)
+        if res is not None:
+            resolved, repair = res
+            cd.append(resolved)
+            if repair is not None:
+                repairs.append(repair)
+        else:
+            cd.append(x)
     flat = n(material)
     if any(n(x) not in flat for x in cd):
-        return CriticVerdict(False, "VOID", "the critic's DECIDING is not verbatim in the material; ask once more", cv, cd)
+        return CriticVerdict(False, "VOID", "the critic's DECIDING is not verbatim in the material; ask once more", cv, cd, repairs)
     if cv != key_verdict:
-        return CriticVerdict(False, "VERDICT_MISMATCH", f"the critic read {cv}, the key says {key_verdict}", cv, cd)
+        return CriticVerdict(False, "VERDICT_MISMATCH", f"the critic read {cv}, the key says {key_verdict}", cv, cd, repairs)
     if key_verdict == "cannot_tell":
-        return CriticVerdict(True, "AGREE", "both read silence", cv, cd)
+        return CriticVerdict(True, "AGREE", "both read silence", cv, cd, repairs)
     mismatch = getattr(gates.module, "critic_mismatch", None)
     if mismatch is None:
-        return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no critic_mismatch rule; pin aspire-si-gates 1.1.0 or later", cv, cd)
+        return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no critic_mismatch rule; pin aspire-si-gates 1.1.0 or later", cv, cd, repairs)
     if mismatch(key_deciding, cd, material):
-        return CriticVerdict(False, "EVIDENCE_MISMATCH", "two readers found different evidence and neither covers the other", cv, cd)
-    return CriticVerdict(True, "AGREE", "the readers' evidence agrees under the scorer's rule", cv, cd)
+        return CriticVerdict(False, "EVIDENCE_MISMATCH", "two readers found different evidence and neither covers the other", cv, cd, repairs)
+    return CriticVerdict(True, "AGREE", "the readers' evidence agrees under the scorer's rule", cv, cd, repairs)
 
 
 def compare_twin_verdict(gates: Gates, reply: str, key_verdict: str) -> CriticVerdict:
