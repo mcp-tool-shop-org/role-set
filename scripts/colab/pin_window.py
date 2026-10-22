@@ -2403,18 +2403,9 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
         items_rel = jsonls[0]
     root = WORK / "critic-eval-in"
     if root.exists():
-        if sys.platform == "win32":
-            shutil.rmtree(root, ignore_errors=True)
-        else:
-            sh(f"chmod -R u+w {root} && rm -rf {root}")
-    root.mkdir(parents=True, exist_ok=True)
-    if sys.platform == "win32":
-        import tarfile as _tarfile  # noqa: PLC0415
-
-        with _tarfile.open(tar) as tf:
-            tf.extractall(root, filter="data")
-    else:
-        sh(f"tar -xf {tar} -C {root}")
+        sh(f"chmod -R u+w {root} && rm -rf {root}")
+    root.mkdir(parents=True)
+    sh(f"tar -xf {tar} -C {root}")
     missing = [n for n in shas if not (root / n).is_file()]
     if missing:
         raise RuntimeError("REFUSED: critic-eval input missing from tar: " + ", ".join(missing))
@@ -2426,8 +2417,7 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
     seal_p = items_path.with_name(items_path.name + ".sha256")
     if not seal_p.exists():
         seal_p.write_text(f"{shas[items_rel]}  {items_path.name}\n", encoding="utf-8")
-    if sys.platform != "win32":
-        sh(f"chmod -R a-w {root}")
+    sh(f"chmod -R a-w {root}")
     inputs_meta: dict = {"tar_sha256": sha256(tar), "files": got}
     if verdict_from_rel:
         inputs_meta["verdict_from"] = str(root / verdict_from_rel)
@@ -2643,13 +2633,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
         if srv is not None and getattr(srv, "log", None) and Path(srv.log).exists():
             shutil.copy(srv.log, out / "critic-server.log")
         try:
-            if sys.platform == "win32":
-                import tarfile as _tarfile  # noqa: PLC0415
-
-                with _tarfile.open(WORK / "critic-eval-out.tar", "w") as tf:
-                    tf.add(out, arcname="critic-eval")
-            else:
-                sh(f"tar -C {WORK} -cf {WORK}/critic-eval-out.tar critic-eval")
+            sh(f"tar -C {WORK} -cf {WORK}/critic-eval-out.tar critic-eval")
         except Exception as e:  # noqa: BLE001 - recorded; the result still prints
             result["tar_error"] = str(e)[:300]
 

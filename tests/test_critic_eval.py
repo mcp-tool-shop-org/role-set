@@ -2744,13 +2744,15 @@ def test_track_b_flaw_prompt_labels_sha_and_byte_identity():
 
 
 def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Path):
-    """Track B §2 & §4:
-    - Under N = 3, coarse Pc refuses iff >= 2 of 3 votes name a label other than 'none';
-    - 1 of 3 non-'none' does NOT refuse;
-    - VOID counts as a flaw (so ['VOID', 'none', 'none'] has 1 flaw vote and does NOT refuse on key 'none',
-      while ['VOID', 'guess', 'none'] and ['VOID', 'VOID', 'none'] have 2 flaw votes and DO refuse on key 'none');
+    """Track B §2 & §4 (and Argon F1):
+    - Under N = 3, a VOID vote never helps an item pass under 3-vote Pc:
+      * key_flaw != 'none' passes iff flaw_label_votes >= 2;
+      * key_flaw == 'none' passes iff none_votes >= 2;
+      * when pc_ok is false, code is 'FLAW_MISMATCH' if disagreeing valid votes >= 2 else 'VOID';
     - Exact-label scoring (P2) under N = 3 needs >= 2 of 3 matching labels;
-    - The 1-vote slice (seed base_seed, votes[0]) is scored on its own as Pc_1vote / one_vote."""
+    - The 1-vote slice (seed base_seed, votes[0]) is scored on its own as Pc_1vote / one_vote;
+    - Derived key-only items (perturbation type 'c' or 'a') through run_critic_rescore_offline --keys are scored
+      from the control's three raw votes against their own key."""
     items = [
         {
             "type": "draft",
@@ -2812,6 +2814,36 @@ def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Pa
             "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
             "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
         },
+        {
+            "type": "draft",
+            "item_id": "c-flaw-1void-1flaw:d",
+            "source_row_id": "c-flaw-1void-1flaw",
+            "perturbation_type": "d",
+            "slot": {"id": "c-flaw-1void-1flaw", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-flaw-2void:d",
+            "source_row_id": "c-flaw-2void",
+            "perturbation_type": "d",
+            "slot": {"id": "c-flaw-2void", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
+        {
+            "type": "draft",
+            "item_id": "c-flaw-2none-1flaw:d",
+            "source_row_id": "c-flaw-2none-1flaw",
+            "perturbation_type": "d",
+            "slot": {"id": "c-flaw-2none-1flaw", "kind": "C"},
+            "material": {"text": "Line 1.", "source": "s"},
+            "candidate": {"text": json.dumps({"statement": "Stmt.", "checker_trace": "Tr.", "checker_verdict": "supported"})},
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
     ]
     items_path = tmp_path / "vote-items.jsonl"
     waves.write(
@@ -2821,19 +2853,25 @@ def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Pa
     )
 
     # Map each item's 3 flaw calls (at seeds 10, 11, 12) to specific replies:
-    # 1. c-none-1flaw:d -> ["guess", "none", "none"] -> 3-vote Pc accepts (1/3 non-none), 1-vote Pc refuses (vote 0 is "guess")
-    # 2. c-none-2flaw-split:d -> ["none", "guess", "loop"] -> 3-vote Pc refuses (2/3 non-none), 1-vote Pc accepts (vote 0 is "none")
-    # 3. c-none-1void:d -> ["not_a_label", "none", "none"] -> 3-vote Pc accepts (1/3 VOID+flaw), 1-vote Pc refuses VOID
-    # 4. c-none-void-plus-flaw:d -> ["not_a_label", "guess", "none"] -> 3-vote Pc refuses (VOID counts as flaw -> 2/3 non-none)
-    # 5. c-flaw-split-labels:d (key=guess) -> ["guess", "loop", "none"] -> 3-vote Pc accepts (2/3 non-none), P2 refuses (1/3 == guess)
-    # 6. c-flaw-exact-2of3:d (key=guess) -> ["none", "guess", "guess"] -> 3-vote Pc accepts (2/3 non-none), P2 accepts (2/3 == guess), 1-vote Pc refuses
+    # 1. c-none-1flaw:d (key=none) -> ["guess", "none", "none"] -> 3-vote Pc accepts (none_votes=2), 1-vote Pc refuses (vote 0 is "guess")
+    # 2. c-none-2flaw-split:d (key=none) -> ["none", "guess", "loop"] -> 3-vote Pc refuses FLAW_MISMATCH (flaw_label_votes=2), 1-vote Pc accepts
+    # 3. c-none-1void:d (key=none) -> ["none", "not_a_label", "none"] -> 3-vote Pc accepts (none_votes=2)
+    # 4. c-none-void-plus-flaw:d (key=none) -> ["none", "not_a_label", "guess"] -> 3-vote Pc refuses VOID (none_votes=1, flaw_label_votes=1 < 2)
+    # 5. c-flaw-split-labels:d (key=guess) -> ["guess", "loop", "none"] -> 3-vote Pc accepts (flaw_label_votes=2), P2 refuses FLAW_MISMATCH
+    # 6. c-flaw-exact-2of3:d (key=guess) -> ["none", "guess", "guess"] -> 3-vote Pc accepts, P2 accepts, 1-vote Pc refuses
+    # 7. c-flaw-1void-1flaw:d (key=guess) -> ["not_a_label", "guess", "none"] -> 3-vote Pc refuses VOID (flaw_label_votes=1 < 2, none_votes=1 < 2)
+    # 8. c-flaw-2void:d (key=guess) -> ["not_a_label", "not_a_label", "none"] -> 3-vote Pc refuses VOID (flaw_label_votes=0 < 2, none_votes=1 < 2)
+    # 9. c-flaw-2none-1flaw:d (key=guess) -> ["none", "none", "guess"] -> 3-vote Pc refuses FLAW_MISMATCH (flaw_label_votes=1 < 2, none_votes=2 >= 2)
     scripted_votes = [
         ["guess", "none", "none"],
         ["none", "guess", "loop"],
-        ["not_a_label", "none", "none"],
-        ["not_a_label", "guess", "none"],
+        ["none", "not_a_label", "none"],
+        ["none", "not_a_label", "guess"],
         ["guess", "loop", "none"],
         ["none", "guess", "guess"],
+        ["not_a_label", "guess", "none"],
+        ["not_a_label", "not_a_label", "none"],
+        ["none", "none", "guess"],
     ]
     item_flaw_idx = {"item": 0, "vote": 0}
     seen_seeds: list[int] = []
@@ -2874,7 +2912,7 @@ def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Pa
         critic=scripted_critic,
     )
 
-    assert seen_seeds == [10, 11, 12] * 6
+    assert seen_seeds == [10, 11, 12] * len(items)
     assert online_rep["flaw_votes"] == 3
     assert online_rep["flaw_prompt"] == "trackb"
 
@@ -2894,35 +2932,121 @@ def test_track_b_flaw_votes_binary_pc_exact_p2_void_and_1vote_slice(tmp_path: Pa
     assert offline_rep["by_item"] == online_rep["by_item"]
     assert offline_rep["one_vote"] == online_rep["one_vote"]
 
-    by_id = offline_rep["by_item"]
-    # 1. ["guess", "none", "none"] on key="none": 1 of 3 non-none does NOT refuse under 3-vote Pc, but refuses under 1-vote slice
-    assert by_id["c-none-1flaw:d"]["Pc"]["outcome"] == "accept"
-    assert by_id["c-none-1flaw:d"]["P2"]["outcome"] == "accept"
-    assert by_id["c-none-1flaw:d"]["Pc_1vote"]["outcome"] == "refuse"
+    eval_rows_by_id = {
+        r["item_id"]: r
+        for r in [json.loads(x) for x in (eval_out / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines() if x.strip()]
+    }
 
-    # 2. ["none", "guess", "loop"] on key="none": 2 of 3 non-none REFUSES under 3-vote Pc, but accepts under 1-vote slice
-    assert by_id["c-none-2flaw-split:d"]["Pc"]["outcome"] == "refuse"
-    assert by_id["c-none-2flaw-split:d"]["P2"]["outcome"] == "refuse"
-    assert by_id["c-none-2flaw-split:d"]["Pc_1vote"]["outcome"] == "accept"
+    for by_id in (online_rep["by_item"], offline_rep["by_item"]):
+        # 1. ["guess", "none", "none"] on key="none": none_votes=2 accepts under 3-vote Pc, refuses under 1-vote slice
+        assert by_id["c-none-1flaw:d"]["Pc"]["outcome"] == "accept"
+        assert by_id["c-none-1flaw:d"]["P2"]["outcome"] == "accept"
+        assert by_id["c-none-1flaw:d"]["Pc_1vote"]["outcome"] == "refuse"
 
-    # 3. ["VOID", "none", "none"] on key="none": 1 VOID + 2 none -> 1 of 3 non-none does NOT refuse under 3-vote Pc
-    assert by_id["c-none-1void:d"]["Pc"]["outcome"] == "accept"
-    assert by_id["c-none-1void:d"]["Pc_1vote"]["outcome"] == "refuse"
-    assert by_id["c-none-1void:d"]["Pc_1vote"]["deciding_rule"] == "VOID"
+        # 2. ["none", "guess", "loop"] on key="none": flaw_label_votes=2 refuses with FLAW_MISMATCH under 3-vote Pc, accepts under 1-vote
+        assert by_id["c-none-2flaw-split:d"]["Pc"]["outcome"] == "refuse"
+        assert by_id["c-none-2flaw-split:d"]["Pc"]["deciding_rule"] == "FLAW_MISMATCH"
+        assert by_id["c-none-2flaw-split:d"]["P2"]["outcome"] == "refuse"
+        assert by_id["c-none-2flaw-split:d"]["Pc_1vote"]["outcome"] == "accept"
 
-    # 4. ["VOID", "guess", "none"] on key="none": VOID counts as a flaw -> 2 of 3 non-none REFUSES under 3-vote Pc
-    assert by_id["c-none-void-plus-flaw:d"]["Pc"]["outcome"] == "refuse"
-    assert by_id["c-none-void-plus-flaw:d"]["P2"]["outcome"] == "refuse"
+        # 3. ["none", "not_a_label", "none"] on key="none": none_votes=2 accepts under 3-vote Pc
+        assert by_id["c-none-1void:d"]["Pc"]["outcome"] == "accept"
+        assert by_id["c-none-1void:d"]["Pc"]["deciding_rule"] == "AGREE"
+        assert by_id["c-none-1void:d"]["Pc_1vote"]["outcome"] == "accept"
 
-    # 5. ["guess", "loop", "none"] on key="guess": 2 of 3 non-none -> Pc accepts, but P2 refuses (only 1 of 3 == "guess")
-    assert by_id["c-flaw-split-labels:d"]["Pc"]["outcome"] == "accept"
-    assert by_id["c-flaw-split-labels:d"]["P2"]["outcome"] == "refuse"
-    assert by_id["c-flaw-split-labels:d"]["Pc_1vote"]["outcome"] == "accept"
+        # 4. ["none", "not_a_label", "guess"] on key="none": none_votes=1 < 2, flaw_label_votes=1 < 2 -> refuses with VOID
+        assert by_id["c-none-void-plus-flaw:d"]["Pc"]["outcome"] == "refuse"
+        assert by_id["c-none-void-plus-flaw:d"]["Pc"]["deciding_rule"] == "VOID"
+        assert by_id["c-none-void-plus-flaw:d"]["P2"]["outcome"] == "refuse"
 
-    # 6. ["none", "guess", "guess"] on key="guess": 2 of 3 == "guess" -> both 3-vote Pc and P2 accept, while 1-vote slice refuses
-    assert by_id["c-flaw-exact-2of3:d"]["Pc"]["outcome"] == "accept"
-    assert by_id["c-flaw-exact-2of3:d"]["P2"]["outcome"] == "accept"
-    assert by_id["c-flaw-exact-2of3:d"]["Pc_1vote"]["outcome"] == "refuse"
+        # 5. ["guess", "loop", "none"] on key="guess": flaw_label_votes=2 -> Pc accepts, P2 refuses (only 1 of 3 == "guess")
+        assert by_id["c-flaw-split-labels:d"]["Pc"]["outcome"] == "accept"
+        assert by_id["c-flaw-split-labels:d"]["P2"]["outcome"] == "refuse"
+        assert by_id["c-flaw-split-labels:d"]["Pc_1vote"]["outcome"] == "accept"
+
+        # 6. ["none", "guess", "guess"] on key="guess": 2 of 3 == "guess" -> both 3-vote Pc and P2 accept, 1-vote slice refuses
+        assert by_id["c-flaw-exact-2of3:d"]["Pc"]["outcome"] == "accept"
+        assert by_id["c-flaw-exact-2of3:d"]["P2"]["outcome"] == "accept"
+        assert by_id["c-flaw-exact-2of3:d"]["Pc_1vote"]["outcome"] == "refuse"
+
+        # 7. ["not_a_label", "guess", "none"] on key="guess": flaw_label_votes=1 < 2, none_votes=1 < 2 -> refuses with VOID
+        assert by_id["c-flaw-1void-1flaw:d"]["Pc"]["outcome"] == "refuse"
+        assert by_id["c-flaw-1void-1flaw:d"]["Pc"]["deciding_rule"] == "VOID"
+        assert by_id["c-flaw-1void-1flaw:d"]["Pc_1vote"]["outcome"] == "refuse"
+        assert by_id["c-flaw-1void-1flaw:d"]["Pc_1vote"]["deciding_rule"] == "VOID"
+
+        # 8. ["not_a_label", "not_a_label", "none"] on key="guess": flaw_label_votes=0 < 2, none_votes=1 < 2 -> refuses with VOID
+        assert by_id["c-flaw-2void:d"]["Pc"]["outcome"] == "refuse"
+        assert by_id["c-flaw-2void:d"]["Pc"]["deciding_rule"] == "VOID"
+
+        # 9. ["none", "none", "guess"] on key="guess": flaw_label_votes=1 < 2, none_votes=2 >= 2 -> refuses with FLAW_MISMATCH
+        assert by_id["c-flaw-2none-1flaw:d"]["Pc"]["outcome"] == "refuse"
+        assert by_id["c-flaw-2none-1flaw:d"]["Pc"]["deciding_rule"] == "FLAW_MISMATCH"
+
+    # Also verify flaw_check fields on the recorded JSONL lines match F1
+    assert eval_rows_by_id["c-none-1void:d"]["flaw_check"]["ok"] is True
+    assert eval_rows_by_id["c-none-1void:d"]["flaw_check"]["code"] == "AGREE"
+    assert eval_rows_by_id["c-none-1void:d"]["flaw_check"]["flaw_refuses"] is False
+    assert eval_rows_by_id["c-none-void-plus-flaw:d"]["flaw_check"]["ok"] is False
+    assert eval_rows_by_id["c-none-void-plus-flaw:d"]["flaw_check"]["code"] == "VOID"
+    assert eval_rows_by_id["c-none-void-plus-flaw:d"]["flaw_check"]["flaw_refuses"] is True
+    assert eval_rows_by_id["c-flaw-1void-1flaw:d"]["flaw_check"]["ok"] is False
+    assert eval_rows_by_id["c-flaw-1void-1flaw:d"]["flaw_check"]["code"] == "VOID"
+    assert eval_rows_by_id["c-flaw-2void:d"]["flaw_check"]["ok"] is False
+    assert eval_rows_by_id["c-flaw-2void:d"]["flaw_check"]["code"] == "VOID"
+    assert eval_rows_by_id["c-flaw-2none-1flaw:d"]["flaw_check"]["ok"] is False
+    assert eval_rows_by_id["c-flaw-2none-1flaw:d"]["flaw_check"]["code"] == "FLAW_MISMATCH"
+    assert eval_rows_by_id["c-flaw-2none-1flaw:d"]["flaw_check"]["flaw_refuses"] is False
+
+    # Derived key-only items (perturbation type 'c') through run_critic_rescore_offline --keys,
+    # whose planted flaw differs from their :d control's and are scored from the control's 3 raw votes against their own key:
+    keys_c = [
+        # Control c-none-1flaw:d had planted_flaw="none" and votes ["guess", "none", "none"] (accepted under 3-vote Pc).
+        # Derived :c has planted_flaw="guess" -> 3-vote Pc refuses with FLAW_MISMATCH (none_votes=2), while 1-vote slice accepts (vote 0 is "guess").
+        {
+            "item_id": "c-none-1flaw:c",
+            "source_row_id": "c-none-1flaw",
+            "control_item_id": "c-none-1flaw:d",
+            "perturbation_type": "c",
+            "kind": "C",
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "guess"},
+        },
+        # Control c-flaw-exact-2of3:d had planted_flaw="guess" and votes ["none", "guess", "guess"] (accepted under both Pc and P2).
+        # Derived :c has planted_flaw="loop" -> 3-vote Pc still accepts (flaw_label_votes=2), while 3-vote P2 refuses with FLAW_MISMATCH (0/3 == "loop").
+        {
+            "item_id": "c-flaw-exact-2of3:c",
+            "source_row_id": "c-flaw-exact-2of3",
+            "control_item_id": "c-flaw-exact-2of3:d",
+            "perturbation_type": "c",
+            "kind": "C",
+            "key": {"verdict": "supported", "deciding": ["Line 1."], "planted_flaw": "loop"},
+        },
+    ]
+    keys_c_path = tmp_path / "keys-c.jsonl"
+    keys_c_path.write_text("\n".join(json.dumps(k) for k in keys_c) + "\n", encoding="utf-8")
+
+    off_keys_out = tmp_path / "off-3vote-with-keys"
+    assert main([
+        "critic-rescore-offline",
+        "--eval", str(eval_out / "critic-eval.jsonl"),
+        "--items", str(items_path),
+        "--keys", str(keys_c_path),
+        "--out", str(off_keys_out),
+        "--mock",
+    ]) == 0
+    off_keys_rep = json.loads((off_keys_out / "critic-rescore-offline-report.json").read_text(encoding="utf-8"))
+    k_by_id = off_keys_rep["by_item"]
+
+    assert k_by_id["c-none-1flaw:c"]["Pc"]["outcome"] == "refuse"
+    assert k_by_id["c-none-1flaw:c"]["Pc"]["deciding_rule"] == "FLAW_MISMATCH"
+    assert k_by_id["c-none-1flaw:c"]["P2"]["outcome"] == "refuse"
+    assert k_by_id["c-none-1flaw:c"]["P2"]["deciding_rule"] == "FLAW_MISMATCH"
+    assert k_by_id["c-none-1flaw:c"]["Pc_1vote"]["outcome"] == "accept"
+
+    assert k_by_id["c-flaw-exact-2of3:c"]["Pc"]["outcome"] == "accept"
+    assert k_by_id["c-flaw-exact-2of3:c"]["P2"]["outcome"] == "refuse"
+    assert k_by_id["c-flaw-exact-2of3:c"]["P2"]["deciding_rule"] == "FLAW_MISMATCH"
+    assert k_by_id["c-flaw-exact-2of3:c"]["Pc_1vote"]["outcome"] == "refuse"
 
 
 def test_track_b_3votes_journaled_replayed_with_zero_calls_and_mixed_setting_refused(
@@ -3019,7 +3143,7 @@ def test_track_b_verdict_from_zero_verdict_calls_and_refusals(
 ):
     """Track B §3 & §5:
     - --verdict-from reuses verdict replies from an earlier critic-eval run and makes 0 verdict calls (only flaw calls run);
-    - records verdict_from_sha256 and verdict_reused_count in the report and on every record;
+    - records verdict_from_sha256 and verdict_reused_count in the report and verdict_from_sha256 and verdict_turns_reused on every record;
     - refuses before any call if:
       (a) items sha differs;
       (b) seed differs;
@@ -3101,7 +3225,7 @@ def test_track_b_verdict_from_zero_verdict_calls_and_refusals(
     assert len(rows2) == len(items)
     for r in rows2:
         assert r["verdict_from_sha256"] == vf_sha
-        assert r["verdict_reused_count"] == len(r["verdict_checks"])
+        assert r["verdict_turns_reused"] == len(r["verdict_checks"])
 
     # Offline rescore on run2 matches online scoring
     off2 = run_critic_rescore_offline(
@@ -3319,6 +3443,16 @@ def test_track_b_pin_window_passes_new_settings_and_refuses_unpinned_verdict_fro
     assert events == []
 
     # 2. Pinned PIN_CRITIC_EVAL_VERDICT_FROM passes --flaw-prompt trackb, --flaw-votes 3, and --verdict-from
+    if os.name == "nt":
+        def _win_sh(cmd: str, **k):
+            if cmd.startswith("tar -xf "):
+                parts = cmd.split()
+                tar_p = Path(parts[2])
+                dest_p = Path(parts[4])
+                with tarfile.open(tar_p) as tf:
+                    tf.extractall(dest_p, filter="data")
+            return ""
+        monkeypatch.setattr(pw, "sh", _win_sh)
     monkeypatch.setenv(
         "PIN_CRITIC_EVAL_SHAS",
         f"items.jsonl={shas['items.jsonl']},s0-verdicts.jsonl={shas['s0-verdicts.jsonl']}",

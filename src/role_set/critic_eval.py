@@ -781,14 +781,18 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                     })
                 f_thinking = _sum_thinking(vote_thinkings)
                 vote_words = [v["critic_flaw"] for v in votes]
-                non_none_votes = sum(1 for w in vote_words if w != "none")
+                none_votes = sum(1 for w in vote_words if w == "none")
+                flaw_label_votes = sum(1 for w in vote_words if w is not None and w != "none")
                 void_votes = sum(1 for w in vote_words if w is None)
-                flaw_refuses = non_none_votes >= 2
+                non_none_votes = sum(1 for w in vote_words if w != "none")
+                flaw_refuses = none_votes < 2
                 key_has_flaw = parts["key_flaw"] != "none"
-                pc_ok = flaw_refuses == key_has_flaw
-                pc_code = "AGREE" if pc_ok else ("VOID" if void_votes >= 2 else "FLAW_MISMATCH")
+                pc_ok = (flaw_label_votes >= 2) if key_has_flaw else (none_votes >= 2)
+                disagree_votes = none_votes if key_has_flaw else flaw_label_votes
+                pc_code = "AGREE" if pc_ok else ("FLAW_MISMATCH" if disagree_votes >= 2 else "VOID")
                 pc_detail = (
-                    f"votes {[w or 'VOID' for w in vote_words]} ({non_none_votes}/3 non-none) vs key {parts['key_flaw']}"
+                    f"votes {[w or 'VOID' for w in vote_words]} "
+                    f"(flaw={flaw_label_votes}/3, none={none_votes}/3, void={void_votes}/3) vs key {parts['key_flaw']}"
                 )
                 match_votes = sum(1 for w in vote_words if w == parts["key_flaw"])
                 p2_ok = match_votes >= 2
@@ -859,7 +863,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             rec["flaw_votes"] = cfg.flaw_votes
             if verdict_from_sha256 is not None:
                 rec["verdict_from_sha256"] = verdict_from_sha256
-                rec["verdict_reused_count"] = len(verdict_checks)
+                rec["verdict_turns_reused"] = len(verdict_checks)
             online_parts_by_id[item_id] = {**parts, "item_id": item_id}
             rec["scores"] = {
                 "P0": score_single_item(gates, rec, online_parts_by_id[item_id], "P0"),
@@ -1190,12 +1194,15 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                 }
         else:
             words = [_flaw_word(r) for r in vote_replies]
+            none_votes = sum(1 for w in words if w == "none")
+            flaw_label_votes = sum(1 for w in words if w is not None and w != "none")
             void_votes = sum(1 for w in words if w is None)
             if rule_set == "Pc":
-                non_none_votes = sum(1 for w in words if w != "none")
-                flaw_refuses = non_none_votes >= 2
-                if flaw_refuses != (key_flaw != "none"):
-                    code = "VOID" if void_votes >= 2 else "FLAW_MISMATCH"
+                key_has_flaw = key_flaw != "none"
+                pc_ok = (flaw_label_votes >= 2) if key_has_flaw else (none_votes >= 2)
+                if not pc_ok:
+                    disagree_votes = none_votes if key_has_flaw else flaw_label_votes
+                    code = "FLAW_MISMATCH" if disagree_votes >= 2 else "VOID"
                     return {
                         "outcome": "refuse",
                         "accepted": False,
@@ -1203,7 +1210,10 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                         "turn": len(verdict_turns),
                         "deciding_rule": code,
                         "rule": code,
-                        "detail": f"votes {[w or 'VOID' for w in words]} ({non_none_votes}/3 non-none) != key flaw {key_flaw} (coarse)",
+                        "detail": (
+                            f"votes {[w or 'VOID' for w in words]} "
+                            f"(flaw={flaw_label_votes}/3, none={none_votes}/3, void={void_votes}/3) != key flaw {key_flaw} (coarse)"
+                        ),
                     }
             else:
                 match_votes = sum(1 for w in words if w == key_flaw)
