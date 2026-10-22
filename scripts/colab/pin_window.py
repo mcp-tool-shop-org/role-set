@@ -2389,12 +2389,15 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
     shas = dict(x.split("=", 1) for x in os.environ.get("PIN_CRITIC_EVAL_SHAS", "").split(",") if "=" in x)
     if not shas:
         raise RuntimeError("REFUSED: PIN_CRITIC_EVAL_SHAS names no input")
+    verdict_from_rel = (os.environ.get("PIN_CRITIC_EVAL_VERDICT_FROM") or "").strip() or None
+    if verdict_from_rel and verdict_from_rel not in shas:
+        raise RuntimeError(f"REFUSED: no sha256 in PIN_CRITIC_EVAL_SHAS for {verdict_from_rel}")
     items_rel = os.environ.get("PIN_CRITIC_EVAL_ITEMS")
     if items_rel:
         if items_rel not in shas:
             raise RuntimeError(f"REFUSED: no sha256 in PIN_CRITIC_EVAL_SHAS for {items_rel}")
     else:
-        jsonls = [k for k in shas if k.endswith(".jsonl")]
+        jsonls = [k for k in shas if k.endswith(".jsonl") and k != verdict_from_rel]
         if not jsonls:
             raise RuntimeError("REFUSED: PIN_CRITIC_EVAL_SHAS names no items .jsonl file")
         items_rel = jsonls[0]
@@ -2403,6 +2406,9 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
         sh(f"chmod -R u+w {root} && rm -rf {root}")
     root.mkdir(parents=True)
     sh(f"tar -xf {tar} -C {root}")
+    missing = [n for n in shas if not (root / n).is_file()]
+    if missing:
+        raise RuntimeError("REFUSED: critic-eval input missing from tar: " + ", ".join(missing))
     got = {n: sha256(root / n) for n in shas}
     bad = [f"{n} is {got[n][:12]}, not {shas[n][:12]}" for n in shas if got[n] != shas[n]]
     if bad:
@@ -2412,7 +2418,11 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
     if not seal_p.exists():
         seal_p.write_text(f"{shas[items_rel]}  {items_path.name}\n", encoding="utf-8")
     sh(f"chmod -R a-w {root}")
-    result["critic_eval_inputs"] = {"tar_sha256": sha256(tar), "files": got}
+    inputs_meta: dict = {"tar_sha256": sha256(tar), "files": got}
+    if verdict_from_rel:
+        inputs_meta["verdict_from"] = str(root / verdict_from_rel)
+        inputs_meta["verdict_from_sha256"] = got[verdict_from_rel]
+    result["critic_eval_inputs"] = inputs_meta
     return root, items_path, shas
 
 
@@ -2475,12 +2485,25 @@ def critic_eval_window(built: dict, result: dict) -> None:
             or os.environ.get("PIN_CRITIC_EVAL_FLAW_PROMPT")
             or "old"
         )
-        if flaw_prompt not in ("old", "new"):
-            raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_PROMPT must be 'old' or 'new', got {flaw_prompt!r}")
+        if flaw_prompt not in ("old", "new", "trackb"):
+            raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_PROMPT must be 'old', 'new' or 'trackb', got {flaw_prompt!r}")
+        raw_flaw_votes = (
+            os.environ.get("PIN_CRITIC_FLAW_VOTES")
+            or os.environ.get("PIN_CRITIC_EVAL_FLAW_VOTES")
+            or "1"
+        ).strip()
+        try:
+            flaw_votes = int(raw_flaw_votes)
+        except ValueError as e:
+            raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_VOTES must be 1 or 3, got {raw_flaw_votes!r}") from e
+        if flaw_votes not in (1, 3):
+            raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_VOTES must be 1 or 3, got {flaw_votes!r}")
+        verdict_from_rel = (os.environ.get("PIN_CRITIC_EVAL_VERDICT_FROM") or "").strip() or None
         by_name = {m["served_as"]: m for m in MODELS}
         if critic not in by_name:
             raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
-        _, items_path, _ = critic_eval_inputs(result)
+        in_root, items_path, _ = critic_eval_inputs(result)
+        verdict_from_path = (in_root / verdict_from_rel) if verdict_from_rel else None
         resumed = critic_eval_resume(critic, seeds, result)
         if resumed:
             result["critic_eval_resumed"] = {str(s): str(p) for s, p in resumed.items()}
@@ -2508,7 +2531,10 @@ def critic_eval_window(built: dict, result: dict) -> None:
         srv = pool.serve(critic)
         with srv:
             proxy = pool.proxy(critic)
-            result["critic_eval"] = {"seeds": seeds, "flaw_prompt": flaw_prompt, "runs": []}
+            ce_meta: dict = {"seeds": seeds, "flaw_prompt": flaw_prompt, "flaw_votes": flaw_votes, "runs": []}
+            if verdict_from_path is not None:
+                ce_meta["verdict_from"] = str(verdict_from_path)
+            result["critic_eval"] = ce_meta
             for seed in seeds:
                 check_deadline(f"critic-eval seed {seed}")
                 seed_out = out / f"s{seed}"
@@ -2540,9 +2566,12 @@ def critic_eval_window(built: dict, result: dict) -> None:
                     "--critic-gguf-sha256", m["gguf_sha256"],
                     "--critic-seed", str(seed),
                     "--flaw-prompt", flaw_prompt,
+                    "--flaw-votes", str(flaw_votes),
                     "--call-journal", str(journal),
                     "--out", str(seed_out),
                 ]
+                if verdict_from_path is not None:
+                    cmd += ["--verdict-from", str(verdict_from_path)]
                 if seed in resumed:
                     cmd += ["--reuse-calls", str(resumed[seed])]
                 stop = threading.Event()
@@ -2585,15 +2614,20 @@ def critic_eval_window(built: dict, result: dict) -> None:
                 result["critic_card"] = report.get("critic_card")
                 if not result["critic_card"] and not stub_mode():
                     raise RuntimeError("the critic-eval report has no critic_card: no number from it may be read (R&D)")
-                result["critic_eval"]["runs"].append({
+                run_entry = {
                     "seed": seed,
                     "flaw_prompt": report.get("flaw_prompt") or flaw_prompt,
+                    "flaw_votes": report.get("flaw_votes") or flaw_votes,
                     "exit": run.returncode,
                     "seconds": round(time.time() - t0),
                     "items_scored": report.get("items_scored"),
                     "skipped_count": report.get("skipped_count"),
                     "calls": report.get("calls"),
-                })
+                }
+                if report.get("verdict_from_sha256"):
+                    run_entry["verdict_from_sha256"] = report["verdict_from_sha256"]
+                    run_entry["verdict_reused_count"] = report.get("verdict_reused_count")
+                result["critic_eval"]["runs"].append(run_entry)
         result["model_errors"] = 0
     finally:
         if srv is not None and getattr(srv, "log", None) and Path(srv.log).exists():

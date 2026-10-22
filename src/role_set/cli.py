@@ -551,8 +551,12 @@ def build_parser() -> argparse.ArgumentParser:
     ce.add_argument("--critic-seed", type=int, default=0, help="the critic's sampling seed")
     ce.add_argument("--call-journal", default=None, help="where each finished critic call is journaled")
     ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
-    ce.add_argument("--flaw-prompt", choices=("old", "new"), default="old",
-                    help="critic flaw-check prompt wording ('old' or 'new'; default 'old')")
+    ce.add_argument("--flaw-prompt", choices=("old", "new", "trackb"), default="old",
+                    help="critic flaw-check prompt wording ('old', 'new' or 'trackb'; default 'old')")
+    ce.add_argument("--flaw-votes", type=int, choices=(1, 3), default=1,
+                    help="flaw check votes per kind-C item at seeds base_seed..base_seed+N-1 (1 or 3; default 1)")
+    ce.add_argument("--verdict-from", default=None,
+                    help="an earlier critic-eval.jsonl to reuse verdict replies from (0 verdict calls)")
     ce.add_argument("--out", default="critic-eval", help="directory for critic-eval.jsonl and critic-eval-report.json")
     ce.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
     ce.set_defaults(func=_critic_eval)
@@ -582,6 +586,8 @@ def _critic_eval(args: argparse.Namespace) -> int:
         out=Path(args.out),
         mock=args.mock,
         flaw_prompt=args.flaw_prompt,
+        flaw_votes=args.flaw_votes,
+        verdict_from=Path(args.verdict_from) if args.verdict_from else None,
     )
     try:
         report = run_critic_eval(cfg)
