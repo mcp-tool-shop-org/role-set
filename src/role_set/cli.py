@@ -157,7 +157,7 @@ def _plan(args: argparse.Namespace) -> int:
         out["domain_table"] = table.pin()
         out["exclusion_state_sha256"] = prior.sha256
     out_path = Path(args.out)
-    out_path.write_text(json.dumps(out, indent=1), encoding="utf-8")
+    out_path.write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
     if args.buffers:
         sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
         out_path.with_name(out_path.name + ".sha256").write_text(
@@ -197,8 +197,8 @@ def _readout(args: argparse.Namespace) -> int:
     data, md = readout(run_dir, [Path(p) for p in (args.compare or [])], catalog)
     out = Path(args.out) if args.out else run_dir
     out.mkdir(parents=True, exist_ok=True)
-    (out / "readout.json").write_text(json.dumps(data, indent=1), encoding="utf-8")
-    (out / "readout.md").write_text(md, encoding="utf-8")
+    (out / "readout.json").write_text(json.dumps(data, indent=1), encoding="utf-8", newline="\n")
+    (out / "readout.md").write_text(md, encoding="utf-8", newline="\n")
     print(md)
     return 0
 
@@ -348,7 +348,7 @@ def _critic_control(args: argparse.Namespace) -> int:
             out["trait_misses"] = log
         if args.answer_leg:
             out["answer_leg"] = answer_leg(critic, rows)
-        Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+        Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
         legs = [out[k] for k in ("trait_leg", "answer_leg") if k in out]
         if "trait_leg" in out:
             leg = out["trait_leg"]
@@ -369,7 +369,7 @@ def _critic_control(args: argparse.Namespace) -> int:
     if args.agreement_with:
         earlier = json.loads(Path(args.agreement_with).read_text(encoding="utf-8"))
         out["agreement"] = run_agreement(earlier["report"], out["report"])
-    Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+    Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8", newline="\n")
     print(json.dumps({k: v for k, v in out["report"].items() if k not in ("false_refusal_detail", "flaw_misses")}))
     return 0 if out["report"]["usable_as_critic"] else 2
 

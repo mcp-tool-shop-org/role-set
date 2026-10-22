@@ -186,3 +186,19 @@ def test_plan_lesson_t10_buffers_writes_slots_and_sha256(tmp_path: Path, capsys)
             assert s.pack and s.b_seed is not None and s.b_path, s.id
         if s.kind == "B" and s.b_path == "solve_first":
             assert s.b_skeleton, s.id
+
+
+def test_plan_writes_lf_bytes_with_matching_sha256_and_no_cr(tmp_path: Path):
+    import hashlib
+
+    out = tmp_path / "plan-lf.json"
+    assert main(["plan", "--lesson", "T10", "--buffers", "--out", str(out)]) == 0
+    raw = out.read_bytes()
+    assert b"\r" not in raw
+    lf_bytes = raw.replace(b"\r\n", b"\n")
+    assert raw == lf_bytes
+    lf_sha = hashlib.sha256(lf_bytes).hexdigest()
+    sidecar = Path(f"{out}.sha256")
+    assert b"\r" not in sidecar.read_bytes()
+    assert sidecar.read_text(encoding="utf-8").strip().split()[0] == lf_sha
+
