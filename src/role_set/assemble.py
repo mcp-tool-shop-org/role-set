@@ -506,6 +506,7 @@ def assemble(slot: Slot, trait: str, fields: dict, material: Material | None = N
             # It used to be replaced silently, and the trace kept arguing for the writer's verdict: 10 of 21 pilot C rows
             # showed a "Checker verdict" line that contradicted the checker's own reasoning.
             raise AssemblyError(f"with a planted flaw, checker_verdict must be a verdict other than {slot.verdict}, and the trace must argue for it")
+        fields["checker_verdict"] = checker_verdict
         if flaw == "rubber_stamp":
             mislabel = rubber_stamp_mislabel(fields["checker_trace"], material.text, fields["statement"])
             if mislabel:
