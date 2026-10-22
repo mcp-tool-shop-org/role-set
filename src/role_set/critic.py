@@ -230,7 +230,15 @@ def _lines(deciding: str | None) -> list[str]:
     return [x.strip() for x in deciding.split(" | ") if x.strip()]
 
 
-def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: list[str], material: str) -> CriticVerdict:
+def compare_verdict(
+    gates: Gates,
+    reply: str,
+    key_verdict: str,
+    key_deciding: list[str],
+    material: str,
+    *,
+    content_kind: str | None = None,
+) -> CriticVerdict:
     parsed = gates.parse_answer(reply)
     cv = parsed.get("verdict")
     raw_cd = _lines(parsed.get("deciding"))
@@ -244,7 +252,7 @@ def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: li
     repairs: list[dict] = []
     cd: list[str] = []
     for x in raw_cd:
-        res = resolve_verbatim_line(x, material)
+        res = resolve_verbatim_line(x, material, content_kind=content_kind)
         if res is not None:
             resolved, repair = res
             cd.append(resolved)

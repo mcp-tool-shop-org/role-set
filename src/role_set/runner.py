@@ -767,7 +767,14 @@ class Runner:
                 for ask in range(2):
                     c = self._critic_call(verdict_messages(seen_material, statement), check="verdict")
                     self._count_tokens(c)
-                    v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
+                    v = compare_verdict(
+                        self.gates,
+                        c.text,
+                        key_verdict,
+                        key_deciding,
+                        seen_material,
+                        content_kind=slot.content_kind,
+                    )
                     if v.code != "VOID":
                         break
                     self._log("critic_void", slot=slot.id, detail=v.detail)
