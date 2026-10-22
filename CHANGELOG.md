@@ -6,6 +6,12 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Require sidecar models only for puzzle B rows (`_is_puzzle`) in `_need_models` and reach accepted apply slots by default in mock critique waves** (`src/role_set/gates.py`, `src/role_set/mock.py`, `src/role_set/waves.py`, `src/role_set/write.py`, `src/role_set/generate/t10_record.json`, `tests/test_gates.py`; R&D, 2026-10-22):
+  - **Puzzle-only sidecar requirement in `_need_models`** (`src/role_set/gates.py`): `_need_models(rows, models, is_puzzle=None)` and `_is_puzzle_fn(module)` require a sidecar model only for kind B rows where the gates module's `_is_puzzle` returns true (matching `aspire-si-gates` 1.7.6 `aspire_si_gates/gates.py`: `_is_puzzle` at line 426, `load_models` at line 458, and `puzzle_repeats` at line 491, where verification B rows carry a `VERDICT:` line and no sidecar model), while preserving the fallback rule requiring a model on every kind B row if a stand-in gates module has no `_is_puzzle`. Keeps the `ModelsMissing` error message and names `_is_puzzle` in `ModelsMissing`'s docstring.
+  - **Mock critique apply-slot acceptance by default** (`src/role_set/mock.py`, `src/role_set/waves.py`, `src/role_set/write.py`): `MockCritic` tracks `_seen_lines` so an unseeded `cannot_tell` main claim returns `("cannot_tell", [])` and its opposite-verdict `r10_twin` on the same material first line returns `("supported", [first_line])`, and `answers_from_drafts(drafts)` populates `(statement, first_line)` answers (for `supported`, `unsupported`, and `cannot_tell` drafts and `r10_twin` claims) in `write.build` and `waves.run_wave` when `mock_answers` is absent from the drafts header.
+
 ### Added
 
 - **Solve-first generators for the remaining three puzzle structures (`stopping_problem`, `falsifier_first`, `when_to_stop`) and `scripts/t10_replan_check.py`** (`src/role_set/solvefirst.py`, `src/role_set/plan.py`, `scripts/t10_replan_check.py`, `tests/test_solvefirst.py`, `tests/test_pilot.py`; R&D, 2026-10-22):

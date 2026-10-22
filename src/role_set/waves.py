@@ -441,6 +441,12 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
         todo = [i for i, d in enumerate(drafts_in) if d["state"] == want]
         if not todo:
             raise WaveError(f"REFUSED: no draft is {want.replace('_', ' ')}; nothing for a {wave} wave")
+        if wave == "critique":
+            from role_set.mock import MockCritic, answers_from_drafts  # noqa: PLC0415
+
+            if isinstance(runner.critic, MockCritic):
+                for k, v in answers_from_drafts(drafts_in).items():
+                    runner.critic.answers.setdefault(k, v)
         fn = _critique_one if wave == "critique" else _rewrite_one
         train_todo = [i for i in todo if drafts_in[i]["slot"].get("split") != "apply"]
         apply_todo = [i for i in todo if drafts_in[i]["slot"].get("split") == "apply"]

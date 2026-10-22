@@ -21,15 +21,20 @@ class GatesUnavailable(RuntimeError):
 
 
 class ModelsMissing(RuntimeError):
-    """A kind B row reached the gates with no sidecar model. The gates would sign it by the regex fallback instead of
-    its model, so the run stops rather than check it the weaker way (R&D, 2026-10-15)."""
+    """A kind B puzzle row (`_is_puzzle`) reached the gates with no sidecar model. The gates would sign it by the
+    regex fallback instead of its model, so the run stops rather than check it the weaker way (R&D, 2026-10-15)."""
 
 
-def _need_models(rows: list[dict], models: dict) -> None:
-    missing = sorted(str(r.get("id")) for r in rows if r.get("kind") == "B" and r.get("id") not in models)
+def _need_models(rows: list[dict], models: dict, is_puzzle=None) -> None:
+    need = (lambda r: r.get("kind") == "B" and bool(is_puzzle(r))) if callable(is_puzzle) else (lambda r: r.get("kind") == "B")
+    missing = sorted(str(r.get("id")) for r in rows if need(r) and r.get("id") not in models)
     if missing:
         raise ModelsMissing(f"no sidecar model for kind B row(s) {', '.join(missing)}; pass models={{id: model}} for every "
                             "B row so puzzles are signed by their model (gates.puzzle_sig)")
+
+
+def _is_puzzle_fn(module: object):
+    return getattr(module, "_is_puzzle", None) or getattr(getattr(module, "gates", None), "_is_puzzle", None)
 
 
 @dataclass(frozen=True)
@@ -59,12 +64,12 @@ class Gates:
 
     def check_against(self, row: dict, accepted: list[dict], *, models: dict) -> list:
         """The gates' one-at-a-time check. `models` is the {id: model} map of sidecar models for the row and the
-        accepted rows: every kind B row needs one (ModelsMissing otherwise)."""
-        _need_models([row, *accepted], models)
+        accepted rows: every kind B puzzle row (`_is_puzzle`) needs one (ModelsMissing otherwise)."""
+        _need_models([row, *accepted], models, _is_puzzle_fn(self.module))
         return list(self.module.check_against(row, accepted, models=models) or [])  # type: ignore[attr-defined]
 
     def check_batch(self, rows: list[dict], *, models: dict) -> None:
-        _need_models(rows, models)
+        _need_models(rows, models, _is_puzzle_fn(self.module))
         if self.closed_form is None:
             self.module.check_batch(rows, models=models)  # type: ignore[attr-defined]
         else:
@@ -128,4 +133,6 @@ def load_gates(importer=importlib.import_module, closed_form: dict | None = None
         settings = dict(module.closed_form_settings(closed_form))
     except ValueError as e:
         raise GatesUnavailable(f"REFUSED: closed-form settings the gates reject: {e}") from e
+    if not hasattr(module, "_is_puzzle") and hasattr(getattr(module, "gates", None), "_is_puzzle"):
+        module._is_puzzle = module.gates._is_puzzle
     return Gates(module=module, version=str(ident["version"]), sha256=str(ident["sha256"]), closed_form=settings)
