@@ -834,7 +834,14 @@ class Runner:
                         **({"seed": retry_seed(0, ask)} if ask else {}),
                     )
                     self._count_tokens(c)
-                    v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
+                    v = compare_verdict(
+                        self.gates,
+                        c.text,
+                        key_verdict,
+                        key_deciding,
+                        seen_material,
+                        content_kind=slot.content_kind,
+                    )
                     if v.code != "VOID":
                         break
                     self._log("critic_void", slot=slot.id, detail=v.detail)
