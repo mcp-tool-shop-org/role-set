@@ -57,7 +57,10 @@ SKELETON_DISTINCT_SHARE = 0.75
 SKELETON_USES_MAX = 3
 RESEED_MAX = 30
 LATE_SHARE = 2 / 3  # the answer may appear only in the thinking's final third
-LINE_REF = re.compile(r"\blines?\s+(\d+)(?:\s*(?:,|and|&)\s*(\d+))*", re.IGNORECASE)
+LINE_REF = re.compile(
+    r"\blines\s+\d+(?:\s*,\s*\d+)*(?:\s*(?:,\s*)?(?:and\b|&)\s*\d+)?|\bline\s+\d+(?:\s+(?:and\b|&)\s*\d+)?",
+    re.IGNORECASE,
+)
 
 
 class SolveFirstError(ValueError):
@@ -321,7 +324,7 @@ def _stopping(rng, pack):
     facts = _grow_and_prune(rng, pool, build, lambda p: len(p) == 1)
     if facts is None or not any(r[0] == "in" for r in facts):
         return None
-    # A stopping puzzle's key is its final fact's line number, which the thinking cites as '(line N)'. Putting a
+    # A stopping puzzle's key is its settling fact's line number, which the thinking cites as '(line N)'. Putting a
     # negative fact or one that doesn't name the asked entity last keeps that step from pairing subject and key early.
     safe = [i for i, r in enumerate(facts) if r[0] in NEGATIVE or target not in rule_names(r)]
     if not safe:

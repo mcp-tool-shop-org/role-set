@@ -312,6 +312,7 @@ NEW_SOLVE_FIRST = ("stopping_problem", "falsifier_first", "when_to_stop")
 PACK_CHUNKS = [tuple(sorted(PACKS)[i:i + 6]) for i in range(0, len(PACKS), 6)]
 
 
+@pytest.mark.sweep
 @pytest.mark.parametrize("structure", NEW_SOLVE_FIRST)
 @pytest.mark.parametrize("pack_ids", PACK_CHUNKS)
 def test_new_generators_prove_and_prune_seeds_1_to_200_in_every_pack(structure: str, pack_ids: tuple[str, ...]):
@@ -336,6 +337,47 @@ def test_new_generators_prove_and_prune_seeds_1_to_200_in_every_pack(structure: 
                 assert locked.key in ("supported", "unsupported") and "claim" in locked.model and got.stop_at is None
         if structure == "stopping_problem":
             assert saw_trailing and saw_exact, pid
+
+
+@pytest.mark.parametrize("structure", NEW_SOLVE_FIRST)
+def test_new_generators_prove_and_prune_seeds_1_to_10_in_every_pack(structure: str):
+    saw_trailing = False
+    saw_exact = False
+    for pid in sorted(PACKS):
+        pack = PACKS[pid]
+        for seed in range(1, 11):
+            locked = solvefirst.generate(structure, pack, seed)
+            fields = {**solvefirst.render_for_mock(locked), "model": locked.model, "answer": locked.key}
+            got = check_puzzle(fields, structure, strict=True)
+            assert got.answer == locked.key and not got.lookup
+            assert solvefirst.answer_early(locked, fields["thinking"]) is None
+            if structure == "stopping_problem":
+                last = locked.model["facts"][-1]["line"]
+                assert locked.key == str(got.stop_at) and last - 2 <= got.stop_at <= last
+                saw_trailing = saw_trailing or (got.stop_at < last)
+                saw_exact = saw_exact or (got.stop_at == last)
+            elif structure == "falsifier_first":
+                assert locked.key == "unsupported" and "claim" in locked.model and "asks" in locked.model
+            elif structure == "when_to_stop":
+                assert locked.key in ("supported", "unsupported") and "claim" in locked.model and got.stop_at is None
+    if structure == "stopping_problem":
+        assert saw_trailing and saw_exact
+
+
+def test_cited_lines_handles_oxford_commas_and_does_not_expand_ranges():
+    cases = [
+        ("lines 2, 3, and 4", {2, 3, 4}),
+        ("lines 2, 3 and 4", {2, 3, 4}),
+        ("lines 2 and 3", {2, 3}),
+        ("lines 2-4", {2}),
+        ("line 2, line 3", {2, 3}),
+        ("(lines 2, 3, 4)", {2, 3, 4}),
+        ("In line 2, 9 am is ruled out", {2}),
+        ("In lines 1 and 2, 10 am is out", {1, 2}),
+        ("lines 2 & 3", {2, 3}),
+    ]
+    for text, want in cases:
+        assert solvefirst._cited_lines(text) == want, text
 
 
 def test_answer_early_stopping_problem_rules_and_brief():
@@ -380,7 +422,7 @@ def test_answer_early_stopping_problem_rules_and_brief():
 
     # 4. A clock-time digit isn't a citation of line {stop_at}.
     clock = (
-        f"{subject} is at {stop_at}.30 pm (line {needed[0]}). "
+        f"{subject} is at {stop_at}.30 pm; line {needed[0]} narrows it. "
         + " ".join(f"Line {n} trims it." for n in needed[1:])
         + f" {settle_step} {tail_steps} {closing}"
     )
