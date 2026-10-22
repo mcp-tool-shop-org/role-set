@@ -614,7 +614,7 @@ def plan_pilot(sides: dict[str, tuple[str, str]], *, seed: int, solve_first: tup
     full = plan_lesson(PILOT_LESSON, sides[PILOT_LESSON], seed=seed)
     by_kind = {k: [s for s in full if s.kind == k] for k in KINDS}
     picked: list[Slot] = by_kind["A"][:PILOT_COUNTS["A"]]
-    b = [s for s in by_kind["B"] if s.structure in solve_first]
+    b = [s for s in by_kind["B"] if s.structure in solve_first[:PILOT_COUNTS["B"]]]
     if len(b) != PILOT_COUNTS["B"]:
         raise PlanError(f"the pilot needs one B slot per solve-first structure; the lesson plan has {len(b)}")
     picked += b

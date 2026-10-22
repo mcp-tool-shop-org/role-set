@@ -1,6 +1,6 @@
 """Solve-first kind B (BUILD-SPEC B3a): the puzzle's model and answer are made in code, before the writer sees them.
 
-For five of the plan's eight puzzle structures, a proving generator builds the locked model from the slot's seed and
+For each of the plan's eight puzzle structures, a proving generator builds the locked model from the slot's seed and
 pack. It picks a hidden assignment, draws facts true of it, adds facts until the solver leaves exactly the intended
 answer (or, for underdetermined, two or three possibilities), and prunes every fact that changes nothing. `solve` is
 the final oracle; a lookup, or any refusal, means another try. The writer then renders the prose from the locked model
@@ -9,8 +9,8 @@ runs unchanged (the text states exactly the model's facts, the key is the solver
 
 The families (R&D, 2026-10-16): order and interval -> scheduling_with_exclusions; resource allocation ->
 constraint_grid; dependency DAG -> tree_with_pruning; elimination -> elimination_from_a_set; underdetermined ->
-underdetermined_with_explicit_set. stopping_problem, falsifier_first and when_to_stop stay freehand until the full run
-(`b_path: freehand`).
+underdetermined_with_explicit_set; stopping -> stopping_problem; falsifier_first -> falsifier_first; when_to_stop ->
+when_to_stop.
 
 The answer arrives late (R&D's ANSWER_EARLY gate): the thinking may not pair the asked subject with the keyed answer
 before its final third, and it cites every fact line of the locked model ("line N"). The packs (b_packs.json) are row
@@ -29,7 +29,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-from role_set.puzzle import NEGATION, PuzzleError, Table, parse_model, solve
+from role_set.puzzle import NEGATION, NEGATIVE, PuzzleError, Table, parse_model, rule_names, solve
 
 PACKS_FILE = Path(__file__).with_name("b_packs.json")
 FAMILIES = {
@@ -38,6 +38,9 @@ FAMILIES = {
     "tree_with_pruning": "dependency_dag",
     "elimination_from_a_set": "elimination",
     "underdetermined_with_explicit_set": "underdetermined",
+    "stopping_problem": "stopping",
+    "falsifier_first": "falsifier_first",
+    "when_to_stop": "when_to_stop",
 }
 SOLVE_FIRST = tuple(FAMILIES)
 MAX_TRIES = 300
@@ -190,39 +193,32 @@ def _raw(ents, attrs: dict, ordered: str | None, facts: list, asks=None, claim=N
     return model
 
 
-def _projections(model: dict) -> set:
-    m = parse_model(model)
-    t = Table(m)
-    return t.projections(t.all) if m.claim is None else {t.verdict(t.all)}
-
-
 def _grow_and_prune(rng, pool: list, build, goal) -> list | None:
     """Add pool facts in a shuffled order until goal(projections) holds, then drop every fact whose removal keeps
     exactly the same projections. None when the pool never reaches the goal."""
 
     rng.shuffle(pool)
-    facts: list = []
-    for rule in pool:
-        facts.append(rule)
-        try:
-            projs = _projections(build(facts))
-        except PuzzleError:
-            facts.pop()
-            continue
+    if not pool:
+        return None
+    m = parse_model(build(pool))
+    t = Table(m)
+    projs_of = t.projections if m.claim is None else (lambda mask: {t.verdict(mask)})
+    mask = 0
+    chosen: list[int] = []
+    for i in range(len(pool)):
+        mask |= 1 << i
+        chosen.append(i)
+        projs = projs_of(mask)
         if goal(projs):
             break
     else:
         return None
-    target = _projections(build(facts))
-    for rule in list(reversed(facts)):
-        trial = [r for r in facts if r is not rule]
-        if trial:
-            try:
-                if _projections(build(trial)) == target:
-                    facts = trial
-            except PuzzleError:
-                pass
-    return facts
+    target = projs_of(mask)
+    for i in reversed(chosen):
+        trial = mask & ~(1 << i)
+        if trial and projs_of(trial) == target:
+            mask = trial
+    return [pool[i] for i in chosen if mask & (1 << i)]
 
 
 def _scheduling(rng, pack, underdetermined: bool = False):
@@ -301,12 +297,113 @@ def _dag(rng, pack):
     return (build(facts), None, attr) if facts is not None else None
 
 
+def _stopping(rng, pack):
+    n = rng.choice([4, 5])
+    ents = rng.sample(pack["entities"], n)
+    start = rng.randint(0, len(pack["order"]["values"]) - n)
+    order = pack["order"]["values"][start:start + n]
+    attr = pack["order"]["name"]
+    sol = dict(zip(ents, rng.sample(order, n)))
+    target = rng.choice(ents)
+    asks = {"attribute": attr, "of": target}
+    pool = [r for r in _ordered_pool(sol, ents, attr, order) if r[0] != "is_not" or r[1] != target]
+    for a in ents:
+        for w in order:
+            if w != sol[a]:
+                pool.append(["in", a, attr, sorted([sol[a], w])])
+
+    def build(facts):
+        return _raw(ents, {attr: order}, attr, facts, asks=asks)
+
+    facts = _grow_and_prune(rng, pool, build, lambda p: len(p) == 1)
+    if facts is None or not any(r[0] == "in" for r in facts):
+        return None
+    # A stopping puzzle's key is its final fact's line number, which the thinking cites as '(line N)'. Putting a
+    # negative fact or one that doesn't name the asked entity last keeps that step from pairing subject and key early.
+    safe = [i for i, r in enumerate(facts) if r[0] in NEGATIVE or target not in rule_names(r)]
+    if not safe:
+        return None
+    last = safe[-1]
+    if last != len(facts) - 1:
+        facts = [r for i, r in enumerate(facts) if i != last] + [facts[last]]
+    return build(facts), target, attr
+
+
+def _falsifier(rng, pack):
+    n = rng.choice([4, 5])
+    ents = rng.sample(pack["entities"], n)
+    start = rng.randint(0, len(pack["order"]["values"]) - n)
+    order = pack["order"]["values"][start:start + n]
+    attr = pack["order"]["name"]
+    sol = dict(zip(ents, rng.sample(order, n)))
+    pos = {e: order.index(sol[e]) for e in ents}
+    a, b = rng.sample(ents, 2)
+    form = rng.choice(["before", "after"])
+    if (form == "before" and pos[a] < pos[b]) or (form == "after" and pos[a] > pos[b]):
+        a, b = b, a
+    claim = [form, a, b, attr]
+    asks = {"attribute": attr, "of": a}
+    pool = [r for r in _ordered_pool(sol, ents, attr, order) if r[0] != "is_not" and {r[1], r[2]} != {a, b}]
+    for e in ents:
+        wrong = [v for v in order if v != sol[e]]
+        for w in wrong:
+            if not (e in (a, b) and order[0] not in (sol[e], w) and order[-1] not in (sol[e], w)):
+                pool.append(["in", e, attr, sorted([sol[e], w])])
+        if e in (a, b):
+            wrong = [v for v in wrong if v not in (order[0], order[-1])]
+        for i in range(len(wrong) - 1):
+            pool.append(["not_in", e, attr, sorted([wrong[i], wrong[i + 1]])])
+
+    def build(facts):
+        m = _raw(ents, {attr: order}, attr, facts, asks=asks, claim=claim)
+        m["asks"] = asks
+        return m
+
+    facts = _grow_and_prune(rng, pool, build, lambda p: p == {"unsupported"})
+    if facts is None or not ({"in", "not_in"} <= {r[0] for r in facts}):
+        return None
+    return build(facts), None, attr
+
+
+def _when_to_stop(rng, pack):
+    n = rng.choice([4, 5])
+    ents = rng.sample(pack["entities"], n)
+    start = rng.randint(0, len(pack["order"]["values"]) - n)
+    order = pack["order"]["values"][start:start + n]
+    attr = pack["order"]["name"]
+    sol = dict(zip(ents, rng.sample(order, n)))
+    pos = {e: order.index(sol[e]) for e in ents}
+    a, b = rng.sample(ents, 2)
+    form = rng.choice(["before", "after"])
+    claim = [form, a, b, attr]
+    holds = pos[a] < pos[b] if form == "before" else pos[a] > pos[b]
+    want = "supported" if holds else "unsupported"
+    pool = [r for r in _ordered_pool(sol, ents, attr, order) if r[0] != "is_not" and {r[1], r[2]} != {a, b}]
+    for e in ents:
+        wrong = [v for v in order if v != sol[e]]
+        if e in (a, b):
+            wrong = [v for v in wrong if v not in (order[0], order[-1])]
+        for i in range(len(wrong) - 1):
+            pool.append(["not_in", e, attr, sorted([wrong[i], wrong[i + 1]])])
+
+    def build(facts):
+        return _raw(ents, {attr: order}, attr, facts, claim=claim)
+
+    facts = _grow_and_prune(rng, pool, build, lambda p: p == {want})
+    if facts is None or "not_in" not in {r[0] for r in facts}:
+        return None
+    return build(facts), None, attr
+
+
 GENERATORS = {
     "scheduling_with_exclusions": lambda rng, pack: _scheduling(rng, pack),
     "underdetermined_with_explicit_set": lambda rng, pack: _scheduling(rng, pack, underdetermined=True),
     "constraint_grid": _grid,
     "elimination_from_a_set": _elimination,
     "tree_with_pruning": _dag,
+    "stopping_problem": _stopping,
+    "falsifier_first": _falsifier,
+    "when_to_stop": _when_to_stop,
 }
 
 
@@ -314,7 +411,10 @@ def _question(model: dict, structure: str, subject, attr: str) -> str:
     if "claim" in model:
         c = model["claim"]
         word = "earlier" if c[0] == "before" else "later"
-        return f"Is {c[1]}'s {attr} {word} than {c[2]}'s? Name the lines that settle it, or say it can't be told."
+        tail = " Name the lines that settle it, or say it can't be told." if structure == "tree_with_pruning" else ""
+        return f"Is {c[1]}'s {attr} {word} than {c[2]}'s?{tail}"
+    if structure == "stopping_problem":
+        return f"After which numbered line is {subject}'s {attr} settled?"
     asks = model["asks"]
     if "entity_with" in asks:
         return f"Who has {attr} {subject}?"
@@ -489,11 +589,13 @@ def _named(name: str, text: str) -> bool:
 
 def _rivals(locked: Locked) -> list[str]:
     """The answers the thinking could still be weighing: the asked attribute's other values, or for an entity_with
-    question the other entities."""
+    question the other entities (or for a stopping problem, the other fact line numbers)."""
 
     asks = locked.model.get("asks") or {}
     keyed = {k.lower() for k in locked.keyed}
-    if "entity_with" in asks:
+    if locked.structure == "stopping_problem":
+        pool = [str(f["line"]) for f in locked.model["facts"]]
+    elif "entity_with" in asks:
         pool = locked.model["entities"]
     elif "attribute" in asks:
         pool = locked.model["attributes"][asks["attribute"]]["values"]
@@ -569,7 +671,8 @@ def render_for_mock(locked: Locked) -> dict:
     # Citations sit inside the sentence, never as its opener: the gates count a lesson's shared sentence openers.
     steps = [f"{i}. {locked.glosses[n][0].upper() + locked.glosses[n][1:]}, which {verbs[(k + i) % len(verbs)]} (line {n})."
              for i, n in enumerate(facts, 1)]
-    steps.append(f"{len(facts) + 1}. {ends[k % len(ends)]}.")
+    e0, e1 = locked.model["entities"][:2]
+    steps.append(f"{len(facts) + 1}. With {e0} and {e1} placed, {ends[k % len(ends)].lower()}.")
     last = locked.glosses[facts[-1]]
     reply = f"{last[0].upper() + last[1:]}, and that {closes[k % len(closes)]}.\nAnswer: {locked.key}"
     return {"puzzle": puzzle, "thinking": "\n".join(steps), "reply": reply}

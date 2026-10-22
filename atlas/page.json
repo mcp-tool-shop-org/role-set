@@ -42,7 +42,8 @@
     {
       "kind": "place",
       "readers": [
-        "scripts"
+        "scripts",
+        "src"
       ],
       "target": "roles/domains/naics-2022.json",
       "writers": [
@@ -52,30 +53,52 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 6,
+      "added": 5,
+      "changed": 40,
       "moved": 0,
-      "parts": 4,
+      "parts": 5,
       "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "src/ is now also read by CHANGELOG.md.",
+        "sentence": "README.md is now also read by tests/test_harvest_exemplars.py.",
         "subjects": [
-          "src/",
-          "CHANGELOG.md"
+          "README.md",
+          "tests/test_harvest_exemplars.py"
         ]
       },
       {
+        "kind": "landing",
+        "sentence": "pyproject.toml is now read by tests/test_harvest_exemplars.py.",
+        "subjects": [
+          "pyproject.toml",
+          "tests/test_harvest_exemplars.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "roles/domains/naics-2022.json is now also read by scripts/critic_signal/track_a_slots.py and src/role_set/cli.py.",
+        "subjects": [
+          "roles/domains/naics-2022.json",
+          "scripts/critic_signal/track_a_slots.py",
+          "src/role_set/cli.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 4 more new writers and readers of places.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "6 files changed content, across 4 parts.",
+        "sentence": "5 files added and 40 changed content, across 5 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "3b9609ce6e22089f3eec016d9639b6a9706ac1db",
-      "generatedAt": "2026-10-19T02:25:32.738Z"
+      "commit": "62e47ffccd969092a4510e97c90fe693a4dd5d4f",
+      "generatedAt": "2026-10-19T04:44:11.352Z"
     },
     "unchanged": false
   },
@@ -96,6 +119,21 @@
       "shared": 6
     },
     {
+      "a": "src/role_set/mock.py",
+      "b": "tests/test_runner.py",
+      "either": 24,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 14
+    },
+    {
       "a": "src/role_set/readout.py",
       "b": "tests/test_paid_run_data.py",
       "either": 11,
@@ -109,32 +147,17 @@
       ],
       "relation": "b-imports-a",
       "shared": 6
-    },
-    {
-      "a": "src/role_set/mock.py",
-      "b": "tests/test_runner.py",
-      "either": 21,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
-      "shared": 11
     }
   ],
   "changesTogetherNote": [
-    "3 files changed together with their own tests, as expected.",
+    "5 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 14 source files reach 10 revisions; the floor rises to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 17 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 3,
-  "commit": "62e47ffccd969092a4510e97c90fe693a4dd5d4f",
+  "changesTogetherWithTests": 5,
+  "commit": "bd17c93d903bcc2b717a1b7bd99dca6c4c8ae0c8",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (111 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (113 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -154,12 +177,12 @@
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 5
+          "files": 7
         },
         {
           "boundary": "src",
           "depth": 1,
-          "files": 43
+          "files": 37
         }
       ],
       "runs": [
@@ -222,7 +245,7 @@
         {
           "boundary": "src",
           "depth": 0,
-          "files": 37
+          "files": 30
         }
       ],
       "runs": [
@@ -260,7 +283,7 @@
       "to": "src"
     }
   ],
-  "engine": "1.24.0",
+  "engine": "1.23.0",
   "generated": [
     {
       "fromRoot": true,
@@ -303,13 +326,13 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-19T04:44:11.352Z",
+  "generatedAt": "2026-10-22T10:56:58.199Z",
   "limits": [
     "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
-    "6 writes and 24 reads use paths built at run time and are not named here.",
-    "37 writes and 83 reads go to a path their caller passes, not to this repository.",
-    "12 reads go to the directory the command is run in, not to this repository.",
-    "7 writes and 3 reads go to the directory the command is run in (plan.json/ and roles/) or a path their caller passes, not to this repository.",
+    "6 writes and 30 reads use paths built at run time and are not named here.",
+    "40 writes and 95 reads go to a path their caller passes, not to this repository.",
+    "9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.",
+    "14 reads go to the directory the command is run in, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
   ],
   "mainDoor": ".github/workflows/ci.yml",
@@ -331,8 +354,11 @@
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
     "src/role_set/cli.py",
-    "src/role_set/cards.py",
-    "src/role_set/guards.py"
+    "src/role_set/critic_control.py",
+    "src/role_set/critic.py",
+    "src/role_set/assemble.py",
+    "src/role_set/plan.py",
+    "src/role_set/gates.py"
   ],
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",

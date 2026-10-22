@@ -42,7 +42,7 @@ def test_the_pilot_plan_has_its_composition(pilot_plan: Path):
     main_slots = plan["slots"]
     assert {s["lesson"] for s in main_slots} == {"T02"} and len(main_slots) == 20
     assert Counter(s["kind"] for s in main_slots) == {"A": 4, "B": 5, "C": 4, "D": 4, "E": 3}
-    assert {s["structure"] for s in main_slots if s["kind"] == "B"} == set(solvefirst.SOLVE_FIRST)
+    assert {s["structure"] for s in main_slots if s["kind"] == "B"} == set(solvefirst.SOLVE_FIRST[:5])
     assert all(s["b_path"] == "solve_first" and s["b_skeleton"] for s in main_slots if s["kind"] == "B")
     assert sum(1 for s in main_slots if s["two_turn"]) == 1 and not any(s["pair"] for s in main_slots)
     assert Counter(s["e_type"] for s in main_slots if s["kind"] == "E") == {"written": 2, "verdict": 1}
