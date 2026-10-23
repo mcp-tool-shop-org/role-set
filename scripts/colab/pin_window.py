@@ -2726,6 +2726,9 @@ OFFRIG_MODEL_DIGEST = "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c
 OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
 OFFRIG_NUM_CTX = 8192
 OLLAMA_REGISTRY = "https://registry.ollama.ai"
+OLLAMA_REGISTRY_ALLOWLIST: tuple[str, ...] = ()
+OLLAMA_BLOB_READ_TIMEOUT_S = 120.0
+OLLAMA_MODEL_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 STUB_OLLAMA_MANIFEST_DIGEST = "ef71a9e44671e4680a59cfa480bb5465c68927a574fb6a5308d4b67b9976b1c5"
 STUB_OLLAMA_MANIFEST_BYTES = (
     b'{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json",'
@@ -3019,15 +3022,56 @@ def _stub_ollama_manifest() -> Path:
 
 
 def _parse_ollama_model(model: str) -> tuple[str, str, str]:
-    """Split an Ollama model tag (`gemma4:31b` -> `('library', 'gemma4', '31b')`)."""
+    """Split an Ollama model tag (`gemma4:31b` -> `('library', 'gemma4', '31b')`) and validate each part against
+    `^[A-Za-z0-9][A-Za-z0-9._-]*$` (rejecting `.`, `..`, `/`, `?`, `#`, and `:` inside a part)."""
 
     raw = model.strip()
+    if not raw:
+        raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
     repo_part, tag = raw.split(":", 1) if ":" in raw else (raw, "latest")
     namespace, name = repo_part.split("/", 1) if "/" in repo_part else ("library", repo_part)
     for part in (namespace, name, tag):
-        if not part or "/" in part or "\\" in part or ".." in part:
+        if not part or part in (".", "..") or ".." in part or not OLLAMA_MODEL_PART_RE.fullmatch(part):
             raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
     return namespace, name, tag
+
+
+def _normalise_ollama_registry_base(raw_url: str) -> str:
+    val = raw_url.strip()
+    if "://" in val:
+        scheme, rest = val.split("://", 1)
+        val = f"{scheme.lower()}://{rest}"
+    return val.rstrip("/")
+
+
+def _resolve_ollama_registry_base(raw_reg: str | None) -> tuple[str, object | None]:
+    """Resolve and validate `PIN_OLLAMA_REGISTRY`: on paid windows (`not stub_mode()`), refuse any base other than
+    `https://registry.ollama.ai` or an exact entry in `OLLAMA_REGISTRY_ALLOWLIST` (requiring `https://`, normalising
+    scheme case and trailing slashes, and never prefix-matching). In stub mode, allow any base (or start the local
+    fixture registry when unset)."""
+
+    cleaned = _normalise_ollama_registry_base(raw_reg or "")
+    if stub_mode():
+        if cleaned:
+            return cleaned, None
+        stub_reg = _start_stub_ollama_registry()
+        return stub_reg.base_url, stub_reg
+    if not cleaned:
+        cleaned = _normalise_ollama_registry_base(OLLAMA_REGISTRY)
+    if not cleaned.startswith("https://"):
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_REGISTRY={raw_reg!r} must use https:// on a paid window (got {cleaned!r})"
+        )
+    allowed = {
+        _normalise_ollama_registry_base(u)
+        for u in (OLLAMA_REGISTRY, *OLLAMA_REGISTRY_ALLOWLIST)
+        if _normalise_ollama_registry_base(u).startswith("https://")
+    }
+    if cleaned not in allowed:
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_REGISTRY={raw_reg!r} ({cleaned!r}) is not in OLLAMA_REGISTRY_ALLOWLIST on a paid window"
+        )
+    return cleaned, None
 
 
 def _ollama_manifest_path(model: str, models_dir: Path | None = None) -> Path:
@@ -3166,23 +3210,26 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
         validated_descs.append((blob_digest, blob_hex, expected_size, str(desc.get("mediaType") or "")))
 
     models_dir = WORK / "ollama-models"
+    manifest_dst = _ollama_manifest_path(model, models_dir)
+    registry_base, stub_reg = _resolve_ollama_registry_base(os.environ.get("PIN_OLLAMA_REGISTRY"))
+    blobs_recorded: list[dict] = []
+    manifest_rec: dict = {
+        "path": str(manifest_path),
+        "sha256": got_manifest_sha,
+        "manifest_dst": str(manifest_dst),
+        "registry": registry_base,
+        "blobs": blobs_recorded,
+    }
+    if stub_mode():
+        manifest_rec["stub"] = True
+    result["offrig_manifest"] = manifest_rec
+
     blobs_dir = models_dir / "blobs"
     blobs_dir.mkdir(parents=True, exist_ok=True)
-    raw_reg = (os.environ.get("PIN_OLLAMA_REGISTRY") or "").strip().rstrip("/")
-    stub_reg = None
-    if raw_reg:
-        registry_base = raw_reg
-    elif stub_mode():
-        stub_reg = _start_stub_ollama_registry()
-        registry_base = stub_reg.base_url
-    else:
-        registry_base = OLLAMA_REGISTRY
-
     hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
-    blobs_recorded: list[dict] = []
+    read_timeout = float(OLLAMA_BLOB_READ_TIMEOUT_S)
     try:
         for blob_digest, blob_hex, expected_size, media_type in validated_descs:
-            check_deadline(f"downloading ollama blob {blob_digest}")
             url = f"{registry_base}/v2/{namespace}/{name}/blobs/{blob_digest}"
             tmp_file = blobs_dir / f"sha256-{blob_hex}.part"
             final_file = blobs_dir / f"sha256-{blob_hex}"
@@ -3190,14 +3237,13 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
             t_blob = time.time()
             last_hb_t = t_blob
             last_hb_bytes = 0
-            left = deadline_left()
-            req_timeout = 1800.0 if left is None else min(1800.0, max(float(left), 0.05))
-            say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
-            hasher = hashlib.sha256()
             got_size = 0
             try:
+                check_deadline(f"downloading ollama blob {blob_digest}")
+                say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
+                hasher = hashlib.sha256()
                 req = urllib.request.Request(url)
-                with urllib.request.urlopen(req, timeout=req_timeout) as resp:  # noqa: S310 - pinned/overridable registry
+                with urllib.request.urlopen(req, timeout=read_timeout) as resp:  # noqa: S310 - allow-listed/stub registry
                     status = getattr(resp, "status", None) or resp.getcode()
                     if status is None or not (200 <= int(status) < 300):
                         raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {url}")
@@ -3208,12 +3254,15 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                                 CUT_AT = {
                                     "wave": "offrig-bench-blob",
                                     "blob": blob_digest,
+                                    "bytes_received": got_size,
+                                    "expected_size": expected_size,
                                     "model": model,
                                     "seconds": round(time.time() - t_blob),
                                     "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                                 }
                                 raise DeadlineReached(
-                                    f"ollama blob {blob_digest} download was cut at the window's deadline"
+                                    f"ollama blob {blob_digest} download was cut at the window's deadline "
+                                    f"after {got_size} of {expected_size} bytes"
                                 )
                             chunk = resp.read(1 << 20)
                             if not chunk:
@@ -3248,20 +3297,84 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                         )
                     os.replace(tmp_file, final_file)
             except urllib.error.HTTPError as e:
-                raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {e.code} from {url}") from e
+                reason = f"REFUSED: ollama blob {blob_digest} HTTP {e.code} from {url}"
+                manifest_rec["failed_blob"] = {
+                    "digest": blob_digest,
+                    "bytes_received": got_size,
+                    "expected_size": expected_size,
+                    "seconds": round(time.time() - t_blob, 3),
+                    "reason": reason,
+                }
+                raise RuntimeError(reason) from e
             except (TimeoutError, urllib.error.URLError) as e:
                 is_timeout = isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError)
-                if is_timeout and left is not None and (left < 1800 or (deadline_left() or 0) <= 0):
+                rem = deadline_left()
+                if is_timeout and rem is not None and rem <= 0:
                     CUT_AT = {
                         "wave": "offrig-bench-blob",
                         "blob": blob_digest,
+                        "bytes_received": got_size,
+                        "expected_size": expected_size,
                         "model": model,
                         "seconds": round(time.time() - t_blob),
                         "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
                     }
-                    raise DeadlineReached(
-                        f"ollama blob {blob_digest} download was cut at the window's deadline"
-                    ) from None
+                    cut_msg = (
+                        f"ollama blob {blob_digest} download was cut at the window's deadline "
+                        f"after {got_size} of {expected_size} bytes"
+                    )
+                    manifest_rec["failed_blob"] = {
+                        "digest": blob_digest,
+                        "bytes_received": got_size,
+                        "expected_size": expected_size,
+                        "seconds": round(time.time() - t_blob, 3),
+                        "reason": f"DeadlineReached: {cut_msg}",
+                    }
+                    raise DeadlineReached(cut_msg) from None
+                if is_timeout:
+                    stall_msg = (
+                        f"REFUSED: ollama blob {blob_digest} socket read stall after {got_size} of "
+                        f"{expected_size} bytes (idle timeout {read_timeout:g}s)"
+                    )
+                    manifest_rec["failed_blob"] = {
+                        "digest": blob_digest,
+                        "bytes_received": got_size,
+                        "expected_size": expected_size,
+                        "seconds": round(time.time() - t_blob, 3),
+                        "reason": stall_msg,
+                    }
+                    raise RuntimeError(stall_msg) from e
+                manifest_rec["failed_blob"] = {
+                    "digest": blob_digest,
+                    "bytes_received": got_size,
+                    "expected_size": expected_size,
+                    "seconds": round(time.time() - t_blob, 3),
+                    "reason": f"{type(e).__name__}: {e}",
+                }
+                raise
+            except DeadlineReached as e:
+                manifest_rec.setdefault(
+                    "failed_blob",
+                    {
+                        "digest": blob_digest,
+                        "bytes_received": got_size,
+                        "expected_size": expected_size,
+                        "seconds": round(time.time() - t_blob, 3),
+                        "reason": f"DeadlineReached: {e}",
+                    },
+                )
+                raise
+            except (RuntimeError, OSError, ValueError) as e:
+                manifest_rec.setdefault(
+                    "failed_blob",
+                    {
+                        "digest": blob_digest,
+                        "bytes_received": got_size,
+                        "expected_size": expected_size,
+                        "seconds": round(time.time() - t_blob, 3),
+                        "reason": str(e),
+                    },
+                )
                 raise
             finally:
                 tmp_file.unlink(missing_ok=True)
@@ -3277,19 +3390,8 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
         if stub_reg is not None:
             stub_reg.close()
 
-    manifest_dst = _ollama_manifest_path(model, models_dir)
     manifest_dst.parent.mkdir(parents=True, exist_ok=True)
     manifest_dst.write_bytes(manifest_bytes)
-    manifest_rec = {
-        "path": str(manifest_path),
-        "sha256": got_manifest_sha,
-        "manifest_dst": str(manifest_dst),
-        "registry": registry_base,
-        "blobs": blobs_recorded,
-    }
-    if stub_mode():
-        manifest_rec["stub"] = True
-    result["offrig_manifest"] = manifest_rec
     return manifest_rec
 
 
@@ -3323,11 +3425,8 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
             def _active_digest() -> str | None:
                 if stub.ollama_digest != stub._initial_ollama_digest:
                     return stub.ollama_digest
-                from_disk = _written_ollama_manifest_digest(stub.ollama_model)
-                if from_disk is not None:
-                    return from_disk
                 if (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip():
-                    return None
+                    return _written_ollama_manifest_digest(stub.ollama_model)
                 return stub.ollama_digest
 
             class Handler(BaseHTTPRequestHandler):

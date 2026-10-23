@@ -7,12 +7,30 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from role_set.mock import MockCritic, MockWriter
+
+_MODEL_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _parse_ollama_model(model: str) -> tuple[str, str, str]:
+    pw_mod = sys.modules.get("pin_window")
+    if pw_mod is not None and hasattr(pw_mod, "_parse_ollama_model"):
+        return pw_mod._parse_ollama_model(model)
+    raw = model.strip()
+    if not raw:
+        raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
+    repo_part, tag = raw.split(":", 1) if ":" in raw else (raw, "latest")
+    namespace, name = repo_part.split("/", 1) if "/" in repo_part else ("library", repo_part)
+    for part in (namespace, name, tag):
+        if not part or part in (".", "..") or ".." in part or not _MODEL_PART_RE.fullmatch(part):
+            raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
+    return namespace, name, tag
 
 
 def _written_manifest_digest(model: str, models_dir: Path | None = None) -> str | None:
@@ -25,9 +43,10 @@ def _written_manifest_digest(model: str, models_dir: Path | None = None) -> str 
             root = Path(os.environ["OLLAMA_MODELS"])
     if root is None:
         return None
-    raw = model.strip()
-    repo_part, tag = raw.split(":", 1) if ":" in raw else (raw, "latest")
-    namespace, name = repo_part.split("/", 1) if "/" in repo_part else ("library", repo_part)
+    try:
+        namespace, name, tag = _parse_ollama_model(model)
+    except RuntimeError:
+        return None
     mpath = Path(root) / "manifests" / "registry.ollama.ai" / namespace / name / tag
     if not mpath.is_file():
         return None
@@ -65,11 +84,8 @@ class StubLlama:
         def _active_digest() -> str | None:
             if stub.ollama_digest != stub._initial_ollama_digest:
                 return stub.ollama_digest
-            from_disk = _written_manifest_digest(stub.ollama_model, stub.ollama_models_dir)
-            if from_disk is not None:
-                return from_disk
             if (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip():
-                return None
+                return _written_manifest_digest(stub.ollama_model, stub.ollama_models_dir)
             return stub.ollama_digest
 
         class Handler(BaseHTTPRequestHandler):
