@@ -120,8 +120,19 @@ MODELS = [
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
      "card": "nemotron-3.5-bolt-74b-a9b-24gb", "expect_sha256": "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75"},
 ]
-# Window 1's llama-server (built 2026-10-17 at LLAMA_CPP_COMMIT, nvcc 13.4.92): every later window runs this file.
+# Window 1's llama-server (built 2026-10-17 at LLAMA_CPP_COMMIT, nvcc 13.4.92): every later window runs this file,
+# unless PIN_SERVER_SHA256 names another pinned build (e.g. window 16g's G4 sm120 binary).
 SERVER_SHA256 = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+SERVER_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def server_sha256() -> str:
+    raw = os.environ.get("PIN_SERVER_SHA256")
+    if raw is None:
+        return SERVER_SHA256
+    if not SERVER_SHA256_RE.fullmatch(raw):
+        raise RuntimeError(f"REFUSED: PIN_SERVER_SHA256={raw!r} must be 64 lowercase hex characters")
+    return raw
 
 
 def stub_mode() -> bool:
@@ -1190,7 +1201,7 @@ def critic_control(rs: dict, model: dict, machine_file: Path, seed: int, earlier
     out = WORK / f"critic-control-{model['served_as']}-s{seed}.json"
     cmd = [rs["role_set"], "critic-control", "--items", str(CONTENT / "known-answer-v1.jsonl"), "--planted", "10", "--seed", "0",
            "--critic-endpoint", f"http://127.0.0.1:{CRITIC_PORT}/v1", "--critic-model", model["served_as"],
-           "--critic-gguf-sha256", model["gguf_sha256"], "--llama-server-sha256", SERVER_SHA256,
+           "--critic-gguf-sha256", model["gguf_sha256"], "--llama-server-sha256", server_sha256(),
            "--machine", str(machine_file), "--writers", f"{rs['src']}/writers.json", "--cards", str(CONTENT / "card-values.json"),
            "--critic-seed", str(seed), "--out", str(out)]
     if earlier is not None:
@@ -2769,7 +2780,7 @@ def pilot_window(built: dict, result: dict) -> None:
                     by_name, result)
     pool = Pool(built, result, policies, cards_file, WORK / "cards-j1")
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", str(cards_file),
-              "--llama-server-sha256", SERVER_SHA256, "--machine", str(machine_file), "--partition", PILOT_PARTITION]
+              "--llama-server-sha256", server_sha256(), "--machine", str(machine_file), "--partition", PILOT_PARTITION]
     if pool_file is not None:
         common += ["--pool", str(pool_file)]
     if training_files:
@@ -2840,6 +2851,8 @@ def runtime() -> dict:
     """PIN_ROLE=smoke: no build. The uploaded window-1 binary, checked by sha256, with the CUDA 13.4 runtime wheels it
     loads; their exact versions are recorded so the library pins can be reproduced."""
 
+    want_sha = server_sha256()
+    override = "PIN_SERVER_SHA256" in os.environ
     sh(f"{sys.executable} -m pip install -q 'nvidia-cuda-runtime=={NVCC_VERSION}' 'nvidia-cublas=={CUBLAS_VERSION}'", timeout=1200)
     server, uploaded = WORK / "llama-server", CONTENT / "llama-server"
     parts = sorted(CONTENT.glob("llama-server.gz.part*"))
@@ -2853,8 +2866,8 @@ def runtime() -> dict:
         raise RuntimeError(f"upload window 1's llama-server to {uploaded} first")
     server.chmod(0o755)
     got = sha256(server)
-    if got != SERVER_SHA256:
-        raise RuntimeError(f"llama-server {got[:12]} isn't window 1's {SERVER_SHA256[:12]}")
+    if got != want_sha:
+        raise RuntimeError(f"llama-server {got[:12]} isn't pinned {want_sha[:12]}")
     src = WORK / "llama.cpp"
     if not (src / ".git").exists():
         sh(f"git clone -q https://github.com/ggml-org/llama.cpp {src} && git -C {src} checkout -q {LLAMA_CPP_COMMIT}", timeout=900)
@@ -2862,8 +2875,8 @@ def runtime() -> dict:
     for want in (f"nvidia-cublas=={CUBLAS_VERSION}", f"nvidia-cuda-runtime=={NVCC_VERSION}"):
         if want not in wheels:
             raise RuntimeError(f"{want} isn't what pip installed: {[w for w in wheels if 'cublas' in w or 'runtime' in w]}")
-    return {"commit": LLAMA_CPP_COMMIT, "sha256": got, "path": str(server), "src": str(src), "cuda_wheels": wheels,
-            "cuda_toolkit": CUDA_TOOLKIT}
+    return {"commit": LLAMA_CPP_COMMIT, "sha256": got, "sha256_override": override, "path": str(server), "src": str(src),
+            "cuda_wheels": wheels, "cuda_toolkit": CUDA_TOOLKIT}
 
 
 def take_job_lock(work: Path):
@@ -2954,6 +2967,10 @@ def _main() -> int:
         result["stub"] = True
         say("STUB MODE (PIN_STUB=1): mock writer and critic on StubLlama; NOT A REAL RUN")
     try:
+        want_server_sha = server_sha256()
+        server_sha_overridden = "PIN_SERVER_SHA256" in os.environ
+        result["server_sha256"] = want_server_sha
+        result["server_sha256_override"] = server_sha_overridden
         result["machine"] = machine_line(cpu_ok=os.environ.get("PIN_ROLE") in ("convert", "prebuild"))
         say(f"machine: {result['machine']}")
         # Split windows run side by side (Mike, 2026-10-16): PIN_ROLE=build builds the server and pins and smokes
@@ -2963,7 +2980,8 @@ def _main() -> int:
         result["role"] = role
         if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval"):
             if stub_mode() and role in ("pilot", "rescore", "critic-eval"):
-                result["llama_server"] = built = {"commit": LLAMA_CPP_COMMIT, "sha256": SERVER_SHA256, "path": "stub", "stub": True}
+                result["llama_server"] = built = {"commit": LLAMA_CPP_COMMIT, "sha256": want_server_sha,
+                                                  "sha256_override": server_sha_overridden, "path": "stub", "stub": True}
             else:
                 result["llama_server"] = built = runtime()
                 # The libraries first, so they're pinned even if a model fails later in the window.

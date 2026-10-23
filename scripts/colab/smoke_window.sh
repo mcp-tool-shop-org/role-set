@@ -50,19 +50,25 @@ DL_S="${PIN_DL_TIMEOUT:-300}"
 # The margin's budget (R&D on #91): the job's deadline is cap - MARGIN; it gets GRACE_S past it to cut its wave, tar and
 # print its result, and the exit fetch needs FETCH_ALLOW_S after that, all before the ceiling at the cap. So
 # GRACE_S + FETCH_ALLOW_S must fit in MARGIN at this card's rate, or the window doesn't open. The rates are the measured
-# ones (A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and the margin is set from them.
+# ones (G4 8.90, A100-80GB 6.77, A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and
+# the margin is set from them.
 # Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
 # deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
 # a 120 s fetch allowance: 180 s, 0.265 units at the A100's 5.3/hr, inside the default margin of 0.3.
 GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
 FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
-case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in A100:*) CARD_RATE=5.3;; CPU:1) CARD_RATE=0.26;; CPU:*) CARD_RATE=0.08;; *) CARD_RATE="";; esac
-if [ -n "$CARD_RATE" ]; then
-  BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
-  if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
-    echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
-    exit 2
-  fi
+case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
+  G4:*) CARD_RATE=8.90;;
+  A100:1) CARD_RATE=6.77;;
+  A100:*) CARD_RATE=5.3;;
+  CPU:1) CARD_RATE=0.26;;
+  CPU:*) CARD_RATE=0.08;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
+esac
+BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
+if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
+  echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
+  exit 2
 fi
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
@@ -118,7 +124,14 @@ colab usage 2>&1 | grep -E "rate|assign"
 # its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
 # A neighbour closing between the two reads can make the difference 0 or less: then take the runtime's own known rate,
 # not the whole account's (R&D, from Argon's review; the account rate would stop this window early).
-case "${PIN_GPU:-A100}" in A100) GPU_RATE=5.3;; CPU) GPU_RATE=0.08;; *) GPU_RATE="";; esac
+case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
+  G4:*) GPU_RATE=8.90;;
+  A100:1) GPU_RATE=6.77;;
+  A100:*) GPU_RATE=5.3;;
+  CPU:1) GPU_RATE=0.26;;
+  CPU:*) GPU_RATE=0.08;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
+esac
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"
 # The job's deadline (R&D, 2026-10-18): own spend at the cap less MARGIN. Past it the job starts nothing new, cuts a wave

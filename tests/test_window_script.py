@@ -323,6 +323,85 @@ def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm()
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
 
 
+def test_card_rates_refusals_and_g4_margin_check():
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-cardrates-"))
+    binfile = tmp / "bin.dat"
+    binfile.write_bytes(b"x" * 100)
+    script = str(ROOT / "scripts/colab/smoke_window.sh")
+
+    # 1. Each known card:high_mem combination has the same measured rate in both CARD_RATE (margin check) and GPU_RATE (neighbourclose fallback)
+    for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
+        ("G4", "0", "8.90", "0.3", "121"),
+        ("G4", "1", "8.90", "0.3", "121"),
+        ("A100", "1", "6.77", "0.3", "159"),
+        ("A100", "0", "5.3", "0.2", "135"),
+        ("CPU", "1", "0.26", "0.01", "138"),
+        ("CPU", "0", "0.08", "0.003", "135"),
+    ):
+        out_m = tmp / f"out-m-{gpu}-{high_mem}"
+        env_m = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-m-{gpu}-{high_mem}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-m-{gpu}-{high_mem}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_GPU": gpu,
+            "PIN_HIGH_MEM": high_mem,
+            "PIN_CAP_MARGIN": bad_margin,
+        }
+        r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
+        assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
+        assert f"REFUSED: grace 60s + fetch 120s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s" in r_m.stderr, (
+            gpu,
+            high_mem,
+            r_m.stderr,
+        )
+        assert not (tmp / f"st-m-{gpu}-{high_mem}" / "news").exists()
+
+        rig_fb, _job_fb, out_fb = _window(
+            "neighbourclose",
+            extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": high_mem, "PIN_MOCK_S": "1", "PIN_GATE": "0"},
+        )
+        assert f"own rate {rate_str}/hr" in rig_fb, (gpu, high_mem, rig_fb)
+        assert (out_fb / "pin-result.json").exists()
+
+    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 180 s) above and passes at 0.5 (0.5 / 8.9 h = 202 s >= 180 s)
+    rig_g4_pass, job_g4_pass, out_g4_pass = _window(
+        "normal",
+        extra={
+            "PIN_DEADLINE_GRACE_S": "",
+            "PIN_FETCH_ALLOW_S": "",
+            "PIN_GPU": "G4",
+            "PIN_CAP_MARGIN": "0.5",
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "REFUSED" not in rig_g4_pass and job_g4_pass.count("PIN_RESULT") == 1, rig_g4_pass
+    assert (out_g4_pass / "pin-result.json").exists()
+
+    # 3. Cards accepted on line 12 with no measured rate (H100, L4, T4) are refused at start before asking for any VM
+    for unmeasured in ("H100", "L4", "T4"):
+        out_u = tmp / f"out-u-{unmeasured}"
+        env_u = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-u-{unmeasured}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-u-{unmeasured}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_GPU": unmeasured,
+        }
+        r_u = subprocess.run(["bash", script, str(binfile), str(out_u)], env=env_u, capture_output=True, text=True, timeout=30, check=False)
+        assert r_u.returncode == 2, (unmeasured, r_u.returncode, r_u.stdout, r_u.stderr)
+        assert f"REFUSED: PIN_GPU={unmeasured} (PIN_HIGH_MEM=0) has no measured rate yet; refuse until one is measured" in r_u.stderr, (
+            unmeasured,
+            r_u.stderr,
+        )
+        assert not (tmp / f"st-u-{unmeasured}" / "news").exists()
+
+
 def test_the_stub_call_knob_never_runs_on_a_gpu_window():
     rig, job, out = _window("normal", extra={"PIN_STUB_CALL_S": "30"})  # the fake's default card: A100
     assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on A100" in rig, rig
