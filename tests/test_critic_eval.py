@@ -3359,7 +3359,9 @@ def test_track_b_n1_output_byte_identical_to_main(
         "critic_family",
         "critic_gguf_sha256",
         "critic_seed",
+        "verdict_prompt",
         "flaw_prompt",
+        "checks",
         "critic_pins",
         "critic_card",
         "gates",
@@ -3380,7 +3382,9 @@ def test_track_b_n1_output_byte_identical_to_main(
             "perturbation_type",
             "kind",
             "seed",
+            "verdict_prompt",
             "flaw_prompt",
+            "checks",
             "verdict_checks",
             "verdict_check",
             "flaw_check",
@@ -3955,6 +3959,359 @@ def test_track_b_vslots_check_material_catches_shared_passes_distinct_and_refuse
     err_d_empty = capsys.readouterr().err
     assert "REFUSED: empty material on row D-T06-C-01" in err_d_empty
     assert f"{d2_file}:2" in err_d_empty
+
+
+def test_verdict_prompt_old_byte_identical_and_defined_shares_writer_definitions() -> None:
+    from role_set import callcache, critic, plan, prompts
+
+    mat = "Line 1: pump pressure is 40 psi.\nLine 2: valve B is closed."
+    stmt = "Pump pressure exceeds 30 psi."
+
+    old_default = critic.verdict_messages(mat, stmt)
+    old_explicit = critic.verdict_messages(mat, stmt, verdict_prompt="old")
+    assert old_default == old_explicit
+    assert old_default[0]["role"] == "system"
+    assert old_default[0]["content"] == critic.CRITIC_SYSTEM
+    assert "supported means the material entails" not in old_default[0]["content"]
+
+    # request_key with verdict_prompt=None or "old" is byte-identical
+    k_none = callcache.request_key("critic", (old_default,), {"seed": 0})
+    k_old = callcache.request_key("critic", (old_explicit,), {"seed": 0}, verdict_prompt="old")
+    assert k_none == k_old
+
+    defined_msgs = critic.verdict_messages(mat, stmt, verdict_prompt="defined")
+    assert defined_msgs[1] == old_default[1]
+    expected_sentence = (
+        "supported: the material shows the statement is true; "
+        "unsupported: the material rules the statement out; "
+        "cannot_tell: the material is silent on the statement: it neither shows it nor rules it out."
+    )
+    assert critic.VERDICT_DEFINITIONS_SENTENCE == expected_sentence
+    assert defined_msgs[0]["content"] == f"{critic.CRITIC_SYSTEM}\n{expected_sentence}"
+    k_def = callcache.request_key("critic", (defined_msgs,), {"seed": 0}, verdict_prompt="defined")
+    assert k_def != k_old
+
+    # Shared constant between prompts.slot_brief and critic.VERDICT_DEFINITIONS
+    assert prompts.VERDICT_DEFINITIONS is critic.VERDICT_DEFINITIONS
+    for v_name, v_def in critic.VERDICT_DEFINITIONS.items():
+        slot = plan.Slot(
+            id="S-T02-C-01",
+            lesson="T02",
+            kind="C",
+            side="positive",
+            tier=1,
+            content_kind="record",
+            verdict=v_name,
+            escalate="no",
+        )
+        brief_text = prompts.slot_brief(slot, coverage_notes={})
+        assert f"{v_name}: {v_def}." in brief_text
+
+    with pytest.raises(ValueError, match="unknown verdict_prompt"):
+        critic.verdict_messages(mat, stmt, verdict_prompt="bogus")
+
+
+def test_call_journal_records_and_refuses_cross_setting_verdict_prompt_and_checks(tmp_path: Path) -> None:
+    from role_set import callcache
+    from role_set.guards import GuardError
+    from role_set.transport import Completion
+
+    j_path = tmp_path / "calls-journal.jsonl"
+    msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "usr"}]
+    comp = Completion(
+        text="VERDICT: supported",
+        prompt_tokens=10,
+        completion_tokens=5,
+        model=LIGHTNING,
+        seconds=0.1,
+        finish_reason="stop",
+    )
+
+    j = callcache.CallJournal(
+        j_path,
+        verdict_prompt="defined",
+        flaw_prompt="old",
+        checks="verdict",
+    )
+    wrapped = j.wrap("critic", lambda m, *, seed=0: comp)
+    wrapped(msgs, seed=0, slot="CFR-01", attempt=0)
+
+    row = json.loads(j_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["verdict_prompt"] == "defined"
+    assert row["checks"] == "verdict"
+    assert row["flaw_prompt"] == "old"
+    summary = j.summary()
+    assert summary["verdict_prompt"] == "defined"
+    assert summary["checks"] == "verdict"
+
+    # Matching settings load cleanly
+    loaded = callcache.load(
+        j_path,
+        expected_verdict_prompt="defined",
+        expected_flaw_prompt="old",
+        expected_checks="verdict",
+    )
+    assert len(loaded) == 1
+
+    # Cross-setting replay refuses on verdict_prompt mismatch
+    with pytest.raises(GuardError, match="written under verdict_prompt='defined', cannot reuse under verdict_prompt='old'"):
+        callcache.load(
+            j_path,
+            expected_verdict_prompt="old",
+            expected_checks="verdict",
+        )
+
+    # Cross-setting replay refuses on checks mismatch
+    with pytest.raises(GuardError, match="written under checks='verdict', cannot reuse under checks='all'"):
+        callcache.load(
+            j_path,
+            expected_verdict_prompt="defined",
+            expected_checks="all",
+        )
+
+    # Cross-setting append to existing journal also refuses
+    with pytest.raises(GuardError, match="written under verdict_prompt='defined', cannot append under verdict_prompt='old'"):
+        callcache.CallJournal(
+            j_path,
+            verdict_prompt="old",
+            checks="verdict",
+        )
+
+
+def test_critic_eval_verdict_only_and_bench_jsonl_items(
+    tmp_path: Path, eval_items_file: Path, pack_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from role_set import cli, critic
+
+    # 1. Sealed wave items with checks="verdict" makes zero flaw calls on kind-C items
+    out_verdict_only = tmp_path / "eval-verdict-only"
+    journal_vo = out_verdict_only / "calls-journal.jsonl"
+    rep_vo = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=out_verdict_only,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            verdict_prompt="defined",
+            checks="verdict",
+            call_journal=journal_vo,
+            mock=True,
+        )
+    )
+    assert rep_vo["verdict_prompt"] == "defined"
+    assert rep_vo["checks"] == "verdict"
+    assert rep_vo["calls"]["verdict_prompt"] == "defined"
+    assert rep_vo["calls"]["checks"] == "verdict"
+
+    vo_rows = [
+        json.loads(x)
+        for x in (out_verdict_only / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
+    assert any(r["kind"] == "C" for r in vo_rows)
+    for r in vo_rows:
+        assert r["verdict_prompt"] == "defined"
+        assert r["checks"] == "verdict"
+        assert r["flaw_check"] is None
+        assert r["critic_flaw"] is None
+
+    j_rows = [json.loads(x) for x in journal_vo.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(j_rows) == len(vo_rows)  # 1 verdict call per single-turn item, 0 flaw calls
+    for jr in j_rows:
+        assert jr["verdict_prompt"] == "defined"
+        assert jr["checks"] == "verdict"
+        assert jr["role"] == "critic"
+
+    # Replaying journal_vo with verdict_prompt="old" refuses
+    with pytest.raises(CriticEvalError, match="written under verdict_prompt='defined', cannot reuse under verdict_prompt='old'"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "eval-bad-replay",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=0,
+                verdict_prompt="old",
+                checks="verdict",
+                reuse_calls=journal_vo,
+                mock=True,
+            )
+        )
+
+    # 2. Plain bench JSONL items ({id, material, statement, key}) via CLI
+    bench_items = [
+        {
+            "id": "CFR-01",
+            "material": "Line 1: The tank holds 500 L.\nLine 2: Current volume is 320 L.",
+            "statement": "Current volume is below 400 L.",
+            "key": "supported",
+        },
+        {
+            "id": "CFR-02",
+            "material": "Line 1: Backup generator test passed on Monday.",
+            "statement": "Backup generator test failed on Monday.",
+            "key": "unsupported",
+        },
+        {
+            "id": "CFR-03",
+            "material": "Line 1: Room 4B has two sensors.",
+            "statement": "Room 4B humidity is above 60%.",
+            "key": "cannot_tell",
+        },
+    ]
+    bench_path = tmp_path / "bench-items.jsonl"
+    bench_path.write_text("\n".join(json.dumps(x) for x in bench_items) + "\n", encoding="utf-8")
+
+    out_bench = tmp_path / "bench-out"
+    rc = cli.main([
+        "critic-eval",
+        "--items", str(bench_path),
+        "--writers", str(ROOT / "writers.json"),
+        "--critic-model", LIGHTNING,
+        "--critic-seed", "0",
+        "--verdict-prompt", "defined",
+        "--checks", "verdict",
+        "--out", str(out_bench),
+        "--mock",
+    ])
+    assert rc == 0
+    bench_rep = json.loads((out_bench / "critic-eval-report.json").read_text(encoding="utf-8"))
+    assert bench_rep["items_total"] == 3
+    assert bench_rep["items_scored"] == 3
+    assert bench_rep["verdict_prompt"] == "defined"
+    assert bench_rep["checks"] == "verdict"
+    assert bench_rep["calls"]["called"] == 3
+    bench_eval_rows = [
+        json.loads(x)
+        for x in (out_bench / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
+    assert [r["item_id"] for r in bench_eval_rows] == ["CFR-01", "CFR-02", "CFR-03"]
+    assert all(r["flaw_check"] is None for r in bench_eval_rows)
+    assert all(r["verdict_check"]["ok"] is True for r in bench_eval_rows)
+
+    # Env var defaults PIN_CRITIC_VERDICT_PROMPT and PIN_CRITIC_CHECKS also work
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    cfg_env = CriticEvalConfig(items=bench_path, out=tmp_path / "env-out", mock=True)
+    assert cfg_env.verdict_prompt == "defined"
+    assert cfg_env.checks == "verdict"
+
+
+def test_pin_window_critic_eval_verdict_prompt_and_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import subprocess
+    import tarfile
+
+    pw_path = ROOT / "scripts" / "colab" / "pin_window.py"
+    spec = importlib.util.spec_from_file_location("pin_window_part_a_test", pw_path)
+    assert spec and spec.loader
+    pw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pw)
+
+    work = tmp_path / "work"
+    content = tmp_path / "content"
+    work.mkdir()
+    content.mkdir()
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "CONTENT", content)
+
+    items_file = tmp_path / "items.jsonl"
+    items_file.write_text(
+        json.dumps({"id": "CFR-01", "material": "M1", "statement": "S1", "key": "supported"}) + "\n",
+        encoding="utf-8",
+    )
+    items_sha = hashlib.sha256(items_file.read_bytes()).hexdigest()
+    in_tar = content / "critic-eval-inputs.tar"
+    with tarfile.open(in_tar, "w") as tf:
+        tf.add(items_file, arcname="items.jsonl")
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d66ce3f6")
+    monkeypatch.setenv("PIN_RND_COMMIT", "00000000")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_CRITIC", LIGHTNING)
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1")
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "old,defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={items_sha}")
+
+    monkeypatch.setattr(pw, "take_token", lambda: None)
+    monkeypatch.setattr(pw, "check_token_clean", lambda r: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda c: {"role_set": "role-set", "src": str(ROOT)})
+    monkeypatch.setattr(pw, "install_rnd", lambda c: {"commit": c})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "critic_eval_inputs", lambda r: (tmp_path, items_file, {"items.jsonl": items_sha}))
+    monkeypatch.setattr(pw, "sh", lambda *a, **kw: None)
+
+    class _FakeSrv:
+        log = None
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakePool:
+        def __init__(self, *a, **kw):
+            pass
+        def get(self, name):
+            return {"served_as": name, "gguf_sha256": "c" * 64}
+        def serve(self, name):
+            return _FakeSrv()
+        def proxy(self, name):
+            return None
+
+    monkeypatch.setattr(pw, "Pool", _FakePool)
+    seen_cmds: list[list[str]] = []
+
+    def _fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        out_idx = cmd.index("--out") + 1
+        vp_idx = cmd.index("--verdict-prompt") + 1
+        ck_idx = cmd.index("--checks") + 1
+        sd_idx = cmd.index("--critic-seed") + 1
+        seed_out = Path(cmd[out_idx])
+        (seed_out / "critic-eval-report.json").write_text(
+            json.dumps({
+                "critic_card": {"candidate": "c1"},
+                "verdict_prompt": cmd[vp_idx],
+                "flaw_prompt": "old",
+                "checks": cmd[ck_idx],
+                "flaw_votes": 1,
+                "items_scored": 1,
+                "skipped_count": 0,
+                "calls": {"fresh": 1, "reused": 0, "seed": int(cmd[sd_idx])},
+            }),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pw, "run_proc", _fake_run_proc)
+    result: dict = {}
+    pw.critic_eval_window({}, result)
+
+    assert len(seen_cmds) == 4  # 2 verdict_prompts (old, defined) x 2 seeds (0, 1)
+    vp_seed_pairs = [
+        (c[c.index("--verdict-prompt") + 1], c[c.index("--critic-seed") + 1], c[c.index("--checks") + 1])
+        for c in seen_cmds
+    ]
+    assert vp_seed_pairs == [
+        ("old", "0", "verdict"),
+        ("old", "1", "verdict"),
+        ("defined", "0", "verdict"),
+        ("defined", "1", "verdict"),
+    ]
+    assert result["critic_eval"]["verdict_prompts"] == ["old", "defined"]
+    assert result["critic_eval"]["checks"] == "verdict"
+    assert len(result["critic_eval"]["runs"]) == 4
+
 
 
 

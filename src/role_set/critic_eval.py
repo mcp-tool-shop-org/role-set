@@ -11,14 +11,16 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from role_set import callcache, cards, proven, waves
 from role_set.assemble import FLAWS, VERDICTS
 from role_set.critic import (
     FLAW_PROMPT_SETTINGS,
+    VERDICT_PROMPT_SETTINGS,
     CriticVerdict,
     _lines,
     compare_flaw,
@@ -40,6 +42,7 @@ CHECKER_VERDICT_RE = re.compile(r"^Checker verdict:\s*(\S+)\s*$", re.M)
 CONTROL_TYPES = frozenset({"d", "control", "controls"})
 GPU_TYPES = frozenset({"d", "b", "e", "f", "control", "controls"})
 KEY_ONLY_TYPES = frozenset({"a", "c", "g"})
+CRITIC_EVAL_CHECKS = ("all", "verdict")
 
 
 class CriticEvalError(RuntimeError, GuardError):
@@ -57,6 +60,8 @@ class CriticEvalConfig:
     critic_gguf_sha256: str | None = None
     critic_seed: int = 0
     flaw_prompt: str = "old"
+    verdict_prompt: str = field(default_factory=lambda: os.environ.get("PIN_CRITIC_VERDICT_PROMPT") or "old")
+    checks: str = field(default_factory=lambda: os.environ.get("PIN_CRITIC_CHECKS") or "all")
     flaw_votes: int = 1
     verdict_from: Path | None = None
     out: Path = Path("critic-eval")
@@ -152,6 +157,8 @@ def extract_item_parts(d: dict) -> dict:
 
     if "verdict" in key_block:
         key_verdict = str(key_block["verdict"])
+    elif isinstance(d.get("key"), str) and d["key"].strip():
+        key_verdict = d["key"].strip()
     elif kind == "E" and "verdict" in quiz:
         key_verdict = str(quiz["verdict"])
     elif "verdict" in row:
@@ -163,6 +170,7 @@ def extract_item_parts(d: dict) -> dict:
     else:
         key_verdict = ""
 
+    has_key_deciding = True
     if "deciding" in key_block:
         key_deciding = list(key_block["deciding"] or [])
     elif "deciding_lines" in key_block:
@@ -177,6 +185,7 @@ def extract_item_parts(d: dict) -> dict:
         key_deciding = list(fields["deciding"])
     else:
         key_deciding = []
+        has_key_deciding = False
 
     if "planted_flaw" in key_block:
         key_flaw = key_block["planted_flaw"]
@@ -214,6 +223,7 @@ def extract_item_parts(d: dict) -> dict:
     if isinstance(raw_tk, dict) and isinstance(raw_tk.get("1"), dict):
         t1 = raw_tk["1"]
         t1_verdict = str(t1.get("verdict") or "")
+        t1_has_dec = "deciding" in t1 or "deciding_lines" in t1
         t1_deciding = list(t1.get("deciding") if "deciding" in t1 else (t1.get("deciding_lines") or []))
         turn_keys_out = {
             **copy.deepcopy(raw_tk),
@@ -226,12 +236,14 @@ def extract_item_parts(d: dict) -> dict:
                 "seen_material": material,
                 "key_verdict": t1_verdict,
                 "key_deciding": t1_deciding,
+                "has_key_deciding": t1_has_dec,
             },
             {
                 "turn": 2,
                 "seen_material": t2_seen,
                 "key_verdict": key_verdict,
                 "key_deciding": key_deciding,
+                "has_key_deciding": has_key_deciding,
             },
         ]
         seen_material = t2_seen
@@ -245,6 +257,7 @@ def extract_item_parts(d: dict) -> dict:
                 "seen_material": seen_material,
                 "key_verdict": key_verdict,
                 "key_deciding": key_deciding,
+                "has_key_deciding": has_key_deciding,
             }
         ]
 
@@ -262,6 +275,7 @@ def extract_item_parts(d: dict) -> dict:
         "checker_verdict": checker_verdict,
         "key_verdict": key_verdict,
         "key_deciding": key_deciding,
+        "has_key_deciding": has_key_deciding,
         "key_flaw": str(key_flaw) if key_flaw is not None else None,
         "turn_keys": turn_keys_out,
         "verdict_turns": verdict_turns,
@@ -293,8 +307,10 @@ def _writer_for_item(d: dict, header: dict, listed: proven.ProvenList | None, *,
         entry = dict(writers[model])
     elif w_pins.get("writer_family"):
         entry = {"served_as": model or "writer", "family": w_pins["writer_family"], "card": w_pins.get("card_candidate")}
-    elif mock or model in ("", "mock"):
-        entry = {"served_as": model or "mock", "family": ""}
+    elif mock or model in ("", "mock") or not header:
+        if model not in ("", "mock"):
+            raise CriticEvalError(f"REFUSED: item {d.get('item_id') or d.get('id')!r} names writer {model!r}, which is not on the proven writer list")
+        entry = {"served_as": model or ("mock" if mock else ""), "family": ""}
     else:
         raise CriticEvalError(f"REFUSED: item {d.get('item_id') or d.get('id')!r} names writer {model!r}, which is not on the proven writer list")
     return w_pins, entry
@@ -356,12 +372,54 @@ def _blind_critic(critic, forbidden: set[str], item_id: str):
     return wrapped
 
 
+def _load_eval_items(path: Path) -> tuple[dict, list[dict]]:
+    """Read items for `critic-eval` from a sealed waves file (`waves.read`) or a bench JSONL file (`id`, `material`,
+    `statement`, `key` per line, checking its `.sha256` seal when present)."""
+
+    if not path.is_file():
+        raise CriticEvalError(f"REFUSED: cannot read items file {path}")
+    seal = waves.seal_path(path)
+    raw = path.read_bytes()
+    if seal.exists():
+        try:
+            want = seal.read_text(encoding="utf-8").split()[0].strip().lower()
+        except (OSError, IndexError) as e:
+            raise CriticEvalError(f"REFUSED: cannot read the drafts file and its seal {seal.name} ({type(e).__name__})") from e
+        got = hashlib.sha256(raw).hexdigest()
+        if got != want:
+            raise CriticEvalError(
+                f"REFUSED: {path.name} ({got[:12]}) doesn't match its seal ({want[:12]}); it changed in transit, so fetch it again"
+            )
+    try:
+        lines = [json.loads(x) for x in raw.decode("utf-8").splitlines() if x.strip()]
+    except ValueError as e:
+        raise CriticEvalError(f"REFUSED: cannot parse {path.name} ({type(e).__name__})") from e
+    if not lines:
+        raise CriticEvalError(f"REFUSED: {path.name} is empty")
+    if not all(isinstance(x, dict) for x in lines):
+        raise CriticEvalError(f"REFUSED: {path.name} holds a line that is not a JSON object")
+    if lines[0].get("type") == "header" or any(x.get("type") == "draft" for x in lines):
+        try:
+            return waves.read(path)
+        except waves.WaveError as e:
+            raise CriticEvalError(str(e)) from e
+    return {}, lines
+
+
 def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     """Run the critic's verdict check(s) and (for kind C) flaw check on every item of a sealed set."""
 
     if cfg.flaw_prompt not in FLAW_PROMPT_SETTINGS:
         raise CriticEvalError(
             f"REFUSED: unknown flaw_prompt {cfg.flaw_prompt!r}; expected one of {FLAW_PROMPT_SETTINGS}"
+        )
+    if cfg.verdict_prompt not in VERDICT_PROMPT_SETTINGS:
+        raise CriticEvalError(
+            f"REFUSED: unknown verdict_prompt {cfg.verdict_prompt!r}; expected one of {VERDICT_PROMPT_SETTINGS}"
+        )
+    if cfg.checks not in CRITIC_EVAL_CHECKS:
+        raise CriticEvalError(
+            f"REFUSED: unknown checks {cfg.checks!r}; expected one of {CRITIC_EVAL_CHECKS}"
         )
     if cfg.flaw_votes not in (1, 3):
         raise CriticEvalError(
@@ -375,10 +433,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         except PackError as e:
             raise CriticEvalError(str(e)) from e
 
-    try:
-        header, drafts = waves.read(cfg.items)
-    except waves.WaveError as e:
-        raise CriticEvalError(str(e)) from e
+    header, drafts = _load_eval_items(cfg.items)
     input_sha256 = waves.file_sha256(cfg.items)
 
     verdict_from_sha256: str | None = None
@@ -489,13 +544,16 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 mat_t = vt["seen_material"].rstrip()
                 first_line = mat_t.splitlines()[0].strip() if mat_t.strip() else ""
                 if parts["statement"] and vt["key_verdict"]:
+                    dec = list(vt["key_deciding"]) or (
+                        [first_line] if vt["key_verdict"] != "cannot_tell" and not vt.get("has_key_deciding", True) and first_line else []
+                    )
                     if vt["turn"] == 1 and (parts["statement"], first_line) not in answers:
-                        answers[(parts["statement"], first_line)] = (vt["key_verdict"], list(vt["key_deciding"]))
+                        answers[(parts["statement"], first_line)] = (vt["key_verdict"], dec)
                     elif vt["turn"] == 2:
                         if ("turn2", parts["statement"], first_line) not in answers:
-                            answers[("turn2", parts["statement"], first_line)] = (vt["key_verdict"], list(vt["key_deciding"]))
+                            answers[("turn2", parts["statement"], first_line)] = (vt["key_verdict"], dec)
                         if (parts["statement"], first_line) not in header_answers:
-                            by_exact_mat.setdefault((parts["statement"], mat_t), (vt["key_verdict"], list(vt["key_deciding"])))
+                            by_exact_mat.setdefault((parts["statement"], mat_t), (vt["key_verdict"], dec))
             if parts["kind"] == "C" and parts["checker_trace"]:
                 trace_line = parts["checker_trace"].splitlines()[0].strip()
                 if ("flaw", trace_line) not in answers and parts["key_flaw"]:
@@ -548,11 +606,22 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
     journal_path = cfg.call_journal or (cfg.out / callcache.JOURNAL_FILE)
     try:
         reuse = (
-            callcache.load(cfg.reuse_calls, expected_flaw_prompt=cfg.flaw_prompt)
+            callcache.load(
+                cfg.reuse_calls,
+                expected_flaw_prompt=cfg.flaw_prompt,
+                expected_verdict_prompt=cfg.verdict_prompt,
+                expected_checks=cfg.checks,
+            )
             if cfg.reuse_calls
             else None
         )
-        journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
+        journal = callcache.CallJournal(
+            journal_path,
+            reuse,
+            flaw_prompt=cfg.flaw_prompt,
+            verdict_prompt=cfg.verdict_prompt,
+            checks=cfg.checks,
+        )
     except GuardError as e:
         raise CriticEvalError(str(e)) from e
     journaled_critic = journal.wrap("critic", critic, card=c_card)
@@ -587,7 +656,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         w_pins, w_entry = _writer_for_item(d, header, listed, mock=cfg.mock)
         w_model = w_pins.get("writer_model") or w_entry.get("served_as") or ""
         w_family = (w_entry.get("family") or w_pins.get("writer_family") or "").strip() or None
-        if not cfg.mock and not w_family:
+        if not cfg.mock and not w_family and (header or w_model):
             raise CriticEvalError(f"REFUSED: item {item_id}'s writer {w_model!r} has no family on record")
 
         if w_family and c_family:
@@ -637,7 +706,14 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 else [vf_rec["verdict_check"]]
             )
             for vt, v_raw, orig_vc in zip(parts["verdict_turns"], vf_replies, vf_orig_checks, strict=True):
-                v = compare_verdict(gates, v_raw, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
+                v = compare_verdict(
+                    gates,
+                    v_raw,
+                    vt["key_verdict"],
+                    vt["key_deciding"],
+                    vt["seen_material"],
+                    check_evidence=vt.get("has_key_deciding", True),
+                )
                 vc_entry = {
                     "turn": vt["turn"],
                     "code": v.code,
@@ -658,7 +734,11 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             verdict_reused_count += 1
         else:
             for vt in parts["verdict_turns"]:
-                v_msgs = verdict_messages(vt["seen_material"], parts["statement"])
+                v_msgs = verdict_messages(
+                    vt["seen_material"],
+                    parts["statement"],
+                    verdict_prompt=cfg.verdict_prompt,
+                )
                 v: CriticVerdict | None = None
                 v_raw = ""
                 v_attempts = 0
@@ -682,7 +762,14 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                         thinking_unmeasured_calls += 1
                     v_output += int(c.completion_tokens or 0)
                     v_prompt += int(c.prompt_tokens or 0)
-                    v = compare_verdict(gates, c.text, vt["key_verdict"], vt["key_deciding"], vt["seen_material"])
+                    v = compare_verdict(
+                        gates,
+                        c.text,
+                        vt["key_verdict"],
+                        vt["key_deciding"],
+                        vt["seen_material"],
+                        check_evidence=vt.get("has_key_deciding", True),
+                    )
                     if v.code != "VOID":
                         break
                     v_voids += 1
@@ -715,7 +802,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         f_output = 0
         f_prompt = 0
         critic_flaw: str | None = None
-        if parts["kind"] == "C":
+        if parts["kind"] == "C" and cfg.checks != "verdict":
             if not parts["key_flaw"] or parts["key_flaw"] not in FLAWS + ("none",):
                 raise CriticEvalError(f"REFUSED: kind-C item {item_id} lacks a valid planted_flaw key ({parts['key_flaw']!r})")
             f_msgs = flaw_messages(
@@ -851,7 +938,9 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "perturbation_type": parts["perturbation_type"],
             "kind": parts["kind"],
             "seed": cfg.critic_seed,
+            "verdict_prompt": cfg.verdict_prompt,
             "flaw_prompt": cfg.flaw_prompt,
+            "checks": cfg.checks,
             "verdict_checks": verdict_checks,
             "verdict_check": verdict_check,
             "flaw_check": flaw_check,
@@ -885,7 +974,9 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         "critic_family": c_family,
         "critic_gguf_sha256": gguf_sha,
         "critic_seed": cfg.critic_seed,
+        "verdict_prompt": cfg.verdict_prompt,
         "flaw_prompt": cfg.flaw_prompt,
+        "checks": cfg.checks,
         "critic_pins": c_pins,
         "critic_card": c_card_pins,
         "gates": {"version": gates.version, "sha256": gates.sha256, "closed_form": gates.closed_form},
@@ -1099,6 +1190,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
             "seen_material": key_item.get("seen_material") or key_item.get("material") or "",
             "key_verdict": key_item["key_verdict"],
             "key_deciding": key_item["key_deciding"],
+            "has_key_deciding": key_item.get("has_key_deciding", True),
         }
     ]
     multi_turn = len(verdict_turns) > 1
@@ -1112,9 +1204,10 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
         t_num = int(vt.get("turn") or 1)
         key_verdict = vt["key_verdict"]
         key_deciding = vt["key_deciding"]
+        has_key_deciding = vt.get("has_key_deciding", True)
         material = vt["seen_material"]
 
-        v = compare_verdict(gates, v_reply, key_verdict, key_deciding, material)
+        v = compare_verdict(gates, v_reply, key_verdict, key_deciding, material, check_evidence=has_key_deciding)
         last_v = v
         cd = list(v.critic_deciding if v.critic_deciding is not None else _lines(gates.parse_answer(v_reply).get("deciding")))
 
@@ -1142,7 +1235,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                     "rule": "CANNOT_TELL_DECIDING",
                     "detail": f"turn {t_num}: key is cannot_tell but critic quoted {len(cd)} deciding line(s)",
                 }
-            if key_verdict in ("supported", "unsupported") and len(cd) > len(key_deciding) + 1:
+            if has_key_deciding and key_verdict in ("supported", "unsupported") and len(cd) > len(key_deciding) + 1:
                 rname = _rule_name(t_num, "QUOTE_TOO_LONG")
                 return {
                     "outcome": "refuse",
@@ -1154,7 +1247,11 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
                     "detail": f"turn {t_num}: critic quoted {len(cd)} lines, more than key's {len(key_deciding)} + 1",
                 }
 
-    if rule_set in ("Pc", "Pc_1vote", "P2", "P2_1vote") and key_item["kind"] == "C":
+    if (
+        rule_set in ("Pc", "Pc_1vote", "P2", "P2_1vote")
+        and key_item["kind"] == "C"
+        and eval_rec.get("checks", "all") != "verdict"
+    ):
         key_flaw = key_item.get("key_flaw")
         if not key_flaw or key_flaw not in FLAWS + ("none",):
             raise CriticEvalError(
@@ -1351,17 +1448,36 @@ def _merge_key_into_base(base: dict, ki: dict) -> dict:
     if isinstance(tk, dict) and isinstance(tk.get("1"), dict):
         t1 = tk["1"]
         t1_verdict = str(t1.get("verdict") or "")
+        t1_has_dec = "deciding" in t1 or "deciding_lines" in t1
         t1_deciding = list(t1.get("deciding") if "deciding" in t1 else (t1.get("deciding_lines") or []))
         t2_seen = (mat.rstrip("\n") + "\n" + "\n".join(new_lines)) if new_lines else mat
         v_turns = [
-            {"turn": 1, "seen_material": mat, "key_verdict": t1_verdict, "key_deciding": t1_deciding},
-            {"turn": 2, "seen_material": t2_seen, "key_verdict": ki["key_verdict"], "key_deciding": ki["key_deciding"]},
+            {
+                "turn": 1,
+                "seen_material": mat,
+                "key_verdict": t1_verdict,
+                "key_deciding": t1_deciding,
+                "has_key_deciding": t1_has_dec,
+            },
+            {
+                "turn": 2,
+                "seen_material": t2_seen,
+                "key_verdict": ki["key_verdict"],
+                "key_deciding": ki["key_deciding"],
+                "has_key_deciding": ki.get("has_key_deciding", True),
+            },
         ]
         seen_mat = t2_seen
     else:
         seen_mat = (mat.rstrip("\n") + "\n" + "\n".join(new_lines)) if new_lines else (ki["seen_material"] or base["seen_material"] or mat)
         v_turns = [
-            {"turn": 1, "seen_material": seen_mat, "key_verdict": ki["key_verdict"], "key_deciding": ki["key_deciding"]},
+            {
+                "turn": 1,
+                "seen_material": seen_mat,
+                "key_verdict": ki["key_verdict"],
+                "key_deciding": ki["key_deciding"],
+                "has_key_deciding": ki.get("has_key_deciding", True),
+            },
         ]
     return {
         **ki,
@@ -1442,6 +1558,18 @@ def run_critic_rescore_offline(cfg: CriticRescoreOfflineConfig) -> dict:
         if fp0 != fp1:
             raise CriticEvalError(
                 f"REFUSED: P3 requires the same flaw_prompt in both reports ({fp0!r} vs {fp1!r})"
+            )
+        vp0 = str(rep0.get("verdict_prompt") or "old")
+        vp1 = str(rep1.get("verdict_prompt") or "old")
+        if vp0 != vp1:
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same verdict_prompt in both reports ({vp0!r} vs {vp1!r})"
+            )
+        ck0 = str(rep0.get("checks") or "all")
+        ck1 = str(rep1.get("checks") or "all")
+        if ck0 != ck1:
+            raise CriticEvalError(
+                f"REFUSED: P3 requires the same checks setting in both reports ({ck0!r} vs {ck1!r})"
             )
 
         skipped_1 = _skipped_ids_from_report(rep1)

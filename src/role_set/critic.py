@@ -26,6 +26,16 @@ CRITIC_SYSTEM = (
     "material that settle it, copied verbatim and separated by ' | ', or NONE\nESCALATE: no | yes (medical|legal|safety|money advice)"
 )
 
+# Shared between the writer's slot brief (prompts.py) and the critic's `defined` verdict prompt (T10 item 6).
+VERDICT_PROMPT_SETTINGS = ("old", "defined")
+VERDICT_DEFINITIONS = {
+    "supported": "the material shows the statement is true",
+    "unsupported": "the material rules the statement out",
+    "cannot_tell": "the material is silent on the statement: it neither shows it nor rules it out",
+}
+VERDICT_DEFINITIONS_SENTENCE = "; ".join(f"{v}: {VERDICT_DEFINITIONS[v]}" for v in VERDICTS) + "."
+CRITIC_SYSTEM_DEFINED = f"{CRITIC_SYSTEM}\n{VERDICT_DEFINITIONS_SENTENCE}"
+
 # One line per flaw label, as the lessons and the reviewed data use them. Window A (2026-10-11) showed the
 # critic guessing at the bare labels: "caved" read as "guess", "obeyed_material" as "rubber_stamp".
 FLAW_DEFINITIONS = {
@@ -93,8 +103,16 @@ class CriticVerdict:
     repairs: list[dict] = field(default_factory=list)
 
 
-def verdict_messages(material: str, statement: str) -> list[dict]:
-    return [{"role": "system", "content": CRITIC_SYSTEM}, {"role": "user", "content": f"Material:\n{material.rstrip()}\n\nStatement: {statement.strip()}"}]
+def verdict_messages(
+    material: str,
+    statement: str,
+    *,
+    verdict_prompt: str = "old",
+) -> list[dict]:
+    if verdict_prompt not in VERDICT_PROMPT_SETTINGS:
+        raise ValueError(f"unknown verdict_prompt {verdict_prompt!r}; expected one of {VERDICT_PROMPT_SETTINGS}")
+    system = CRITIC_SYSTEM if verdict_prompt == "old" else CRITIC_SYSTEM_DEFINED
+    return [{"role": "system", "content": system}, {"role": "user", "content": f"Material:\n{material.rstrip()}\n\nStatement: {statement.strip()}"}]
 
 
 def flaw_messages(
@@ -138,8 +156,8 @@ TRAIT_SYSTEM = (
     "Answer with exactly two lines and nothing else:\nTRAIT: <trait id>\nCONTRASTED: <trait id of the error the item "
     "contrasts against, or none>"
 )
-TRAIT_VOTES = 3  # a majority of three calls at temperature 0.7, seeds 0-2: a single call was unstable on 5 of 20
-TRAIT_TEMPERATURE = 0.7
+TRAIT_VOTES = 3  # a majority of three calls at seeds 0-2 (with a card, the card's temperature is sent; TRAIT_TEMPERATURE is the cardless fallback): a single call was unstable on 5 of 20
+TRAIT_TEMPERATURE = 0.7  # fallback when the caller has no card (write.py's critic_caller sends the card's sampling)
 TRAIT_LINE = re.compile(r"^\s*\**\s*TRAIT\s*\**\s*:\s*\**\s*(T\d\d)\b", re.I | re.M)
 
 
@@ -230,7 +248,15 @@ def _lines(deciding: str | None) -> list[str]:
     return [x.strip() for x in deciding.split(" | ") if x.strip()]
 
 
-def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: list[str], material: str) -> CriticVerdict:
+def compare_verdict(
+    gates: Gates,
+    reply: str,
+    key_verdict: str,
+    key_deciding: list[str],
+    material: str,
+    *,
+    check_evidence: bool = True,
+) -> CriticVerdict:
     parsed = gates.parse_answer(reply)
     cv = parsed.get("verdict")
     raw_cd = _lines(parsed.get("deciding"))
@@ -259,6 +285,8 @@ def compare_verdict(gates: Gates, reply: str, key_verdict: str, key_deciding: li
         return CriticVerdict(False, "VERDICT_MISMATCH", f"the critic read {cv}, the key says {key_verdict}", cv, cd, repairs)
     if key_verdict == "cannot_tell":
         return CriticVerdict(True, "AGREE", "both read silence", cv, cd, repairs)
+    if not check_evidence:
+        return CriticVerdict(True, "AGREE", "the critic's verdict agrees with the key", cv, cd, repairs)
     mismatch = getattr(gates.module, "critic_mismatch", None)
     if mismatch is None:
         return CriticVerdict(False, "EVIDENCE_MISMATCH", "the gates package has no critic_mismatch rule; pin aspire-si-gates 1.1.0 or later", cv, cd, repairs)

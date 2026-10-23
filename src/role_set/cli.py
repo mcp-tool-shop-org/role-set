@@ -553,6 +553,10 @@ def build_parser() -> argparse.ArgumentParser:
     ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
     ce.add_argument("--flaw-prompt", choices=("old", "new", "trackb"), default="old",
                     help="critic flaw-check prompt wording ('old', 'new' or 'trackb'; default 'old')")
+    ce.add_argument("--verdict-prompt", choices=("old", "defined"), default=None,
+                    help="critic verdict-check prompt wording ('old' or 'defined'; default 'old')")
+    ce.add_argument("--checks", choices=("all", "verdict"), default=None,
+                    help="which critic checks to run ('all' or 'verdict' only; default 'all')")
     ce.add_argument("--flaw-votes", type=int, choices=(1, 3), default=1,
                     help="flaw check votes per kind-C item at seeds base_seed..base_seed+N-1 (1 or 3; default 1)")
     ce.add_argument("--verdict-from", default=None,
@@ -572,6 +576,11 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _critic_eval(args: argparse.Namespace) -> int:
+    extra: dict[str, str] = {}
+    if args.verdict_prompt is not None:
+        extra["verdict_prompt"] = args.verdict_prompt
+    if args.checks is not None:
+        extra["checks"] = args.checks
     cfg = CriticEvalConfig(
         items=Path(args.items),
         pack=Path(args.pack) if args.pack else None,
@@ -588,6 +597,7 @@ def _critic_eval(args: argparse.Namespace) -> int:
         flaw_prompt=args.flaw_prompt,
         flaw_votes=args.flaw_votes,
         verdict_from=Path(args.verdict_from) if args.verdict_from else None,
+        **extra,
     )
     try:
         report = run_critic_eval(cfg)
