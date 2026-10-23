@@ -199,7 +199,7 @@ def test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement():
         return _said(next(v for k, v in answers.items() if messages[1]["content"].startswith(k)))
 
     leg = answer_leg(critic, rows)
-    assert void_seeds == [0, 1]
+    assert void_seeds == [None, 10001]
     assert leg["puzzles"] == 6 and leg["keys_left_out"] == ["T02-B-05"] and leg["combined"] == {"items": 4, "agree": 2, "rate": 0.5}
     assert leg["descriptive_keys_left_out"] == ["T02-B-06"]  # "the red lamp" where the puzzle names only colours
     assert leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2 and leg["as_written_below_bar"] is True

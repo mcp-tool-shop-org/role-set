@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
+from role_set.callcache import retry_seed
 from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw,
                              compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages, teaching_text,
                              trait_messages, verdict_messages)
@@ -791,7 +792,7 @@ class Runner:
                         check="verdict",
                         slot=slot.id,
                         attempt=ask,
-                        seed=ask,
+                        **({"seed": retry_seed(0, ask)} if ask else {}),
                     )
                     self._count_tokens(c)
                     v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
@@ -810,7 +811,7 @@ class Runner:
                         check="twin_verdict",
                         slot=slot.id,
                         attempt=ask,
-                        seed=ask,
+                        **({"seed": retry_seed(0, ask)} if ask else {}),
                     )
                     self._count_tokens(c)
                     tv = compare_twin_verdict(self.gates, c.text, twin["verdict"])
@@ -842,7 +843,7 @@ class Runner:
                     check="answer",
                     slot=slot.id,
                     attempt=ask,
-                    seed=ask,
+                    **({"seed": retry_seed(0, ask)} if ask else {}),
                 )
                 self._count_tokens(c)
                 v = compare_answer(c.text, row["answer"])

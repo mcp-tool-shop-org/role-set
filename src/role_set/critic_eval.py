@@ -351,6 +351,8 @@ def _blind_critic(critic, forbidden: set[str], item_id: str):
                     )
         return critic(messages, **kwargs)
 
+    wrapped.takes_check = getattr(critic, "takes_check", False)
+    wrapped.card = getattr(critic, "card", None)
     return wrapped
 
 
@@ -433,6 +435,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
 
     c_model = (cfg.critic_model or ("mock" if cfg.mock else "")).strip()
     c_pins: dict | None = None
+    c_card: dict | None = None
     c_card_pins: dict | None = None
     critic_entry: dict = {"served_as": c_model, "family": ""}
     if listed is not None and c_model in listed.critics:
@@ -552,7 +555,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
     except GuardError as e:
         raise CriticEvalError(str(e)) from e
-    journaled_critic = journal.wrap("critic", critic)
+    journaled_critic = journal.wrap("critic", critic, card=c_card)
 
     base_tokens = _window_tokens_from_paths(cfg.items)
     tag = ((header.get("writer_host") or {}).get("machine") or {}).get("colab_release_tag")
@@ -665,7 +668,8 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 v_prompt = 0
                 for _ask in range(2):
                     v_attempts += 1
-                    c = blinded_critic(v_msgs, seed=cfg.critic_seed + _ask, slot=item_id, attempt=_ask)
+                    ask_seed = callcache.retry_seed(cfg.critic_seed, _ask) if _ask else cfg.critic_seed
+                    c = blinded_critic(v_msgs, seed=ask_seed, slot=item_id, attempt=_ask)
                     v_raw = c.text
                     raw_t = getattr(c, "thinking_tokens", None)
                     t_val = int(raw_t) if raw_t is not None else None

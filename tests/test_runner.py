@@ -750,14 +750,15 @@ def test_critic_void_retry_sends_different_seed_and_is_reproducible(tmp_path: Pa
     b_slot = next(s for s in slots if s.kind == "B")
     apply_slot = plan_apply("T10", SIDES, seed=0)[0]
 
-    def run_once(run_dir: Path) -> dict[str, list[int]]:
+    def run_once(run_dir: Path) -> dict[str, list[int | None]]:
         r, _, base_critic = _runner(run_dir, answer_gate=True)
         r.pack = {**r.pack, "traits/T10.md": PACK["traits/T02.md"]}
         r.trait_names = {**r.trait_names, "T10": "goes to the source"}
-        seen_seeds: dict[str, list[int]] = {"verdict": [], "twin_verdict": [], "answer": []}
+        seen_seeds: dict[str, list[int | None]] = {"verdict": [], "twin_verdict": [], "answer": []}
         counts = {"verdict": 0, "answer": 0}
 
-        def spy_critic(messages, temperature: float = 0.0, seed: int = 0, **_):
+        def spy_critic(messages, temperature: float = 0.0, **kw):
+            seed = kw.get("seed")
             sys_text = messages[0]["content"]
             if "VERDICT:" in sys_text:
                 counts["verdict"] += 1
@@ -775,7 +776,7 @@ def test_critic_void_retry_sends_different_seed_and_is_reproducible(tmp_path: Pa
                 seen_seeds["answer"].append(seed)
                 if counts["answer"] == 1:
                     return types.SimpleNamespace(text="no answer line here", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
-            return base_critic(messages, temperature=temperature, seed=seed)
+            return base_critic(messages, temperature=temperature, **({"seed": seed} if seed is not None else {}))
 
         r.critic = spy_critic
         assert r.run_slot(d_slot).accepted
@@ -792,7 +793,7 @@ def test_critic_void_retry_sends_different_seed_and_is_reproducible(tmp_path: Pa
     for check_name in ("verdict", "twin_verdict", "answer"):
         assert len(seeds_1[check_name]) == 2, (check_name, seeds_1[check_name])
     assert {k: v[0] != v[1] for k, v in seeds_1.items()} == {"verdict": True, "twin_verdict": True, "answer": True}, seeds_1
-    assert seeds_1 == {"verdict": [0, 1], "twin_verdict": [0, 1], "answer": [0, 1]}
+    assert seeds_1 == {"verdict": [None, 10001], "twin_verdict": [None, 10001], "answer": [None, 10001]}
     assert seeds_1 == seeds_2
 
 
