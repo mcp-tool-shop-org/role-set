@@ -1391,7 +1391,8 @@ def _slow_stub(inner):
     return _SlowStub(inner, s) if s > 0 else inner
 
 
-def _start_stub(name: str, port: int):
+def _start_stub(name: str, port: int, *, ollama_model: str | None = None, ollama_digest: str | None = None,
+                ollama_version: str = "0.40.4"):
     """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
 
     global _STUB_WRITER
@@ -1405,6 +1406,19 @@ def _start_stub(name: str, port: int):
         _STUB_WRITER = MockWriter()
     w = _STUB_WRITER
     c = MockCritic(answers=w.answers)
+    if ollama_model is not None and "ollama_model" in stub_mod.StubLlama.__init__.__code__.co_varnames:
+        return stub_mod.StubLlama(
+            name,
+            name,
+            writer=_slow_stub(w),
+            critic=_slow_stub(c),
+            port=port,
+            ollama_model=ollama_model,
+            ollama_digest=ollama_digest,
+            ollama_version=ollama_version,
+        )
+    if ollama_model is not None:
+        raise ImportError("StubLlama has no ollama_model support")
     if "port" in stub_mod.StubLlama.__init__.__code__.co_varnames:
         return stub_mod.StubLlama(name, name, writer=_slow_stub(w), critic=_slow_stub(c), port=port)
     # Fallback when /content/role-set is checked out at an earlier commit before StubLlama gained `port`.
@@ -2684,6 +2698,601 @@ def critic_eval_window(built: dict, result: dict) -> None:
             result["tar_error"] = str(e)[:300]
 
 
+# ---- PIN_ROLE=offrig-bench (R&D, 2026-10-23): cross-rig baseline (offrig bench30 at batch 1 through Ollama 0.40.4) ------
+OLLAMA_VERSION = "0.40.4"
+OLLAMA_SHA256 = "15f31e9576d15a481e099b4145dba6e9f8c1f295927d6b8895300ae30ed3740a"  # ollama-linux-amd64.tar.zst (v0.40.4)
+OLLAMA_URL = f"https://github.com/ollama/ollama/releases/download/v{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
+OLLAMA_PORT = int(os.environ.get("PIN_OLLAMA_PORT") or 11434)
+OFFRIG_MODEL = "gemma4:31b"
+OFFRIG_MODEL_DIGEST = "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7"
+OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
+OFFRIG_NUM_CTX = 8192
+HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
+
+
+def _require_sha256(name: str, raw: str | None) -> str:
+    val = (raw or "").strip().lower().removeprefix("sha256:")
+    if not HEX64_RE.fullmatch(val):
+        raise RuntimeError(f"REFUSED: {name} must be a 64-char hex sha256, got {raw!r}")
+    return val
+
+
+def offrig_bench_inputs(result: dict) -> tuple[Path, Path, dict]:
+    """Read-only, sha-checked uploaded offrig Linux binary and gold jsonl for PIN_ROLE=offrig-bench."""
+
+    offrig_sha = _require_sha256("PIN_OFFRIG_SHA256", os.environ.get("PIN_OFFRIG_SHA256"))
+    raw_bin = (os.environ.get("PIN_OFFRIG_BIN") or "").strip()
+    bin_src = Path(raw_bin) if raw_bin else (CONTENT / "offrig")
+    if not bin_src.exists() and str(bin_src).startswith("/content/"):
+        bin_src = CONTENT / str(bin_src).removeprefix("/content/")
+    parts = sorted(CONTENT.glob("offrig.gz.part*"))
+    if not bin_src.is_file() and parts:
+        sh(f"cat {' '.join(str(p) for p in parts)} | gunzip -c > {bin_src}")
+    if not bin_src.is_file():
+        raise RuntimeError(f"REFUSED: offrig binary not found at {bin_src}")
+    raw_gold = (os.environ.get("PIN_OFFRIG_GOLD") or "").strip()
+    gold_src = Path(raw_gold) if raw_gold else (CONTENT / "bench30.jsonl")
+    if not gold_src.exists() and str(gold_src).startswith("/content/"):
+        gold_src = CONTENT / str(gold_src).removeprefix("/content/")
+    raw_gold_sha = os.environ.get("PIN_OFFRIG_GOLD_SHA256")
+    gold_sha = _require_sha256(
+        "PIN_OFFRIG_GOLD_SHA256",
+        OFFRIG_GOLD_SHA256 if (raw_gold_sha is None and gold_src.name == "bench30.jsonl") else raw_gold_sha,
+    )
+    if not gold_src.is_file():
+        raise RuntimeError(f"REFUSED: offrig gold jsonl not found at {gold_src}")
+    got_bin_sha = sha256(bin_src).lower()
+    if got_bin_sha != offrig_sha:
+        raise RuntimeError(f"REFUSED: offrig binary sha256 mismatch: {got_bin_sha[:12]} != PIN_OFFRIG_SHA256 {offrig_sha[:12]}")
+    got_gold_sha = sha256(gold_src).lower()
+    if got_gold_sha != gold_sha:
+        raise RuntimeError(f"REFUSED: offrig gold {gold_src.name} sha256 mismatch: {got_gold_sha[:12]} != PIN_OFFRIG_GOLD_SHA256 {gold_sha[:12]}")
+    root = WORK / "offrig-bench-in"
+    if root.exists():
+        for p in sorted(root.rglob("*")):
+            os.chmod(p, 0o700)
+        os.chmod(root, 0o700)
+        shutil.rmtree(root)
+    root.mkdir(parents=True)
+    bin_dst = root / "offrig"
+    gold_dst = root / gold_src.name
+    shutil.copyfile(bin_src, bin_dst)
+    shutil.copyfile(gold_src, gold_dst)
+    os.chmod(bin_dst, 0o555)
+    os.chmod(gold_dst, 0o444)
+    os.chmod(root, 0o555)
+    meta = {"offrig_sha256": got_bin_sha, "gold": gold_dst.name, "gold_sha256": got_gold_sha}
+    result["offrig_bench_inputs"] = meta
+    return bin_dst, gold_dst, meta
+
+
+def install_ollama(result: dict) -> Path:
+    """Install the pinned Ollama version (0.40.4) verified by sha256 checksum before unpacking or running."""
+
+    ver = (os.environ.get("PIN_OLLAMA_VERSION") or OLLAMA_VERSION).strip()
+    if ver != OLLAMA_VERSION:
+        raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
+    raw_sha = os.environ.get("PIN_OLLAMA_SHA256")
+    expect_sha = _require_sha256("PIN_OLLAMA_SHA256", OLLAMA_SHA256 if raw_sha is None else raw_sha)
+    raw_arch = (os.environ.get("PIN_OLLAMA_ARCHIVE") or "").strip()
+    url = None
+    if raw_arch:
+        archive = Path(raw_arch)
+        if not archive.exists() and str(archive).startswith("/content/"):
+            archive = CONTENT / str(archive).removeprefix("/content/")
+        if not archive.is_file():
+            raise RuntimeError(f"REFUSED: PIN_OLLAMA_ARCHIVE not found at {archive}")
+    elif (CONTENT / "ollama-linux-amd64.tar.zst").is_file():
+        archive = CONTENT / "ollama-linux-amd64.tar.zst"
+    elif (CONTENT / "ollama-linux-amd64.tgz").is_file():
+        archive = CONTENT / "ollama-linux-amd64.tgz"
+    else:
+        url = (os.environ.get("PIN_OLLAMA_URL") or OLLAMA_URL).strip()
+        check_deadline("installing ollama")
+        archive = WORK / (Path(url).name or "ollama-linux-amd64.tar.zst")
+        say(f"downloading ollama {OLLAMA_VERSION} from {url}")
+        sh(f"curl -fsSL '{url}' -o {archive}", timeout=900)
+    got_sha = sha256(archive).lower()
+    if got_sha != expect_sha:
+        if url is not None:
+            archive.unlink(missing_ok=True)
+        raise RuntimeError(f"REFUSED: ollama archive sha256 mismatch: {got_sha[:12]} != PIN_OLLAMA_SHA256 {expect_sha[:12]}")
+    dest = WORK / "ollama-install"
+    shutil.rmtree(dest, ignore_errors=True)
+    dest.mkdir(parents=True, exist_ok=True)
+    if archive.name.endswith((".tar.zst", ".tgz", ".tar.gz", ".tar")):
+        sh(f"tar -xf {archive} -C {dest}", timeout=600)
+        ollama_bin = dest / "bin" / "ollama" if (dest / "bin" / "ollama").exists() else dest / "ollama"
+    else:
+        (dest / "bin").mkdir(parents=True, exist_ok=True)
+        ollama_bin = dest / "bin" / "ollama"
+        shutil.copyfile(archive, ollama_bin)
+    if not ollama_bin.is_file():
+        raise RuntimeError(f"ollama binary not found under {dest} after unpacking {archive.name}")
+    ollama_bin.chmod(0o755)
+    if url is not None:
+        archive.unlink(missing_ok=True)
+    ver_out = sh(f"{ollama_bin} --version", timeout=30)
+    if OLLAMA_VERSION not in ver_out:
+        raise RuntimeError(f"REFUSED: ollama --version is {ver_out!r}, expected {OLLAMA_VERSION}")
+    result["ollama"] = {"version": OLLAMA_VERSION, "sha256": got_sha, "bin": str(ollama_bin), "version_line": ver_out}
+    return ollama_bin
+
+
+def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA_VERSION):
+    """Fake Ollama server on `port` for PIN_STUB=1: uses StubLlama when tests/stub_llama.py is present, or an inline
+    loopback HTTP server with the same /api/* routes when pin_window.py runs standalone on a CPU VM."""
+
+    try:
+        return _start_stub(model, port, ollama_model=model, ollama_digest=digest, ollama_version=version)
+    except ImportError:
+        pass
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: PLC0415
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _InlineStubOllama:
+        def __init__(self):
+            self.ollama_model = model
+            self.ollama_digest = digest.removeprefix("sha256:")
+            self.ollama_version = version
+            self.ollama_loaded = False
+            self.ollama_size = 20281829620
+            self.ollama_size_vram = 20281829620
+            self.ollama_context_length = 4096
+            self.ollama_requests: list[tuple[str, dict]] = []
+            self.call_fn = _slow_stub(lambda *_a, **_k: None)
+            stub = self
+
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def _send_json(self, status: int, payload: dict) -> None:
+                    data = json.dumps(payload).encode("utf-8")
+                    self.send_response(status)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(data)))
+                    self.end_headers()
+                    self.wfile.write(data)
+
+                def do_GET(self):  # noqa: N802
+                    if self.path == "/api/version":
+                        self._send_json(200, {"version": stub.ollama_version})
+                    elif self.path == "/api/tags":
+                        self._send_json(
+                            200,
+                            {"models": [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": stub.ollama_digest}]},
+                        )
+                    elif self.path == "/api/ps":
+                        ms = (
+                            [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": stub.ollama_digest, "size_vram": stub.ollama_size_vram, "context_length": stub.ollama_context_length}]
+                            if stub.ollama_loaded
+                            else []
+                        )
+                        self._send_json(200, {"models": ms})
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+
+                def do_POST(self):  # noqa: N802
+                    length = int(self.headers.get("Content-Length") or 0)
+                    body = json.loads(self.rfile.read(length)) if length else {}
+                    stub.ollama_requests.append((self.path, body))
+                    if self.path == "/api/show":
+                        self._send_json(200, {"capabilities": ["completion", "thinking"], "model_info": {"gemma4.context_length": 262144}})
+                    elif self.path == "/api/generate":
+                        opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
+                        stub.ollama_loaded = body.get("keep_alive") not in (0, "0", "0s")
+                        self._send_json(200, {"model": body.get("model") or stub.ollama_model, "response": "", "done": True, "done_reason": "load" if stub.ollama_loaded else "unload"})
+                    elif self.path == "/api/chat":
+                        stub.ollama_loaded = True
+                        opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
+                        if opts.get("num_predict") == 1:
+                            self._send_json(200, {"model": body.get("model") or stub.ollama_model, "message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "length", "prompt_eval_count": 30, "eval_count": 1, "total_duration": 5})
+                            return
+                        stub.call_fn(body.get("messages") or [], seed=opts.get("seed") or 0)
+                        content = json.dumps({"reasoning": "stub check", "verdict": "unsupported", "evidence_quote": "", "evidence_source": ""})
+                        self._send_json(200, {"model": body.get("model") or stub.ollama_model, "message": {"role": "assistant", "content": content, "thinking": "stub thinking"}, "done": True, "done_reason": "stop", "prompt_eval_count": 30, "eval_count": 3, "total_duration": 5})
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", port), Handler)
+            self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+    return _InlineStubOllama()
+
+
+class OllamaServed:
+    """One `ollama serve` instance with A1's environment (OLLAMA_NUM_PARALLEL=1, OLLAMA_KV_CACHE_TYPE=f16;
+    OLLAMA_FLASH_ATTENTION left unset), or StubLlama in stub mode."""
+
+    def __init__(self, ollama_bin: Path | None, model: str, digest: str, port: int):
+        self.ollama_bin, self.model, self.digest, self.port = ollama_bin, model, digest, port
+        self.proc = self.log_fh = self.stub = self.log = None
+
+    def __enter__(self):
+        if stub_mode():
+            self.stub = _start_stub_ollama(self.model, self.digest, self.port, OLLAMA_VERSION)
+            return self
+        assert self.ollama_bin is not None
+        lib_dirs = [p for p in [self.ollama_bin.parent.parent / "lib" / "ollama", *_cuda_lib_dirs()] if p.is_dir()]
+        ld_path = ":".join(str(p) for p in lib_dirs) + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+        models_dir = WORK / "ollama-models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        env = {
+            **{k: v for k, v in os.environ.items() if k != "OLLAMA_FLASH_ATTENTION"},
+            "OLLAMA_HOST": f"127.0.0.1:{self.port}",
+            "OLLAMA_NUM_PARALLEL": "1",
+            "OLLAMA_KV_CACHE_TYPE": "f16",
+            "OLLAMA_MODELS": str(models_dir),
+            "LD_LIBRARY_PATH": ld_path,
+        }
+        server_log = WORK / "ollama-serve.log"
+        self.log = server_log
+        self.log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed by stop_server
+        self.proc = subprocess.Popen(
+            [str(self.ollama_bin), "serve"],
+            stdout=self.log_fh,
+            stderr=subprocess.STDOUT,
+            text=True,
+            env=env,
+            start_new_session=True,
+        )
+        ver_data = None
+        for _ in range(60):
+            if self.proc.poll() is not None:
+                self.log_fh.close()
+                raise RuntimeError(
+                    f"ollama serve exited ({self.proc.returncode}): "
+                    + server_log.read_text(encoding="utf-8", errors="replace")[-800:]
+                )
+            try:
+                with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/version", timeout=5) as r:  # noqa: S310 - loopback
+                    if r.status == 200:
+                        ver_data = json.loads(r.read())
+                        break
+            except (OSError, ValueError):
+                time.sleep(1)
+        if ver_data is None:
+            stop_server(self.proc, self.log_fh)
+            raise RuntimeError("ollama serve never came up: " + server_log.read_text(encoding="utf-8", errors="replace")[-800:])
+        if ver_data.get("version") != OLLAMA_VERSION:
+            stop_server(self.proc, self.log_fh)
+            raise RuntimeError(f"REFUSED: ollama /api/version is {ver_data.get('version')!r}, not {OLLAMA_VERSION!r}")
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}/api/ps", timeout=10) as r:  # noqa: S310 - loopback
+            ps0 = json.loads(r.read())
+        if ps0.get("models"):
+            stop_server(self.proc, self.log_fh)
+            raise RuntimeError(f"REFUSED: ollama card not empty at start: {ps0.get('models')}")
+        return self
+
+    def __exit__(self, *exc):
+        if self.stub is not None:
+            self.stub.close()
+            self.stub = None
+            return
+        if self.proc is not None and self.log_fh is not None:
+            stop_server(self.proc, self.log_fh)
+
+
+def pull_ollama_model(ollama_bin: Path | None, model: str, digest: str, port: int, result: dict) -> dict:
+    """Pull `model` through Ollama and verify that its digest in /api/tags equals `digest`."""
+
+    check_deadline(f"pulling {model}")
+    if not stub_mode():
+        assert ollama_bin is not None
+        left = deadline_left()
+        env = {**os.environ, "OLLAMA_HOST": f"127.0.0.1:{port}"}
+        try:
+            r = run_proc(
+                [str(ollama_bin), "pull", model],
+                env=env,
+                timeout=1800 if left is None else min(1800, max(left, 1)),
+                term_first=left is not None,
+            )
+        except subprocess.TimeoutExpired:
+            if left is None or left >= 1800:
+                raise
+            raise DeadlineReached(f"ollama pull {model} was cut at the window's deadline") from None
+        if r.returncode != 0:
+            raise RuntimeError(f"ollama pull {model} exited {r.returncode}: {(r.stderr or r.stdout)[-1500:]}")
+    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/tags", timeout=30) as resp:  # noqa: S310 - loopback
+        tags = json.loads(resp.read())
+    candidates = {model, f"{model}:latest"}
+    entry = next(
+        (m for m in (tags.get("models") or []) if m.get("name") in candidates or m.get("model") in candidates),
+        None,
+    )
+    if entry is None:
+        raise RuntimeError(f"REFUSED: model {model!r} not in /api/tags after pull")
+    got_digest = (entry.get("digest") or "").strip().lower().removeprefix("sha256:")
+    if got_digest != digest:
+        raise RuntimeError(f"REFUSED: model {model} digest {got_digest[:12]} != PIN_OFFRIG_MODEL_DIGEST {digest[:12]}")
+    info = {"model": model, "digest": got_digest, "size": entry.get("size")}
+    result["offrig_model"] = info
+    return info
+
+
+def warmup_ollama_model(
+    model: str, digest: str, port: int, base: Path, result: dict, num_ctx: int = OFFRIG_NUM_CTX
+) -> dict:
+    """Warm-up load `model` via /api/generate at `num_ctx` before offrig starts (so a cold load never hits offrig's
+    request timeout or reloads at a different context), poll /api/ps until loaded, write ps.json, and verify digest,
+    context_length, and full GPU offload (size_vram == size)."""
+
+    check_deadline(f"warming up {model}")
+    left = deadline_left()
+    req_timeout = 600 if left is None else min(600, max(int(left), 1))
+    body = json.dumps(
+        {"model": model, "prompt": "", "keep_alive": "60m", "stream": False, "options": {"num_ctx": num_ctx}}
+    ).encode("utf-8")
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/api/generate",
+        data=body,
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=req_timeout) as resp:  # noqa: S310 - loopback
+        resp.read()
+    ps: dict = {"models": []}
+    poll_sleep = 0.05 if stub_mode() else 2.0
+    for _ in range(120):
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ps", timeout=15) as resp:  # noqa: S310 - loopback
+            ps = json.loads(resp.read())
+        if len(ps.get("models") or []) == 1:
+            break
+        time.sleep(poll_sleep)
+    ps_text = json.dumps(ps, indent=1) + "\n"
+    (base / "ps.json").write_text(ps_text, encoding="utf-8")
+    (WORK / "ps.json").write_text(ps_text, encoding="utf-8")
+    result["ps"] = ps
+    models = ps.get("models") or []
+    if len(models) != 1:
+        raise RuntimeError(f"REFUSED: {model} did not load in /api/ps after warm-up: {ps}")
+    m_ps = models[0]
+    got_digest = (m_ps.get("digest") or "").strip().lower().removeprefix("sha256:")
+    if got_digest != digest:
+        raise RuntimeError(f"REFUSED: /api/ps model digest {got_digest[:12]} != PIN_OFFRIG_MODEL_DIGEST {digest[:12]}")
+    ctx_len = int(m_ps.get("context_length") or 0)
+    if ctx_len != num_ctx:
+        raise RuntimeError(f"REFUSED: {model} context_length in /api/ps is {ctx_len} != {num_ctx}")
+    size = int(m_ps.get("size") or 0)
+    size_vram = int(m_ps.get("size_vram") or 0)
+    if size <= 0 or size_vram < size:
+        raise RuntimeError(f"REFUSED: {model} offloaded in /api/ps: size_vram {size_vram} < size {size}")
+    return ps
+
+
+def _query_smi_csv() -> str:
+    """One `nvidia-smi` CSV query line (`timestamp,memory.used,utilization.gpu,temperature.gpu,power.draw`)."""
+
+    if stub_mode():
+        return f"{time.strftime('%Y/%m/%d %H:%M:%S.000', time.gmtime())}, 0 MiB, 0 %, 0, 0.00 W\n"
+    return subprocess.run(
+        [
+            "nvidia-smi",
+            "--query-gpu=timestamp,memory.used,utilization.gpu,temperature.gpu,power.draw",
+            "--format=csv,noheader",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    ).stdout
+
+
+SMI_INTERVAL_S = 2.0
+
+
+def sample_smi_every_2s(smi_csv: Path, stop: threading.Event, stats: dict) -> None:
+    """Sample `nvidia-smi` every 2 s into `smi_csv` and track peak VRAM in MiB."""
+
+    while not stop.is_set():
+        try:
+            out = _query_smi_csv()
+            if out and out.strip():
+                with smi_csv.open("a", encoding="utf-8") as f:
+                    f.write(out if out.endswith("\n") else out + "\n")
+                for line in out.splitlines():
+                    parts = [p.strip() for p in line.split(",")]
+                    if len(parts) >= 2 and parts[1]:
+                        mib = int(float(parts[1].split()[0]))
+                        stats["peak_vram_mib"] = max(stats["peak_vram_mib"], mib)
+                        stats["samples"] += 1
+        except (subprocess.SubprocessError, OSError, ValueError):
+            pass
+        stop.wait(SMI_INTERVAL_S)
+
+
+def offrig_bench_window(result: dict) -> None:
+    """PIN_ROLE=offrig-bench (R&D, 2026-10-23): install pinned Ollama 0.40.4 by checksum, pull model by digest,
+    warm-up load and verify /api/ps, sample nvidia-smi every 2 s, and run
+    `offrig verify calibrate <gold> --model <m> --think on --structured on --split tune --jobs 1`."""
+
+    global CUT_AT
+    # No HF token is needed for Ollama's registry; drop any token and verify the five-place residue check.
+    take_token()
+    check_token_clean(result)
+    ver = (os.environ.get("PIN_OLLAMA_VERSION") or OLLAMA_VERSION).strip()
+    if ver != OLLAMA_VERSION:
+        raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
+    raw_ollama_sha = os.environ.get("PIN_OLLAMA_SHA256")
+    ollama_sha = _require_sha256("PIN_OLLAMA_SHA256", OLLAMA_SHA256 if raw_ollama_sha is None else raw_ollama_sha)
+    model = (os.environ.get("PIN_OFFRIG_MODEL") or OFFRIG_MODEL).strip()
+    if not model:
+        raise RuntimeError("REFUSED: PIN_OFFRIG_MODEL is empty")
+    raw_digest = os.environ.get("PIN_OFFRIG_MODEL_DIGEST")
+    digest = _require_sha256(
+        "PIN_OFFRIG_MODEL_DIGEST",
+        OFFRIG_MODEL_DIGEST if (raw_digest is None and model == OFFRIG_MODEL) else raw_digest,
+    )
+    offrig_bin, gold_path, inputs = offrig_bench_inputs(result)
+    base = WORK / "offrig-bench"
+    cal_out = base / "out"
+    proj_dir = base / "project"
+    smi_csv = base / "smi.csv"
+    base.mkdir(parents=True, exist_ok=True)
+    proj_dir.mkdir(parents=True, exist_ok=True)
+    ollama_bin = None if stub_mode() else install_ollama(result)
+    if stub_mode():
+        result["ollama"] = {"version": OLLAMA_VERSION, "sha256": ollama_sha, "stub": True}
+    port = int(os.environ.get("PIN_OLLAMA_PORT") or OLLAMA_PORT)
+    srv = OllamaServed(ollama_bin, model, digest, port)
+    try:
+        with srv:
+            pull_ollama_model(ollama_bin, model, digest, port, result)
+            ps_warm = warmup_ollama_model(model, digest, port, base, result)
+            check_deadline("offrig verify calibrate")
+            cmd = [
+                str(offrig_bin),
+                "verify",
+                "calibrate",
+                str(gold_path),
+                "--model",
+                model,
+                "--think",
+                "on",
+                "--structured",
+                "on",
+                "--split",
+                "tune",
+                "--jobs",
+                "1",
+                "--project",
+                str(proj_dir),
+                "--out",
+                str(cal_out),
+            ]
+            if port != 11434:
+                cmd += ["--url", f"http://127.0.0.1:{port}"]
+            stop = threading.Event()
+            smi_stats = {"samples": 0, "peak_vram_mib": 0}
+            smi_thread = threading.Thread(target=sample_smi_every_2s, args=(smi_csv, stop, smi_stats), daemon=True)
+            smi_thread.start()
+            left = deadline_left()
+            t0 = time.time()
+            ps_end: dict | None = None
+            try:
+                try:
+                    run = run_proc(
+                        cmd,
+                        timeout=4 * 3600 if left is None else min(4 * 3600, max(left, 1)),
+                        cwd=str(base),
+                        term_first=left is not None,
+                    )
+                except subprocess.TimeoutExpired:
+                    if left is None or left >= 4 * 3600:
+                        raise
+                    CUT_AT = {
+                        "wave": "offrig-bench",
+                        "out": str(cal_out),
+                        "model": model,
+                        "seconds": round(time.time() - t0),
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    }
+                    say(f"CUT AT THE DEADLINE offrig-bench {model} after {CUT_AT['seconds']} s")
+                    raise DeadlineReached("the offrig-bench calibrate run was cut at the window's deadline") from None
+            finally:
+                stop.set()
+                smi_thread.join(timeout=15)
+                result["smi"] = {
+                    "interval_s": SMI_INTERVAL_S,
+                    "samples": smi_stats["samples"],
+                    "peak_vram_mib": smi_stats["peak_vram_mib"],
+                    "csv": str(smi_csv),
+                }
+                try:
+                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ps", timeout=10) as resp:  # noqa: S310 - loopback
+                        ps_end = json.loads(resp.read())
+                    (base / "ps-end.json").write_text(json.dumps(ps_end, indent=1) + "\n", encoding="utf-8")
+                    result["ps_end"] = ps_end
+                    unload_req = urllib.request.Request(
+                        f"http://127.0.0.1:{port}/api/generate",
+                        data=json.dumps({"model": model, "keep_alive": 0}).encode("utf-8"),
+                        headers={"Content-Type": "application/json"},
+                    )
+                    with urllib.request.urlopen(unload_req, timeout=10) as resp:  # noqa: S310 - loopback
+                        resp.read()
+                except (OSError, ValueError):
+                    pass
+            (base / "offrig.log").write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
+            if run.returncode != 0:
+                raise RuntimeError(f"offrig verify calibrate exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
+            warm_m = (ps_warm.get("models") or [{}])[0]
+            end_models = (ps_end or {}).get("models") or []
+            if len(end_models) != 1:
+                msg = f"REFUSED: {model} did not stay loaded in /api/ps after offrig run: {ps_end}"
+                result["error"] = msg
+                raise RuntimeError(msg)
+            end_m = end_models[0]
+            warm_ctx = int(warm_m.get("context_length") or 0)
+            end_ctx = int(end_m.get("context_length") or 0)
+            if end_ctx != warm_ctx:
+                msg = f"REFUSED: /api/ps context_length changed during offrig run: warm-up {warm_ctx} != post-run {end_ctx}"
+                result["error"] = msg
+                raise RuntimeError(msg)
+            warm_vram = int(warm_m.get("size_vram") or 0)
+            end_vram = int(end_m.get("size_vram") or 0)
+            if end_vram != warm_vram:
+                msg = f"REFUSED: /api/ps size_vram changed during offrig run: warm-up {warm_vram} != post-run {end_vram}"
+                result["error"] = msg
+                raise RuntimeError(msg)
+            verdicts_file = cal_out / "verdicts.jsonl"
+            verdicts_count = (
+                sum(1 for ln in verdicts_file.read_text(encoding="utf-8").splitlines() if ln.strip())
+                if verdicts_file.is_file()
+                else 0
+            )
+            metrics_file = cal_out / "metrics.json"
+            manifest_file = cal_out / "manifest.json"
+            metrics = json.loads(metrics_file.read_text(encoding="utf-8")) if metrics_file.is_file() else None
+            if stub_mode():
+                for jf in (metrics_file, manifest_file):
+                    if jf.is_file():
+                        jd = json.loads(jf.read_text(encoding="utf-8"))
+                        jd["stub"] = True
+                        jf.write_text(json.dumps(jd, indent=1) + "\n", encoding="utf-8")
+                if isinstance(metrics, dict):
+                    metrics["stub"] = True
+            out_tail = run.stdout
+            if stub_mode() and not out_tail.startswith("# STUB"):
+                out_tail = "# STUB RUN (PIN_STUB=1)\n" + out_tail
+            result["offrig_bench"] = {
+                "model": model,
+                "model_digest": digest,
+                "gold": gold_path.name,
+                "gold_sha256": inputs["gold_sha256"],
+                "offrig_sha256": inputs["offrig_sha256"],
+                "exit": run.returncode,
+                "seconds": round(time.time() - t0),
+                "verdicts_count": verdicts_count,
+                "metrics": metrics,
+                "stdout_tail": out_tail[-2500:],
+                **({"stub": True} if stub_mode() else {}),
+            }
+            result["model_errors"] = 0
+    finally:
+        if srv.log is not None and Path(srv.log).exists() and Path(srv.log) != base / "ollama-serve.log":
+            shutil.copy(srv.log, base / "ollama-serve.log")
+        if (base / "ps.json").exists() and not (WORK / "ps.json").exists():
+            shutil.copy(base / "ps.json", WORK / "ps.json")
+        try:
+            sh(f"tar -C {WORK} -cf {WORK}/offrig-bench-out.tar offrig-bench")
+        except Exception as e:  # noqa: BLE001 - recorded; the result still prints
+            result["tar_error"] = str(e)[:300]
+
+
 def resolve_pilot_pool(rs: dict, plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
     """Verify the pool's sha256 before any llama-server starts (Argon F2). When PIN_POOL is unset, defaults to
     Path(rs['src']) / 'roles' / 'verifier' / 'pool.jsonl' if it exists, falling back to CONTENT / 'pool.jsonl'.
@@ -3022,6 +3631,8 @@ def _main() -> int:
             src = WORK / "llama.cpp"
             sh(f"git clone -q https://github.com/ggml-org/llama.cpp {src} && git -C {src} checkout -q {LLAMA_CPP_COMMIT}", timeout=900)
             built = {"commit": LLAMA_CPP_COMMIT, "src": str(src)}
+        elif role == "offrig-bench":
+            built = {}
         else:
             result["llama_server"] = built = build()
         specs = MODELS if role in ("all", "smoke", "critic", "q6k") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
@@ -3052,6 +3663,9 @@ def _main() -> int:
             specs = []
         elif role == "critic-eval":
             critic_eval_window(built, result)
+            specs = []
+        elif role == "offrig-bench":
+            offrig_bench_window(result)
             specs = []
         else:
             result["models"] = []
@@ -3091,7 +3705,7 @@ def _main() -> int:
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
-        if role not in ("convert", "prebuild", "smoke") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval")):
+        if role not in ("convert", "prebuild", "smoke", "offrig-bench") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval")):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")

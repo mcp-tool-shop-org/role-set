@@ -240,7 +240,8 @@ def test_a_window_naming_an_empty_token_variable_stops_before_the_job():
 
 def test_each_role_sends_only_its_own_scoped_token_and_never_hf_token():
     for role, var in (("pilot", "HF_TOKEN_GGUF_WRITE"), ("prebuild", "HF_TOKEN_GGUF_READ"), ("pilot", "HF_TOKEN"),
-                      ("smoke", "HF_TOKEN_GGUF_READ")):
+                      ("smoke", "HF_TOKEN_GGUF_READ"), ("offrig-bench", "HF_TOKEN_GGUF_READ"),
+                      ("offrig-bench", "HF_TOKEN_GGUF_WRITE"), ("offrig-bench", "HF_TOKEN")):
         rig, job, out = _window("normal", extra={"PIN_ROLE": role, "PIN_HF_TOKEN_FROM": var, var: SENTINEL})
         assert f"may not send {var}" in rig and not job, (role, var, rig)
         assert not (out.parent / "st" / "news").exists()  # refused before any VM was asked for
@@ -470,6 +471,79 @@ def test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend():
     )
     assert "REFUSED" not in rig_pass and "uploaded llama-server.gz.part00" in rig_pass, rig_pass
     assert job_pass.count("PIN_RESULT") == 1 and (out_pass / "pin-result.json").exists(), job_pass
+
+
+def test_offrig_bench_stub_window_uploads_binary_and_gold_and_downloads_out_tar_and_ps():
+    import hashlib
+    import json
+    import socket
+    import tarfile
+
+    for p in (ROOT / "src", ROOT / "tests"):
+        if str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    from stub_llama import FAKE_OFFRIG_PY
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-offrig-bench-"))
+    offrig_bin = tmp / "offrig"
+    offrig_bin.write_text(FAKE_OFFRIG_PY, encoding="utf-8", newline="\n")
+    offrig_bin.chmod(0o755)
+    bin_sha = hashlib.sha256(offrig_bin.read_bytes()).hexdigest()
+
+    gold = tmp / "bench30.jsonl"
+    gold.write_text(
+        '{"id": "c-01", "claim": "West pier opens at 06:00.", "label": "unsupported", "split": "tune"}\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    gold_sha = hashlib.sha256(gold.read_bytes()).hexdigest()
+
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        port = s.getsockname()[1]
+
+    out = tmp / "out"
+    env = {
+        **os.environ,
+        "PATH": f"{FAKE}:{os.environ['PATH']}",
+        "FAKE_ST": str(tmp / "st"),
+        "FAKE_MODE": "normal",
+        "PIN_OPEN_LOCK": str(tmp / "open.lock"),
+        "PIN_GPU": "CPU",
+        "PIN_STUB": "1",
+        "PIN_ROLE": "offrig-bench",
+        "PIN_JOB_SCRIPT": "pin_window.py",
+        "PIN_UPLOADS": str(gold),
+        "PIN_OFFRIG_SHA256": bin_sha,
+        "PIN_OFFRIG_GOLD_SHA256": gold_sha,
+        "PIN_OLLAMA_PORT": str(port),
+        "PIN_WATCH_S": "1",
+        "PIN_STALL_FIRST_S": "15",
+        "PIN_STALL_S": "30",
+        "PIN_WALL_S": "120",
+        "PIN_SESSION": "fake",
+        "PIN_CAP_UNITS": "99",
+        "PIN_CAP_MARGIN": "0.01",
+        "PIN_DEADLINE_GRACE_S": "2",
+        "PIN_FETCH_ALLOW_S": "2",
+    }
+    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(offrig_bin), str(out)], env, 120)
+    rig = stdout + stderr
+    assert "uploaded offrig" in rig and "uploaded bench30.jsonl" in rig, rig
+    assert not list((out / "upload").glob("llama-server.gz*"))
+    assert (out / "pin-result.json").is_file(), rig
+    assert (out / "offrig-bench-out.tar").is_file(), rig
+    assert (out / "ps.json").is_file(), rig
+
+    res = json.loads((out / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is True and res["stub"] is True and res["role"] == "offrig-bench", res
+    assert res["offrig_bench"]["verdicts_count"] == 1
+    ps = json.loads((out / "ps.json").read_text(encoding="utf-8"))
+    assert len(ps["models"]) == 1 and ps["models"][0]["name"] == "gemma4:31b"
+    with tarfile.open(out / "offrig-bench-out.tar") as tf:
+        names = set(tf.getnames())
+    assert "offrig-bench/out/verdicts.jsonl" in names and "offrig-bench/smi.csv" in names
+
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0
