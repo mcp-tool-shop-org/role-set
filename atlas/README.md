@@ -1,20 +1,16 @@
 # role-set: how it works
 
-Mapped at 2026-10-22 from commit bd17c93 by Atlas 1.23.0.
+Mapped at 2026-10-23 from commit 8df62c0 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (113 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (114 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-19 (62e47ff)
+## What changed since 2026-10-22 (bd17c93)
 
-- README.md is now also read by tests/test_harvest_exemplars.py.
-- pyproject.toml is now read by tests/test_harvest_exemplars.py.
-- roles/domains/naics-2022.json is now also read by scripts/critic_signal/track_a_slots.py and src/role_set/cli.py.
-- And 4 more new writers and readers of places.
-- 5 files added and 40 changed content, across 5 parts.
+Nothing structural changed since 2026-10-22; 1 file added and 24 changed content.
 
 ## What comes in
 
@@ -25,7 +21,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (7 files) and src (37 files).
+2. That reaches scripts (8 files) and src (43 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -48,14 +44,14 @@ CI writes nothing this map can see.
 ## What tends to change together
 
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
-- **src/role_set/mock.py** and **tests/test_runner.py** changed together in 14 of 24 commits, and the tests part imports the src part.
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 6 of 11 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 7 of 12 commits, and the tests part imports the src part.
+- **src/role_set/mock.py** and **tests/test_runner.py** changed together in 14 of 25 commits, and the tests part imports the src part.
 
 5 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 17 source files reach 10 revisions; the floor rises to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 19 source files reach 10 revisions; the floor rises to 10 when 25 do.
 
 ## What no test touches
 
@@ -84,7 +80,7 @@ People write .github/, assets/, docs/, the repository root and site/; 6 writes w
 
 ## Where to start
 
-src/role_set/cli.py → src/role_set/critic_control.py → src/role_set/critic.py → src/role_set/assemble.py → src/role_set/plan.py → src/role_set/gates.py
+src/role_set/cli.py → src/role_set/cards.py → src/role_set/guards.py
 
 Read those in order to follow one run of role-set end to end. This path follows role-set (a command people run) from its entry, since CI runs only tests.
 
@@ -92,9 +88,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 - 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
 - 6 writes and 30 reads use paths built at run time and are not named here.
-- 40 writes and 95 reads go to a path their caller passes, not to this repository.
+- 40 writes and 99 reads go to a path their caller passes, not to this repository.
+- 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
-- 14 reads go to the directory the command is run in, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.

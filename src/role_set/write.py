@@ -211,6 +211,7 @@ def critic_caller(endpoint: str, model: str, card: dict | None = None):
         return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
                     chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=CRITIC_MAX_TOKENS, seed=seed)
 
+    critic.card = card
     return critic
 
 
@@ -363,6 +364,8 @@ def build(cfg: WriteConfig, *, now=time.time):
         def writer(messages, seed=0):
             return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
                         chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=WRITER_MAX_TOKENS, seed=seed)
+
+        writer.card = card
 
     # llama-server has no unload: the wave script that launched it stops it, so the run leaves nothing to clean up.
     cleanup = None
