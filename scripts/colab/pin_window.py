@@ -26,6 +26,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -2724,6 +2725,35 @@ OFFRIG_MODEL = "gemma4:31b"
 OFFRIG_MODEL_DIGEST = "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7"
 OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
 OFFRIG_NUM_CTX = 8192
+OLLAMA_REGISTRY = "https://registry.ollama.ai"
+STUB_OLLAMA_MANIFEST_DIGEST = "ef71a9e44671e4680a59cfa480bb5465c68927a574fb6a5308d4b67b9976b1c5"
+STUB_OLLAMA_MANIFEST_BYTES = (
+    b'{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json",'
+    b'"config":{"mediaType":"application/vnd.docker.container.image.v1+json",'
+    b'"digest":"sha256:7be3c44c11217c7bf23199c77eb56f0dac90cc4dd638479176b2c88096f2d08e","size":79},'
+    b'"layers":['
+    b'{"mediaType":"application/vnd.ollama.image.model",'
+    b'"digest":"sha256:359ca17dcd875c3348e7804457abc3e0c0fd4dd24bd505f58c2e0dc281741f24","size":36},'
+    b'{"mediaType":"application/vnd.ollama.image.license",'
+    b'"digest":"sha256:7520ff3c3f1b52d60bbc2bc1bedaa4e56f8d2ff5476656ee4a32c7e15a328e02","size":34},'
+    b'{"mediaType":"application/vnd.ollama.image.params",'
+    b'"digest":"sha256:627db21306f1506a405bb2061f5b6871f176dbcecec3427d9a12cf2c6f3c985c","size":28}'
+    b"]}"
+)
+STUB_OLLAMA_MANIFEST_BLOBS: dict[str, bytes] = {
+    "7be3c44c11217c7bf23199c77eb56f0dac90cc4dd638479176b2c88096f2d08e": (
+        b'{"architecture":"amd64","os":"linux","rootfs":{"type":"layers","diff_ids":[]}}\n'
+    ),
+    "359ca17dcd875c3348e7804457abc3e0c0fd4dd24bd505f58c2e0dc281741f24": (
+        b"GGUF\x00\x00\x00\x03stub-gemma4:31b-model-layer\n"
+    ),
+    "7520ff3c3f1b52d60bbc2bc1bedaa4e56f8d2ff5476656ee4a32c7e15a328e02": (
+        b"Apache License 2.0 (stub fixture)\n"
+    ),
+    "627db21306f1506a405bb2061f5b6871f176dbcecec3427d9a12cf2c6f3c985c": (
+        b'{"temperature":0,"top_k":1}\n'
+    ),
+}
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -2967,6 +2997,302 @@ def install_ollama(result: dict) -> Path:
     return ollama_bin
 
 
+def _stub_ollama_manifest_dir() -> Path:
+    """Fixture manifest + tiny blobs under tests/fixtures/ollama-manifest/, with an inline fallback for standalone CPU VMs."""
+
+    for candidate in (
+        _repo_root() / "tests" / "fixtures" / "ollama-manifest",
+        CONTENT / "role-set" / "tests" / "fixtures" / "ollama-manifest",
+    ):
+        if (candidate / "manifest.json").is_file():
+            return candidate
+    out = WORK / "stub-ollama-manifest"
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "manifest.json").write_bytes(STUB_OLLAMA_MANIFEST_BYTES)
+    for blob_sha, blob_bytes in STUB_OLLAMA_MANIFEST_BLOBS.items():
+        (out / f"sha256-{blob_sha}").write_bytes(blob_bytes)
+    return out
+
+
+def _stub_ollama_manifest() -> Path:
+    return _stub_ollama_manifest_dir() / "manifest.json"
+
+
+def _parse_ollama_model(model: str) -> tuple[str, str, str]:
+    """Split an Ollama model tag (`gemma4:31b` -> `('library', 'gemma4', '31b')`)."""
+
+    raw = model.strip()
+    repo_part, tag = raw.split(":", 1) if ":" in raw else (raw, "latest")
+    namespace, name = repo_part.split("/", 1) if "/" in repo_part else ("library", repo_part)
+    for part in (namespace, name, tag):
+        if not part or "/" in part or "\\" in part or ".." in part:
+            raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
+    return namespace, name, tag
+
+
+def _ollama_manifest_path(model: str, models_dir: Path | None = None) -> Path:
+    namespace, name, tag = _parse_ollama_model(model)
+    base = models_dir if models_dir is not None else (WORK / "ollama-models")
+    return base / "manifests" / "registry.ollama.ai" / namespace / name / tag
+
+
+def _written_ollama_manifest_digest(model: str, models_dir: Path | None = None) -> str | None:
+    try:
+        mpath = _ollama_manifest_path(model, models_dir)
+    except RuntimeError:
+        return None
+    if not mpath.is_file():
+        return None
+    return sha256(mpath).lower()
+
+
+def _start_stub_ollama_registry(blob_dir: Path | None = None, port: int = 0):
+    """Local HTTP stub of the Ollama registry's `/v2/<namespace>/<name>/blobs/<digest>` endpoint (with 307 redirect)."""
+
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: PLC0415
+
+    root = blob_dir if blob_dir is not None else _stub_ollama_manifest_dir()
+    blobs: dict[str, bytes] = {
+        p.name.removeprefix("sha256-"): p.read_bytes()
+        for p in sorted(root.glob("sha256-*"))
+        if p.is_file()
+    }
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _StubRegistry:
+        def __init__(self):
+            self.blob_dir = root
+            self.requests: list[str] = []
+            reg = self
+
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    reg.requests.append(self.path)
+                    if self.path.startswith("/v2/") and "/blobs/sha256:" in self.path:
+                        for known_hex in blobs:
+                            if self.path.endswith(f"/blobs/sha256:{known_hex}"):
+                                self.send_response(307)
+                                self.send_header("Location", f"{reg.base_url}/_blobs/sha256:{known_hex}")
+                                self.end_headers()
+                                return
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    for known_hex, data in blobs.items():
+                        if self.path == f"/_blobs/sha256:{known_hex}":
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", port), Handler)
+            self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    return _StubRegistry()
+
+
+def _resolve_manifest_path(raw_manifest: str) -> Path:
+    if stub_mode() and raw_manifest in ("1", "stub"):
+        return _stub_ollama_manifest()
+    p = Path(raw_manifest)
+    if not p.exists() and str(p).startswith("/content/"):
+        p = CONTENT / str(p).removeprefix("/content/")
+    if not p.is_file():
+        raise RuntimeError(f"REFUSED: PIN_OFFRIG_MANIFEST not found at {p}")
+    return p
+
+
+def _verify_manifest_sha256(manifest_path: Path, digest: str) -> tuple[bytes, str]:
+    if not manifest_path.is_file():
+        raise RuntimeError(f"REFUSED: PIN_OFFRIG_MANIFEST not found at {manifest_path}")
+    manifest_bytes = manifest_path.read_bytes()
+    got_sha = hashlib.sha256(manifest_bytes).hexdigest().lower()
+    if got_sha != digest:
+        raise RuntimeError(
+            f"REFUSED: ollama manifest {manifest_path.name} sha256 mismatch: "
+            f"{got_sha[:12]} != PIN_OFFRIG_MODEL_DIGEST {digest[:12]}"
+        )
+    return manifest_bytes, got_sha
+
+
+def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result: dict) -> dict:
+    """Install `model` from a sha256-verified Ollama manifest file: fetch the config and each layer blob by digest from
+    `PIN_OLLAMA_REGISTRY` (default `https://registry.ollama.ai`), stream each to a temporary file and verify its sha256
+    and size against the manifest before moving it into `<OLLAMA_MODELS>/blobs/sha256-<hex>`, and write the manifest
+    byte-for-byte to `<OLLAMA_MODELS>/manifests/registry.ollama.ai/library/<name>/<tag>` before `ollama serve` starts."""
+
+    global CUT_AT
+    manifest_bytes, got_manifest_sha = _verify_manifest_sha256(manifest_path, digest)
+    namespace, name, _tag = _parse_ollama_model(model)
+    try:
+        parsed = json.loads(manifest_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as e:
+        raise RuntimeError(f"REFUSED: invalid JSON in PIN_OFFRIG_MANIFEST {manifest_path}: {e}") from e
+    config_desc = parsed.get("config") if isinstance(parsed, dict) else None
+    layers_desc = parsed.get("layers") if isinstance(parsed, dict) else None
+    if not isinstance(config_desc, dict) or not isinstance(layers_desc, list) or not layers_desc:
+        raise RuntimeError(f"REFUSED: PIN_OFFRIG_MANIFEST {manifest_path} must have config and non-empty layers")
+    descriptors = [config_desc, *layers_desc]
+    validated_descs: list[tuple[str, str, int, str]] = []
+    for desc in descriptors:
+        if not isinstance(desc, dict):
+            raise RuntimeError(f"REFUSED: invalid descriptor in PIN_OFFRIG_MANIFEST: {desc!r}")
+        raw_b_digest = str(desc.get("digest") or "")
+        blob_hex = _require_sha256("manifest blob digest", raw_b_digest)
+        blob_digest = f"sha256:{blob_hex}"
+        expected_size = desc.get("size")
+        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+            raise RuntimeError(f"REFUSED: invalid size for blob {blob_digest} in manifest: {expected_size!r}")
+        validated_descs.append((blob_digest, blob_hex, expected_size, str(desc.get("mediaType") or "")))
+
+    models_dir = WORK / "ollama-models"
+    blobs_dir = models_dir / "blobs"
+    blobs_dir.mkdir(parents=True, exist_ok=True)
+    raw_reg = (os.environ.get("PIN_OLLAMA_REGISTRY") or "").strip().rstrip("/")
+    stub_reg = None
+    if raw_reg:
+        registry_base = raw_reg
+    elif stub_mode():
+        stub_reg = _start_stub_ollama_registry()
+        registry_base = stub_reg.base_url
+    else:
+        registry_base = OLLAMA_REGISTRY
+
+    hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
+    blobs_recorded: list[dict] = []
+    try:
+        for blob_digest, blob_hex, expected_size, media_type in validated_descs:
+            check_deadline(f"downloading ollama blob {blob_digest}")
+            url = f"{registry_base}/v2/{namespace}/{name}/blobs/{blob_digest}"
+            tmp_file = blobs_dir / f"sha256-{blob_hex}.part"
+            final_file = blobs_dir / f"sha256-{blob_hex}"
+            tmp_file.unlink(missing_ok=True)
+            t_blob = time.time()
+            last_hb_t = t_blob
+            last_hb_bytes = 0
+            left = deadline_left()
+            req_timeout = 1800.0 if left is None else min(1800.0, max(float(left), 0.05))
+            say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
+            hasher = hashlib.sha256()
+            got_size = 0
+            try:
+                req = urllib.request.Request(url)
+                with urllib.request.urlopen(req, timeout=req_timeout) as resp:  # noqa: S310 - pinned/overridable registry
+                    status = getattr(resp, "status", None) or resp.getcode()
+                    if status is None or not (200 <= int(status) < 300):
+                        raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {url}")
+                    with tmp_file.open("wb") as fh:
+                        while True:
+                            cur_left = deadline_left()
+                            if cur_left is not None and cur_left <= 0:
+                                CUT_AT = {
+                                    "wave": "offrig-bench-blob",
+                                    "blob": blob_digest,
+                                    "model": model,
+                                    "seconds": round(time.time() - t_blob),
+                                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                                }
+                                raise DeadlineReached(
+                                    f"ollama blob {blob_digest} download was cut at the window's deadline"
+                                )
+                            chunk = resp.read(1 << 20)
+                            if not chunk:
+                                break
+                            fh.write(chunk)
+                            hasher.update(chunk)
+                            got_size += len(chunk)
+                            now = time.time()
+                            if now - last_hb_t >= hb_s and got_size - last_hb_bytes > (1 << 20):
+                                mbps = (got_size - last_hb_bytes) / 1e6 / max(now - last_hb_t, 0.001)
+                                heartbeat(
+                                    f"HEARTBEAT blob:{blob_hex[:12]} elapsed={round(now - t_blob)}s "
+                                    f"bytes={got_size} mbps={mbps:.1f}"
+                                )
+                                last_hb_t, last_hb_bytes = now, got_size
+                        got_sha = hasher.hexdigest().lower()
+                    if got_sha != blob_hex and got_size != expected_size:
+                        tmp_file.unlink(missing_ok=True)
+                        raise RuntimeError(
+                            f"REFUSED: ollama blob {blob_digest} sha256 mismatch ({got_sha[:12]} != {blob_hex[:12]}) "
+                            f"and size mismatch (got {got_size} bytes, expected {expected_size})"
+                        )
+                    if got_size != expected_size:
+                        tmp_file.unlink(missing_ok=True)
+                        raise RuntimeError(
+                            f"REFUSED: ollama blob {blob_digest} size mismatch: got {got_size} bytes, expected {expected_size}"
+                        )
+                    if got_sha != blob_hex:
+                        tmp_file.unlink(missing_ok=True)
+                        raise RuntimeError(
+                            f"REFUSED: ollama blob {blob_digest} sha256 mismatch: {got_sha[:12]} != {blob_hex[:12]}"
+                        )
+                    os.replace(tmp_file, final_file)
+            except urllib.error.HTTPError as e:
+                raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {e.code} from {url}") from e
+            except (TimeoutError, urllib.error.URLError) as e:
+                is_timeout = isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError)
+                if is_timeout and left is not None and (left < 1800 or (deadline_left() or 0) <= 0):
+                    CUT_AT = {
+                        "wave": "offrig-bench-blob",
+                        "blob": blob_digest,
+                        "model": model,
+                        "seconds": round(time.time() - t_blob),
+                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                    }
+                    raise DeadlineReached(
+                        f"ollama blob {blob_digest} download was cut at the window's deadline"
+                    ) from None
+                raise
+            finally:
+                tmp_file.unlink(missing_ok=True)
+            blobs_recorded.append(
+                {
+                    "digest": blob_digest,
+                    "size": got_size,
+                    "seconds": round(time.time() - t_blob, 3),
+                    "media_type": media_type,
+                }
+            )
+    finally:
+        if stub_reg is not None:
+            stub_reg.close()
+
+    manifest_dst = _ollama_manifest_path(model, models_dir)
+    manifest_dst.parent.mkdir(parents=True, exist_ok=True)
+    manifest_dst.write_bytes(manifest_bytes)
+    manifest_rec = {
+        "path": str(manifest_path),
+        "sha256": got_manifest_sha,
+        "manifest_dst": str(manifest_dst),
+        "registry": registry_base,
+        "blobs": blobs_recorded,
+    }
+    if stub_mode():
+        manifest_rec["stub"] = True
+    result["offrig_manifest"] = manifest_rec
+    return manifest_rec
+
+
 def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA_VERSION):
     """Fake Ollama server on `port` for PIN_STUB=1: uses StubLlama when tests/stub_llama.py is present, or an inline
     loopback HTTP server with the same /api/* routes when pin_window.py runs standalone on a CPU VM."""
@@ -2984,6 +3310,7 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
         def __init__(self):
             self.ollama_model = model
             self.ollama_digest = digest.removeprefix("sha256:")
+            self._initial_ollama_digest = self.ollama_digest
             self.ollama_version = version
             self.ollama_loaded = False
             self.ollama_size = 20281829620
@@ -2992,6 +3319,16 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
             self.ollama_requests: list[tuple[str, dict]] = []
             self.call_fn = _slow_stub(lambda *_a, **_k: None)
             stub = self
+
+            def _active_digest() -> str | None:
+                if stub.ollama_digest != stub._initial_ollama_digest:
+                    return stub.ollama_digest
+                from_disk = _written_ollama_manifest_digest(stub.ollama_model)
+                if from_disk is not None:
+                    return from_disk
+                if (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip():
+                    return None
+                return stub.ollama_digest
 
             class Handler(BaseHTTPRequestHandler):
                 def log_message(self, *a):
@@ -3009,13 +3346,17 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
                     if self.path == "/api/version":
                         self._send_json(200, {"version": stub.ollama_version})
                     elif self.path == "/api/tags":
-                        self._send_json(
-                            200,
-                            {"models": [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": stub.ollama_digest}]},
-                        )
-                    elif self.path == "/api/ps":
+                        active_digest = _active_digest()
                         ms = (
-                            [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": stub.ollama_digest, "size_vram": stub.ollama_size_vram, "context_length": stub.ollama_context_length}]
+                            [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": active_digest}]
+                            if active_digest is not None
+                            else []
+                        )
+                        self._send_json(200, {"models": ms})
+                    elif self.path == "/api/ps":
+                        active_digest = _active_digest()
+                        ms = (
+                            [{"name": stub.ollama_model, "model": stub.ollama_model, "size": stub.ollama_size, "digest": active_digest if active_digest is not None else stub.ollama_digest, "size_vram": stub.ollama_size_vram, "context_length": stub.ollama_context_length}]
                             if stub.ollama_loaded
                             else []
                         )
@@ -3135,11 +3476,19 @@ class OllamaServed:
             stop_server(self.proc, self.log_fh)
 
 
-def pull_ollama_model(ollama_bin: Path | None, model: str, digest: str, port: int, result: dict) -> dict:
-    """Pull `model` through Ollama and verify that its digest in /api/tags equals `digest`."""
+def pull_ollama_model(
+    ollama_bin: Path | None,
+    model: str,
+    digest: str,
+    port: int,
+    result: dict,
+    *,
+    from_manifest: bool = False,
+) -> dict:
+    """Pull `model` through Ollama (when `from_manifest` is False) and verify that its digest in /api/tags equals `digest`."""
 
-    check_deadline(f"pulling {model}")
-    if not stub_mode():
+    check_deadline(f"verifying {model}" if from_manifest else f"pulling {model}")
+    if not stub_mode() and not from_manifest:
         assert ollama_bin is not None
         left = deadline_left()
         env = {**os.environ, "OLLAMA_HOST": f"127.0.0.1:{port}"}
@@ -3168,7 +3517,10 @@ def pull_ollama_model(ollama_bin: Path | None, model: str, digest: str, port: in
     got_digest = (entry.get("digest") or "").strip().lower().removeprefix("sha256:")
     if got_digest != digest:
         raise RuntimeError(f"REFUSED: model {model} digest {got_digest[:12]} != PIN_OFFRIG_MODEL_DIGEST {digest[:12]}")
-    info = {"model": model, "digest": got_digest, "size": entry.get("size")}
+    info: dict = {"model": model, "digest": got_digest, "size": entry.get("size")}
+    if from_manifest and isinstance(result.get("offrig_manifest"), dict):
+        info["manifest"] = result["offrig_manifest"]["path"]
+        info["blobs"] = result["offrig_manifest"]["blobs"]
     result["offrig_model"] = info
     return info
 
@@ -3264,8 +3616,8 @@ def sample_smi_every_2s(smi_csv: Path, stop: threading.Event, stats: dict) -> No
 
 
 def offrig_bench_window(result: dict) -> None:
-    """PIN_ROLE=offrig-bench (R&D, 2026-10-23): install pinned Ollama 0.40.4 by checksum, pull model by digest,
-    warm-up load and verify /api/ps, sample nvidia-smi every 2 s, and run
+    """PIN_ROLE=offrig-bench (R&D, 2026-10-23): install pinned Ollama 0.40.4 by checksum, pull model by digest
+    (or install from PIN_OFFRIG_MANIFEST), warm-up load and verify /api/ps, sample nvidia-smi every 2 s, and run
     `offrig verify calibrate <gold> --model <m> --think on --structured on --split tune --jobs 1`."""
 
     global CUT_AT
@@ -3281,11 +3633,20 @@ def offrig_bench_window(result: dict) -> None:
     model = (os.environ.get("PIN_OFFRIG_MODEL") or OFFRIG_MODEL).strip()
     if not model:
         raise RuntimeError("REFUSED: PIN_OFFRIG_MODEL is empty")
+    raw_manifest = (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip()
     raw_digest = os.environ.get("PIN_OFFRIG_MODEL_DIGEST")
+    default_digest = (
+        STUB_OLLAMA_MANIFEST_DIGEST
+        if (raw_digest is None and stub_mode() and raw_manifest in ("1", "stub"))
+        else (OFFRIG_MODEL_DIGEST if (raw_digest is None and model == OFFRIG_MODEL) else None)
+    )
     digest = _require_sha256(
         "PIN_OFFRIG_MODEL_DIGEST",
-        OFFRIG_MODEL_DIGEST if (raw_digest is None and model == OFFRIG_MODEL) else raw_digest,
+        default_digest if raw_digest is None else raw_digest,
     )
+    manifest_path = _resolve_manifest_path(raw_manifest) if raw_manifest else None
+    if manifest_path is not None:
+        _verify_manifest_sha256(manifest_path, digest)
     offrig_bin, gold_path, inputs = offrig_bench_inputs(result)
     base = WORK / "offrig-bench"
     cal_out = base / "out"
@@ -3295,10 +3656,12 @@ def offrig_bench_window(result: dict) -> None:
     proj_dir.mkdir(parents=True, exist_ok=True)
     ollama_bin = install_ollama(result)
     port = int(os.environ.get("PIN_OLLAMA_PORT") or OLLAMA_PORT)
-    srv = OllamaServed(ollama_bin, model, digest, port)
+    srv = OllamaServed(ollama_bin, model, "" if manifest_path is not None else digest, port)
     try:
+        if manifest_path is not None:
+            install_ollama_manifest(manifest_path, model, digest, result)
         with srv:
-            pull_ollama_model(ollama_bin, model, digest, port, result)
+            pull_ollama_model(ollama_bin, model, digest, port, result, from_manifest=manifest_path is not None)
             ps_warm = warmup_ollama_model(model, digest, port, base, result)
             check_deadline("offrig verify calibrate")
             cmd = [

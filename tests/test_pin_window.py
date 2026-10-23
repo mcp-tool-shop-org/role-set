@@ -3184,8 +3184,492 @@ def test_install_ollama_zstd_absent_tampered_archive_unsafe_members_and_zstandar
         pw.ensure_zstandard()
 
 
+# ---- PIN_OFFRIG_MANIFEST (R&D, 2026-10-23, window 17l): install pinned Ollama model from manifest + blobs ----------------
+
+FIXTURE_MANIFEST_DIR = Path(__file__).resolve().parent / "fixtures" / "ollama-manifest"
+FIXTURE_MANIFEST_PATH = FIXTURE_MANIFEST_DIR / "manifest.json"
+FIXTURE_MANIFEST_SHA256 = "ef71a9e44671e4680a59cfa480bb5465c68927a574fb6a5308d4b67b9976b1c5"
+FIXTURE_MODEL_BLOB_SHA256 = "359ca17dcd875c3348e7804457abc3e0c0fd4dd24bd505f58c2e0dc281741f24"
 
 
+def _start_test_blob_registry(
+    blob_overrides: dict[str, bytes] | None = None,
+    status_overrides: dict[str, int] | None = None,
+    on_blob=None,
+):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+    overrides_bytes = blob_overrides or {}
+    overrides_status = status_overrides or {}
+    blobs: dict[str, bytes] = {
+        p.name.removeprefix("sha256-"): p.read_bytes()
+        for p in sorted(FIXTURE_MANIFEST_DIR.glob("sha256-*"))
+        if p.is_file()
+    }
+    blobs.update(overrides_bytes)
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _TestRegistry:
+        def __init__(self):
+            self.requests: list[str] = []
+            reg = self
+
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    reg.requests.append(self.path)
+                    if self.path.startswith("/v2/") and "/blobs/sha256:" in self.path:
+                        for known_hex, code in overrides_status.items():
+                            if self.path.endswith(f"/blobs/sha256:{known_hex}"):
+                                self.send_response(code)
+                                self.end_headers()
+                                return
+                        for known_hex in blobs:
+                            if self.path.endswith(f"/blobs/sha256:{known_hex}"):
+                                self.send_response(307)
+                                self.send_header("Location", f"{reg.base_url}/_blobs/sha256:{known_hex}")
+                                self.end_headers()
+                                return
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    for known_hex, data in blobs.items():
+                        if self.path == f"/_blobs/sha256:{known_hex}":
+                            if on_blob is not None:
+                                on_blob(known_hex)
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", 0), Handler)
+            self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    return _TestRegistry()
+
+
+def _unlock_offrig_in(work: Path) -> None:
+    root = work / "offrig-bench-in"
+    if root.exists():
+        os.chmod(root, 0o700)
+        for p in sorted(root.rglob("*")):
+            os.chmod(p, 0o700)
+
+
+def _setup_offrig_manifest_env(tmp_path: Path, monkeypatch, *, stub: bool = True) -> tuple[Path, Path, int]:
+    import socket as _socket
+    import tarfile
+
+    content = tmp_path / "content"
+    work = content / "pin"
+    shm = tmp_path / "shm"
+    content.mkdir(parents=True, exist_ok=True)
+    work.mkdir(parents=True, exist_ok=True)
+    shm.mkdir(parents=True, exist_ok=True)
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "JOB_LOG", work / "job.log")
+    monkeypatch.setattr(pw, "TOKEN_PATH", shm / "hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    monkeypatch.setattr(pw, "CUT_AT", None)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    for k in (
+        "HF_TOKEN",
+        "HUGGING_FACE_HUB_TOKEN",
+        "PIN_DEADLINE",
+        "PIN_STUB_CALL_S",
+        "PIN_OFFRIG_MANIFEST",
+        "PIN_OLLAMA_REGISTRY",
+    ):
+        monkeypatch.delenv(k, raising=False)
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free_port = s.getsockname()[1]
+    monkeypatch.setattr(pw, "OLLAMA_PORT", free_port)
+    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.05)
+
+    _offrig_bin, bin_sha, _gold, gold_sha = _write_offrig_fixtures(content)
+    monkeypatch.setenv("PIN_ROLE", "offrig-bench")
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL", pw.OFFRIG_MODEL)
+    if stub:
+        monkeypatch.setenv("PIN_STUB", "1")
+    else:
+        monkeypatch.delenv("PIN_STUB", raising=False)
+        fake_ollama_bin = work / "ollama-install" / "bin" / "ollama"
+        fake_ollama_bin.parent.mkdir(parents=True, exist_ok=True)
+        fake_ollama_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+        monkeypatch.setattr(
+            pw,
+            "install_ollama",
+            lambda res: res.__setitem__(
+                "ollama", {"version": "0.40.4", "sha256": pw.OLLAMA_SHA256, "bin": str(fake_ollama_bin)}
+            )
+            or fake_ollama_bin,
+        )
+        stub_holder: dict = {}
+
+        def fake_enter(self):
+            stub_holder["srv"] = __import__("stub_llama").StubLlama(
+                self.model,
+                self.model,
+                port=self.port,
+                ollama_model=self.model,
+                ollama_digest=self.digest,
+                ollama_version=pw.OLLAMA_VERSION,
+            )
+            return self
+
+        def fake_exit(self, *exc):
+            if stub_holder.get("srv") is not None:
+                stub_holder["srv"].close()
+                stub_holder["srv"] = None
+
+        monkeypatch.setattr(pw.OllamaServed, "__enter__", fake_enter)
+        monkeypatch.setattr(pw.OllamaServed, "__exit__", fake_exit)
+        monkeypatch.setattr(
+            pw,
+            "_query_smi_csv",
+            lambda: "2026/10/23 00:00:01.000, 21450 MiB, 82 %, 58, 265.10 W\n",
+        )
+
+    orig_run_proc = pw.run_proc
+
+    def cross_platform_run_proc(cmd, **kw):
+        if isinstance(cmd, list) and cmd and str(cmd[0]).endswith("offrig") and os.name == "nt":
+            cmd = [sys.executable, str(cmd[0]), *cmd[1:]]
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", cross_platform_run_proc)
+
+    def tar_sh(cmd: str, **kw) -> str:
+        if cmd.startswith(f"tar -C {work} -cf {work}/offrig-bench-out.tar offrig-bench"):
+            with tarfile.open(work / "offrig-bench-out.tar", "w") as tf:
+                tf.add(work / "offrig-bench", arcname="offrig-bench")
+            return ""
+        return pw.sh(cmd, **kw)
+
+    monkeypatch.setattr(pw, "sh", tar_sh)
+    return content, work, free_port
+
+
+def test_offrig_bench_manifest_sha_mismatch_refuses_before_anything_else(tmp_path, monkeypatch):
+    _content, _work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", pw.OFFRIG_MODEL_DIGEST)
+
+    inputs_called = False
+    install_called = False
+
+    def spy_inputs(*a, **kw):
+        nonlocal inputs_called
+        inputs_called = True
+        raise AssertionError("offrig_bench_inputs must not run when PIN_OFFRIG_MANIFEST sha256 mismatches")
+
+    def spy_install(*a, **kw):
+        nonlocal install_called
+        install_called = True
+        raise AssertionError("install_ollama must not run when PIN_OFFRIG_MANIFEST sha256 mismatches")
+
+    monkeypatch.setattr(pw, "offrig_bench_inputs", spy_inputs)
+    monkeypatch.setattr(pw, "install_ollama", spy_install)
+
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: ollama manifest manifest\.json sha256 mismatch: {FIXTURE_MANIFEST_SHA256[:12]} != PIN_OFFRIG_MODEL_DIGEST {pw.OFFRIG_MODEL_DIGEST[:12]}",
+    ):
+        pw.offrig_bench_window({})
+    assert inputs_called is False
+    assert install_called is False
+
+
+def test_offrig_bench_manifest_blob_sha_mismatch_deletes_temp_and_refuses(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    bad_model_bytes = b"X" * 36
+    with _start_test_blob_registry(blob_overrides={FIXTURE_MODEL_BLOB_SHA256: bad_model_bytes}) as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        with pytest.raises(
+            RuntimeError,
+            match=rf"REFUSED: ollama blob sha256:{FIXTURE_MODEL_BLOB_SHA256} sha256 mismatch:",
+        ):
+            pw.offrig_bench_window({})
+
+    blobs_dir = work / "ollama-models" / "blobs"
+    assert not (blobs_dir / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}").exists()
+    assert not (blobs_dir / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}.part").exists()
+
+
+def test_offrig_bench_manifest_blob_size_mismatch_deletes_temp_and_refuses(tmp_path, monkeypatch):
+    import hashlib
+
+    content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    bad_size_manifest = json.loads(FIXTURE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    bad_size_manifest["layers"][0]["size"] = 999
+    bad_manifest_path = content / "bad-size-manifest.json"
+    bad_manifest_bytes = json.dumps(bad_size_manifest, separators=(",", ":")).encode("utf-8")
+    bad_manifest_path.write_bytes(bad_manifest_bytes)
+    bad_manifest_sha = hashlib.sha256(bad_manifest_bytes).hexdigest()
+
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(bad_manifest_path))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", bad_manifest_sha)
+
+    with _start_test_blob_registry() as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        with pytest.raises(
+            RuntimeError,
+            match=rf"REFUSED: ollama blob sha256:{FIXTURE_MODEL_BLOB_SHA256} size mismatch: got 36 bytes, expected 999",
+        ):
+            pw.offrig_bench_window({})
+
+    blobs_dir = work / "ollama-models" / "blobs"
+    assert not (blobs_dir / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}").exists()
+    assert not (blobs_dir / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}.part").exists()
+
+
+def test_offrig_bench_manifest_blob_404_refuses_with_digest_and_status_without_pull(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    seen_proc_cmds: list[list[str]] = []
+    orig_run_proc = pw.run_proc
+
+    def spy_run_proc(cmd, **kw):
+        if isinstance(cmd, list):
+            seen_proc_cmds.append(list(cmd))
+            if cmd[1:3] == ["pull", "gemma4:31b"]:
+                return subprocess.CompletedProcess(cmd, 0, "pulled\n", "")
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", spy_run_proc)
+
+    with _start_test_blob_registry(status_overrides={FIXTURE_MODEL_BLOB_SHA256: 404}) as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        with pytest.raises(
+            RuntimeError,
+            match=rf"REFUSED: ollama blob sha256:{FIXTURE_MODEL_BLOB_SHA256} HTTP 404",
+        ):
+            pw.offrig_bench_window({})
+
+    assert not any("pull" in c for c in seen_proc_cmds), seen_proc_cmds
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}").exists()
+
+
+def test_offrig_bench_manifest_mode_never_runs_ollama_pull_on_success_or_failure(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    seen_proc_cmds: list[list[str]] = []
+    orig_run_proc = pw.run_proc
+
+    def spy_run_proc(cmd, **kw):
+        if isinstance(cmd, list):
+            seen_proc_cmds.append(list(cmd))
+            if cmd[1:3] == ["pull", "gemma4:31b"]:
+                return subprocess.CompletedProcess(cmd, 0, "pulled\n", "")
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", spy_run_proc)
+
+    # 1. Success in manifest mode: no `ollama pull` command runs
+    with _start_test_blob_registry() as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        res_ok: dict = {}
+        pw.offrig_bench_window(res_ok)
+    pull_cmds_ok = [c for c in seen_proc_cmds if "pull" in c]
+    assert pull_cmds_ok == []
+    assert res_ok["model_errors"] == 0
+    assert res_ok["offrig_model"]["digest"] == FIXTURE_MANIFEST_SHA256
+
+    # 2. Failure in manifest mode (503 on a blob): refuses and never falls back to `ollama pull`
+    seen_proc_cmds.clear()
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    with _start_test_blob_registry(status_overrides={FIXTURE_MODEL_BLOB_SHA256: 503}) as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        with pytest.raises(
+            RuntimeError,
+            match=rf"REFUSED: ollama blob sha256:{FIXTURE_MODEL_BLOB_SHA256} HTTP 503",
+        ):
+            pw.offrig_bench_window({})
+    pull_cmds_fail = [c for c in seen_proc_cmds if "pull" in c]
+    assert pull_cmds_fail == []
+
+
+def test_offrig_bench_manifest_writes_blobs_and_manifest_byte_for_byte(tmp_path, monkeypatch):
+    content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    expected_manifest_dst = (
+        work / "ollama-models" / "manifests" / "registry.ollama.ai" / "library" / "gemma4" / "31b"
+    )
+    manifest_existed_before_serve = False
+    orig_enter = pw.OllamaServed.__enter__
+
+    def check_before_serve(self):
+        nonlocal manifest_existed_before_serve
+        manifest_existed_before_serve = expected_manifest_dst.is_file()
+        return orig_enter(self)
+
+    monkeypatch.setattr(pw.OllamaServed, "__enter__", check_before_serve)
+
+    res: dict = {}
+    pw.offrig_bench_window(res)
+    assert manifest_existed_before_serve is True
+    assert expected_manifest_dst.read_bytes() == FIXTURE_MANIFEST_PATH.read_bytes()
+
+    parsed = json.loads(FIXTURE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    all_descs = [parsed["config"], *parsed["layers"]]
+    for desc in all_descs:
+        bhex = desc["digest"].removeprefix("sha256:")
+        written_blob = work / "ollama-models" / "blobs" / f"sha256-{bhex}"
+        fixture_blob = FIXTURE_MANIFEST_DIR / f"sha256-{bhex}"
+        assert written_blob.is_file()
+        assert written_blob.read_bytes() == fixture_blob.read_bytes()
+        assert len(written_blob.read_bytes()) == desc["size"]
+
+    recorded_blobs = res["offrig_model"]["blobs"]
+    assert len(recorded_blobs) == 4
+    assert [b["digest"] for b in recorded_blobs] == [d["digest"] for d in all_descs]
+    assert [b["size"] for b in recorded_blobs] == [d["size"] for d in all_descs]
+    assert all(isinstance(b["seconds"], (int, float)) and b["seconds"] >= 0 for b in recorded_blobs)
+
+    # Also verify inline stub fallback when tests/fixtures/ollama-manifest is absent on a standalone CPU VM
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    monkeypatch.setattr(pw, "_repo_root", lambda: content / "no-repo")
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", "stub")
+    monkeypatch.delenv("PIN_OFFRIG_MODEL_DIGEST", raising=False)
+    res_inline_fixture: dict = {}
+    pw.offrig_bench_window(res_inline_fixture)
+    assert expected_manifest_dst.read_bytes() == FIXTURE_MANIFEST_PATH.read_bytes()
+    assert res_inline_fixture["offrig_model"]["digest"] == FIXTURE_MANIFEST_SHA256
+
+
+def test_offrig_bench_manifest_api_tags_confirms_digest_from_written_manifest(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    # 1. Stub Ollama's /api/tags reports the digest read from the written manifest file on disk
+    res_ok: dict = {}
+    pw.offrig_bench_window(res_ok)
+    assert res_ok["offrig_model"]["digest"] == FIXTURE_MANIFEST_SHA256
+
+    # 2. If the written manifest file on disk has a different digest when OllamaServed starts, /api/tags reports the
+    #    tampered file's digest (not a constant passed to OllamaServed) and pull_ollama_model refuses
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+    expected_manifest_dst = (
+        work / "ollama-models" / "manifests" / "registry.ollama.ai" / "library" / "gemma4" / "31b"
+    )
+    orig_enter = pw.OllamaServed.__enter__
+
+    def tamper_written_manifest(self):
+        expected_manifest_dst.parent.mkdir(parents=True, exist_ok=True)
+        expected_manifest_dst.write_bytes(b'{"tampered":true}')
+        return orig_enter(self)
+
+    monkeypatch.setattr(pw.OllamaServed, "__enter__", tamper_written_manifest)
+    tampered_sha = pw.sha256(expected_manifest_dst) if expected_manifest_dst.exists() else ""
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: model gemma4:31b digest .* != PIN_OFFRIG_MODEL_DIGEST {FIXTURE_MANIFEST_SHA256[:12]}",
+    ):
+        pw.offrig_bench_window({})
+    tampered_sha = pw.sha256(expected_manifest_dst)
+    assert tampered_sha != FIXTURE_MANIFEST_SHA256
+
+
+def test_offrig_bench_manifest_deadline_cut_during_blob_download(tmp_path, monkeypatch):
+    import time as _t
+
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+    monkeypatch.setenv("PIN_DEADLINE", str(_t.time() + 60))
+
+    def expire_deadline_on_model_blob(blob_hex: str) -> None:
+        if blob_hex == FIXTURE_MODEL_BLOB_SHA256:
+            monkeypatch.setenv("PIN_DEADLINE", str(_t.time() - 1))
+
+    with _start_test_blob_registry(on_blob=expire_deadline_on_model_blob) as reg:
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        with pytest.raises(
+            pw.DeadlineReached,
+            match=rf"ollama blob sha256:{FIXTURE_MODEL_BLOB_SHA256} download was cut at the window's deadline",
+        ):
+            pw.offrig_bench_window({})
+
+    assert pw.CUT_AT is not None
+    assert pw.CUT_AT["wave"] == "offrig-bench-blob"
+    assert pw.CUT_AT["blob"] == f"sha256:{FIXTURE_MODEL_BLOB_SHA256}"
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}.part").exists()
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{FIXTURE_MODEL_BLOB_SHA256}").exists()
+    assert (work / "offrig-bench-out.tar").is_file()
+
+
+def test_offrig_bench_unset_manifest_behaves_as_before(tmp_path, monkeypatch):
+    _content, work, free_port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.delenv("PIN_OFFRIG_MANIFEST", raising=False)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL", pw.OFFRIG_MODEL)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", pw.OFFRIG_MODEL_DIGEST)
+
+    seen_proc_cmds: list[list[str]] = []
+    orig_run_proc = pw.run_proc
+
+    def spy_run_proc(cmd, **kw):
+        if isinstance(cmd, list):
+            seen_proc_cmds.append(list(cmd))
+            if cmd[1:3] == ["pull", "gemma4:31b"]:
+                assert kw["env"]["OLLAMA_HOST"] == f"127.0.0.1:{free_port}"
+                return subprocess.CompletedProcess(cmd, 0, "pulling manifest\nsuccess\n", "")
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", spy_run_proc)
+
+    res: dict = {}
+    pw.offrig_bench_window(res)
+    assert [c[1] for c in seen_proc_cmds] == ["pull", "verify"]
+    assert "offrig_manifest" not in res
+    assert res["offrig_model"] == {
+        "model": "gemma4:31b",
+        "digest": pw.OFFRIG_MODEL_DIGEST,
+        "size": 20281829620,
+    }
+    assert not (work / "ollama-models" / "manifests").exists()
 
 
