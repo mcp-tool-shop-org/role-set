@@ -27,11 +27,12 @@ CRITIC_SYSTEM = (
 )
 
 # Shared between the writer's slot brief (prompts.py) and the critic's `defined` verdict prompt (T10 item 6).
+CANNOT_TELL_SILENT = "silent on the statement: it neither shows it nor rules it out"
 VERDICT_PROMPT_SETTINGS = ("old", "defined")
 VERDICT_DEFINITIONS = {
     "supported": "the material shows the statement is true",
     "unsupported": "the material rules the statement out",
-    "cannot_tell": "the material is silent on the statement: it neither shows it nor rules it out",
+    "cannot_tell": f"the material is {CANNOT_TELL_SILENT}",
 }
 VERDICT_DEFINITIONS_SENTENCE = "; ".join(f"{v}: {VERDICT_DEFINITIONS[v]}" for v in VERDICTS) + "."
 CRITIC_SYSTEM_DEFINED = f"{CRITIC_SYSTEM}\n{VERDICT_DEFINITIONS_SENTENCE}"

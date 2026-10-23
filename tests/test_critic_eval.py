@@ -3992,23 +3992,111 @@ def test_verdict_prompt_old_byte_identical_and_defined_shares_writer_definitions
     assert k_def != k_old
 
     # Shared constant between prompts.slot_brief and critic.VERDICT_DEFINITIONS
-    assert prompts.VERDICT_DEFINITIONS is critic.VERDICT_DEFINITIONS
-    for v_name, v_def in critic.VERDICT_DEFINITIONS.items():
-        slot = plan.Slot(
-            id="S-T02-C-01",
-            lesson="T02",
-            kind="C",
-            side="positive",
-            tier=1,
-            content_kind="record",
-            verdict=v_name,
-            escalate="no",
-        )
-        brief_text = prompts.slot_brief(slot, coverage_notes={})
-        assert f"{v_name}: {v_def}." in brief_text
+    assert prompts.CANNOT_TELL_SILENT is critic.CANNOT_TELL_SILENT
+    assert critic.CANNOT_TELL_SILENT == "silent on the statement: it neither shows it nor rules it out"
+    assert critic.VERDICT_DEFINITIONS["cannot_tell"] == f"the material is {critic.CANNOT_TELL_SILENT}"
 
     with pytest.raises(ValueError, match="unknown verdict_prompt"):
         critic.verdict_messages(mat, stmt, verdict_prompt="bogus")
+
+
+def test_slot_brief_is_byte_identical_to_d66ce3f6_for_every_verdict() -> None:
+    from role_set import plan, prompts
+
+    expected_cannot_tell_line = "The material must be silent on the statement: it neither shows it nor rules it out."
+
+    slot_sup = plan.Slot(
+        id="T02-C-01",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="supported",
+        escalate="no",
+    )
+    slot_unsup = plan.Slot(
+        id="T02-C-02",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="unsupported",
+        escalate="no",
+    )
+    slot_ct = plan.Slot(
+        id="T02-C-03",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="cannot_tell",
+        escalate="no",
+    )
+    slot_none = plan.Slot(
+        id="T02-A-01",
+        lesson="T02",
+        kind="A",
+        side="check",
+        tier=1,
+        verdict="",
+        escalate="no",
+    )
+
+    expected_sup = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is supported; ESCALATE is no.\n"
+        "The other checker is wrong through one flaw, guess: it gave a reason from outside the material (an assumption, what usually happens, general knowledge) or a misreading, instead of what the material says. checker_verdict is unsupported or cannot_tell; checker_trace argues for that verdict, names no other, and shows the flaw.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply, deciding.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_unsup = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is unsupported; ESCALATE is no.\n"
+        "The other checker was right: checker_verdict is unsupported, and checker_trace is sound reasoning for it.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply, deciding.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_ct = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is cannot_tell; ESCALATE is no.\n"
+        f"{expected_cannot_tell_line}\n"
+        "The other checker is wrong through one flaw, guess: it gave a reason from outside the material (an assumption, what usually happens, general knowledge) or a misreading, instead of what the material says. checker_verdict is supported or unsupported; checker_trace argues for that verdict, names no other, and shows the flaw.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_none = (
+        "Lesson T02, kind A, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "These fields are required and must not be empty: passage, question, reply, key_points.\n"
+        "Kind A: the passage has at least two full sentences before the question, and it names the trait by its name as the lesson heading gives it, written with a straight apostrophe (don't, not don\u2019t). Put the trait words inside a sentence of your own; don't open the passage with 'As a verifier, you' followed by the trait words, which other items of this trait already use. The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.\n"
+        "Kind A is situational, never a request to restate the lesson: the passage sets a concrete case with something to decide (a reviewer pushes, a person is about to act on a check, a claim comes back reworded), and the question asks what you do and why. The reply decides it. It doesn't open with 'As a verifier'."
+    )
+
+    assert prompts.slot_brief(slot_sup, []) == expected_sup
+    assert prompts.slot_brief(slot_unsup, []) == expected_unsup
+    assert prompts.slot_brief(slot_ct, []) == expected_ct
+    assert expected_cannot_tell_line in prompts.slot_brief(slot_ct, []).splitlines()
+    assert prompts.slot_brief(slot_none, []) == expected_none
 
 
 def test_call_journal_records_and_refuses_cross_setting_verdict_prompt_and_checks(tmp_path: Path) -> None:
