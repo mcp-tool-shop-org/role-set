@@ -4,11 +4,53 @@ transport (build, cards, pins, the waves, the gates) runs as it does on a paid w
 
 from __future__ import annotations
 
+import hashlib
 import json
+import os
+import re
+import sys
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 from role_set.mock import MockCritic, MockWriter
+
+_MODEL_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+
+
+def _parse_ollama_model(model: str) -> tuple[str, str, str]:
+    pw_mod = sys.modules.get("pin_window")
+    if pw_mod is not None and hasattr(pw_mod, "_parse_ollama_model"):
+        return pw_mod._parse_ollama_model(model)
+    raw = model.strip()
+    if not raw:
+        raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
+    repo_part, tag = raw.split(":", 1) if ":" in raw else (raw, "latest")
+    namespace, name = repo_part.split("/", 1) if "/" in repo_part else ("library", repo_part)
+    for part in (namespace, name, tag):
+        if not part or part in (".", "..") or ".." in part or not _MODEL_PART_RE.fullmatch(part):
+            raise RuntimeError(f"REFUSED: invalid PIN_OFFRIG_MODEL {model!r}")
+    return namespace, name, tag
+
+
+def _written_manifest_digest(model: str, models_dir: Path | None = None) -> str | None:
+    root = models_dir
+    if root is None:
+        pw_mod = sys.modules.get("pin_window")
+        if pw_mod is not None and getattr(pw_mod, "WORK", None) is not None:
+            root = Path(pw_mod.WORK) / "ollama-models"
+        elif os.environ.get("OLLAMA_MODELS"):
+            root = Path(os.environ["OLLAMA_MODELS"])
+    if root is None:
+        return None
+    try:
+        namespace, name, tag = _parse_ollama_model(model)
+    except RuntimeError:
+        return None
+    mpath = Path(root) / "manifests" / "registry.ollama.ai" / namespace / name / tag
+    if not mpath.is_file():
+        return None
+    return hashlib.sha256(mpath.read_bytes()).hexdigest()
 
 
 class _ReuseHTTPServer(ThreadingHTTPServer):
@@ -18,14 +60,17 @@ class _ReuseHTTPServer(ThreadingHTTPServer):
 class StubLlama:
     def __init__(self, writer_model: str = "stub", critic_model: str = "stub", *, critic: MockCritic | None = None,
                  writer: MockWriter | None = None, port: int = 0, ollama_model: str | None = None,
-                 ollama_digest: str | None = None, ollama_version: str = "0.40.4"):
+                 ollama_digest: str | None = None, ollama_version: str = "0.40.4",
+                 ollama_models_dir: Path | None = None):
         self.writer_model, self.critic_model = writer_model, critic_model
         self.writer = writer or MockWriter()
         self.critic = critic or MockCritic(answers=getattr(self.writer, "answers", None))
         self.requests: list[dict] = []
         self.ollama_requests: list[tuple[str, dict]] = []
         self.ollama_model = ollama_model or writer_model
-        self.ollama_digest = (ollama_digest or ("6" * 64)).removeprefix("sha256:")
+        self.ollama_digest = (ollama_digest if ollama_digest is not None else ("6" * 64)).removeprefix("sha256:")
+        self._initial_ollama_digest = self.ollama_digest
+        self.ollama_models_dir = Path(ollama_models_dir) if ollama_models_dir is not None else None
         self.ollama_version = ollama_version
         self.ollama_loaded = False
         self.ollama_size = 20281829620
@@ -35,6 +80,13 @@ class StubLlama:
         self.ollama_on_chat = None
         self.in_apply = False
         stub = self
+
+        def _active_digest() -> str | None:
+            if stub.ollama_digest != stub._initial_ollama_digest:
+                return stub.ollama_digest
+            if (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip():
+                return _written_manifest_digest(stub.ollama_model, stub.ollama_models_dir)
+            return stub.ollama_digest
 
         class Handler(BaseHTTPRequestHandler):
             def log_message(self, *a):  # quiet
@@ -52,27 +104,29 @@ class StubLlama:
                 if self.path == "/api/version":
                     self._send_json(200, {"version": stub.ollama_version})
                 elif self.path == "/api/tags":
-                    self._send_json(
-                        200,
-                        {
-                            "models": [
-                                {
-                                    "name": stub.ollama_model,
-                                    "model": stub.ollama_model,
-                                    "size": stub.ollama_size,
-                                    "digest": stub.ollama_digest,
-                                }
-                            ]
-                        },
-                    )
-                elif self.path == "/api/ps":
+                    active_digest = _active_digest()
                     models = (
                         [
                             {
                                 "name": stub.ollama_model,
                                 "model": stub.ollama_model,
                                 "size": stub.ollama_size,
-                                "digest": stub.ollama_digest,
+                                "digest": active_digest,
+                            }
+                        ]
+                        if active_digest is not None
+                        else []
+                    )
+                    self._send_json(200, {"models": models})
+                elif self.path == "/api/ps":
+                    active_digest = _active_digest()
+                    models = (
+                        [
+                            {
+                                "name": stub.ollama_model,
+                                "model": stub.ollama_model,
+                                "size": stub.ollama_size,
+                                "digest": active_digest if active_digest is not None else stub.ollama_digest,
                                 "size_vram": stub.ollama_size_vram,
                                 "context_length": stub.ollama_context_length,
                             }
