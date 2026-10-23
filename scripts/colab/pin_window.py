@@ -2703,6 +2703,23 @@ OLLAMA_VERSION = "0.40.4"
 OLLAMA_SHA256 = "15f31e9576d15a481e099b4145dba6e9f8c1f295927d6b8895300ae30ed3740a"  # ollama-linux-amd64.tar.zst (v0.40.4)
 OLLAMA_URL = f"https://github.com/ollama/ollama/releases/download/v{OLLAMA_VERSION}/ollama-linux-amd64.tar.zst"
 OLLAMA_PORT = int(os.environ.get("PIN_OLLAMA_PORT") or 11434)
+# Colab's image (release-colab-external-images_20261020-060116_RC00) has no system `zstd` binary (windows 16t and 16u),
+# so `.tar.zst` archives are decompressed in Python with a pinned `zstandard` wheel (`--require-hashes`).
+ZSTANDARD_VERSION = "0.25.0"
+ZSTANDARD_WHEEL_SHA256S: dict[str, str] = {
+    "cp310": "4b6d83057e713ff235a12e73916b6d356e3084fd3d14ced499d84240f3eecee0",
+    "cp311": "9300d02ea7c6506f00e627e287e0492a5eb0371ec1670ae852fefffa6164b072",
+    "cp312": "5a56ba0db2d244117ed744dfa8f6f5b366e14148e00de44723413b2f3938a902",
+    "cp313": "8e735494da3db08694d26480f1493ad2cf86e99bdd53e8e9771b2752a5c0246a",
+    "cp314": "e09bb6252b6476d8d56100e8147b803befa9a12cea144bbe629dd508800d1ad0",
+}
+ZSTANDARD_WHEEL_SHA256 = ZSTANDARD_WHEEL_SHA256S["cp313"]  # Colab's VM Python (3.13, manylinux2014_x86_64)
+STUB_OLLAMA_SHA256 = "e55a61f612f162db35b49cc1275d6d8dd942edb4e07572e572dd28e9b868b7e2"  # tests/fixtures/stub-ollama.tar.zst
+STUB_OLLAMA_TAR_ZST_B64 = (
+    "KLUv/WAAJ3UEACJGFBiAJ24Ab//acH6e42dgqcWOQyEdnnOBAhnmqDF71UE7tJKO1plYES3XcmzG"
+    "xbgNwoDICgJBis7FKQGBn4FaH3c8wc/5b///u+f/DxWQUiwXpxUAvA96SIACAMEavCjgrxWMAVUD"
+    "GQN7CJhngJyNI1BBAih0ILCCALXEG9INQDpuhZvaADhWLmMT8AI="
+)
 OFFRIG_MODEL = "gemma4:31b"
 OFFRIG_MODEL_DIGEST = "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7"
 OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
@@ -2766,6 +2783,111 @@ def offrig_bench_inputs(result: dict) -> tuple[Path, Path, dict]:
     return bin_dst, gold_dst, meta
 
 
+def zstandard_wheel_sha256(py_tag: str | None = None) -> str:
+    """Return the pinned manylinux x86_64 wheel sha256 of zstandard==ZSTANDARD_VERSION for the VM's Python."""
+
+    tag = py_tag or f"cp{sys.version_info.major}{sys.version_info.minor}"
+    if tag == "cp313":
+        return _require_sha256("ZSTANDARD_WHEEL_SHA256", ZSTANDARD_WHEEL_SHA256)
+    sha = ZSTANDARD_WHEEL_SHA256S.get(tag)
+    if not sha:
+        raise RuntimeError(f"REFUSED: no pinned zstandard=={ZSTANDARD_VERSION} manylinux x86_64 wheel sha256 for Python {tag}")
+    return _require_sha256(f"ZSTANDARD_WHEEL_SHA256S[{tag!r}]", sha)
+
+
+def ensure_zstandard() -> dict[str, str]:
+    """Install and verify `zstandard` at `ZSTANDARD_VERSION` pinned by version and manylinux x86_64 wheel sha256 (`pip --require-hashes`)."""
+
+    import importlib.metadata as _im  # noqa: PLC0415
+
+    wheel_sha = zstandard_wheel_sha256()
+    req = WORK / "zstandard-requirements.txt"
+    req.parent.mkdir(parents=True, exist_ok=True)
+    req.write_text(f"zstandard=={ZSTANDARD_VERSION} --hash=sha256:{wheel_sha}\n", encoding="utf-8", newline="\n")
+    try:
+        have_ver = _im.version("zstandard")
+    except _im.PackageNotFoundError:
+        have_ver = None
+    if not stub_mode() or have_ver != ZSTANDARD_VERSION:
+        sh(
+            f"{sys.executable} -m pip install -q --require-hashes --only-binary=:all: --no-deps -r {req}",
+            timeout=300,
+        )
+    import zstandard  # noqa: F401, PLC0415
+
+    got_ver = _im.version("zstandard")
+    if got_ver != ZSTANDARD_VERSION:
+        raise RuntimeError(f"REFUSED: zstandard version is {got_ver!r}, expected {ZSTANDARD_VERSION!r}")
+    return {"version": got_ver, "wheel_sha256": wheel_sha}
+
+
+def _safe_tar_filter(member, dest_path: str):
+    """Reject absolute paths, '..' segments, and links outside dest_path before delegating to tarfile.data_filter."""
+
+    import tarfile as _tarfile  # noqa: PLC0415
+
+    raw_name = member.name
+    norm_slashes = raw_name.replace("\\", "/")
+    if raw_name.startswith(("/", "\\")) or os.path.isabs(raw_name) or re.match(r"^[A-Za-z]:", raw_name):
+        raise RuntimeError(f"REFUSED: absolute path in tar archive: {raw_name!r}")
+    parts = [p for p in norm_slashes.split("/") if p]
+    if ".." in parts:
+        raise RuntimeError(f"REFUSED: '..' segment in tar archive member: {raw_name!r}")
+    dest_real = os.path.realpath(dest_path)
+    target_real = os.path.realpath(os.path.join(dest_real, *parts))
+    if os.path.commonpath([target_real, dest_real]) != dest_real:
+        raise RuntimeError(f"REFUSED: tar member escapes destination: {raw_name!r}")
+    if member.issym() or member.islnk():
+        link = member.linkname
+        if link.startswith(("/", "\\")) or os.path.isabs(link) or re.match(r"^[A-Za-z]:", link):
+            raise RuntimeError(f"REFUSED: absolute link target in tar member {raw_name!r}: {link!r}")
+        link_base = os.path.dirname(target_real) if member.issym() else dest_real
+        link_real = os.path.realpath(os.path.join(link_base, link.replace("\\", "/")))
+        if os.path.commonpath([link_real, dest_real]) != dest_real:
+            raise RuntimeError(f"REFUSED: link outside destination in tar member {raw_name!r} -> {link!r}")
+    try:
+        return _tarfile.data_filter(member, dest_path)
+    except _tarfile.FilterError as e:
+        raise RuntimeError(f"REFUSED: unsafe tar member {raw_name!r}: {e}") from e
+
+
+def _stub_ollama_archive() -> Path:
+    """The tiny .tar.zst fixture unpacked in stub mode so a stub window exercises the same extraction code as a paid window."""
+
+    for candidate in (
+        _repo_root() / "tests" / "fixtures" / "stub-ollama.tar.zst",
+        CONTENT / "role-set" / "tests" / "fixtures" / "stub-ollama.tar.zst",
+    ):
+        if candidate.is_file():
+            return candidate
+    import base64 as _b64  # noqa: PLC0415
+
+    out = WORK / "stub-ollama.tar.zst"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_bytes(_b64.b64decode(STUB_OLLAMA_TAR_ZST_B64))
+    return out
+
+
+def unpack_ollama_archive(archive: Path, dest: Path) -> dict[str, str] | None:
+    """Decompress and extract an Ollama archive into `dest` in Python using `_safe_tar_filter` (streaming `.tar.zst`
+    through the pinned `zstandard` wheel without any system `zstd` binary)."""
+
+    import tarfile as _tarfile  # noqa: PLC0415
+
+    dest.mkdir(parents=True, exist_ok=True)
+    if archive.name.endswith((".tar.zst", ".zst")):
+        zstd_meta = ensure_zstandard()
+        import zstandard  # noqa: PLC0415
+
+        dctx = zstandard.ZstdDecompressor()
+        with archive.open("rb") as fh, dctx.stream_reader(fh) as reader, _tarfile.open(fileobj=reader, mode="r|") as tf:
+            tf.extractall(dest, filter=_safe_tar_filter)
+        return zstd_meta
+    with _tarfile.open(archive, mode="r:*") as tf:
+        tf.extractall(dest, filter=_safe_tar_filter)
+    return None
+
+
 def install_ollama(result: dict) -> Path:
     """Install the pinned Ollama version (0.40.4) verified by sha256 checksum before unpacking or running."""
 
@@ -2773,9 +2895,11 @@ def install_ollama(result: dict) -> Path:
     if ver != OLLAMA_VERSION:
         raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
     raw_sha = os.environ.get("PIN_OLLAMA_SHA256")
-    expect_sha = _require_sha256("PIN_OLLAMA_SHA256", OLLAMA_SHA256 if raw_sha is None else raw_sha)
+    if raw_sha is not None:
+        _require_sha256("PIN_OLLAMA_SHA256", raw_sha)
     raw_arch = (os.environ.get("PIN_OLLAMA_ARCHIVE") or "").strip()
     url = None
+    using_stub_fixture = False
     if raw_arch:
         archive = Path(raw_arch)
         if not archive.exists() and str(archive).startswith("/content/"):
@@ -2786,12 +2910,17 @@ def install_ollama(result: dict) -> Path:
         archive = CONTENT / "ollama-linux-amd64.tar.zst"
     elif (CONTENT / "ollama-linux-amd64.tgz").is_file():
         archive = CONTENT / "ollama-linux-amd64.tgz"
+    elif stub_mode():
+        archive = _stub_ollama_archive()
+        using_stub_fixture = True
     else:
         url = (os.environ.get("PIN_OLLAMA_URL") or OLLAMA_URL).strip()
         check_deadline("installing ollama")
         archive = WORK / (Path(url).name or "ollama-linux-amd64.tar.zst")
         say(f"downloading ollama {OLLAMA_VERSION} from {url}")
         sh(f"curl -fsSL '{url}' -o {archive}", timeout=900)
+    default_sha = STUB_OLLAMA_SHA256 if using_stub_fixture else OLLAMA_SHA256
+    expect_sha = _require_sha256("PIN_OLLAMA_SHA256", default_sha if raw_sha is None else raw_sha)
     got_sha = sha256(archive).lower()
     if got_sha != expect_sha:
         if url is not None:
@@ -2800,8 +2929,9 @@ def install_ollama(result: dict) -> Path:
     dest = WORK / "ollama-install"
     shutil.rmtree(dest, ignore_errors=True)
     dest.mkdir(parents=True, exist_ok=True)
-    if archive.name.endswith((".tar.zst", ".tgz", ".tar.gz", ".tar")):
-        sh(f"tar -xf {archive} -C {dest}", timeout=600)
+    zstd_meta: dict[str, str] | None = None
+    if archive.name.endswith((".tar.zst", ".zst", ".tgz", ".tar.gz", ".tar")):
+        zstd_meta = unpack_ollama_archive(archive, dest)
         ollama_bin = dest / "bin" / "ollama" if (dest / "bin" / "ollama").exists() else dest / "ollama"
     else:
         (dest / "bin").mkdir(parents=True, exist_ok=True)
@@ -2812,10 +2942,28 @@ def install_ollama(result: dict) -> Path:
     ollama_bin.chmod(0o755)
     if url is not None:
         archive.unlink(missing_ok=True)
-    ver_out = sh(f"{ollama_bin} --version", timeout=30)
-    if OLLAMA_VERSION not in ver_out:
-        raise RuntimeError(f"REFUSED: ollama --version is {ver_out!r}, expected {OLLAMA_VERSION}")
-    result["ollama"] = {"version": OLLAMA_VERSION, "sha256": got_sha, "bin": str(ollama_bin), "version_line": ver_out}
+    if stub_mode():
+        bin_text = ollama_bin.read_text(encoding="utf-8", errors="replace")
+        if OLLAMA_VERSION not in bin_text:
+            raise RuntimeError(f"REFUSED: stub ollama binary is {bin_text.strip()!r}, expected {OLLAMA_VERSION}")
+        ver_out = f"ollama version is {OLLAMA_VERSION}"
+    else:
+        ver_out = sh(f"{ollama_bin} --version", timeout=30)
+        if OLLAMA_VERSION not in ver_out:
+            raise RuntimeError(f"REFUSED: ollama --version is {ver_out!r}, expected {OLLAMA_VERSION}")
+    ollama_rec: dict = {
+        "version": OLLAMA_VERSION,
+        "sha256": got_sha,
+        "bin": str(ollama_bin),
+        "version_line": ver_out,
+    }
+    if zstd_meta is not None:
+        ollama_rec["zstandard"] = zstd_meta
+        ollama_rec["zstandard_version"] = zstd_meta["version"]
+        ollama_rec["zstandard_wheel_sha256"] = zstd_meta["wheel_sha256"]
+    if stub_mode():
+        ollama_rec["stub"] = True
+    result["ollama"] = ollama_rec
     return ollama_bin
 
 
@@ -3128,7 +3276,8 @@ def offrig_bench_window(result: dict) -> None:
     if ver != OLLAMA_VERSION:
         raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
     raw_ollama_sha = os.environ.get("PIN_OLLAMA_SHA256")
-    ollama_sha = _require_sha256("PIN_OLLAMA_SHA256", OLLAMA_SHA256 if raw_ollama_sha is None else raw_ollama_sha)
+    if raw_ollama_sha is not None:
+        _require_sha256("PIN_OLLAMA_SHA256", raw_ollama_sha)
     model = (os.environ.get("PIN_OFFRIG_MODEL") or OFFRIG_MODEL).strip()
     if not model:
         raise RuntimeError("REFUSED: PIN_OFFRIG_MODEL is empty")
@@ -3144,9 +3293,7 @@ def offrig_bench_window(result: dict) -> None:
     smi_csv = base / "smi.csv"
     base.mkdir(parents=True, exist_ok=True)
     proj_dir.mkdir(parents=True, exist_ok=True)
-    ollama_bin = None if stub_mode() else install_ollama(result)
-    if stub_mode():
-        result["ollama"] = {"version": OLLAMA_VERSION, "sha256": ollama_sha, "stub": True}
+    ollama_bin = install_ollama(result)
     port = int(os.environ.get("PIN_OLLAMA_PORT") or OLLAMA_PORT)
     srv = OllamaServed(ollama_bin, model, digest, port)
     try:

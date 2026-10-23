@@ -2415,22 +2415,22 @@ def test_offrig_bench_inputs_and_install_ollama_pin_checks_and_refusals(tmp_path
         pw.install_ollama({})
     monkeypatch.delenv("PIN_OLLAMA_VERSION", raising=False)
 
+    fixture_zst = Path(__file__).resolve().parent / "fixtures" / "stub-ollama.tar.zst"
     fake_archive = content / "ollama-linux-amd64.tar.zst"
-    fake_archive.write_bytes(b"fake-ollama-archive-bytes")
+    shutil.copyfile(fixture_zst, fake_archive)
     arch_sha = pw.sha256(fake_archive)
     monkeypatch.setenv("PIN_OLLAMA_SHA256", "1" * 64)
     with pytest.raises(RuntimeError, match=rf"REFUSED: ollama archive sha256 mismatch: {arch_sha[:12]} != PIN_OLLAMA_SHA256 111111111111"):
         pw.install_ollama({})
 
-    # 5. install_ollama unpacks archive when sha matches and checks `ollama --version` == 0.40.4
+    # 5. install_ollama unpacks archive in Python with pinned zstandard when sha matches and checks `ollama --version` == 0.40.4
     monkeypatch.setenv("PIN_OLLAMA_SHA256", arch_sha)
     ver_out = "ollama version is 0.40.4"
+    pip_cmds: list[str] = []
 
     def fake_sh(cmd: str, **kw) -> str:
-        if cmd.startswith("tar -xf"):
-            dest = Path(cmd.split("-C ", 1)[1].strip())
-            (dest / "bin").mkdir(parents=True, exist_ok=True)
-            (dest / "bin" / "ollama").write_text("#!/bin/sh\n", encoding="utf-8")
+        if "pip install -q --require-hashes --only-binary=:all: --no-deps -r" in cmd:
+            pip_cmds.append(cmd)
             return ""
         if cmd.endswith("--version"):
             return ver_out
@@ -2439,12 +2439,21 @@ def test_offrig_bench_inputs_and_install_ollama_pin_checks_and_refusals(tmp_path
     monkeypatch.setattr(pw, "sh", fake_sh)
     res_ol: dict = {}
     installed_bin = pw.install_ollama(res_ol)
+    assert len(pip_cmds) == 1
     assert installed_bin == work / "ollama-install" / "bin" / "ollama"
+    assert (work / "ollama-install" / "lib" / "ollama" / "stub.txt").is_file()
+    wheel_sha = pw.zstandard_wheel_sha256()
+    assert (work / "zstandard-requirements.txt").read_text(encoding="utf-8") == (
+        f"zstandard=={pw.ZSTANDARD_VERSION} --hash=sha256:{wheel_sha}\n"
+    )
     assert res_ol["ollama"] == {
         "version": "0.40.4",
         "sha256": arch_sha,
         "bin": str(installed_bin),
         "version_line": "ollama version is 0.40.4",
+        "zstandard": {"version": "0.25.0", "wheel_sha256": wheel_sha},
+        "zstandard_version": "0.25.0",
+        "zstandard_wheel_sha256": wheel_sha,
     }
 
     # Wrong version reported by binary refuses
@@ -2625,6 +2634,12 @@ def test_offrig_bench_stub_mode_end_to_end_and_real_path_checks(tmp_path, monkey
     assert res_stub["model_errors"] == 0
     assert all(res_stub["token_clean"].values())
     assert res_stub["ollama"]["version"] == "0.40.4" and res_stub["ollama"]["stub"] is True
+    assert res_stub["ollama"]["sha256"] == pw.STUB_OLLAMA_SHA256
+    assert res_stub["ollama"]["zstandard_version"] == "0.25.0"
+    assert res_stub["ollama"]["zstandard_wheel_sha256"] == pw.zstandard_wheel_sha256()
+    assert res_stub["ollama"]["zstandard"] == {"version": "0.25.0", "wheel_sha256": pw.zstandard_wheel_sha256()}
+    assert (work / "ollama-install" / "bin" / "ollama").is_file()
+    assert (work / "ollama-install" / "lib" / "ollama" / "stub.txt").is_file()
     assert res_stub["offrig_model"]["model"] == "gemma4:31b"
     assert res_stub["offrig_model"]["digest"] == pw.OFFRIG_MODEL_DIGEST
     assert len(res_stub["ps"]["models"]) == 1
@@ -3019,4 +3034,158 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
         pw.offrig_bench_window({})
     assert pw.CUT_AT["wave"] == "offrig-bench" and pw.CUT_AT["model"] == "gemma4:31b"
     assert (work / "offrig-bench-out.tar").is_file() and (work / "ps.json").is_file()
+
+
+def _make_zst_tar(path: Path, members: list[tuple[str, bytes | None, int, str | None, bytes]]) -> str:
+    """Create a `.tar.zst` archive with arbitrary raw member names/links for testing `_safe_tar_filter`."""
+
+    import io
+    import tarfile
+    import zstandard
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w", format=tarfile.USTAR_FORMAT) as tf:
+        for name, data, mode, linkname, ttype in members:
+            ti = tarfile.TarInfo(name)
+            ti.mode = mode
+            ti.mtime = 0
+            ti.type = ttype
+            if linkname is not None:
+                ti.linkname = linkname
+                tf.addfile(ti)
+            else:
+                payload = data or b""
+                ti.size = len(payload)
+                tf.addfile(ti, io.BytesIO(payload))
+    path.write_bytes(zstandard.ZstdCompressor(level=3).compress(buf.getvalue()))
+    return pw.sha256(path)
+
+
+def test_install_ollama_zstd_absent_tampered_archive_unsafe_members_and_zstandard_pin(tmp_path, monkeypatch):
+    import importlib.metadata as _im
+    import tarfile
+
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    for k in ("PIN_STUB", "PIN_OLLAMA_VERSION", "PIN_OLLAMA_SHA256", "PIN_OLLAMA_ARCHIVE", "PIN_OLLAMA_URL"):
+        monkeypatch.delenv(k, raising=False)
+
+    # 1. Pinned zstandard version and manylinux x86_64 wheel hashes
+    assert pw.ZSTANDARD_VERSION == "0.25.0"
+    assert pw.ZSTANDARD_WHEEL_SHA256 == "8e735494da3db08694d26480f1493ad2cf86e99bdd53e8e9771b2752a5c0246a"
+    assert pw.zstandard_wheel_sha256("cp313") == "8e735494da3db08694d26480f1493ad2cf86e99bdd53e8e9771b2752a5c0246a"
+    assert pw.zstandard_wheel_sha256("cp312") == "5a56ba0db2d244117ed744dfa8f6f5b366e14148e00de44723413b2f3938a902"
+    with pytest.raises(RuntimeError, match="REFUSED: no pinned zstandard==0.25.0 manylinux x86_64 wheel sha256 for Python cp38"):
+        pw.zstandard_wheel_sha256("cp38")
+
+    fixture_zst = Path(__file__).resolve().parent / "fixtures" / "stub-ollama.tar.zst"
+    assert fixture_zst.is_file()
+    assert pw.sha256(fixture_zst) == pw.STUB_OLLAMA_SHA256
+
+    # 2. Unpack works with `zstd` (and `tar`) absent from PATH (both PATH="" and shutil.which returning None)
+    monkeypatch.setenv("PATH", "")
+    monkeypatch.setattr(pw.shutil, "which", lambda *_a, **_k: None)
+    assert pw.shutil.which("zstd") is None
+    assert pw.shutil.which("tar") is None
+
+    arch = content / "ollama-linux-amd64.tar.zst"
+    shutil.copyfile(fixture_zst, arch)
+    monkeypatch.setenv("PIN_OLLAMA_SHA256", pw.STUB_OLLAMA_SHA256)
+
+    seen_sh: list[str] = []
+
+    def no_zstd_sh(cmd: str, **kw) -> str:
+        seen_sh.append(cmd)
+        assert not cmd.startswith("tar ")
+        if "pip install -q --require-hashes --only-binary=:all: --no-deps -r" in cmd:
+            return ""
+        if cmd.endswith("--version"):
+            return "ollama version is 0.40.4"
+        raise AssertionError(f"unexpected sh: {cmd}")
+
+    monkeypatch.setattr(pw, "sh", no_zstd_sh)
+    res_ok: dict = {}
+    out_bin = pw.install_ollama(res_ok)
+    assert out_bin == work / "ollama-install" / "bin" / "ollama"
+    assert out_bin.is_file()
+    assert "ollama version is 0.40.4" in out_bin.read_text(encoding="utf-8")
+    assert (work / "ollama-install" / "lib" / "ollama" / "stub.txt").read_text(encoding="utf-8") == "stub\n"
+    assert res_ok["ollama"]["zstandard_version"] == "0.25.0"
+    assert res_ok["ollama"]["zstandard_wheel_sha256"] == pw.zstandard_wheel_sha256()
+    assert res_ok["ollama"]["zstandard"] == {"version": "0.25.0", "wheel_sha256": pw.zstandard_wheel_sha256()}
+
+    # 2b. Stub mode (including standalone CPU VM fallback when tests/fixtures is not cloned) runs the same unpack step
+    arch.unlink()
+    monkeypatch.delenv("PIN_OLLAMA_SHA256", raising=False)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setattr(pw, "_repo_root", lambda: content / "no-repo")
+    res_stub_unpack: dict = {}
+    stub_bin = pw.install_ollama(res_stub_unpack)
+    assert (work / "stub-ollama.tar.zst").read_bytes() == fixture_zst.read_bytes()
+    assert stub_bin == work / "ollama-install" / "bin" / "ollama"
+    assert stub_bin.is_file()
+    assert res_stub_unpack["ollama"]["stub"] is True
+    assert res_stub_unpack["ollama"]["sha256"] == pw.STUB_OLLAMA_SHA256
+    assert res_stub_unpack["ollama"]["zstandard_version"] == "0.25.0"
+    assert res_stub_unpack["ollama"]["zstandard_wheel_sha256"] == pw.zstandard_wheel_sha256()
+    monkeypatch.delenv("PIN_STUB", raising=False)
+    monkeypatch.setenv("PIN_OLLAMA_SHA256", pw.STUB_OLLAMA_SHA256)
+
+    # 3. Tampered archive is refused by the sha256 check BEFORE any unpacking
+    shutil.rmtree(work / "ollama-install", ignore_errors=True)
+    tampered = content / "ollama-linux-amd64.tar.zst"
+    raw_bytes = fixture_zst.read_bytes()
+    tampered.write_bytes(raw_bytes[:-1] + bytes([raw_bytes[-1] ^ 0xFF]))
+    tampered_sha = pw.sha256(tampered)
+    unpack_called = False
+    orig_unpack = pw.unpack_ollama_archive
+
+    def spy_unpack(*a, **kw):
+        nonlocal unpack_called
+        unpack_called = True
+        return orig_unpack(*a, **kw)
+
+    monkeypatch.setattr(pw, "unpack_ollama_archive", spy_unpack)
+    with pytest.raises(
+        RuntimeError,
+        match=rf"REFUSED: ollama archive sha256 mismatch: {tampered_sha[:12]} != PIN_OLLAMA_SHA256 {pw.STUB_OLLAMA_SHA256[:12]}",
+    ):
+        pw.install_ollama({})
+    assert unpack_called is False
+    assert not (work / "ollama-install").exists()
+    monkeypatch.setattr(pw, "unpack_ollama_archive", orig_unpack)
+
+    # 4. Archive with a `..` member, an absolute member, or a link outside the target is refused
+    escape_sentinel = content / "escaped.txt"
+    for bad_members, expected_err in [
+        ([("../escaped.txt", b"bad\n", 0o644, None, tarfile.REGTYPE)], r"REFUSED: '\.\.' segment in tar archive member: '\.\./escaped\.txt'"),
+        ([("bin/../../escaped.txt", b"bad\n", 0o644, None, tarfile.REGTYPE)], r"REFUSED: '\.\.' segment in tar archive member: 'bin/\.\./\.\./escaped\.txt'"),
+        ([("/etc/passwd", b"bad\n", 0o644, None, tarfile.REGTYPE)], r"REFUSED: absolute path in tar archive: '/etc/passwd'"),
+        ([("/bin/ollama", b"bad\n", 0o755, None, tarfile.REGTYPE)], r"REFUSED: absolute path in tar archive: '/bin/ollama'"),
+        ([("bin/link", None, 0o777, "../../escaped.txt", tarfile.SYMTYPE)], r"REFUSED: link outside destination in tar member 'bin/link' -> '\.\./\.\./escaped\.txt'"),
+        ([("bin/abslink", None, 0o777, "/etc/passwd", tarfile.SYMTYPE)], r"REFUSED: absolute link target in tar member 'bin/abslink': '/etc/passwd'"),
+        ([("bin/hardlink", None, 0o644, "../escaped.txt", tarfile.LNKTYPE)], r"REFUSED: link outside destination in tar member 'bin/hardlink' -> '\.\./escaped\.txt'"),
+    ]:
+        bad_sha = _make_zst_tar(arch, bad_members)
+        monkeypatch.setenv("PIN_OLLAMA_SHA256", bad_sha)
+        with pytest.raises(RuntimeError, match=expected_err):
+            pw.install_ollama({})
+        assert not escape_sentinel.exists()
+
+    # 5. Wrong installed zstandard version refuses in ensure_zstandard
+    orig_version = _im.version
+    monkeypatch.setattr(_im, "version", lambda pkg: "0.23.0" if pkg == "zstandard" else orig_version(pkg))
+    with pytest.raises(RuntimeError, match="REFUSED: zstandard version is '0.23.0', expected '0.25.0'"):
+        pw.ensure_zstandard()
+
+
+
+
+
+
 
