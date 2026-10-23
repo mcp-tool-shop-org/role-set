@@ -37,7 +37,7 @@ def _pct(values: list[float], q: float) -> float | None:
 
 # Older runs carry the Ollama digests; runs on the proven list carry the GGUF and llama-server pins (BUILD-SPEC B6).
 INPUT_PINS = ("partition", "wave", "writer_model", "writer_family", "writer_repo", "writer_revision", "writer_gguf_sha256", "writer_digest",
-              "critic_model", "critic_family", "critic_gguf_sha256", "critic_digest", "llama_server_commit", "llama_server_sha256",
+              "critic_model", "critic_family", "critic_gguf_sha256", "critic_digest", "llama_server_commit", "llama_server_sha256", "llama_server_archs",
               "pack_commit", "pack_sha256", "plan_sha256", "exemplar_commit", "stuck_rule_sha256", "grant", "rehearsal", "mock")
 
 

@@ -334,3 +334,179 @@ def test_real_write_requires_pool_and_sufficient_excerpts_before_warmup_and_pins
     run(WriteConfig(**base_kw, pool=committed_pool))
     assert seen_pins["pool_sha256"] == expected_sha
     assert writer_calls == []
+
+
+def test_server_builds_pin_record_in_write_and_waves_for_default_and_g4(
+    pack_dir: Path, plan_file: Path, tmp_path: Path, monkeypatch
+):
+    import role_set.write as w
+    from role_set import waves
+    from role_set.mock import mock_gates
+    from test_proven import DEFAULT_SERVER_SHA, G4_SERVER_SHA, SHA_W
+
+    committed_writers = Path(__file__).resolve().parents[1] / "writers.json"
+    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
+    raw_writers = json.loads(committed_writers.read_text(encoding="utf-8"))
+    gemma = next(e for e in raw_writers["writers"] if e["served_as"] == "gemma-4-31b-it")
+    gemma_sha = gemma["gguf_sha256"]
+    cards_path = Path(__file__).parent / "fixtures" / "card-values.json"
+
+    machine_a100 = tmp_path / "machine-a100.json"
+    machine_a100.write_text(
+        json.dumps({"driver": "580.82", "compat": False, "runtime": "13.4", "card": "NVIDIA A100-SXM4-40GB", "colab_release_tag": "release-colab_20261015"}),
+        encoding="utf-8",
+    )
+    machine_g4 = tmp_path / "machine-g4.json"
+    machine_g4.write_text(
+        json.dumps({"driver": "580.82", "compat": False, "runtime": "13.4", "card": "NVIDIA RTX PRO 6000 Blackwell Server Edition", "colab_release_tag": "release-colab_20261023"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(w, "load_gates", lambda closed_form=None: mock_gates())
+
+    # 1. Real build() + wave run with default server sha (b4659b3f...) vs G4 server sha (39742d8a...)
+    pins_default = build(
+        WriteConfig(
+            plan=plan_file,
+            pack=pack_dir,
+            out=tmp_path / "real-default",
+            writers_file=committed_writers,
+            cards=cards_path,
+            endpoint="http://127.0.0.1:8080/v1",
+            model="gemma-4-31b-it",
+            writer_gguf_sha256=gemma_sha,
+            server_sha256=DEFAULT_SERVER_SHA,
+            machine=machine_a100,
+            partition="trial:a100-default",
+            no_critic=True,
+            pool=committed_pool,
+        )
+    )[7]
+    assert pins_default["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert pins_default["llama_server_sha256"] == DEFAULT_SERVER_SHA
+    assert pins_default["llama_server_archs"] == "80;90;100 (SASS only, no PTX)"
+
+    pins_g4 = build(
+        WriteConfig(
+            plan=plan_file,
+            pack=pack_dir,
+            out=tmp_path / "real-g4",
+            writers_file=committed_writers,
+            cards=cards_path,
+            endpoint="http://127.0.0.1:8080/v1",
+            model="gemma-4-31b-it",
+            writer_gguf_sha256=gemma_sha,
+            server_sha256=G4_SERVER_SHA,
+            machine=machine_g4,
+            partition="trial:g4-build",
+            no_critic=True,
+            pool=committed_pool,
+        )
+    )[7]
+    assert pins_g4["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert pins_g4["llama_server_sha256"] == G4_SERVER_SHA
+    assert pins_g4["llama_server_archs"] == "80;90;100;120 (sm_120a SASS)"
+
+    # 2. Unlisted sha is refused on both real and mock runs
+    with pytest.raises(WriteRefused, match="rebuild or re-pin"):
+        build(
+            WriteConfig(
+                plan=plan_file,
+                pack=pack_dir,
+                out=tmp_path / "real-bad",
+                writers_file=committed_writers,
+                cards=cards_path,
+                endpoint="http://127.0.0.1:8080/v1",
+                model="gemma-4-31b-it",
+                writer_gguf_sha256=gemma_sha,
+                server_sha256=SHA_W,
+                machine=machine_g4,
+                partition="trial:g4-bad",
+                no_critic=True,
+                pool=committed_pool,
+            )
+        )
+    assert (
+        main(
+            [
+                "write",
+                "--plan",
+                str(plan_file),
+                "--pack",
+                str(pack_dir),
+                "--writers",
+                str(committed_writers),
+                "--out",
+                str(tmp_path / "mock-bad"),
+                "--mock",
+                "--wave",
+                "write",
+                "--partition",
+                "trial:mock-bad",
+                "--llama-server-sha256",
+                SHA_W,
+            ]
+        )
+        == 2
+    )
+
+    # 3. End-to-end `role-set write` in mock mode with `--llama-server-sha256` set to the G4 sha starts its wave and records the matched G4 entry in the wave header (and default when set to the default sha)
+    rc_g4 = main(
+        [
+            "write",
+            "--plan",
+            str(plan_file),
+            "--pack",
+            str(pack_dir),
+            "--writers",
+            str(committed_writers),
+            "--out",
+            str(tmp_path / "mock-g4-w0"),
+            "--mock",
+            "--wave",
+            "write",
+            "--partition",
+            "trial:mock-g4",
+            "--llama-server-sha256",
+            G4_SERVER_SHA,
+        ]
+    )
+    assert rc_g4 == 0
+    header_g4, drafts_g4 = waves.read(tmp_path / "mock-g4-w0" / "mock" / waves.DRAFTS_FILE)
+    assert len(drafts_g4) == 40 and all(d["state"] == "awaiting_critique" for d in drafts_g4)
+    assert header_g4["writer_host"]["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert header_g4["writer_host"]["llama_server_sha256"] == G4_SERVER_SHA
+    assert header_g4["writer_host"]["llama_server_archs"] == "80;90;100;120 (sm_120a SASS)"
+    assert header_g4["waves"][0]["pins"]["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert header_g4["waves"][0]["pins"]["llama_server_sha256"] == G4_SERVER_SHA
+    assert header_g4["waves"][0]["pins"]["llama_server_archs"] == "80;90;100;120 (sm_120a SASS)"
+
+    rc_def = main(
+        [
+            "write",
+            "--plan",
+            str(plan_file),
+            "--pack",
+            str(pack_dir),
+            "--writers",
+            str(committed_writers),
+            "--out",
+            str(tmp_path / "mock-def-w0"),
+            "--mock",
+            "--wave",
+            "write",
+            "--partition",
+            "trial:mock-def",
+            "--llama-server-sha256",
+            DEFAULT_SERVER_SHA,
+        ]
+    )
+    assert rc_def == 0
+    header_def, drafts_def = waves.read(tmp_path / "mock-def-w0" / "mock" / waves.DRAFTS_FILE)
+    assert len(drafts_def) == 40
+    assert header_def["writer_host"]["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert header_def["writer_host"]["llama_server_sha256"] == DEFAULT_SERVER_SHA
+    assert header_def["writer_host"]["llama_server_archs"] == "80;90;100 (SASS only, no PTX)"
+    assert header_def["waves"][0]["pins"]["llama_server_commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert header_def["waves"][0]["pins"]["llama_server_sha256"] == DEFAULT_SERVER_SHA
+    assert header_def["waves"][0]["pins"]["llama_server_archs"] == "80;90;100 (SASS only, no PTX)"
+
