@@ -131,7 +131,7 @@ def test_smoke_window_refuses_pin_stub_on_any_gpu_runtime():
     tmp = Path(tempfile.mkdtemp(prefix="fakewin-stubgpu-"))
     binfile = tmp / "bin.dat"
     binfile.write_bytes(b"x" * 100)
-    for gpu in ("A100", "L4"):
+    for gpu in ("A100", "L4", "G4"):
         out = tmp / f"out-{gpu}"
         env = {**os.environ, "PATH": f"{FAKE}:{os.environ['PATH']}", "FAKE_ST": str(tmp / f"st-{gpu}"),
                "FAKE_MODE": "normal", "PIN_STUB": "1", "PIN_GPU": gpu}
@@ -140,6 +140,15 @@ def test_smoke_window_refuses_pin_stub_on_any_gpu_runtime():
         assert r.returncode == 2, (gpu, r.returncode, r.stdout, r.stderr)
         assert "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU" in r.stderr, r.stderr
         assert not (tmp / f"st-{gpu}" / "open").exists()
+    # Unknown PIN_GPU value is refused before colab new can silently fall back to A100.
+    out_bad = tmp / "out-badgpu"
+    env_bad = {**os.environ, "PATH": f"{FAKE}:{os.environ['PATH']}", "FAKE_ST": str(tmp / "st-badgpu"),
+               "FAKE_MODE": "normal", "PIN_GPU": "RTX_PRO_6000"}
+    r_bad = subprocess.run(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out_bad)],
+                           env=env_bad, capture_output=True, text=True, timeout=30)
+    assert r_bad.returncode == 2
+    assert "REFUSED: PIN_GPU=RTX_PRO_6000 must be A100, H100, G4, L4, T4 or CPU" in r_bad.stderr
+    assert not (tmp / "st-badgpu" / "open").exists()
 
 
 def test_a_late_first_exec_that_takes_the_lock_first_runs_the_only_job():

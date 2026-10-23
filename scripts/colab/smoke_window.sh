@@ -8,6 +8,10 @@
 set -u
 BIN="${1:?usage: smoke_window.sh <llama-server> <out dir>}"
 OUT="${2:?usage: smoke_window.sh <llama-server> <out dir>}"
+case "${PIN_GPU:-A100}" in
+  A100|H100|G4|L4|T4|CPU) ;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU} must be A100, H100, G4, L4, T4 or CPU" >&2; exit 2;;
+esac
 if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
   exit 2
