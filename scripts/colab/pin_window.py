@@ -3172,7 +3172,10 @@ def _open_no_redirect(req: urllib.request.Request, *, timeout: float):
 
 
 def _strip_url_query_and_fragment(url: str) -> str:
-    return url.split("?", 1)[0].split("#", 1)[0]
+    clean = url.split("?", 1)[0].split("#", 1)[0]
+    if _TOKEN:
+        clean = clean.replace(_TOKEN, "[REDACTED]")
+    return re.sub(r"hf_[A-Za-z0-9]{20,}", "[REDACTED]", clean)
 
 
 def _validate_ollama_mirror_redirect_target(target_url: str) -> None:
@@ -3220,7 +3223,20 @@ def _open_ollama_mirror_blob(
     for hop in range(OLLAMA_MIRROR_MAX_REDIRECTS + 1):
         check_deadline(f"downloading ollama blob {blob_digest}")
         req = urllib.request.Request(cur_url, headers=cur_headers)
-        resp = _open_no_redirect(req, timeout=read_timeout)
+        try:
+            resp = _open_no_redirect(req, timeout=read_timeout)
+        except urllib.error.HTTPError:
+            raise
+        except (TimeoutError, urllib.error.URLError) as e:
+            if isinstance(e, TimeoutError) or isinstance(getattr(e, "reason", None), TimeoutError):
+                raise
+            raise urllib.error.URLError(_strip_url_query_and_fragment(str(getattr(e, "reason", e)))) from None
+        except OSError as e:
+            raise OSError(_strip_url_query_and_fragment(str(e))) from None
+        except ValueError as e:
+            raise ValueError(_strip_url_query_and_fragment(str(e))) from None
+        except RuntimeError as e:
+            raise RuntimeError(_strip_url_query_and_fragment(str(e))) from None
         keep_open = False
         try:
             status = getattr(resp, "status", None) or resp.getcode()
@@ -3649,7 +3665,7 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                     "bytes_received": got_size,
                     "expected_size": expected_size,
                     "seconds": round(time.time() - t_blob, 3),
-                    "reason": f"{type(e).__name__}: {e}",
+                    "reason": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}"),
                 }
                 raise
             except DeadlineReached as e:
@@ -3672,7 +3688,7 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                         "bytes_received": got_size,
                         "expected_size": expected_size,
                         "seconds": round(time.time() - t_blob, 3),
-                        "reason": str(e),
+                        "reason": _strip_url_query_and_fragment(str(e)),
                     },
                 )
                 raise
@@ -4617,7 +4633,7 @@ def _main() -> int:
                 except DeadlineReached:
                     raise
                 except Exception as e:  # noqa: BLE001 - recorded, and the window's result is not ok
-                    result["models"].append({"served_as": spec["served_as"], "error": f"{type(e).__name__}: {e}"})
+                    result["models"].append({"served_as": spec["served_as"], "error": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")})
                     result["model_errors"] = result.get("model_errors", 0) + 1
                     continue
             else:
@@ -4639,7 +4655,7 @@ def _main() -> int:
                 except Exception as e:  # noqa: BLE001 - a smoke window records a failed serve and goes on
                     if role != "smoke":
                         raise
-                    m["smoke"] = {"ok": False, "error": f"{type(e).__name__}: {e}"}
+                    m["smoke"] = {"ok": False, "error": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")}
                     result["model_errors"] = result.get("model_errors", 0) + 1
                 say(f"{m['served_as']}: {m['smoke']}")
             result["models"].append({k: v for k, v in m.items() if k != "path"})
@@ -4652,7 +4668,7 @@ def _main() -> int:
             result["llama_server"]["libs"] = pin_libs(built["path"])
         result["ok"] = not result.get("model_errors")
     except Exception as e:  # noqa: BLE001 - the window reports and stops; nothing falls back silently
-        result["ok"], result["error"] = False, f"{type(e).__name__}: {e}"
+        result["ok"], result["error"] = False, _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")
         if isinstance(e, DeadlineReached):
             result["cut_at_deadline"] = CUT_AT or {"before": str(e)}
     finally:
