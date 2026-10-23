@@ -30,7 +30,7 @@ from role_set.guards import (
     require_model_allowed,
 )
 from role_set.harvest import load_pool
-from role_set.mock import MockCritic, MockWriter, mock_excerpts, mock_gates
+from role_set.mock import MockCritic, MockWriter, answers_from_drafts, mock_excerpts, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
 from role_set.prompts import load_pack
@@ -238,7 +238,7 @@ def build(cfg: WriteConfig, *, now=time.time):
     if cfg.pool is not None and cfg.pool.is_file():
         pins["pool_sha256"] = hashlib.sha256(cfg.pool.read_bytes()).hexdigest()
 
-    header = None
+    header, drafts_in = None, []
     if cfg.critique_scope not in ("all", "verdict"):
         raise WriteRefused(f"REFUSED: --critique-scope must be all or verdict, got {cfg.critique_scope!r}")
     if cfg.wave not in ("inline", *waves.WAVES):
@@ -247,7 +247,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         if cfg.drafts is None:
             raise WriteRefused(f"REFUSED: a {cfg.wave} wave needs --drafts, the previous wave's {waves.DRAFTS_FILE}")
         try:
-            header, _ = waves.read(cfg.drafts)
+            header, drafts_in = waves.read(cfg.drafts)
         except waves.WaveError as e:
             raise WriteRefused(str(e)) from e
         pins["drafts_sha256"] = waves.file_sha256(cfg.drafts)
@@ -285,7 +285,7 @@ def build(cfg: WriteConfig, *, now=time.time):
     if cfg.mock:
         # The mock's drafts come from their slot and attempt, so the waves write what one inline run writes.
         order = {s.id: i for i, s in enumerate(interleave(slots))}
-        answers = waves.load_answers(header) if header else {}
+        answers = {**answers_from_drafts(drafts_in), **waves.load_answers(header)} if header else {}
         writer = MockWriter(keyed_order=order, answers=answers) if uses_writer else None
         critic = MockCritic(answers=answers) if uses_critic else None
         try:
