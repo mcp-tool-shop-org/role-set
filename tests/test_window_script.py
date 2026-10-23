@@ -241,10 +241,24 @@ def test_a_window_naming_an_empty_token_variable_stops_before_the_job():
 def test_each_role_sends_only_its_own_scoped_token_and_never_hf_token():
     for role, var in (("pilot", "HF_TOKEN_GGUF_WRITE"), ("prebuild", "HF_TOKEN_GGUF_READ"), ("pilot", "HF_TOKEN"),
                       ("smoke", "HF_TOKEN_GGUF_READ"), ("offrig-bench", "HF_TOKEN_GGUF_READ"),
-                      ("offrig-bench", "HF_TOKEN_GGUF_WRITE"), ("offrig-bench", "HF_TOKEN")):
+                      ("offrig-bench", "HF_TOKEN_GGUF_WRITE"), ("offrig-bench", "HF_TOKEN"),
+                      ("pilot", "HF_TOKEN_OLLAMA_PINS_READ"), ("critic-eval", "HF_TOKEN_OLLAMA_PINS_READ"),
+                      ("prebuild", "HF_TOKEN_OLLAMA_PINS_READ"), ("smoke", "HF_TOKEN_OLLAMA_PINS_READ")):
         rig, job, out = _window("normal", extra={"PIN_ROLE": role, "PIN_HF_TOKEN_FROM": var, var: SENTINEL})
         assert f"may not send {var}" in rig and not job, (role, var, rig)
         assert not (out.parent / "st" / "news").exists()  # refused before any VM was asked for
+    rig_ok, job_ok, out_ok = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "offrig-bench",
+            "PIN_HF_TOKEN_FROM": "HF_TOKEN_OLLAMA_PINS_READ",
+            "HF_TOKEN_OLLAMA_PINS_READ": SENTINEL,
+            "PIN_MOCK_S": "1",
+        },
+    )
+    assert "uploaded the token file" in rig_ok and job_ok.count("PIN_RESULT") == 1, rig_ok
+    assert not (out_ok.parent / "st" / "vm" / "dev" / "shm" / "hf.token").exists()
+    assert not [str(p) for p in out_ok.parent.rglob("*") if p.is_file() and SENTINEL.encode() in p.read_bytes()]
 
 
 def test_the_token_goes_only_to_the_vm_that_passed_the_gate():

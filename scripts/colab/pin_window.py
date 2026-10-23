@@ -2727,8 +2727,17 @@ OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa224409
 OFFRIG_NUM_CTX = 8192
 OLLAMA_REGISTRY = "https://registry.ollama.ai"
 OLLAMA_REGISTRY_ALLOWLIST: tuple[str, ...] = ()
+OLLAMA_MIRROR_REVISION = "9dfbad5aa9ecec08cd4275a1779ae2be3bcf2725"
+# Exact allow-list of mirror resolve bases for paid windows (PIN_STUB unset). Entries may be exact `https://` URLs
+# or `sha256:<64-hex>` digests of the normalised resolve base (the studio mirror's resolve base at
+# OLLAMA_MIRROR_REVISION is pinned by its exact UTF-8 SHA-256 so the personal HF handle in
+# ~/.grok/secrets/identity-needles.txt never appears in the public repository).
+OLLAMA_MIRROR_ALLOWLIST: tuple[str, ...] = (
+    "sha256:9f104ae7d85df083b46d9087b04c9bf44d47f447455d4e1583ebd6d0a66369bb",
+)
 OLLAMA_BLOB_READ_TIMEOUT_S = 120.0
 OLLAMA_MODEL_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
 STUB_OLLAMA_MANIFEST_DIGEST = "ef71a9e44671e4680a59cfa480bb5465c68927a574fb6a5308d4b67b9976b1c5"
 STUB_OLLAMA_MANIFEST_BYTES = (
     b'{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json",'
@@ -3074,6 +3083,124 @@ def _resolve_ollama_registry_base(raw_reg: str | None) -> tuple[str, object | No
     return cleaned, None
 
 
+def _resolve_ollama_mirror_base(raw_mirror: str, *, expected_token: str | None = None) -> tuple[str, str, object | None]:
+    """Resolve and validate `PIN_OLLAMA_MIRROR`: on paid windows (`not stub_mode()`), refuse any base that does not
+    use `https://`, does not equal an exact entry in `OLLAMA_MIRROR_ALLOWLIST` (normalising scheme case and trailing
+    slashes, never prefix-matching), or does not end with `/resolve/<40-hex-commit>`. In stub mode, allow a local
+    HTTP stub base (or start the local fixture mirror when set to `1` or `stub`)."""
+
+    cleaned = _normalise_ollama_registry_base(raw_mirror)
+    if stub_mode():
+        if cleaned in ("1", "stub"):
+            stub_mir = _start_stub_ollama_mirror(expected_token=expected_token)
+            return stub_mir.base_url, OLLAMA_MIRROR_REVISION, stub_mir
+        if "/resolve/" in cleaned:
+            revision = cleaned.rsplit("/resolve/", 1)[1]
+            if not HEX40_RE.fullmatch(revision):
+                raise RuntimeError(
+                    f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} revision {revision!r} must be a 40-char lowercase hex commit sha"
+                )
+        else:
+            revision = OLLAMA_MIRROR_REVISION
+        return cleaned, revision, None
+    if not cleaned.startswith("https://"):
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must use https:// on a paid window (got {cleaned!r})"
+        )
+    allowed_urls = {
+        _normalise_ollama_registry_base(u)
+        for u in OLLAMA_MIRROR_ALLOWLIST
+        if not u.strip().lower().startswith("sha256:") and _normalise_ollama_registry_base(u).startswith("https://")
+    }
+    allowed_shas = {
+        u.strip().lower().removeprefix("sha256:")
+        for u in OLLAMA_MIRROR_ALLOWLIST
+        if u.strip().lower().startswith("sha256:")
+    }
+    cleaned_sha = hashlib.sha256(cleaned.encode("utf-8")).hexdigest()
+    if cleaned not in allowed_urls and cleaned_sha not in allowed_shas:
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} ({cleaned!r}) is not in OLLAMA_MIRROR_ALLOWLIST on a paid window"
+        )
+    if "/resolve/" not in cleaned:
+        raise RuntimeError(f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must end with /resolve/<40-hex-commit>")
+    revision = cleaned.rsplit("/resolve/", 1)[1]
+    if not HEX40_RE.fullmatch(revision):
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} revision {revision!r} must be a 40-char lowercase hex commit sha"
+        )
+    return cleaned, revision, None
+
+
+def _start_stub_ollama_mirror(blob_dir: Path | None = None, port: int = 0, *, expected_token: str | None = None):
+    """Local HTTP stub of the studio HF mirror's `<resolve_base>/blobs/sha256-<hex>` endpoint, requiring the
+    `Authorization: Bearer <token>` header."""
+
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer  # noqa: PLC0415
+
+    root = blob_dir if blob_dir is not None else _stub_ollama_manifest_dir()
+    blobs: dict[str, bytes] = {
+        p.name.removeprefix("sha256-"): p.read_bytes()
+        for p in sorted(root.glob("sha256-*"))
+        if p.is_file()
+    }
+    prefix = f"/studio/role-set-ollama-pins/resolve/{OLLAMA_MIRROR_REVISION}"
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _StubMirror:
+        def __init__(self):
+            self.blob_dir = root
+            self.requests: list[str] = []
+            self.auth_ok: list[bool] = []
+            mir = self
+
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    auth = self.headers.get("Authorization") or ""
+                    mir.requests.append(self.path)
+                    ok = (
+                        auth == f"Bearer {expected_token}"
+                        if expected_token is not None
+                        else (auth.startswith("Bearer ") and len(auth) > len("Bearer "))
+                    )
+                    mir.auth_ok.append(ok)
+                    if not ok:
+                        self.send_response(401)
+                        self.end_headers()
+                        return
+                    for known_hex, data in blobs.items():
+                        if self.path in (f"{prefix}/blobs/sha256-{known_hex}", f"/blobs/sha256-{known_hex}"):
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", port), Handler)
+            self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}{prefix}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    return _StubMirror()
+
+
 def _ollama_manifest_path(model: str, models_dir: Path | None = None) -> Path:
     namespace, name, tag = _parse_ollama_model(model)
     base = models_dir if models_dir is not None else (WORK / "ollama-models")
@@ -3181,56 +3308,93 @@ def _verify_manifest_sha256(manifest_path: Path, digest: str) -> tuple[bytes, st
 
 def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result: dict) -> dict:
     """Install `model` from a sha256-verified Ollama manifest file: fetch the config and each layer blob by digest from
-    `PIN_OLLAMA_REGISTRY` (default `https://registry.ollama.ai`), stream each to a temporary file and verify its sha256
-    and size against the manifest before moving it into `<OLLAMA_MODELS>/blobs/sha256-<hex>`, and write the manifest
-    byte-for-byte to `<OLLAMA_MODELS>/manifests/registry.ollama.ai/library/<name>/<tag>` before `ollama serve` starts."""
+    `PIN_OLLAMA_MIRROR` (`<base>/blobs/sha256-<hex>` with `Authorization: Bearer <token>`) when set, or from
+    `PIN_OLLAMA_REGISTRY` (default `https://registry.ollama.ai`, `/v2/<namespace>/<name>/blobs/sha256:<hex>`), stream
+    each to a temporary file and verify its sha256 and size against the manifest before moving it into
+    `<OLLAMA_MODELS>/blobs/sha256-<hex>`, and write the manifest byte-for-byte to
+    `<OLLAMA_MODELS>/manifests/registry.ollama.ai/library/<name>/<tag>` before `ollama serve` starts."""
 
     global CUT_AT
-    manifest_bytes, got_manifest_sha = _verify_manifest_sha256(manifest_path, digest)
-    namespace, name, _tag = _parse_ollama_model(model)
-    try:
-        parsed = json.loads(manifest_bytes.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as e:
-        raise RuntimeError(f"REFUSED: invalid JSON in PIN_OFFRIG_MANIFEST {manifest_path}: {e}") from e
-    config_desc = parsed.get("config") if isinstance(parsed, dict) else None
-    layers_desc = parsed.get("layers") if isinstance(parsed, dict) else None
-    if not isinstance(config_desc, dict) or not isinstance(layers_desc, list) or not layers_desc:
-        raise RuntimeError(f"REFUSED: PIN_OFFRIG_MANIFEST {manifest_path} must have config and non-empty layers")
-    descriptors = [config_desc, *layers_desc]
-    validated_descs: list[tuple[str, str, int, str]] = []
-    for desc in descriptors:
-        if not isinstance(desc, dict):
-            raise RuntimeError(f"REFUSED: invalid descriptor in PIN_OFFRIG_MANIFEST: {desc!r}")
-        raw_b_digest = str(desc.get("digest") or "")
-        blob_hex = _require_sha256("manifest blob digest", raw_b_digest)
-        blob_digest = f"sha256:{blob_hex}"
-        expected_size = desc.get("size")
-        if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
-            raise RuntimeError(f"REFUSED: invalid size for blob {blob_digest} in manifest: {expected_size!r}")
-        validated_descs.append((blob_digest, blob_hex, expected_size, str(desc.get("mediaType") or "")))
+    raw_mirror = (os.environ.get("PIN_OLLAMA_MIRROR") or "").strip()
+    raw_reg = (os.environ.get("PIN_OLLAMA_REGISTRY") or "").strip()
+    use_mirror = bool(raw_mirror)
+    mirror_token: str | None = None
+    if use_mirror:
+        if _TOKEN is None and token_file().exists():
+            read_token_file(needed=True)
+        mirror_token = take_token()
+    else:
+        take_token()
 
-    models_dir = WORK / "ollama-models"
-    manifest_dst = _ollama_manifest_path(model, models_dir)
-    registry_base, stub_reg = _resolve_ollama_registry_base(os.environ.get("PIN_OLLAMA_REGISTRY"))
-    blobs_recorded: list[dict] = []
-    manifest_rec: dict = {
-        "path": str(manifest_path),
-        "sha256": got_manifest_sha,
-        "manifest_dst": str(manifest_dst),
-        "registry": registry_base,
-        "blobs": blobs_recorded,
-    }
-    if stub_mode():
-        manifest_rec["stub"] = True
-    result["offrig_manifest"] = manifest_rec
-
-    blobs_dir = models_dir / "blobs"
-    blobs_dir.mkdir(parents=True, exist_ok=True)
-    hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
-    read_timeout = float(OLLAMA_BLOB_READ_TIMEOUT_S)
+    stub_reg = None
     try:
+        manifest_bytes, got_manifest_sha = _verify_manifest_sha256(manifest_path, digest)
+        namespace, name, _tag = _parse_ollama_model(model)
+        if use_mirror and raw_reg:
+            raise RuntimeError("REFUSED: PIN_OLLAMA_MIRROR and PIN_OLLAMA_REGISTRY cannot both be set")
+        try:
+            parsed = json.loads(manifest_bytes.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"REFUSED: invalid JSON in PIN_OFFRIG_MANIFEST {manifest_path}: {e}") from e
+        config_desc = parsed.get("config") if isinstance(parsed, dict) else None
+        layers_desc = parsed.get("layers") if isinstance(parsed, dict) else None
+        if not isinstance(config_desc, dict) or not isinstance(layers_desc, list) or not layers_desc:
+            raise RuntimeError(f"REFUSED: PIN_OFFRIG_MANIFEST {manifest_path} must have config and non-empty layers")
+        descriptors = [config_desc, *layers_desc]
+        validated_descs: list[tuple[str, str, int, str]] = []
+        for desc in descriptors:
+            if not isinstance(desc, dict):
+                raise RuntimeError(f"REFUSED: invalid descriptor in PIN_OFFRIG_MANIFEST: {desc!r}")
+            raw_b_digest = str(desc.get("digest") or "")
+            blob_hex = _require_sha256("manifest blob digest", raw_b_digest)
+            blob_digest = f"sha256:{blob_hex}"
+            expected_size = desc.get("size")
+            if not isinstance(expected_size, int) or isinstance(expected_size, bool) or expected_size <= 0:
+                raise RuntimeError(f"REFUSED: invalid size for blob {blob_digest} in manifest: {expected_size!r}")
+            validated_descs.append((blob_digest, blob_hex, expected_size, str(desc.get("mediaType") or "")))
+
+        models_dir = WORK / "ollama-models"
+        manifest_dst = _ollama_manifest_path(model, models_dir)
+        blobs_recorded: list[dict] = []
+        if use_mirror:
+            mirror_base, mirror_revision, stub_reg = _resolve_ollama_mirror_base(
+                raw_mirror, expected_token=mirror_token
+            )
+            if mirror_token is None:
+                raise RuntimeError("REFUSED: PIN_OLLAMA_MIRROR is set, but no token file reached the VM")
+            manifest_rec: dict = {
+                "path": str(manifest_path),
+                "sha256": got_manifest_sha,
+                "manifest_dst": str(manifest_dst),
+                "mirror": {"base": mirror_base, "revision": mirror_revision},
+                "blobs": blobs_recorded,
+            }
+        else:
+            registry_base, stub_reg = _resolve_ollama_registry_base(os.environ.get("PIN_OLLAMA_REGISTRY"))
+            manifest_rec = {
+                "path": str(manifest_path),
+                "sha256": got_manifest_sha,
+                "manifest_dst": str(manifest_dst),
+                "registry": registry_base,
+                "blobs": blobs_recorded,
+            }
+        if stub_mode():
+            manifest_rec["stub"] = True
+        result["offrig_manifest"] = manifest_rec
+
+        blobs_dir = models_dir / "blobs"
+        blobs_dir.mkdir(parents=True, exist_ok=True)
+        hb_s = float(os.environ.get("PIN_HEARTBEAT_S") or HEARTBEAT_S)
+        read_timeout = float(OLLAMA_BLOB_READ_TIMEOUT_S)
         for blob_digest, blob_hex, expected_size, media_type in validated_descs:
-            url = f"{registry_base}/v2/{namespace}/{name}/blobs/{blob_digest}"
+            if use_mirror:
+                url = f"{mirror_base}/blobs/sha256-{blob_hex}"
+                if "ollama.ai" in url.lower():
+                    raise RuntimeError(f"REFUSED: mirror request must never target {url}")
+                req_headers = {"Authorization": f"Bearer {mirror_token}"}
+            else:
+                url = f"{registry_base}/v2/{namespace}/{name}/blobs/{blob_digest}"
+                req_headers = {}
             tmp_file = blobs_dir / f"sha256-{blob_hex}.part"
             final_file = blobs_dir / f"sha256-{blob_hex}"
             tmp_file.unlink(missing_ok=True)
@@ -3242,8 +3406,8 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                 check_deadline(f"downloading ollama blob {blob_digest}")
                 say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
                 hasher = hashlib.sha256()
-                req = urllib.request.Request(url)
-                with urllib.request.urlopen(req, timeout=read_timeout) as resp:  # noqa: S310 - allow-listed/stub registry
+                req = urllib.request.Request(url, headers=req_headers)
+                with urllib.request.urlopen(req, timeout=read_timeout) as resp:  # noqa: S310 - allow-listed/stub source
                     status = getattr(resp, "status", None) or resp.getcode()
                     if status is None or not (200 <= int(status) < 300):
                         raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {url}")
@@ -3387,9 +3551,13 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                 }
             )
     finally:
+        mirror_token = None  # noqa: F841 - dropped before any serve or calibrate wave runs
+        result["token_clean"] = token_clean()
         if stub_reg is not None:
             stub_reg.close()
 
+    if use_mirror:
+        check_token_clean(result)
     manifest_dst.parent.mkdir(parents=True, exist_ok=True)
     manifest_dst.write_bytes(manifest_bytes)
     return manifest_rec
@@ -3720,186 +3888,208 @@ def offrig_bench_window(result: dict) -> None:
     `offrig verify calibrate <gold> --model <m> --think on --structured on --split tune --jobs 1`."""
 
     global CUT_AT
-    # No HF token is needed for Ollama's registry; drop any token and verify the five-place residue check.
-    take_token()
-    check_token_clean(result)
-    ver = (os.environ.get("PIN_OLLAMA_VERSION") or OLLAMA_VERSION).strip()
-    if ver != OLLAMA_VERSION:
-        raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
-    raw_ollama_sha = os.environ.get("PIN_OLLAMA_SHA256")
-    if raw_ollama_sha is not None:
-        _require_sha256("PIN_OLLAMA_SHA256", raw_ollama_sha)
-    model = (os.environ.get("PIN_OFFRIG_MODEL") or OFFRIG_MODEL).strip()
-    if not model:
-        raise RuntimeError("REFUSED: PIN_OFFRIG_MODEL is empty")
-    raw_manifest = (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip()
-    raw_digest = os.environ.get("PIN_OFFRIG_MODEL_DIGEST")
-    default_digest = (
-        STUB_OLLAMA_MANIFEST_DIGEST
-        if (raw_digest is None and stub_mode() and raw_manifest in ("1", "stub"))
-        else (OFFRIG_MODEL_DIGEST if (raw_digest is None and model == OFFRIG_MODEL) else None)
-    )
-    digest = _require_sha256(
-        "PIN_OFFRIG_MODEL_DIGEST",
-        default_digest if raw_digest is None else raw_digest,
-    )
-    manifest_path = _resolve_manifest_path(raw_manifest) if raw_manifest else None
-    if manifest_path is not None:
-        _verify_manifest_sha256(manifest_path, digest)
-    offrig_bin, gold_path, inputs = offrig_bench_inputs(result)
-    base = WORK / "offrig-bench"
-    cal_out = base / "out"
-    proj_dir = base / "project"
-    smi_csv = base / "smi.csv"
-    base.mkdir(parents=True, exist_ok=True)
-    proj_dir.mkdir(parents=True, exist_ok=True)
-    ollama_bin = install_ollama(result)
-    port = int(os.environ.get("PIN_OLLAMA_PORT") or OLLAMA_PORT)
-    srv = OllamaServed(ollama_bin, model, "" if manifest_path is not None else digest, port)
+    raw_mirror = (os.environ.get("PIN_OLLAMA_MIRROR") or "").strip()
+    raw_reg = (os.environ.get("PIN_OLLAMA_REGISTRY") or "").strip()
+    if not raw_mirror:
+        # No HF token is needed for Ollama's registry; drop any token and verify the five-place residue check.
+        take_token()
+        check_token_clean(result)
+    else:
+        if _TOKEN is None and token_file().exists():
+            read_token_file(needed=True)
+        pre_clean = token_clean()
+        left = [k for k, v in pre_clean.items() if k != "value_dropped" and not v]
+        if left:
+            take_token()
+            result["token_clean"] = token_clean()
+            raise RuntimeError(f"a token residue is left before any wave ({', '.join(left)}); the window stops here")
     try:
+        ver = (os.environ.get("PIN_OLLAMA_VERSION") or OLLAMA_VERSION).strip()
+        if ver != OLLAMA_VERSION:
+            raise RuntimeError(f"REFUSED: PIN_OLLAMA_VERSION must be {OLLAMA_VERSION!r}, got {ver!r}")
+        raw_ollama_sha = os.environ.get("PIN_OLLAMA_SHA256")
+        if raw_ollama_sha is not None:
+            _require_sha256("PIN_OLLAMA_SHA256", raw_ollama_sha)
+        model = (os.environ.get("PIN_OFFRIG_MODEL") or OFFRIG_MODEL).strip()
+        if not model:
+            raise RuntimeError("REFUSED: PIN_OFFRIG_MODEL is empty")
+        raw_manifest = (os.environ.get("PIN_OFFRIG_MANIFEST") or "").strip()
+        raw_digest = os.environ.get("PIN_OFFRIG_MODEL_DIGEST")
+        default_digest = (
+            STUB_OLLAMA_MANIFEST_DIGEST
+            if (raw_digest is None and stub_mode() and raw_manifest in ("1", "stub"))
+            else (OFFRIG_MODEL_DIGEST if (raw_digest is None and model == OFFRIG_MODEL) else None)
+        )
+        digest = _require_sha256(
+            "PIN_OFFRIG_MODEL_DIGEST",
+            default_digest if raw_digest is None else raw_digest,
+        )
+        manifest_path = _resolve_manifest_path(raw_manifest) if raw_manifest else None
         if manifest_path is not None:
-            install_ollama_manifest(manifest_path, model, digest, result)
-        with srv:
-            pull_ollama_model(ollama_bin, model, digest, port, result, from_manifest=manifest_path is not None)
-            ps_warm = warmup_ollama_model(model, digest, port, base, result)
-            check_deadline("offrig verify calibrate")
-            cmd = [
-                str(offrig_bin),
-                "verify",
-                "calibrate",
-                str(gold_path),
-                "--model",
-                model,
-                "--think",
-                "on",
-                "--structured",
-                "on",
-                "--split",
-                "tune",
-                "--jobs",
-                "1",
-                "--project",
-                str(proj_dir),
-                "--out",
-                str(cal_out),
-            ]
-            if port != 11434:
-                cmd += ["--url", f"http://127.0.0.1:{port}"]
-            stop = threading.Event()
-            smi_stats = {"samples": 0, "peak_vram_mib": 0}
-            smi_thread = threading.Thread(target=sample_smi_every_2s, args=(smi_csv, stop, smi_stats), daemon=True)
-            smi_thread.start()
-            left = deadline_left()
-            t0 = time.time()
-            ps_end: dict | None = None
-            try:
-                try:
-                    run = run_proc(
-                        cmd,
-                        timeout=4 * 3600 if left is None else min(4 * 3600, max(left, 1)),
-                        cwd=str(base),
-                        term_first=left is not None,
-                    )
-                except subprocess.TimeoutExpired:
-                    if left is None or left >= 4 * 3600:
-                        raise
-                    CUT_AT = {
-                        "wave": "offrig-bench",
-                        "out": str(cal_out),
-                        "model": model,
-                        "seconds": round(time.time() - t0),
-                        "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                    }
-                    say(f"CUT AT THE DEADLINE offrig-bench {model} after {CUT_AT['seconds']} s")
-                    raise DeadlineReached("the offrig-bench calibrate run was cut at the window's deadline") from None
-            finally:
-                stop.set()
-                smi_thread.join(timeout=15)
-                result["smi"] = {
-                    "interval_s": SMI_INTERVAL_S,
-                    "samples": smi_stats["samples"],
-                    "peak_vram_mib": smi_stats["peak_vram_mib"],
-                    "csv": str(smi_csv),
-                }
-                try:
-                    with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ps", timeout=10) as resp:  # noqa: S310 - loopback
-                        ps_end = json.loads(resp.read())
-                    (base / "ps-end.json").write_text(json.dumps(ps_end, indent=1) + "\n", encoding="utf-8")
-                    result["ps_end"] = ps_end
-                    unload_req = urllib.request.Request(
-                        f"http://127.0.0.1:{port}/api/generate",
-                        data=json.dumps({"model": model, "keep_alive": 0}).encode("utf-8"),
-                        headers={"Content-Type": "application/json"},
-                    )
-                    with urllib.request.urlopen(unload_req, timeout=10) as resp:  # noqa: S310 - loopback
-                        resp.read()
-                except (OSError, ValueError):
-                    pass
-            (base / "offrig.log").write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
-            if run.returncode != 0:
-                raise RuntimeError(f"offrig verify calibrate exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
-            warm_m = (ps_warm.get("models") or [{}])[0]
-            end_models = (ps_end or {}).get("models") or []
-            if len(end_models) != 1:
-                msg = f"REFUSED: {model} did not stay loaded in /api/ps after offrig run: {ps_end}"
-                result["error"] = msg
-                raise RuntimeError(msg)
-            end_m = end_models[0]
-            warm_ctx = int(warm_m.get("context_length") or 0)
-            end_ctx = int(end_m.get("context_length") or 0)
-            if end_ctx != warm_ctx:
-                msg = f"REFUSED: /api/ps context_length changed during offrig run: warm-up {warm_ctx} != post-run {end_ctx}"
-                result["error"] = msg
-                raise RuntimeError(msg)
-            warm_vram = int(warm_m.get("size_vram") or 0)
-            end_vram = int(end_m.get("size_vram") or 0)
-            if end_vram != warm_vram:
-                msg = f"REFUSED: /api/ps size_vram changed during offrig run: warm-up {warm_vram} != post-run {end_vram}"
-                result["error"] = msg
-                raise RuntimeError(msg)
-            verdicts_file = cal_out / "verdicts.jsonl"
-            verdicts_count = (
-                sum(1 for ln in verdicts_file.read_text(encoding="utf-8").splitlines() if ln.strip())
-                if verdicts_file.is_file()
-                else 0
-            )
-            metrics_file = cal_out / "metrics.json"
-            manifest_file = cal_out / "manifest.json"
-            metrics = json.loads(metrics_file.read_text(encoding="utf-8")) if metrics_file.is_file() else None
-            if stub_mode():
-                for jf in (metrics_file, manifest_file):
-                    if jf.is_file():
-                        jd = json.loads(jf.read_text(encoding="utf-8"))
-                        jd["stub"] = True
-                        jf.write_text(json.dumps(jd, indent=1) + "\n", encoding="utf-8")
-                if isinstance(metrics, dict):
-                    metrics["stub"] = True
-            out_tail = run.stdout
-            if stub_mode() and not out_tail.startswith("# STUB"):
-                out_tail = "# STUB RUN (PIN_STUB=1)\n" + out_tail
-            result["offrig_bench"] = {
-                "model": model,
-                "model_digest": digest,
-                "gold": gold_path.name,
-                "gold_sha256": inputs["gold_sha256"],
-                "offrig_sha256": inputs["offrig_sha256"],
-                "exit": run.returncode,
-                "seconds": round(time.time() - t0),
-                "verdicts_count": verdicts_count,
-                "metrics": metrics,
-                "stdout_tail": out_tail[-2500:],
-                **({"stub": True} if stub_mode() else {}),
-            }
-            result["model_errors"] = 0
-    finally:
-        if srv.log is not None and Path(srv.log).exists() and Path(srv.log) != base / "ollama-serve.log":
-            shutil.copy(srv.log, base / "ollama-serve.log")
-        if (base / "ps.json").exists() and not (WORK / "ps.json").exists():
-            shutil.copy(base / "ps.json", WORK / "ps.json")
+            _verify_manifest_sha256(manifest_path, digest)
+        if raw_mirror:
+            if manifest_path is None:
+                raise RuntimeError("REFUSED: PIN_OLLAMA_MIRROR requires PIN_OFFRIG_MANIFEST")
+            if raw_reg:
+                raise RuntimeError("REFUSED: PIN_OLLAMA_MIRROR and PIN_OLLAMA_REGISTRY cannot both be set")
+            if not stub_mode():
+                _resolve_ollama_mirror_base(raw_mirror)
+        offrig_bin, gold_path, inputs = offrig_bench_inputs(result)
+        base = WORK / "offrig-bench"
+        cal_out = base / "out"
+        proj_dir = base / "project"
+        smi_csv = base / "smi.csv"
+        base.mkdir(parents=True, exist_ok=True)
+        proj_dir.mkdir(parents=True, exist_ok=True)
+        ollama_bin = install_ollama(result)
+        port = int(os.environ.get("PIN_OLLAMA_PORT") or OLLAMA_PORT)
+        srv = OllamaServed(ollama_bin, model, "" if manifest_path is not None else digest, port)
         try:
-            sh(f"tar -C {WORK} -cf {WORK}/offrig-bench-out.tar offrig-bench")
-        except Exception as e:  # noqa: BLE001 - recorded; the result still prints
-            result["tar_error"] = str(e)[:300]
+            if manifest_path is not None:
+                install_ollama_manifest(manifest_path, model, digest, result)
+            with srv:
+                pull_ollama_model(ollama_bin, model, digest, port, result, from_manifest=manifest_path is not None)
+                ps_warm = warmup_ollama_model(model, digest, port, base, result)
+                check_deadline("offrig verify calibrate")
+                cmd = [
+                    str(offrig_bin),
+                    "verify",
+                    "calibrate",
+                    str(gold_path),
+                    "--model",
+                    model,
+                    "--think",
+                    "on",
+                    "--structured",
+                    "on",
+                    "--split",
+                    "tune",
+                    "--jobs",
+                    "1",
+                    "--project",
+                    str(proj_dir),
+                    "--out",
+                    str(cal_out),
+                ]
+                if port != 11434:
+                    cmd += ["--url", f"http://127.0.0.1:{port}"]
+                stop = threading.Event()
+                smi_stats = {"samples": 0, "peak_vram_mib": 0}
+                smi_thread = threading.Thread(target=sample_smi_every_2s, args=(smi_csv, stop, smi_stats), daemon=True)
+                smi_thread.start()
+                left = deadline_left()
+                t0 = time.time()
+                ps_end: dict | None = None
+                try:
+                    try:
+                        run = run_proc(
+                            cmd,
+                            timeout=4 * 3600 if left is None else min(4 * 3600, max(left, 1)),
+                            cwd=str(base),
+                            term_first=left is not None,
+                        )
+                    except subprocess.TimeoutExpired:
+                        if left is None or left >= 4 * 3600:
+                            raise
+                        CUT_AT = {
+                            "wave": "offrig-bench",
+                            "out": str(cal_out),
+                            "model": model,
+                            "seconds": round(time.time() - t0),
+                            "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        }
+                        say(f"CUT AT THE DEADLINE offrig-bench {model} after {CUT_AT['seconds']} s")
+                        raise DeadlineReached("the offrig-bench calibrate run was cut at the window's deadline") from None
+                finally:
+                    stop.set()
+                    smi_thread.join(timeout=15)
+                    result["smi"] = {
+                        "interval_s": SMI_INTERVAL_S,
+                        "samples": smi_stats["samples"],
+                        "peak_vram_mib": smi_stats["peak_vram_mib"],
+                        "csv": str(smi_csv),
+                    }
+                    try:
+                        with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/ps", timeout=10) as resp:  # noqa: S310 - loopback
+                            ps_end = json.loads(resp.read())
+                        (base / "ps-end.json").write_text(json.dumps(ps_end, indent=1) + "\n", encoding="utf-8")
+                        result["ps_end"] = ps_end
+                        unload_req = urllib.request.Request(
+                            f"http://127.0.0.1:{port}/api/generate",
+                            data=json.dumps({"model": model, "keep_alive": 0}).encode("utf-8"),
+                            headers={"Content-Type": "application/json"},
+                        )
+                        with urllib.request.urlopen(unload_req, timeout=10) as resp:  # noqa: S310 - loopback
+                            resp.read()
+                    except (OSError, ValueError):
+                        pass
+                (base / "offrig.log").write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
+                if run.returncode != 0:
+                    raise RuntimeError(f"offrig verify calibrate exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
+                warm_m = (ps_warm.get("models") or [{}])[0]
+                end_models = (ps_end or {}).get("models") or []
+                if len(end_models) != 1:
+                    msg = f"REFUSED: {model} did not stay loaded in /api/ps after offrig run: {ps_end}"
+                    result["error"] = msg
+                    raise RuntimeError(msg)
+                end_m = end_models[0]
+                warm_ctx = int(warm_m.get("context_length") or 0)
+                end_ctx = int(end_m.get("context_length") or 0)
+                if end_ctx != warm_ctx:
+                    msg = f"REFUSED: /api/ps context_length changed during offrig run: warm-up {warm_ctx} != post-run {end_ctx}"
+                    result["error"] = msg
+                    raise RuntimeError(msg)
+                warm_vram = int(warm_m.get("size_vram") or 0)
+                end_vram = int(end_m.get("size_vram") or 0)
+                if end_vram != warm_vram:
+                    msg = f"REFUSED: /api/ps size_vram changed during offrig run: warm-up {warm_vram} != post-run {end_vram}"
+                    result["error"] = msg
+                    raise RuntimeError(msg)
+                verdicts_file = cal_out / "verdicts.jsonl"
+                verdicts_count = (
+                    sum(1 for ln in verdicts_file.read_text(encoding="utf-8").splitlines() if ln.strip())
+                    if verdicts_file.is_file()
+                    else 0
+                )
+                metrics_file = cal_out / "metrics.json"
+                manifest_file = cal_out / "manifest.json"
+                metrics = json.loads(metrics_file.read_text(encoding="utf-8")) if metrics_file.is_file() else None
+                if stub_mode():
+                    for jf in (metrics_file, manifest_file):
+                        if jf.is_file():
+                            jd = json.loads(jf.read_text(encoding="utf-8"))
+                            jd["stub"] = True
+                            jf.write_text(json.dumps(jd, indent=1) + "\n", encoding="utf-8")
+                    if isinstance(metrics, dict):
+                        metrics["stub"] = True
+                out_tail = run.stdout
+                if stub_mode() and not out_tail.startswith("# STUB"):
+                    out_tail = "# STUB RUN (PIN_STUB=1)\n" + out_tail
+                result["offrig_bench"] = {
+                    "model": model,
+                    "model_digest": digest,
+                    "gold": gold_path.name,
+                    "gold_sha256": inputs["gold_sha256"],
+                    "offrig_sha256": inputs["offrig_sha256"],
+                    "exit": run.returncode,
+                    "seconds": round(time.time() - t0),
+                    "verdicts_count": verdicts_count,
+                    "metrics": metrics,
+                    "stdout_tail": out_tail[-2500:],
+                    **({"stub": True} if stub_mode() else {}),
+                }
+                result["model_errors"] = 0
+        finally:
+            if srv.log is not None and Path(srv.log).exists() and Path(srv.log) != base / "ollama-serve.log":
+                shutil.copy(srv.log, base / "ollama-serve.log")
+            if (base / "ps.json").exists() and not (WORK / "ps.json").exists():
+                shutil.copy(base / "ps.json", WORK / "ps.json")
+            try:
+                sh(f"tar -C {WORK} -cf {WORK}/offrig-bench-out.tar offrig-bench")
+            except Exception as e:  # noqa: BLE001 - recorded; the result still prints
+                result["tar_error"] = str(e)[:300]
+    finally:
+        take_token()
 
 
 def resolve_pilot_pool(rs: dict, plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
@@ -4203,7 +4393,11 @@ def _main() -> int:
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
         print("PIN_RESULT " + json.dumps(result), flush=True)
         return 1
-    needs_token = role0 == "prebuild" or (role0 in ("pilot", "critic-eval") and bool(os.environ.get("PIN_GGUF_REPO")))
+    needs_token = (
+        role0 == "prebuild"
+        or (role0 in ("pilot", "critic-eval") and bool(os.environ.get("PIN_GGUF_REPO")))
+        or (role0 == "offrig-bench" and bool((os.environ.get("PIN_OLLAMA_MIRROR") or "").strip()))
+    )
     if needs_token and not token_file().parent.is_dir():
         result["ok"], result["error"] = False, "REFUSED: no /dev/shm on this VM, where the token file goes; nothing downloaded"
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
