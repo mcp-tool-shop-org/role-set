@@ -37,7 +37,7 @@ DRAFTS_FILE = "wave-drafts.jsonl"
 PENDING = ("awaiting_critique", "needs_rewrite")
 FINAL = ("accepted", "dropped", "skipped")
 # Pins that belong to one wave's host, not to the batch: they may differ from wave to wave.
-WAVE_LOCAL = ("grant", "machine", "wave", "drafts_sha256", "llama_server_commit", "llama_server_sha256", "writers_list_sha256")
+WAVE_LOCAL = ("grant", "machine", "wave", "drafts_sha256", "llama_server_commit", "llama_server_sha256", "llama_server_archs", "writers_list_sha256")
 
 
 class WaveError(RuntimeError):

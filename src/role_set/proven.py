@@ -40,6 +40,7 @@ class ProvenList:
     critics: dict[str, dict]
     server: dict
     sha256: str
+    server_builds: tuple[dict, ...] = ()
 
 
 def _text(entry: dict, field: str) -> str:
@@ -88,7 +89,8 @@ def load(path: Path) -> ProvenList:
                 raise GuardError(f"REFUSED: {name} is listed twice among the {where}")
             out[where][name] = entry
     return ProvenList(writers=out["writers"], critics=out["critics"], server=data.get("llama_server") or {},
-                      sha256=hashlib.sha256(raw).hexdigest())
+                      sha256=hashlib.sha256(raw).hexdigest(),
+                      server_builds=tuple(data.get("llama_server_builds") or ()))
 
 
 def require_pinned(entry: dict, measured_sha256: str | None) -> dict:
@@ -111,19 +113,37 @@ def require_pinned(entry: dict, measured_sha256: str | None) -> dict:
             "training": entry["training"]}
 
 
-def require_server(server: dict, measured_sha256: str | None) -> dict:
+def require_server(server: dict | ProvenList, measured_sha256: str | None,
+                   other_builds: tuple[dict, ...] | list[dict] = ()) -> dict:
     """The llama-server binary the wave launched is the one the list pins (built with CUDA 13.4)."""
 
-    missing = [f for f in SERVER_FIELDS if not _text(server, f)]
+    if isinstance(server, ProvenList):
+        default_server = server.server
+        builds = tuple(other_builds) if other_builds else server.server_builds
+    else:
+        default_server = server
+        builds = tuple(other_builds)
+    missing = [f for f in SERVER_FIELDS if not _text(default_server, f)]
     if missing:
         raise GuardError(f"REFUSED: llama_server is not pinned yet (no {', '.join(missing)})")
-    pinned = _text(server, "sha256").lower()
+    for idx, entry in enumerate(builds):
+        b_missing = [f for f in SERVER_FIELDS if not _text(entry, f)]
+        if b_missing:
+            raise GuardError(f"REFUSED: llama_server_builds[{idx}] is not pinned yet (no {', '.join(b_missing)})")
+    pinned = _text(default_server, "sha256").lower()
     got = (measured_sha256 or "").strip().lower()
     if not got:
         raise GuardError("REFUSED: the llama-server binary's measured sha256 is required from the wave script")
-    if got != pinned:
+    candidates = [default_server, *builds]
+    matched = next((entry for entry in candidates if _text(entry, "sha256").lower() == got), None)
+    if matched is None:
         raise GuardError(f"REFUSED: llama-server {got[:12]} differs from the pinned {pinned[:12]}; rebuild or re-pin")
-    return {"commit": _text(server, "commit"), "sha256": pinned}
+    out = {"commit": _text(matched, "commit"), "sha256": _text(matched, "sha256").lower()}
+    for opt in ("cuda", "archs"):
+        val = _text(matched, opt)
+        if val:
+            out[opt] = val
+    return out
 
 
 def require_other_family(writer: dict, critic: dict) -> None:

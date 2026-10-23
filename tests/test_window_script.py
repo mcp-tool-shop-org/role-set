@@ -407,6 +407,70 @@ def test_the_stub_call_knob_never_runs_on_a_gpu_window():
     assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on A100" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job
 
+
+def test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend():
+    import hashlib
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-bincheck-"))
+    binfile = tmp / "bin.dat"
+    bin_bytes = b"fake-llama-server-binary-bytes"
+    binfile.write_bytes(bin_bytes)
+    bin_sha = hashlib.sha256(bin_bytes).hexdigest()
+    default_sha = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+    g4_sha = "39742d8a0354d4577da8dcc9cb3a5b9f03f02593d106eff41297e952d6ebfc95"
+    script = str(ROOT / "scripts/colab/smoke_window.sh")
+
+    # 1. Refusal: malformed PIN_SERVER_SHA256 is refused before `colab new` (even when PIN_SKIP_BINARY=1)
+    for idx, bad in enumerate(("", "a" * 63, "a" * 65, g4_sha.upper(), "g" + "a" * 63)):
+        out_bad = tmp / f"out-bad-{idx}"
+        env_bad = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-bad-{idx}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-bad-{idx}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_SKIP_BINARY": "1",
+            "PIN_SERVER_SHA256": bad,
+        }
+        r_bad = subprocess.run(["bash", script, str(binfile), str(out_bad)], env=env_bad, capture_output=True, text=True, timeout=30, check=False)
+        assert r_bad.returncode == 2, (bad, r_bad.returncode, r_bad.stdout, r_bad.stderr)
+        assert f"REFUSED: PIN_SERVER_SHA256={bad} must be 64 lowercase hex characters" in r_bad.stderr, r_bad.stderr
+        assert not (tmp / f"st-bad-{idx}" / "news").exists()
+
+    # 2. Refusal: when PIN_SKIP_BINARY is not 1, binary sha256 mismatch is refused before `colab new` (both default and overridden)
+    for tag, env_sha, want_sha in (("default", {}, default_sha), ("override", {"PIN_SERVER_SHA256": g4_sha}, g4_sha)):
+        out_mism = tmp / f"out-mism-{tag}"
+        env_mism = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-mism-{tag}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-mism-{tag}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_SKIP_BINARY": "0",
+            **env_sha,
+        }
+        r_mism = subprocess.run(["bash", script, str(binfile), str(out_mism)], env=env_mism, capture_output=True, text=True, timeout=30, check=False)
+        assert r_mism.returncode == 2, (tag, r_mism.returncode, r_mism.stdout, r_mism.stderr)
+        assert f"REFUSED: llama-server {binfile} sha256 {bin_sha} != expected {want_sha}" in r_mism.stderr, r_mism.stderr
+        assert not (tmp / f"st-mism-{tag}" / "news").exists()
+        assert not (out_mism / "upload").exists()
+
+    # 3. Pass: when sha256sum "$BIN" equals PIN_SERVER_SHA256 (with PIN_SKIP_BINARY=0), the window opens, uploads the binary, and runs the job
+    default_window_bin_sha = hashlib.sha256(b"x" * 1000).hexdigest()
+    rig_pass, job_pass, out_pass = _window(
+        "normal",
+        extra={
+            "PIN_SKIP_BINARY": "0",
+            "PIN_SERVER_SHA256": default_window_bin_sha,
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "REFUSED" not in rig_pass and "uploaded llama-server.gz.part00" in rig_pass, rig_pass
+    assert job_pass.count("PIN_RESULT") == 1 and (out_pass / "pin-result.json").exists(), job_pass
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     failed = 0
     for name, fn in list(globals().items()):

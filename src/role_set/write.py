@@ -293,6 +293,15 @@ def build(cfg: WriteConfig, *, now=time.time):
         except GatesUnavailable:
             gates = mock_gates()
         pins.update({"writer_model": "mock", "critic_model": "mock" if uses_critic else None, "mock": True, "partition": cfg.partition})
+        if cfg.server_sha256 is not None:
+            try:
+                listed = proven.load(cfg.writers_file)
+                server = proven.require_server(listed, cfg.server_sha256)
+            except GuardError as e:
+                raise WriteRefused(str(e)) from e
+            pins.update({"llama_server_commit": server["commit"], "llama_server_sha256": server["sha256"]})
+            if "archs" in server:
+                pins["llama_server_archs"] = server["archs"]
         pins["_mock_answers"] = answers  # carried into the drafts header by run(), never onto a receipt
         return slots, sides, pack, trait_names, gates, writer, critic, pins, None
 
@@ -303,7 +312,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         partition = proven.require_partition(cfg.partition)
         _require_critic_policy(cfg, partition)
         machine = proven.load_machine(cfg.machine)
-        server = proven.require_server(listed.server, cfg.server_sha256)
+        server = proven.require_server(listed, cfg.server_sha256)
         if cfg.cards is None:
             raise GuardError("REFUSED: the writer and the critic run at their card values; pass --cards <card-values.json>")
         card_set, card_sha = cards.load(cfg.cards)
@@ -344,6 +353,8 @@ def build(cfg: WriteConfig, *, now=time.time):
     rehearsal = bool(entry.get("rehearsal_only")) if uses_writer else bool((header or {}).get("batch_pins", {}).get("rehearsal"))
     pins.update({"partition": partition, "llama_server_commit": server["commit"], "llama_server_sha256": server["sha256"],
                  "machine": machine, "writers_list_sha256": listed.sha256, "rehearsal": rehearsal})
+    if "archs" in server:
+        pins["llama_server_archs"] = server["archs"]
     writer = None
     if uses_writer:
         pins.update({"writer_model": model, **{f"writer_{k}": v for k, v in w_pins.items()}, **cards.pins(card, card_sha),
@@ -477,7 +488,10 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
         header["stub"] = True
     if cfg.wave in ("write", "rewrite"):
         header["writer_pins"] = waves.writer_pins(pins)
-        header["writer_host"] = {k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")}
+        header["writer_host"] = {
+            **{k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")},
+            **({"llama_server_archs": pins["llama_server_archs"]} if "llama_server_archs" in pins else {}),
+        }
     else:
         # A critique loads no writer, so it carries the drafts' writer pins forward, card pins included wherever an
         # older header kept them. Window 12s5a: an old header's card pins sat in batch_pins, the critique's batch pins

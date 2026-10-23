@@ -70,6 +70,25 @@ if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
   echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
   exit 2
 fi
+DEFAULT_SERVER_SHA256="b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+if [ "${PIN_SERVER_SHA256+set}" = set ]; then
+  if ! printf '%s' "$PIN_SERVER_SHA256" | grep -qE '^[0-9a-f]{64}$'; then
+    echo "REFUSED: PIN_SERVER_SHA256=${PIN_SERVER_SHA256} must be 64 lowercase hex characters" >&2
+    exit 2
+  fi
+fi
+WANT_SERVER_SHA256="${PIN_SERVER_SHA256:-$DEFAULT_SERVER_SHA256}"
+if [ "${PIN_SKIP_BINARY:-0}" != 1 ]; then
+  if [ ! -f "$BIN" ]; then
+    echo "REFUSED: binary $BIN does not exist" >&2
+    exit 2
+  fi
+  GOT_SERVER_SHA256=$(sha256sum "$BIN" | awk '{print $1}')
+  if [ "$GOT_SERVER_SHA256" != "$WANT_SERVER_SHA256" ]; then
+    echo "REFUSED: llama-server $BIN sha256 $GOT_SERVER_SHA256 != expected $WANT_SERVER_SHA256" >&2
+    exit 2
+  fi
+fi
 export COLUMNS=150
 bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
@@ -130,7 +149,6 @@ case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
   A100:*) GPU_RATE=5.3;;
   CPU:1) GPU_RATE=0.26;;
   CPU:*) GPU_RATE=0.08;;
-  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
 esac
 OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}'); T_OPEN=$(date +%s)
 echo "own rate $OWN_RATE/hr"

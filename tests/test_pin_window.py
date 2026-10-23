@@ -2213,6 +2213,7 @@ def test_pin_server_sha256_default_override_all_sites_and_refusals(tmp_path, mon
 
     rt_default = pw.runtime()
     assert rt_default["sha256"] == default_sha and rt_default["sha256_override"] is False
+    assert rt_default["commit"] == pw.LLAMA_CPP_COMMIT and rt_default["archs"] == "80;90;100 (SASS only, no PTX)"
 
     monkeypatch.setenv("PIN_ROLE", "pilot")
     monkeypatch.setenv("PIN_STUB", "1")
@@ -2221,10 +2222,16 @@ def test_pin_server_sha256_default_override_all_sites_and_refusals(tmp_path, mon
     pin_res_default = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
     assert pin_res_default["server_sha256"] == default_sha
     assert pin_res_default["server_sha256_override"] is False
+    assert pin_res_default["server_pin"] == {
+        "commit": pw.LLAMA_CPP_COMMIT,
+        "sha256": default_sha,
+        "archs": "80;90;100 (SASS only, no PTX)",
+    }
     assert pin_res_default["llama_server"]["sha256"] == default_sha
+    assert pin_res_default["llama_server"]["archs"] == "80;90;100 (SASS only, no PTX)"
     assert pin_res_default["llama_server"]["sha256_override"] is False
 
-    # 2. Valid 64-char lowercase hex override reaches all four sites + pin-result.json records server_sha256_override=True
+    # 2. Valid 64-char lowercase hex override reaches all four sites + pin-result.json records server_sha256_override=True and G4 server_pin
     monkeypatch.setenv("PIN_SERVER_SHA256", g4_sha)
     assert pw.server_sha256() == g4_sha
 
@@ -2238,7 +2245,7 @@ def test_pin_server_sha256_default_override_all_sites_and_refusals(tmp_path, mon
     pw_common_ov = seen_pilot_commons[-1]
     assert pw_common_ov[pw_common_ov.index("--llama-server-sha256") + 1] == g4_sha
 
-    # 3. runtime() refuses a binary whose sha differs from the override (including window 1's default binary), and accepts matching sha
+    # 3. runtime() refuses a binary whose sha differs from the override (including window 1's default binary) or an unlisted sha, and accepts matching G4 sha
     current_binary_sha = default_sha
     with pytest.raises(RuntimeError, match=f"llama-server {default_sha[:12]} isn't pinned {g4_sha[:12]}"):
         pw.runtime()
@@ -2248,15 +2255,32 @@ def test_pin_server_sha256_default_override_all_sites_and_refusals(tmp_path, mon
     current_binary_sha = g4_sha
     rt_ov = pw.runtime()
     assert rt_ov["sha256"] == g4_sha and rt_ov["sha256_override"] is True
+    assert rt_ov["commit"] == pw.LLAMA_CPP_COMMIT and rt_ov["archs"] == "80;90;100;120 (sm_120a SASS)"
 
     rc_ov = pw._main()
     assert rc_ov == 0
     pin_res_ov = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
     assert pin_res_ov["server_sha256"] == g4_sha
     assert pin_res_ov["server_sha256_override"] is True
+    assert pin_res_ov["server_pin"] == {
+        "commit": pw.LLAMA_CPP_COMMIT,
+        "sha256": g4_sha,
+        "archs": "80;90;100;120 (sm_120a SASS)",
+    }
     assert pin_res_ov["llama_server"]["sha256"] == g4_sha
+    assert pin_res_ov["llama_server"]["archs"] == "80;90;100;120 (sm_120a SASS)"
     assert pin_res_ov["llama_server"]["sha256_override"] is True
     assert seen_pilot_commons[-1][seen_pilot_commons[-1].index("--llama-server-sha256") + 1] == g4_sha
+
+    # Unlisted 64-hex sha is refused by server_pin_entry before work
+    monkeypatch.setenv("PIN_SERVER_SHA256", other_sha)
+    with pytest.raises(RuntimeError, match=f"REFUSED: llama-server {other_sha[:12]} is not a pinned build in writers.json"):
+        pw.runtime()
+    rc_unlisted = pw._main()
+    assert rc_unlisted == 1
+    pin_res_unlisted = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res_unlisted["ok"] is False
+    assert f"REFUSED: llama-server {other_sha[:12]} is not a pinned build in writers.json" in pin_res_unlisted["error"]
 
     # 4. Malformed values (63 hex, 65 hex, uppercase, non-hex, empty) are refused with REFUSED: before any work
     for bad in (
