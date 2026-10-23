@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-23 from commit 8df62c0 by Atlas 1.24.0.
+Mapped at 2026-10-23 from commit 6e324da by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,13 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (114 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-22 (bd17c93)
+## What changed since 2026-10-23 (8df62c0)
 
-Nothing structural changed since 2026-10-22; 1 file added and 24 changed content.
+- tests/fixtures/card-values.json is now also read by tests/test_write.py.
+- tests/fixtures/ollama-manifest/ is now read by tests/test_pin_window.py.
+- tests/fixtures/ollama-manifest/manifest.json is now read by tests/test_pin_window.py.
+- And 1 more new writer or reader of a place.
+- 7 files added and 25 changed content, across 4 parts.
 
 ## What comes in
 
@@ -44,8 +48,8 @@ CI writes nothing this map can see.
 ## What tends to change together
 
 - **src/role_set/generate/build.py** and **src/role_set/generate/recipes.py** changed together in 6 of 10 commits, inside the src part.
-- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 7 of 12 commits, and the tests part imports the src part.
-- **src/role_set/mock.py** and **tests/test_runner.py** changed together in 14 of 25 commits, and the tests part imports the src part.
+- **src/role_set/mock.py** and **tests/test_runner.py** changed together in 14 of 26 commits, and the tests part imports the src part.
+- **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 7 of 13 commits, and the tests part imports the src part.
 
 5 files changed together with their own tests, as expected.
 
@@ -76,7 +80,7 @@ No two parts export a helper that looks alike.
 
 ## Hand-authored
 
-People write .github/, assets/, docs/, the repository root and site/; 6 writes with paths built at run time may land here.
+People write .github/, assets/, docs/, the repository root and site/; 9 writes with paths built at run time may land here.
 
 ## Where to start
 
@@ -87,8 +91,8 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
-- 6 writes and 30 reads use paths built at run time and are not named here.
-- 40 writes and 99 reads go to a path their caller passes, not to this repository.
+- 9 writes and 32 reads use paths built at run time and are not named here.
+- 56 writes and 108 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

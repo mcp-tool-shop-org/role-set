@@ -53,24 +53,53 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 1,
-      "changed": 24,
+      "added": 7,
+      "changed": 25,
       "moved": 0,
       "parts": 4,
       "removed": 0
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "tests/fixtures/card-values.json is now also read by tests/test_write.py.",
+        "subjects": [
+          "tests/fixtures/card-values.json",
+          "tests/test_write.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "tests/fixtures/ollama-manifest/ is now read by tests/test_pin_window.py.",
+        "subjects": [
+          "tests/fixtures/ollama-manifest/",
+          "tests/test_pin_window.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "tests/fixtures/ollama-manifest/manifest.json is now read by tests/test_pin_window.py.",
+        "subjects": [
+          "tests/fixtures/ollama-manifest/manifest.json",
+          "tests/test_pin_window.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 1 more new writer or reader of a place.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-22; 1 file added and 24 changed content.",
+        "sentence": "7 files added and 25 changed content, across 4 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "bd17c93d903bcc2b717a1b7bd99dca6c4c8ae0c8",
-      "generatedAt": "2026-10-22T10:56:58.199Z"
+      "commit": "8df62c0f9c494a67ea80fad72e506b710aa1c6c0",
+      "generatedAt": "2026-10-23T06:20:56.003Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -89,24 +118,9 @@
       "shared": 6
     },
     {
-      "a": "src/role_set/readout.py",
-      "b": "tests/test_paid_run_data.py",
-      "either": 12,
-      "partLabels": [
-        "src",
-        "tests"
-      ],
-      "parts": [
-        "src",
-        "tests"
-      ],
-      "relation": "b-imports-a",
-      "shared": 7
-    },
-    {
       "a": "src/role_set/mock.py",
       "b": "tests/test_runner.py",
-      "either": 25,
+      "either": 26,
       "partLabels": [
         "src",
         "tests"
@@ -117,6 +131,21 @@
       ],
       "relation": "b-imports-a",
       "shared": 14
+    },
+    {
+      "a": "src/role_set/readout.py",
+      "b": "tests/test_paid_run_data.py",
+      "either": 13,
+      "partLabels": [
+        "src",
+        "tests"
+      ],
+      "parts": [
+        "src",
+        "tests"
+      ],
+      "relation": "b-imports-a",
+      "shared": 7
     }
   ],
   "changesTogetherNote": [
@@ -125,7 +154,7 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 19 source files reach 10 revisions; the floor rises to 10 when 25 do."
   ],
   "changesTogetherWithTests": 5,
-  "commit": "8df62c0f9c494a67ea80fad72e506b710aa1c6c0",
+  "commit": "6e324da4e4a603e0dbf5df68810272410330d8d8",
   "defaultBranch": "main",
   "derived": "9 parts, mostly Python (114 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
@@ -296,11 +325,11 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-23T06:20:56.003Z",
+  "generatedAt": "2026-10-23T09:50:15.086Z",
   "limits": [
     "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
-    "6 writes and 30 reads use paths built at run time and are not named here.",
-    "40 writes and 99 reads go to a path their caller passes, not to this repository.",
+    "9 writes and 32 reads use paths built at run time and are not named here.",
+    "56 writes and 108 reads go to a path their caller passes, not to this repository.",
     "15 reads go to the directory the command is run in, not to this repository.",
     "9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -330,12 +359,12 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 66,
+  "testFiles": 73,
   "testedBy": {
     "scripts": 9,
-    "src": 50
+    "src": 51
   },
-  "unnamedWrites": 6,
+  "unnamedWrites": 9,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],
