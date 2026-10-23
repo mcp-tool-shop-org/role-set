@@ -1977,4 +1977,149 @@ def test_t10_stub_end_to_end_write_only_then_critique_resume_with_scope_verdict(
             assert len(review_by_id[slot["id"]]) > 0, slot["id"]
 
 
+def test_pilot_window_records_readout_stderr_on_nonzero_exit_and_omits_it_on_zero(tmp_path, monkeypatch):
+    from subprocess import CompletedProcess
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    pack = content / "pack"
+    pack.mkdir()
+    (pack / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    rs = _role_set_cmd()
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+
+    w0_dir = work / "pilot" / "pilot" / "gemma-4-31b-it" / "w0"
+    w0_dir.mkdir(parents=True)
+    (w0_dir / "batch-report.json").write_text("{}", encoding="utf-8")
+
+    def fake_pilot_batch(rs_arg, common, plan, out_dir, writers, critic_for, pool, **kw):
+        return {w: {"waves": [{"wave": "write", "exit": 0}], "last": str(w0_dir)} for w in writers}
+
+    def fake_sh(cmd: str, **kw) -> str:
+        if "pack verify" in cmd or cmd.startswith("tar "):
+            return "ok"
+        if "plan --lessons" in cmd:
+            out_idx = cmd.split().index("--out") + 1
+            out_p = Path(cmd.split()[out_idx])
+            out_p.write_text(
+                json.dumps({"slots": [{"id": "T02-C-01", "lesson": "T02", "kind": "C"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+            return "planned"
+        raise AssertionError(f"unexpected sh: {cmd}")
+
+    monkeypatch.setattr(pw, "pilot_batch", fake_pilot_batch)
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T02")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01")
+    monkeypatch.delenv("PIN_STUB", raising=False)
+
+    # 1. Failing readout (returncode != 0) records readout_stderr[-2500:]
+    long_err = "X" * 3000 + "KeyError: 'accepted'\n"
+    monkeypatch.setattr(
+        pw,
+        "run_proc",
+        lambda cmd, **kw: CompletedProcess(cmd, 1, "", long_err),
+    )
+    res_fail: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_fail)
+    arm_pilot = res_fail["arms"]["gemma-4-31b-it"]["pilot"]
+    assert arm_pilot["readout_exit"] == 1
+    assert arm_pilot["readout_tail"] == ""
+    assert arm_pilot["readout_stderr"] == long_err[-2500:]
+    assert len(arm_pilot["readout_stderr"]) == 2500 and arm_pilot["readout_stderr"].endswith("KeyError: 'accepted'\n")
+
+    # 2. Passing readout (returncode == 0) keeps readout_tail and sets no readout_stderr
+    monkeypatch.setattr(
+        pw,
+        "run_proc",
+        lambda cmd, **kw: CompletedProcess(cmd, 0, "# Readout: w0\n", "benign warning"),
+    )
+    res_ok: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_ok)
+    arm_ok = res_ok["arms"]["gemma-4-31b-it"]["pilot"]
+    assert arm_ok["readout_exit"] == 0
+    assert arm_ok["readout_tail"] == "# Readout: w0\n"
+    assert "readout_stderr" not in arm_ok
+
+
+def test_pin_cuda_archs_default_override_and_refusals(tmp_path, monkeypatch):
+    import sys as _sys
+    import types as _types
+
+    assert pw.CUDA_ARCHS == "80;90;100"
+    assert pw.LLAMA_CPP_COMMIT == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert pw.SERVER_SHA256 == "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+
+    fake_nvidia_root = tmp_path / "nvidia" / "cu13"
+    nvcc_bin = fake_nvidia_root / "bin" / "nvcc"
+    nvcc_bin.parent.mkdir(parents=True)
+    nvcc_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    (fake_nvidia_root / "lib").mkdir()
+    monkeypatch.setitem(_sys.modules, "nvidia", _types.SimpleNamespace(__path__=[str(tmp_path / "nvidia")]))
+    monkeypatch.setattr(pw, "WORK", tmp_path / "work")
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+
+    seen_cmds: list[str] = []
+
+    def fake_sh(cmd: str, **kw) -> str:
+        seen_cmds.append(cmd)
+        if "--version" in cmd:
+            return "Cuda compilation tools, release 13.4, V13.4.92\nBuild cuda_13.4.r13.4/compiler.000_0"
+        if "ldconfig -p" in cmd:
+            return "/usr/lib64-nvidia/libcuda.so"
+        if cmd.startswith("cmake --build"):
+            bin_dir = tmp_path / "work" / "llama.cpp" / "build" / "bin"
+            bin_dir.mkdir(parents=True, exist_ok=True)
+            (bin_dir / "llama-server").write_bytes(b"server-bytes")
+            (bin_dir / "llama-quantize").write_bytes(b"quantize-bytes")
+            return "built"
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_sh)
+
+    # 1. Default archs unchanged when PIN_CUDA_ARCHS is unset
+    monkeypatch.delenv("PIN_CUDA_ARCHS", raising=False)
+    assert pw.cuda_archs() == "80;90;100"
+    b_default = pw.build()
+    assert b_default["cuda_archs"] == "80;90;100"
+    assert b_default["commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert any("-DCMAKE_CUDA_ARCHITECTURES='80;90;100'" in c for c in seen_cmds), seen_cmds
+
+    # 2. Override used when PIN_CUDA_ARCHS matches ^[0-9]+(;[0-9]+)*$
+    seen_cmds.clear()
+    monkeypatch.setenv("PIN_CUDA_ARCHS", "80;90;100;120")
+    assert pw.cuda_archs() == "80;90;100;120"
+    b_override = pw.build()
+    assert b_override["cuda_archs"] == "80;90;100;120"
+    assert b_override["commit"] == "620d2225cc436ab0b001e3200e590e3b286ef9ab"
+    assert any("-DCMAKE_CUDA_ARCHITECTURES='80;90;100;120'" in c for c in seen_cmds), seen_cmds
+
+    # 3. Malformed override refused before running any shell command
+    seen_cmds.clear()
+    for bad in ("", "sm120", "80,90,100", "80;90;", ";80;90", "80;;90", "80;90\n", "80' && echo bad"):
+        monkeypatch.setenv("PIN_CUDA_ARCHS", bad)
+        with pytest.raises(RuntimeError, match=r"REFUSED: PIN_CUDA_ARCHS=.* must match \^\[0-9\]\+\(;\[0-9\]\+\)\*\$"):
+            pw.build()
+    assert seen_cmds == []
+
+
+
 

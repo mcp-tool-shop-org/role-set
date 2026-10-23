@@ -50,6 +50,16 @@ no_implicit_token()
 LLAMA_CPP_COMMIT = "620d2225cc436ab0b001e3200e590e3b286ef9ab"  # ggml-org/llama.cpp release v0.7.0, 2026-10-15
 # SASS for A100 (80), H100/H200 (90) and B200 (100): one binary for Colab and RunPod, no PTX JIT.
 CUDA_ARCHS = "80;90;100"
+CUDA_ARCHS_RE = re.compile(r"^[0-9]+(;[0-9]+)*$")
+
+
+def cuda_archs() -> str:
+    raw = os.environ.get("PIN_CUDA_ARCHS")
+    if raw is None:
+        return CUDA_ARCHS
+    if not CUDA_ARCHS_RE.fullmatch(raw):
+        raise RuntimeError(f"REFUSED: PIN_CUDA_ARCHS={raw!r} must match ^[0-9]+(;[0-9]+)*$")
+    return raw
 NVCC_VERSION = "13.4.92"  # nvcc, nvvm, crt and the runtime, one release
 # cuBLAS follows its own numbering: the CUDA 13.4.2 toolkit (runtime 13.4.92) ships cuBLAS 13.8.0.4. Pinned exactly; a
 # `~=13.4` spec pulled the later standalone 13.8.1.7 in window 2 (2026-10-17).
@@ -390,6 +400,7 @@ def machine_line(cpu_ok: bool = False) -> dict:
 
 
 def build() -> dict:
+    archs = cuda_archs()
     say("installing nvcc " + NVCC_PIP)
     # nvcc's own compiler parts (nvvm's cicc, crt) come from their own wheels; the image ships 13.0 ones, which reject
     # 13.4's flags (window 1, 2026-10-17: "invalid option: --simt-only"), so every part is pinned to the same release.
@@ -422,13 +433,13 @@ def build() -> dict:
     env = {**os.environ, "CUDACXX": str(nvcc), "PATH": f"{nvcc.parent}:{os.environ['PATH']}",
            "LD_LIBRARY_PATH": f"{cu / 'lib'}:" + os.environ.get("LD_LIBRARY_PATH", "")}
     shutil.rmtree(src / "build", ignore_errors=True)
-    sh(f"cmake -S {src} -B {src}/build -G Ninja -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES='{CUDA_ARCHS}' "
+    sh(f"cmake -S {src} -B {src}/build -G Ninja -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES='{archs}' "
        f"-DCUDAToolkit_ROOT={cu} -DCMAKE_CUDA_COMPILER={nvcc} -DCUDA_cuda_driver_LIBRARY={libcuda} "
        f"-DBUILD_SHARED_LIBS=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release", env=env, timeout=900)
     say("building llama-server and llama-quantize")
     sh(f"cmake --build {src}/build --target llama-server llama-quantize -j {os.cpu_count()}", env=env, timeout=3600)
     server = src / "build" / "bin" / "llama-server"
-    return {"commit": LLAMA_CPP_COMMIT, "nvcc": version.splitlines()[-1], "cuda_archs": CUDA_ARCHS,
+    return {"commit": LLAMA_CPP_COMMIT, "nvcc": version.splitlines()[-1], "cuda_archs": archs,
             "sha256": sha256(server), "path": str(server), "quantize": str(src / "build" / "bin" / "llama-quantize"),
             "src": str(src)}
 
@@ -2811,6 +2822,8 @@ def pilot_window(built: dict, result: dict) -> None:
                             jd["stub"] = True
                             js_p.write_text(json.dumps(jd, indent=1), encoding="utf-8")
                     result["arms"][n][part]["readout_tail"] = out_text[-2500:]
+                    if r.returncode != 0:
+                        result["arms"][n][part]["readout_stderr"] = r.stderr[-2500:]
                 elif stub_mode():
                     result["arms"][n][part].setdefault("readout_tail", "# STUB RUN (PIN_STUB=1)")
         result["serves"] = {n: s.starts for n, s in pool.srv.items()}

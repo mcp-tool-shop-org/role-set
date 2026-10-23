@@ -106,24 +106,32 @@ def summarize(run_dir: Path) -> dict:
 
     per: dict[str, dict] = {"lesson": defaultdict(Counter), "kind": defaultdict(Counter)}
     reasons: dict[str, Counter] = {"lesson": defaultdict(Counter), "kind": defaultdict(Counter)}
+    totals: Counter = Counter()
+    is_wave = "wave" in report or "states" in report or any("state" in o for o in outcomes)
     recovered = refused_slots = 0
     for o in outcomes:
         lesson, kind = (o["slot"].split("-") + ["?", "?"])[:2]
-        state = "skipped" if o.get("skipped") else ("accepted" if o["accepted"] else "dropped")
+        state = o["state"] if "state" in o else ("skipped" if o.get("skipped") else ("accepted" if o["accepted"] else "dropped"))
+        totals[state] += 1
         for axis, key in (("lesson", lesson), ("kind", kind)):
             per[axis][key][state] += 1
             if state == "skipped":
                 reasons[axis][key][o.get("skip_reason") or "unrecorded"] += 1
         if o.get("refusals"):
             refused_slots += 1
-            recovered += bool(o["accepted"])
+            recovered += state == "accepted"
 
     def table(axis: str) -> dict:
         out = {}
         for key, c in sorted(per[axis].items()):
             tried = c["accepted"] + c["dropped"]
-            out[key] = {"accepted": c["accepted"], "dropped": c["dropped"], "skipped": c["skipped"], "accept_rate": _rate(c["accepted"], tried),
-                        "skipped_by_reason": dict(reasons[axis][key].most_common())}
+            row = {"accepted": c["accepted"], "dropped": c["dropped"]}
+            if is_wave:
+                row["needs_rewrite"] = c["needs_rewrite"]
+                row["awaiting_critique"] = c["awaiting_critique"]
+            row.update(skipped=c["skipped"], accept_rate=_rate(c["accepted"], tried),
+                       skipped_by_reason=dict(reasons[axis][key].most_common()))
+            out[key] = row
         return out
 
     codes = Counter()
@@ -153,7 +161,10 @@ def summarize(run_dir: Path) -> dict:
         "kinds_off": status.get("kinds_off", {}),
         "skipped": status.get("skipped", {}),
         "batch_check": report.get("batch_check"),
-        "accepted": status.get("accepted"), "dropped": status.get("dropped"), "attempted": status.get("attempted"),
+        "accepted": status["accepted"] if not is_wave or status.get("accepted") is not None else totals["accepted"],
+        "dropped": status["dropped"] if not is_wave or status.get("dropped") is not None else totals["dropped"],
+        **({"needs_rewrite": totals["needs_rewrite"], "awaiting_critique": totals["awaiting_critique"]} if is_wave else {}),
+        "attempted": status.get("attempted"),
         "accept_rate": _rate(status.get("accepted", 0), status.get("attempted", 0)),
         "per_lesson": table("lesson"), "per_kind": table("kind"),
         "refusals": dict(codes.most_common()),
@@ -176,8 +187,12 @@ def markdown(main: dict, others: list[dict]) -> str:
     lines = [head, ""]
     if main.get("inputs"):
         lines += ["Inputs: " + "; ".join(f"{k} {v}" for k, v in main["inputs"].items()) + ".", ""]
+    wave_summary = (
+        f"needs_rewrite: {main['needs_rewrite']}; awaiting_critique: {main['awaiting_critique']}; "
+        if "needs_rewrite" in main else ""
+    )
     lines.append(f"Accepted {main['accepted']} of {main['attempted']} attempted (accept rate {main['accept_rate']}); "
-                 f"halted: {main['halted'] or 'no'}; lesson halts: {main['lesson_halts'] or 'none'}; skipped: {main['skipped'] or 'none'}; "
+                 f"{wave_summary}halted: {main['halted'] or 'no'}; lesson halts: {main['lesson_halts'] or 'none'}; skipped: {main['skipped'] or 'none'}; "
                  f"batch check: {main['batch_check']}.")
     def why(v: dict) -> str:
         return "; ".join(f"{r}: {n}" for r, n in v.get("skipped_by_reason", {}).items()) or "-"
@@ -194,10 +209,20 @@ def markdown(main: dict, others: list[dict]) -> str:
             f"{lesson} {c['keyed_longest']} of {c['items']}" for lesson, c in sorted(main["keyed_longest"].items())) + "."]
     if main.get("kinds_off"):
         lines += ["", "Kinds switched off: " + "; ".join(f"{k} ({r})" for k, r in main["kinds_off"].items()) + "."]
-    lines += ["", "| Lesson | Accepted | Dropped | Skipped | Accept rate | Skipped by reason |", "|---|---|---|---|---|---|"]
-    lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['skipped']} | {v['accept_rate']} | {why(v)} |" for k, v in main["per_lesson"].items()]
-    lines += ["", "| Kind | Accepted | Dropped | Skipped | Accept rate |", "|---|---|---|---|---|"]
-    lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['skipped']} | {v['accept_rate']} |" for k, v in main["per_kind"].items()]
+    if "needs_rewrite" in main:
+        lines += ["", "| Lesson | Accepted | Dropped | Needs rewrite | Awaiting critique | Skipped | Accept rate | Skipped by reason |",
+                  "|---|---|---|---|---|---|---|---|"]
+        lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['needs_rewrite']} | {v['awaiting_critique']} | {v['skipped']} | {v['accept_rate']} | {why(v)} |"
+                  for k, v in main["per_lesson"].items()]
+        lines += ["", "| Kind | Accepted | Dropped | Needs rewrite | Awaiting critique | Skipped | Accept rate |",
+                  "|---|---|---|---|---|---|---|"]
+        lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['needs_rewrite']} | {v['awaiting_critique']} | {v['skipped']} | {v['accept_rate']} |"
+                  for k, v in main["per_kind"].items()]
+    else:
+        lines += ["", "| Lesson | Accepted | Dropped | Skipped | Accept rate | Skipped by reason |", "|---|---|---|---|---|---|"]
+        lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['skipped']} | {v['accept_rate']} | {why(v)} |" for k, v in main["per_lesson"].items()]
+        lines += ["", "| Kind | Accepted | Dropped | Skipped | Accept rate |", "|---|---|---|---|---|"]
+        lines += [f"| {k} | {v['accepted']} | {v['dropped']} | {v['skipped']} | {v['accept_rate']} |" for k, v in main["per_kind"].items()]
     lines += ["", "| Refusal | Count |", "|---|---|"] + [f"| {k} | {v} |" for k, v in main["refusals"].items()]
     rr = main["retry_recovery"]
     lines += ["", f"Retry recovery: {rr['recovered']} of {rr['refused_slots']} refused slots accepted later ({rr['rate']}). "

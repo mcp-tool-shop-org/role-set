@@ -5,6 +5,10 @@
 # sessions list is checked empty at the end. Writes <out dir>/pin-result.json and <out dir>/llama-server.
 set -u
 OUT="${1:?usage: pin_window.sh <out dir>}"
+case "${PIN_GPU:-A100}" in
+  A100|H100|G4|L4|T4) ;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU} must be A100, H100, G4, L4 or T4" >&2; exit 2;;
+esac
 CAP_UNITS="${PIN_CAP_UNITS:-7}"   # about 60 min at 5.30 units/h, with margin
 WALL_S="${PIN_WALL_S:-4800}"      # 80 min outer timeout for the VM-side script
 S=pin
@@ -18,14 +22,16 @@ stop_all() {
 }
 trap stop_all EXIT
 START=$(bal); echo "start balance $START $(date -u +%FT%TZ)"
-timeout 300 colab new --gpu A100 -s "$S" 2>&1 | tail -2 || { echo "no A100 assigned"; exit 2; }
+timeout 300 colab new --gpu "${PIN_GPU:-A100}" -s "$S" 2>&1 | tail -2 || { echo "no ${PIN_GPU:-A100} assigned"; exit 2; }
 sleep 20
 colab usage 2>&1 | grep -E "rate|assign"
 # The cap: a background watcher stops the VM if the balance falls CAP_UNITS below the start.
 ( while sleep 120; do now=$(bal); awk -v s="$START" -v n="$now" -v c="$CAP_UNITS" 'BEGIN{exit !(s-n>c)}' && { echo "CAP REACHED ($START -> $now)"; colab stop -s "$S"; exit 0; }; done ) &
 WATCH=$!
 t0=$(date +%s)
-timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" -f "$here/pin_window.py" --timeout "$WALL_S" 2>&1 | tee "$OUT/pin-window.log" | grep -E "^\[|PIN_RESULT" 
+EXEC_ENV=()
+[ -n "${PIN_CUDA_ARCHS:-}" ] && EXEC_ENV+=(--env "PIN_CUDA_ARCHS=$PIN_CUDA_ARCHS")
+timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${EXEC_ENV[@]}" -f "$here/pin_window.py" --timeout "$WALL_S" 2>&1 | tee "$OUT/pin-window.log" | grep -E "^\[|PIN_RESULT" 
 echo "exec exit=${PIPESTATUS[0]} wall=$(( $(date +%s)-t0 ))s"
 kill "$WATCH" 2>/dev/null
 timeout 600 colab download -s "$S" /content/pin/pin-result.json "$OUT/pin-result.json" 2>&1 | tail -1
