@@ -3359,7 +3359,9 @@ def test_track_b_n1_output_byte_identical_to_main(
         "critic_family",
         "critic_gguf_sha256",
         "critic_seed",
+        "verdict_prompt",
         "flaw_prompt",
+        "checks",
         "critic_pins",
         "critic_card",
         "gates",
@@ -3380,7 +3382,9 @@ def test_track_b_n1_output_byte_identical_to_main(
             "perturbation_type",
             "kind",
             "seed",
+            "verdict_prompt",
             "flaw_prompt",
+            "checks",
             "verdict_checks",
             "verdict_check",
             "flaw_check",
@@ -3955,6 +3959,911 @@ def test_track_b_vslots_check_material_catches_shared_passes_distinct_and_refuse
     err_d_empty = capsys.readouterr().err
     assert "REFUSED: empty material on row D-T06-C-01" in err_d_empty
     assert f"{d2_file}:2" in err_d_empty
+
+
+def test_verdict_prompt_old_byte_identical_and_defined_shares_writer_definitions() -> None:
+    from role_set import callcache, critic, plan, prompts
+
+    mat = "Line 1: pump pressure is 40 psi.\nLine 2: valve B is closed."
+    stmt = "Pump pressure exceeds 30 psi."
+
+    old_default = critic.verdict_messages(mat, stmt)
+    old_explicit = critic.verdict_messages(mat, stmt, verdict_prompt="old")
+    assert old_default == old_explicit
+    assert old_default[0]["role"] == "system"
+    assert old_default[0]["content"] == critic.CRITIC_SYSTEM
+    assert "supported means the material entails" not in old_default[0]["content"]
+
+    # request_key with verdict_prompt=None or "old" is byte-identical
+    k_none = callcache.request_key("critic", (old_default,), {"seed": 0})
+    k_old = callcache.request_key("critic", (old_explicit,), {"seed": 0}, verdict_prompt="old")
+    assert k_none == k_old
+
+    defined_msgs = critic.verdict_messages(mat, stmt, verdict_prompt="defined")
+    assert defined_msgs[1] == old_default[1]
+    expected_sentence = (
+        "supported: the material shows the statement is true; "
+        "unsupported: the material rules the statement out; "
+        "cannot_tell: the material is silent on the statement: it neither shows it nor rules it out."
+    )
+    assert critic.VERDICT_DEFINITIONS_SENTENCE == expected_sentence
+    assert defined_msgs[0]["content"] == f"{critic.CRITIC_SYSTEM}\n{expected_sentence}"
+    k_def = callcache.request_key("critic", (defined_msgs,), {"seed": 0}, verdict_prompt="defined")
+    assert k_def != k_old
+
+    # Shared constant between prompts.slot_brief and critic.VERDICT_DEFINITIONS
+    assert prompts.CANNOT_TELL_SILENT is critic.CANNOT_TELL_SILENT
+    assert critic.CANNOT_TELL_SILENT == "silent on the statement: it neither shows it nor rules it out"
+    assert critic.VERDICT_DEFINITIONS["cannot_tell"] == f"the material is {critic.CANNOT_TELL_SILENT}"
+
+    with pytest.raises(ValueError, match="unknown verdict_prompt"):
+        critic.verdict_messages(mat, stmt, verdict_prompt="bogus")
+
+
+def test_slot_brief_is_byte_identical_to_d66ce3f6_for_every_verdict() -> None:
+    from role_set import plan, prompts
+
+    expected_cannot_tell_line = "The material must be silent on the statement: it neither shows it nor rules it out."
+
+    slot_sup = plan.Slot(
+        id="T02-C-01",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="supported",
+        escalate="no",
+    )
+    slot_unsup = plan.Slot(
+        id="T02-C-02",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="unsupported",
+        escalate="no",
+    )
+    slot_ct = plan.Slot(
+        id="T02-C-03",
+        lesson="T02",
+        kind="C",
+        side="check",
+        tier=1,
+        content_kind="record",
+        verdict="cannot_tell",
+        escalate="no",
+    )
+    slot_none = plan.Slot(
+        id="T02-A-01",
+        lesson="T02",
+        kind="A",
+        side="check",
+        tier=1,
+        verdict="",
+        escalate="no",
+    )
+
+    expected_sup = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is supported; ESCALATE is no.\n"
+        "The other checker is wrong through one flaw, guess: it gave a reason from outside the material (an assumption, what usually happens, general knowledge) or a misreading, instead of what the material says. checker_verdict is unsupported or cannot_tell; checker_trace argues for that verdict, names no other, and shows the flaw.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply, deciding.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_unsup = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is unsupported; ESCALATE is no.\n"
+        "The other checker was right: checker_verdict is unsupported, and checker_trace is sound reasoning for it.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply, deciding.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_ct = (
+        "Lesson T02, kind C, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "The material is a record; it is given below and must be used verbatim.\n"
+        "The correct verdict is cannot_tell; ESCALATE is no.\n"
+        f"{expected_cannot_tell_line}\n"
+        "The other checker is wrong through one flaw, guess: it gave a reason from outside the material (an assumption, what usually happens, general knowledge) or a misreading, instead of what the material says. checker_verdict is supported or unsupported; checker_trace argues for that verdict, names no other, and shows the flaw.\n"
+        "These fields are required and must not be empty: framing, statement, checker_trace, thinking, reply.\n"
+        "'framing' introduces the task in a sentence or two and never contains the material or the statement, which are added after it.\n"
+        "'deciding' is an empty array exactly when the verdict is cannot_tell; otherwise it holds the verbatim material lines. The statement uses no undated time words (yesterday, today, tomorrow, last week, recently): name the date or leave time out. Each reply is prose only: never write VERDICT, DECIDING or ESCALATE lines in it, because the three lines are added from the slot."
+    )
+    expected_none = (
+        "Lesson T02, kind A, side: check, tier 1.\n"
+        "The item teaches its side, 'check': the reply shows it in this item's own words, and a reply that argues the trait's other side fails.\n"
+        "The step this trait decides, which this item is built around: a summary, a colleague's word or general knowledge competes with the material; the deciding step answers from the material itself.\n"
+        "A silence call (the material doesn't mention it, so cannot_tell) is the step of T14 and T04; it is not enough for another trait. A second turn's pressure is structure; resisting it is the step of T05 and T13 only. For any other trait, the step named above must be the one that decides the item, and the thinking says so in this item's words.\n"
+        "These fields are required and must not be empty: passage, question, reply, key_points.\n"
+        "Kind A: the passage has at least two full sentences before the question, and it names the trait by its name as the lesson heading gives it, written with a straight apostrophe (don't, not don\u2019t). Put the trait words inside a sentence of your own; don't open the passage with 'As a verifier, you' followed by the trait words, which other items of this trait already use. The reply begins in the first person (I, I'm, I've or My) and has no VERDICT line.\n"
+        "Kind A is situational, never a request to restate the lesson: the passage sets a concrete case with something to decide (a reviewer pushes, a person is about to act on a check, a claim comes back reworded), and the question asks what you do and why. The reply decides it. It doesn't open with 'As a verifier'."
+    )
+
+    assert prompts.slot_brief(slot_sup, []) == expected_sup
+    assert prompts.slot_brief(slot_unsup, []) == expected_unsup
+    assert prompts.slot_brief(slot_ct, []) == expected_ct
+    assert expected_cannot_tell_line in prompts.slot_brief(slot_ct, []).splitlines()
+    assert prompts.slot_brief(slot_none, []) == expected_none
+
+
+def test_call_journal_records_and_refuses_cross_setting_verdict_prompt_and_checks(tmp_path: Path) -> None:
+    from role_set import callcache
+    from role_set.guards import GuardError
+    from role_set.transport import Completion
+
+    j_path = tmp_path / "calls-journal.jsonl"
+    msgs = [{"role": "system", "content": "sys"}, {"role": "user", "content": "usr"}]
+    comp = Completion(
+        text="VERDICT: supported",
+        prompt_tokens=10,
+        completion_tokens=5,
+        model=LIGHTNING,
+        seconds=0.1,
+        finish_reason="stop",
+    )
+
+    j = callcache.CallJournal(
+        j_path,
+        verdict_prompt="defined",
+        flaw_prompt="old",
+        checks="verdict",
+    )
+    wrapped = j.wrap("critic", lambda m, *, seed=0: comp)
+    wrapped(msgs, seed=0, slot="CFR-01", attempt=0)
+
+    row = json.loads(j_path.read_text(encoding="utf-8").splitlines()[0])
+    assert row["verdict_prompt"] == "defined"
+    assert row["checks"] == "verdict"
+    assert row["flaw_prompt"] == "old"
+    summary = j.summary()
+    assert summary["verdict_prompt"] == "defined"
+    assert summary["checks"] == "verdict"
+
+    # Matching settings load cleanly
+    loaded = callcache.load(
+        j_path,
+        expected_verdict_prompt="defined",
+        expected_flaw_prompt="old",
+        expected_checks="verdict",
+    )
+    assert len(loaded) == 1
+
+    # Cross-setting replay refuses on verdict_prompt mismatch
+    with pytest.raises(GuardError, match="written under verdict_prompt='defined', cannot reuse under verdict_prompt='old'"):
+        callcache.load(
+            j_path,
+            expected_verdict_prompt="old",
+            expected_checks="verdict",
+        )
+
+    # Cross-setting replay refuses on checks mismatch
+    with pytest.raises(GuardError, match="written under checks='verdict', cannot reuse under checks='all'"):
+        callcache.load(
+            j_path,
+            expected_verdict_prompt="defined",
+            expected_checks="all",
+        )
+
+    # Cross-setting append to existing journal also refuses
+    with pytest.raises(GuardError, match="written under verdict_prompt='defined', cannot append under verdict_prompt='old'"):
+        callcache.CallJournal(
+            j_path,
+            verdict_prompt="old",
+            checks="verdict",
+        )
+
+
+def test_critic_eval_verdict_only_and_bench_jsonl_items(
+    tmp_path: Path, eval_items_file: Path, pack_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from role_set import cli, critic
+
+    # 1. Sealed wave items with checks="verdict" makes zero flaw calls on kind-C items
+    out_verdict_only = tmp_path / "eval-verdict-only"
+    journal_vo = out_verdict_only / "calls-journal.jsonl"
+    rep_vo = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=out_verdict_only,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            verdict_prompt="defined",
+            checks="verdict",
+            call_journal=journal_vo,
+            mock=True,
+        )
+    )
+    assert rep_vo["verdict_prompt"] == "defined"
+    assert rep_vo["checks"] == "verdict"
+    assert rep_vo["calls"]["verdict_prompt"] == "defined"
+    assert rep_vo["calls"]["checks"] == "verdict"
+
+    vo_rows = [
+        json.loads(x)
+        for x in (out_verdict_only / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
+    assert any(r["kind"] == "C" for r in vo_rows)
+    for r in vo_rows:
+        assert r["verdict_prompt"] == "defined"
+        assert r["checks"] == "verdict"
+        assert r["flaw_check"] is None
+        assert r["critic_flaw"] is None
+
+    j_rows = [json.loads(x) for x in journal_vo.read_text(encoding="utf-8").splitlines() if x.strip()]
+    assert len(j_rows) == len(vo_rows)  # 1 verdict call per single-turn item, 0 flaw calls
+    for jr in j_rows:
+        assert jr["verdict_prompt"] == "defined"
+        assert jr["checks"] == "verdict"
+        assert jr["role"] == "critic"
+
+    # Replaying journal_vo with verdict_prompt="old" refuses
+    with pytest.raises(CriticEvalError, match="written under verdict_prompt='defined', cannot reuse under verdict_prompt='old'"):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "eval-bad-replay",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=0,
+                verdict_prompt="old",
+                checks="verdict",
+                reuse_calls=journal_vo,
+                mock=True,
+            )
+        )
+
+    # 2. Plain bench JSONL items ({id, material, statement, key}) via CLI
+    bench_items = [
+        {
+            "id": "CFR-01",
+            "material": "Line 1: The tank holds 500 L.\nLine 2: Current volume is 320 L.",
+            "statement": "Current volume is below 400 L.",
+            "key": "supported",
+        },
+        {
+            "id": "CFR-02",
+            "material": "Line 1: Backup generator test passed on Monday.",
+            "statement": "Backup generator test failed on Monday.",
+            "key": "unsupported",
+        },
+        {
+            "id": "CFR-03",
+            "material": "Line 1: Room 4B has two sensors.",
+            "statement": "Room 4B humidity is above 60%.",
+            "key": "cannot_tell",
+        },
+    ]
+    bench_path = tmp_path / "bench-items.jsonl"
+    bench_path.write_text("\n".join(json.dumps(x) for x in bench_items) + "\n", encoding="utf-8")
+
+    out_bench = tmp_path / "bench-out"
+    rc = cli.main([
+        "critic-eval",
+        "--items", str(bench_path),
+        "--writers", str(ROOT / "writers.json"),
+        "--critic-model", LIGHTNING,
+        "--critic-seed", "0",
+        "--verdict-prompt", "defined",
+        "--checks", "verdict",
+        "--out", str(out_bench),
+        "--mock",
+    ])
+    assert rc == 0
+    bench_rep = json.loads((out_bench / "critic-eval-report.json").read_text(encoding="utf-8"))
+    assert bench_rep["items_total"] == 3
+    assert bench_rep["items_scored"] == 3
+    assert bench_rep["verdict_prompt"] == "defined"
+    assert bench_rep["checks"] == "verdict"
+    assert bench_rep["calls"]["called"] == 3
+    bench_eval_rows = [
+        json.loads(x)
+        for x in (out_bench / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
+    assert [r["item_id"] for r in bench_eval_rows] == ["CFR-01", "CFR-02", "CFR-03"]
+    assert all(r["flaw_check"] is None for r in bench_eval_rows)
+    assert all(r["verdict_check"]["ok"] is True for r in bench_eval_rows)
+
+    # Env var defaults PIN_CRITIC_VERDICT_PROMPT and PIN_CRITIC_CHECKS also work
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    cfg_env = CriticEvalConfig(items=bench_path, out=tmp_path / "env-out", mock=True)
+    assert cfg_env.verdict_prompt == "defined"
+    assert cfg_env.checks == "verdict"
+
+
+def test_pin_window_critic_eval_verdict_prompt_and_checks(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import subprocess
+    import tarfile
+
+    pw_path = ROOT / "scripts" / "colab" / "pin_window.py"
+    spec = importlib.util.spec_from_file_location("pin_window_part_a_test", pw_path)
+    assert spec and spec.loader
+    pw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pw)
+
+    work = tmp_path / "work"
+    content = tmp_path / "content"
+    work.mkdir()
+    content.mkdir()
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "CONTENT", content)
+
+    items_file = tmp_path / "items.jsonl"
+    items_file.write_text(
+        json.dumps({"id": "CFR-01", "material": "M1", "statement": "S1", "key": "supported"}) + "\n",
+        encoding="utf-8",
+    )
+    items_sha = hashlib.sha256(items_file.read_bytes()).hexdigest()
+    in_tar = content / "critic-eval-inputs.tar"
+    with tarfile.open(in_tar, "w") as tf:
+        tf.add(items_file, arcname="items.jsonl")
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d66ce3f6")
+    monkeypatch.setenv("PIN_RND_COMMIT", "00000000")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_CRITIC", LIGHTNING)
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1")
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "old,defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={items_sha}")
+
+    monkeypatch.setattr(pw, "take_token", lambda: None)
+    monkeypatch.setattr(pw, "check_token_clean", lambda r: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda c: {"role_set": "role-set", "src": str(ROOT)})
+    monkeypatch.setattr(pw, "install_rnd", lambda c: {"commit": c})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "critic_eval_inputs", lambda r: (tmp_path, items_file, {"items.jsonl": items_sha}))
+    monkeypatch.setattr(pw, "sh", lambda *a, **kw: None)
+
+    class _FakeSrv:
+        log = None
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakePool:
+        def __init__(self, *a, **kw):
+            pass
+        def get(self, name):
+            return {"served_as": name, "gguf_sha256": "c" * 64}
+        def serve(self, name):
+            return _FakeSrv()
+        def proxy(self, name):
+            return None
+
+    monkeypatch.setattr(pw, "Pool", _FakePool)
+    seen_cmds: list[list[str]] = []
+
+    def _fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        out_idx = cmd.index("--out") + 1
+        vp_idx = cmd.index("--verdict-prompt") + 1
+        ck_idx = cmd.index("--checks") + 1
+        sd_idx = cmd.index("--critic-seed") + 1
+        seed_out = Path(cmd[out_idx])
+        (seed_out / "critic-eval-report.json").write_text(
+            json.dumps({
+                "critic_card": {"candidate": "c1"},
+                "verdict_prompt": cmd[vp_idx],
+                "flaw_prompt": "old",
+                "checks": cmd[ck_idx],
+                "flaw_votes": 1,
+                "items_scored": 1,
+                "skipped_count": 0,
+                "calls": {"fresh": 1, "reused": 0, "seed": int(cmd[sd_idx])},
+            }),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pw, "run_proc", _fake_run_proc)
+    result: dict = {}
+    pw.critic_eval_window({}, result)
+
+    assert len(seen_cmds) == 4  # 2 verdict_prompts (old, defined) x 2 seeds (0, 1)
+    vp_seed_pairs = [
+        (c[c.index("--verdict-prompt") + 1], c[c.index("--critic-seed") + 1], c[c.index("--checks") + 1])
+        for c in seen_cmds
+    ]
+    assert vp_seed_pairs == [
+        ("old", "0", "verdict"),
+        ("old", "1", "verdict"),
+        ("defined", "0", "verdict"),
+        ("defined", "1", "verdict"),
+    ]
+    assert result["critic_eval"]["verdict_prompts"] == ["old", "defined"]
+    assert result["critic_eval"]["checks"] == "verdict"
+    assert len(result["critic_eval"]["runs"]) == 4
+
+
+def test_verdict_from_refuses_report_and_record_verdict_prompt_and_checks_mismatch_in_both_directions(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path
+) -> None:
+    def never_called_critic(messages: list[dict], **kwargs):
+        raise AssertionError("Critic must not be called when --verdict-from preflight fails")
+
+    src_old = tmp_path / "src-old"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_old,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="old",
+            checks="all",
+            mock=True,
+        )
+    )
+    src_def = tmp_path / "src-def"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_def,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="defined",
+            checks="all",
+            mock=True,
+        )
+    )
+
+    # 1. Report verdict_prompt mismatch refuses in both directions (old -> defined, defined -> old)
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('old'\) does not match --verdict-prompt \('defined'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-old-into-def",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=src_old / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('defined'\) does not match --verdict-prompt \('old'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-def-into-old",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=src_def / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # 2. Record verdict_prompt mismatch refuses in both directions (report has matching verdict_prompt, record differs)
+    rec_old_dir = tmp_path / "rec-old-with-def-rep"
+    rec_old_dir.mkdir()
+    shutil.copyfile(src_old / "critic-eval.jsonl", rec_old_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_def / "critic-eval-report.json", rec_old_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'old', expected 'defined'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-old-into-def",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=rec_old_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    rec_def_dir = tmp_path / "rec-def-with-old-rep"
+    rec_def_dir.mkdir()
+    shutil.copyfile(src_def / "critic-eval.jsonl", rec_def_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_old / "critic-eval-report.json", rec_def_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'defined', expected 'old'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-def-into-old",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=rec_def_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # 3. Report and record checks mismatch refuses in both directions (all <-> verdict)
+    src_verdict_only = tmp_path / "src-verdict-only"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_verdict_only,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="old",
+            checks="verdict",
+            mock=True,
+        )
+    )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report checks \('all'\) does not match --checks \('verdict'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-all-into-verdict",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="verdict",
+                verdict_from=src_old / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report checks \('verdict'\) does not match --checks \('all'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-verdict-into-all",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=src_verdict_only / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    rec_vo_dir = tmp_path / "rec-vo-with-all-rep"
+    rec_vo_dir.mkdir()
+    shutil.copyfile(src_verdict_only / "critic-eval.jsonl", rec_vo_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_old / "critic-eval-report.json", rec_vo_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has checks 'verdict', expected 'all'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-vo-into-all",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=rec_vo_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+
+def test_verdict_from_pre_pr_missing_fields_count_as_old_and_all(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path
+) -> None:
+    def never_called_critic(messages: list[dict], **kwargs):
+        raise AssertionError("Critic must not be called when --verdict-from preflight fails")
+
+    base_dir = tmp_path / "base-run"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=base_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=5,
+            verdict_prompt="old",
+            checks="all",
+            mock=True,
+        )
+    )
+
+    # Strip verdict_prompt and checks from both report and records to simulate a pre-PR #117 artifact
+    pre_pr_dir = tmp_path / "pre-pr"
+    pre_pr_dir.mkdir()
+    rep_obj = json.loads((base_dir / "critic-eval-report.json").read_text(encoding="utf-8"))
+    rep_obj.pop("verdict_prompt", None)
+    rep_obj.pop("checks", None)
+    (pre_pr_dir / "critic-eval-report.json").write_text(json.dumps(rep_obj), encoding="utf-8")
+
+    pre_rows = []
+    for ln in (base_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        row = json.loads(ln)
+        row.pop("verdict_prompt", None)
+        row.pop("checks", None)
+        row["input_sha256"] = rep_obj["input_sha256"]
+        pre_rows.append(json.dumps(row))
+    pre_vf = pre_pr_dir / "critic-eval.jsonl"
+    pre_vf.write_text("\n".join(pre_rows) + "\n", encoding="utf-8")
+
+    # Accepted by an `old` (and `checks="all"`) run
+    ok_rep = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=tmp_path / "pre-pr-into-old",
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=5,
+            verdict_prompt="old",
+            checks="all",
+            verdict_from=pre_vf,
+            mock=True,
+        )
+    )
+    assert ok_rep["verdict_reused_count"] == ok_rep["items_scored"]
+
+    # Refused by a `defined` run via report
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('old'\) does not match --verdict-prompt \('defined'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "pre-pr-into-def-report",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=5,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=pre_vf,
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # Also refused by a `defined` run via records when no report file sits beside the jsonl
+    pre_no_rep_dir = tmp_path / "pre-pr-no-rep"
+    pre_no_rep_dir.mkdir()
+    shutil.copyfile(pre_vf, pre_no_rep_dir / "critic-eval.jsonl")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'old', expected 'defined'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "pre-pr-into-def-record",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=5,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=pre_no_rep_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+
+def test_pin_window_critic_eval_resume_multi_verdict_prompt_maps_each_journal_to_its_own_setting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import io
+    import subprocess
+    import tarfile
+
+    pw_path = ROOT / "scripts" / "colab" / "pin_window.py"
+    spec = importlib.util.spec_from_file_location("pin_window_resume_multi_vp_test", pw_path)
+    assert spec and spec.loader
+    pw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pw)
+
+    work = tmp_path / "work"
+    content = tmp_path / "content"
+    work.mkdir()
+    content.mkdir()
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "CONTENT", content)
+
+    items_file = tmp_path / "items.jsonl"
+    items_file.write_text(
+        json.dumps({"id": "CFR-01", "material": "M1", "statement": "S1", "key": "supported"}) + "\n",
+        encoding="utf-8",
+    )
+    items_sha = hashlib.sha256(items_file.read_bytes()).hexdigest()
+
+    resume_tar = content / "earlier-multi-vp.tar"
+    tar_entries = {
+        # Layout 1 (critic-eval-out.tar) for old/s0 and defined/s1
+        "critic-eval/old/s0/calls-journal.jsonl": b'{"verdict_prompt":"old","seed":0}\n',
+        "critic-eval/defined/s1/calls-journal.jsonl": b'{"verdict_prompt":"defined","seed":1}\n',
+        # Layout 2 (checkpoints.extract) for old/s1 and defined/s0
+        f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl": b'{"verdict_prompt":"old","seed":1}\n',
+        f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl": b'{"verdict_prompt":"defined","seed":0}\n',
+        # Unrelated single-vp path that must NOT be picked up when verdict_prompts=["old", "defined"]
+        "critic-eval/s2/calls-journal.jsonl": b'{"verdict_prompt":"old","seed":2}\n',
+    }
+    with tarfile.open(resume_tar, "w") as tf:
+        for arcname, payload in tar_entries.items():
+            ti = tarfile.TarInfo(name=arcname)
+            ti.size = len(payload)
+            tf.addfile(ti, io.BytesIO(payload))
+    tar_sha = hashlib.sha256(resume_tar.read_bytes()).hexdigest()
+
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d66ce3f6")
+    monkeypatch.setenv("PIN_RND_COMMIT", "00000000")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_CRITIC", LIGHTNING)
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1,2")
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "old,defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={items_sha}")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_RESUME", str(resume_tar))
+
+    def _fake_sh(cmd_str: str, **kw):
+        if cmd_str.startswith("rm -rf "):
+            target = Path(cmd_str.removeprefix("rm -rf ").strip())
+            if target.exists():
+                shutil.rmtree(target)
+        elif cmd_str.startswith("tar -xf ") and " -C " in cmd_str:
+            rest = cmd_str.removeprefix("tar -xf ")
+            tar_p, dest_p = rest.split(" -C ", 1)
+            with tarfile.open(Path(tar_p.strip()), "r") as tf:
+                tf.extractall(Path(dest_p.strip()), filter="data")
+        return ""
+
+    monkeypatch.setattr(pw, "sh", _fake_sh)
+    monkeypatch.setattr(pw, "take_token", lambda: None)
+    monkeypatch.setattr(pw, "check_token_clean", lambda r: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda c: {"role_set": "role-set", "src": str(ROOT)})
+    monkeypatch.setattr(pw, "install_rnd", lambda c: {"commit": c})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "critic_eval_inputs", lambda r: (tmp_path, items_file, {"items.jsonl": items_sha}))
+
+    class _FakeSrv:
+        log = None
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakePool:
+        def __init__(self, *a, **kw):
+            pass
+        def get(self, name):
+            return {"served_as": name, "gguf_sha256": "c" * 64}
+        def serve(self, name):
+            return _FakeSrv()
+        def proxy(self, name):
+            return None
+
+    monkeypatch.setattr(pw, "Pool", _FakePool)
+    seen_cmds: list[list[str]] = []
+
+    def _fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        out_idx = cmd.index("--out") + 1
+        vp_idx = cmd.index("--verdict-prompt") + 1
+        ck_idx = cmd.index("--checks") + 1
+        sd_idx = cmd.index("--critic-seed") + 1
+        seed_out = Path(cmd[out_idx])
+        (seed_out / "critic-eval-report.json").write_text(
+            json.dumps({
+                "critic_card": {"candidate": "c1"},
+                "verdict_prompt": cmd[vp_idx],
+                "flaw_prompt": "old",
+                "checks": cmd[ck_idx],
+                "flaw_votes": 1,
+                "items_scored": 1,
+                "skipped_count": 0,
+                "calls": {"fresh": 0, "reused": 1, "seed": int(cmd[sd_idx])},
+            }),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pw, "run_proc", _fake_run_proc)
+    result: dict = {}
+    pw.critic_eval_window({}, result)
+
+    assert result["critic_eval_resume"]["tar_sha256"] == tar_sha
+    journals = result["critic_eval_resume"]["journals"]
+    assert set(journals) == {"old/s0", "old/s1", "defined/s0", "defined/s1"}
+    assert Path(journals["old/s0"]).as_posix().endswith("critic-eval/old/s0/calls-journal.jsonl")
+    assert Path(journals["old/s1"]).as_posix().endswith(f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl")
+    assert Path(journals["defined/s0"]).as_posix().endswith(f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl")
+    assert Path(journals["defined/s1"]).as_posix().endswith("critic-eval/defined/s1/calls-journal.jsonl")
+
+    # 6 runs total: (old, 0), (old, 1), (old, 2), (defined, 0), (defined, 1), (defined, 2)
+    assert len(seen_cmds) == 6
+    by_run = {
+        (c[c.index("--verdict-prompt") + 1], int(c[c.index("--critic-seed") + 1])): c
+        for c in seen_cmds
+    }
+    for (vp, s), want_suffix in [
+        (("old", 0), "critic-eval/old/s0/calls-journal.jsonl"),
+        (("old", 1), f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl"),
+        (("defined", 0), f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl"),
+        (("defined", 1), "critic-eval/defined/s1/calls-journal.jsonl"),
+    ]:
+        cmd = by_run[(vp, s)]
+        assert "--reuse-calls" in cmd
+        reuse_arg = Path(cmd[cmd.index("--reuse-calls") + 1]).as_posix()
+        assert reuse_arg.endswith(want_suffix)
+
+    # Seed 2 has no per-verdict-prompt journal (and the single-vp critic-eval/s2/calls-journal.jsonl is ignored)
+    assert "--reuse-calls" not in by_run[("old", 2)]
+    assert "--reuse-calls" not in by_run[("defined", 2)]
+
+
 
 
 

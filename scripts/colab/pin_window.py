@@ -2488,7 +2488,7 @@ def critic_eval_inputs(result: dict) -> tuple[Path, Path, dict]:
     return root, items_path, shas
 
 
-def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None) -> dict[int, Path]:
+def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None, verdict_prompts: list[str] | None = None) -> dict[int | tuple[str, int], Path]:
     """PIN_CRITIC_EVAL_RESUME: a tar of an earlier window's journals; maps each seed to its journal path.
     Accepts only critic-eval/s{seed}/calls-journal.jsonl and critic-eval-s{seed}/calls/{critic}.jsonl."""
 
@@ -2506,8 +2506,18 @@ def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None
         sh(f"rm -rf {dest}")
     dest.mkdir(parents=True)
     sh(f"tar -xf {tar} -C {dest}")
-    found: dict[int, Path] = {}
-    for s in seeds:
+    found: dict[int | tuple[str, int], Path] = {}
+    multi_vp = bool(verdict_prompts and len(verdict_prompts) > 1)
+    for vp in (verdict_prompts if multi_vp and verdict_prompts else ()):
+        for s in seeds:
+            for c in (
+                dest / "critic-eval" / vp / f"s{s}" / "calls-journal.jsonl",
+                dest / f"critic-eval-{vp}-s{s}" / "calls" / f"{critic}.jsonl",
+            ):
+                if c.is_file():
+                    found[(vp, s)] = c
+                    break
+    for s in (() if multi_vp else seeds):
         for c in (
             dest / "critic-eval" / f"s{s}" / "calls-journal.jsonl",
             dest / f"critic-eval-s{s}" / "calls" / f"{critic}.jsonl",
@@ -2518,7 +2528,7 @@ def critic_eval_resume(critic: str, seeds: list[int], result: dict | None = None
     if result is not None:
         result["critic_eval_resume"] = {
             "tar_sha256": tar_sha,
-            "journals": {str(s): str(p) for s, p in found.items()},
+            "journals": {(f"{k[0]}/s{k[1]}" if isinstance(k, tuple) else str(k)): str(p) for k, p in found.items()},
         }
     return found
 
@@ -2549,6 +2559,23 @@ def critic_eval_window(built: dict, result: dict) -> None:
         )
         if flaw_prompt not in ("old", "new", "trackb"):
             raise RuntimeError(f"REFUSED: PIN_CRITIC_FLAW_PROMPT must be 'old', 'new' or 'trackb', got {flaw_prompt!r}")
+        raw_verdict_prompt = (
+            os.environ.get("PIN_CRITIC_VERDICT_PROMPT")
+            or os.environ.get("PIN_CRITIC_EVAL_VERDICT_PROMPT")
+            or "old"
+        ).strip()
+        verdict_prompts = [x.strip() for x in raw_verdict_prompt.split(",") if x.strip()]
+        if not verdict_prompts or any(vp not in ("old", "defined") for vp in verdict_prompts):
+            raise RuntimeError(
+                f"REFUSED: PIN_CRITIC_VERDICT_PROMPT must be 'old' or 'defined' (or 'old,defined'), got {raw_verdict_prompt!r}"
+            )
+        checks = (
+            os.environ.get("PIN_CRITIC_CHECKS")
+            or os.environ.get("PIN_CRITIC_EVAL_CHECKS")
+            or "all"
+        ).strip()
+        if checks not in ("all", "verdict"):
+            raise RuntimeError(f"REFUSED: PIN_CRITIC_CHECKS must be 'all' or 'verdict', got {checks!r}")
         raw_flaw_votes = (
             os.environ.get("PIN_CRITIC_FLAW_VOTES")
             or os.environ.get("PIN_CRITIC_EVAL_FLAW_VOTES")
@@ -2566,9 +2593,9 @@ def critic_eval_window(built: dict, result: dict) -> None:
             raise RuntimeError(f"{critic} isn't in pin_window.MODELS")
         in_root, items_path, _ = critic_eval_inputs(result)
         verdict_from_path = (in_root / verdict_from_rel) if verdict_from_rel else None
-        resumed = critic_eval_resume(critic, seeds, result)
+        resumed = critic_eval_resume(critic, seeds, result, verdict_prompts=verdict_prompts)
         if resumed:
-            result["critic_eval_resumed"] = {str(s): str(p) for s, p in resumed.items()}
+            result["critic_eval_resumed"] = {(f"{k[0]}/s{k[1]}" if isinstance(k, tuple) else str(k)): str(p) for k, p in resumed.items()}
         pack = CONTENT / "pack"
         if not (pack / "pack.json").exists():
             pack.mkdir(parents=True, exist_ok=True)
@@ -2585,6 +2612,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
     out = WORK / "critic-eval"
     out.mkdir(parents=True, exist_ok=True)
     srv = None
+    multi_vp = len(verdict_prompts) > 1
     try:
         pool = Pool(built, result, {}, cards_file, WORK / "cards-j1")
         m = pool.get(critic)
@@ -2593,16 +2621,25 @@ def critic_eval_window(built: dict, result: dict) -> None:
         srv = pool.serve(critic)
         with srv:
             proxy = pool.proxy(critic)
-            ce_meta: dict = {"seeds": seeds, "flaw_prompt": flaw_prompt, "flaw_votes": flaw_votes, "runs": []}
+            ce_meta: dict = {
+                "seeds": seeds,
+                "verdict_prompt": verdict_prompts[0] if not multi_vp else raw_verdict_prompt,
+                "flaw_prompt": flaw_prompt,
+                "checks": checks,
+                "flaw_votes": flaw_votes,
+                "runs": [],
+            }
+            if multi_vp:
+                ce_meta["verdict_prompts"] = verdict_prompts
             if verdict_from_path is not None:
                 ce_meta["verdict_from"] = str(verdict_from_path)
             result["critic_eval"] = ce_meta
-            for seed in seeds:
-                check_deadline(f"critic-eval seed {seed}")
-                seed_out = out / f"s{seed}"
+            for vp, seed in [(vp, s) for vp in verdict_prompts for s in seeds]:
+                check_deadline(f"critic-eval {vp} seed {seed}" if multi_vp else f"critic-eval seed {seed}")
+                seed_out = (out / vp / f"s{seed}") if multi_vp else (out / f"s{seed}")
                 seed_out.mkdir(parents=True, exist_ok=True)
                 journal = seed_out / "calls-journal.jsonl"
-                label = f"critic-eval-s{seed}"
+                label = f"critic-eval-{vp}-s{seed}" if multi_vp else f"critic-eval-s{seed}"
                 px, endpoint = None, f"http://127.0.0.1:{PILOT_PORT}/v1"
                 if proxy is not None:
                     from mcptoolshop_rnd.localbuilders.proxy import LoggingProxyServer, ProxyState  # noqa: PLC0415
@@ -2627,15 +2664,18 @@ def critic_eval_window(built: dict, result: dict) -> None:
                     "--critic-model", m["served_as"],
                     "--critic-gguf-sha256", m["gguf_sha256"],
                     "--critic-seed", str(seed),
+                    "--verdict-prompt", vp,
                     "--flaw-prompt", flaw_prompt,
+                    "--checks", checks,
                     "--flaw-votes", str(flaw_votes),
                     "--call-journal", str(journal),
                     "--out", str(seed_out),
                 ]
                 if verdict_from_path is not None:
                     cmd += ["--verdict-from", str(verdict_from_path)]
-                if seed in resumed:
-                    cmd += ["--reuse-calls", str(resumed[seed])]
+                resume_key: int | tuple[str, int] = (vp, seed) if multi_vp else seed
+                if resume_key in resumed:
+                    cmd += ["--reuse-calls", str(resumed[resume_key])]
                 stop = threading.Event()
                 tail = threading.Thread(target=stream_calls, args=(journal, m["served_as"], label, stop), daemon=True)
                 tail.start()
@@ -2655,6 +2695,7 @@ def critic_eval_window(built: dict, result: dict) -> None:
                         CUT_AT = {
                             "wave": "critic-eval",
                             "seed": seed,
+                            "verdict_prompt": vp,
                             "out": str(seed_out),
                             "arm": m["served_as"],
                             "label": label,
@@ -2678,7 +2719,9 @@ def critic_eval_window(built: dict, result: dict) -> None:
                     raise RuntimeError("the critic-eval report has no critic_card: no number from it may be read (R&D)")
                 run_entry = {
                     "seed": seed,
+                    "verdict_prompt": report.get("verdict_prompt") or vp,
                     "flaw_prompt": report.get("flaw_prompt") or flaw_prompt,
+                    "checks": report.get("checks") or checks,
                     "flaw_votes": report.get("flaw_votes") or flaw_votes,
                     "exit": run.returncode,
                     "seconds": round(time.time() - t0),
