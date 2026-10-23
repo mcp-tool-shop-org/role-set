@@ -30,7 +30,9 @@ class StubLlama:
         self.ollama_loaded = False
         self.ollama_size = 20281829620
         self.ollama_size_vram = 20281829620
-        self.ollama_context_length = 8192
+        self.ollama_context_length = 4096
+        self.ollama_on_generate = None
+        self.ollama_on_chat = None
         self.in_apply = False
         stub = self
 
@@ -98,8 +100,13 @@ class StubLlama:
                         )
                         return
                     if self.path == "/api/generate":
+                        opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
                         keep_alive = body.get("keep_alive")
                         stub.ollama_loaded = keep_alive not in (0, "0", "0s")
+                        if stub.ollama_on_generate is not None:
+                            stub.ollama_on_generate(body)
                         self._send_json(
                             200,
                             {
@@ -113,6 +120,10 @@ class StubLlama:
                     if self.path == "/api/chat":
                         stub.ollama_loaded = True
                         opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
+                        if stub.ollama_on_chat is not None:
+                            stub.ollama_on_chat(body)
                         if opts.get("num_predict") == 1:
                             self._send_json(
                                 200,

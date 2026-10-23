@@ -2671,6 +2671,7 @@ OLLAMA_PORT = int(os.environ.get("PIN_OLLAMA_PORT") or 11434)
 OFFRIG_MODEL = "gemma4:31b"
 OFFRIG_MODEL_DIGEST = "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7"
 OFFRIG_GOLD_SHA256 = "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
+OFFRIG_NUM_CTX = 8192
 HEX64_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -2685,7 +2686,6 @@ def offrig_bench_inputs(result: dict) -> tuple[Path, Path, dict]:
     """Read-only, sha-checked uploaded offrig Linux binary and gold jsonl for PIN_ROLE=offrig-bench."""
 
     offrig_sha = _require_sha256("PIN_OFFRIG_SHA256", os.environ.get("PIN_OFFRIG_SHA256"))
-    gold_sha = _require_sha256("PIN_OFFRIG_GOLD_SHA256", os.environ.get("PIN_OFFRIG_GOLD_SHA256"))
     raw_bin = (os.environ.get("PIN_OFFRIG_BIN") or "").strip()
     bin_src = Path(raw_bin) if raw_bin else (CONTENT / "offrig")
     if not bin_src.exists() and str(bin_src).startswith("/content/"):
@@ -2699,6 +2699,11 @@ def offrig_bench_inputs(result: dict) -> tuple[Path, Path, dict]:
     gold_src = Path(raw_gold) if raw_gold else (CONTENT / "bench30.jsonl")
     if not gold_src.exists() and str(gold_src).startswith("/content/"):
         gold_src = CONTENT / str(gold_src).removeprefix("/content/")
+    raw_gold_sha = os.environ.get("PIN_OFFRIG_GOLD_SHA256")
+    gold_sha = _require_sha256(
+        "PIN_OFFRIG_GOLD_SHA256",
+        OFFRIG_GOLD_SHA256 if (raw_gold_sha is None and gold_src.name == "bench30.jsonl") else raw_gold_sha,
+    )
     if not gold_src.is_file():
         raise RuntimeError(f"REFUSED: offrig gold jsonl not found at {gold_src}")
     got_bin_sha = sha256(bin_src).lower()
@@ -2800,7 +2805,7 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
             self.ollama_loaded = False
             self.ollama_size = 20281829620
             self.ollama_size_vram = 20281829620
-            self.ollama_context_length = 8192
+            self.ollama_context_length = 4096
             self.ollama_requests: list[tuple[str, dict]] = []
             self.call_fn = _slow_stub(lambda *_a, **_k: None)
             stub = self
@@ -2843,11 +2848,16 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
                     if self.path == "/api/show":
                         self._send_json(200, {"capabilities": ["completion", "thinking"], "model_info": {"gemma4.context_length": 262144}})
                     elif self.path == "/api/generate":
+                        opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
                         stub.ollama_loaded = body.get("keep_alive") not in (0, "0", "0s")
                         self._send_json(200, {"model": body.get("model") or stub.ollama_model, "response": "", "done": True, "done_reason": "load" if stub.ollama_loaded else "unload"})
                     elif self.path == "/api/chat":
                         stub.ollama_loaded = True
                         opts = body.get("options") or {}
+                        if opts.get("num_ctx"):
+                            stub.ollama_context_length = int(opts["num_ctx"])
                         if opts.get("num_predict") == 1:
                             self._send_json(200, {"model": body.get("model") or stub.ollama_model, "message": {"role": "assistant", "content": "ok"}, "done": True, "done_reason": "length", "prompt_eval_count": 30, "eval_count": 1, "total_duration": 5})
                             return
@@ -2870,8 +2880,8 @@ def _start_stub_ollama(model: str, digest: str, port: int, version: str = OLLAMA
 
 
 class OllamaServed:
-    """One `ollama serve` instance with A1's environment (OLLAMA_NUM_PARALLEL=1, OLLAMA_KV_CACHE_TYPE=f16,
-    OLLAMA_FLASH_ATTENTION=auto), or StubLlama in stub mode."""
+    """One `ollama serve` instance with A1's environment (OLLAMA_NUM_PARALLEL=1, OLLAMA_KV_CACHE_TYPE=f16;
+    OLLAMA_FLASH_ATTENTION left unset), or StubLlama in stub mode."""
 
     def __init__(self, ollama_bin: Path | None, model: str, digest: str, port: int):
         self.ollama_bin, self.model, self.digest, self.port = ollama_bin, model, digest, port
@@ -2887,11 +2897,10 @@ class OllamaServed:
         models_dir = WORK / "ollama-models"
         models_dir.mkdir(parents=True, exist_ok=True)
         env = {
-            **os.environ,
+            **{k: v for k, v in os.environ.items() if k != "OLLAMA_FLASH_ATTENTION"},
             "OLLAMA_HOST": f"127.0.0.1:{self.port}",
             "OLLAMA_NUM_PARALLEL": "1",
             "OLLAMA_KV_CACHE_TYPE": "f16",
-            "OLLAMA_FLASH_ATTENTION": "auto",
             "OLLAMA_MODELS": str(models_dir),
             "LD_LIBRARY_PATH": ld_path,
         }
@@ -2981,14 +2990,19 @@ def pull_ollama_model(ollama_bin: Path | None, model: str, digest: str, port: in
     return info
 
 
-def warmup_ollama_model(model: str, digest: str, port: int, base: Path, result: dict) -> dict:
-    """Warm-up load `model` via /api/generate before offrig starts (so a cold load never hits offrig's request timeout),
-    poll /api/ps until loaded, write ps.json, and verify digest and full GPU offload (size_vram == size)."""
+def warmup_ollama_model(
+    model: str, digest: str, port: int, base: Path, result: dict, num_ctx: int = OFFRIG_NUM_CTX
+) -> dict:
+    """Warm-up load `model` via /api/generate at `num_ctx` before offrig starts (so a cold load never hits offrig's
+    request timeout or reloads at a different context), poll /api/ps until loaded, write ps.json, and verify digest,
+    context_length, and full GPU offload (size_vram == size)."""
 
     check_deadline(f"warming up {model}")
     left = deadline_left()
     req_timeout = 600 if left is None else min(600, max(int(left), 1))
-    body = json.dumps({"model": model, "prompt": "", "keep_alive": "60m", "stream": False}).encode("utf-8")
+    body = json.dumps(
+        {"model": model, "prompt": "", "keep_alive": "60m", "stream": False, "options": {"num_ctx": num_ctx}}
+    ).encode("utf-8")
     req = urllib.request.Request(
         f"http://127.0.0.1:{port}/api/generate",
         data=body,
@@ -3013,8 +3027,11 @@ def warmup_ollama_model(model: str, digest: str, port: int, base: Path, result: 
         raise RuntimeError(f"REFUSED: {model} did not load in /api/ps after warm-up: {ps}")
     m_ps = models[0]
     got_digest = (m_ps.get("digest") or "").strip().lower().removeprefix("sha256:")
-    if got_digest and got_digest != digest:
+    if got_digest != digest:
         raise RuntimeError(f"REFUSED: /api/ps model digest {got_digest[:12]} != PIN_OFFRIG_MODEL_DIGEST {digest[:12]}")
+    ctx_len = int(m_ps.get("context_length") or 0)
+    if ctx_len != num_ctx:
+        raise RuntimeError(f"REFUSED: {model} context_length in /api/ps is {ctx_len} != {num_ctx}")
     size = int(m_ps.get("size") or 0)
     size_vram = int(m_ps.get("size_vram") or 0)
     if size <= 0 or size_vram < size:
@@ -3100,7 +3117,7 @@ def offrig_bench_window(result: dict) -> None:
     try:
         with srv:
             pull_ollama_model(ollama_bin, model, digest, port, result)
-            warmup_ollama_model(model, digest, port, base, result)
+            ps_warm = warmup_ollama_model(model, digest, port, base, result)
             check_deadline("offrig verify calibrate")
             cmd = [
                 str(offrig_bin),
@@ -3130,6 +3147,7 @@ def offrig_bench_window(result: dict) -> None:
             smi_thread.start()
             left = deadline_left()
             t0 = time.time()
+            ps_end: dict | None = None
             try:
                 try:
                     run = run_proc(
@@ -3176,6 +3194,25 @@ def offrig_bench_window(result: dict) -> None:
             (base / "offrig.log").write_text(run.stdout + "\n--- stderr ---\n" + run.stderr, encoding="utf-8")
             if run.returncode != 0:
                 raise RuntimeError(f"offrig verify calibrate exited {run.returncode}: {(run.stderr or run.stdout)[-1500:]}")
+            warm_m = (ps_warm.get("models") or [{}])[0]
+            end_models = (ps_end or {}).get("models") or []
+            if len(end_models) != 1:
+                msg = f"REFUSED: {model} did not stay loaded in /api/ps after offrig run: {ps_end}"
+                result["error"] = msg
+                raise RuntimeError(msg)
+            end_m = end_models[0]
+            warm_ctx = int(warm_m.get("context_length") or 0)
+            end_ctx = int(end_m.get("context_length") or 0)
+            if end_ctx != warm_ctx:
+                msg = f"REFUSED: /api/ps context_length changed during offrig run: warm-up {warm_ctx} != post-run {end_ctx}"
+                result["error"] = msg
+                raise RuntimeError(msg)
+            warm_vram = int(warm_m.get("size_vram") or 0)
+            end_vram = int(end_m.get("size_vram") or 0)
+            if end_vram != warm_vram:
+                msg = f"REFUSED: /api/ps size_vram changed during offrig run: warm-up {warm_vram} != post-run {end_vram}"
+                result["error"] = msg
+                raise RuntimeError(msg)
             verdicts_file = cal_out / "verdicts.jsonl"
             verdicts_count = (
                 sum(1 for ln in verdicts_file.read_text(encoding="utf-8").splitlines() if ln.strip())
