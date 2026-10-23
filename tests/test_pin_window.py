@@ -3301,6 +3301,7 @@ def _setup_offrig_manifest_env(tmp_path: Path, monkeypatch, *, stub: bool = True
         "PIN_STUB_CALL_S",
         "PIN_OFFRIG_MANIFEST",
         "PIN_OLLAMA_REGISTRY",
+        "PIN_OLLAMA_MIRROR",
     ):
         monkeypatch.delenv(k, raising=False)
 
@@ -3682,7 +3683,8 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
 
     def fail_on_blob_network(req_or_url, *a, **kw):
         url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-        if "/v2/" in url and "/blobs/" in url:
+        parts = pw.urllib.parse.urlsplit(url)
+        if "/v2/" in parts.path and "/blobs/" in parts.path:
             seen_urls.append(url)
             raise AssertionError(f"network call must not happen on disallowed registry: {url}")
         return orig_urlopen(req_or_url, *a, **kw)
@@ -3729,11 +3731,16 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
 
         def intercept_https_to_local(req_or_url, *a, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-            for allowed_host in ("https://registry.ollama.ai", "https://mirror.studio.example/ollama"):
-                if url.startswith(allowed_host + "/"):
-                    seen_urls.append(url)
-                    local_url = reg.base_url + url[len(allowed_host) :]
-                    return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
+            parts = pw.urllib.parse.urlsplit(url)
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "registry.ollama.ai", None) and parts.path.startswith("/"):
+                seen_urls.append(url)
+                local_url = f"{reg.base_url}{parts.path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "mirror.studio.example", None) and parts.path.startswith("/ollama/"):
+                seen_urls.append(url)
+                rel_path = parts.path.removeprefix("/ollama")
+                local_url = f"{reg.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
             return orig_urlopen(req_or_url, *a, **kw)
 
         monkeypatch.setattr(pw.urllib.request, "urlopen", intercept_https_to_local)
@@ -3743,7 +3750,11 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         res_default: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_default)
         assert res_default["offrig_manifest"]["registry"] == "https://registry.ollama.ai"
-        assert seen_urls and all(u.startswith("https://registry.ollama.ai/v2/") for u in seen_urls)
+        assert seen_urls and all(
+            ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port) == ("https", "registry.ollama.ai", None)
+            and p.path.startswith("/v2/")
+            for u in seen_urls
+        )
 
         # Default with uppercase scheme and trailing slashes
         seen_urls.clear()
@@ -3760,7 +3771,11 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         res_listed: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_listed)
         assert res_listed["offrig_manifest"]["registry"] == "https://mirror.studio.example/ollama"
-        assert len(seen_urls) == 4 and all(u.startswith("https://mirror.studio.example/ollama/v2/") for u in seen_urls)
+        assert len(seen_urls) == 4 and all(
+            ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port) == ("https", "mirror.studio.example", None)
+            and p.path.startswith("/ollama/v2/")
+            for u in seen_urls
+        )
 
         monkeypatch.setenv("PIN_OLLAMA_REGISTRY", "https://mirror.studio.example/ollama-evil")
         with pytest.raises(
@@ -3775,7 +3790,8 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         monkeypatch.delenv("PIN_OLLAMA_REGISTRY", raising=False)
         res_stub_auto: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_stub_auto)
-        assert res_stub_auto["offrig_manifest"]["registry"].startswith("http://127.0.0.1:")
+        stub_reg_parts = pw.urllib.parse.urlsplit(res_stub_auto["offrig_manifest"]["registry"])
+        assert (stub_reg_parts.scheme, stub_reg_parts.hostname) == ("http", "127.0.0.1")
         assert res_stub_auto["offrig_manifest"]["stub"] is True
 
         monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url + "/")
@@ -4116,7 +4132,8 @@ def test_offrig_bench_manifest_mode_exercises_inline_stub_ollama_end_to_end(tmp_
     assert [type(s).__name__ for s in started_stubs] == ["_InlineStubOllama"]
     assert res["model_errors"] == 0
     assert res["offrig_manifest"]["sha256"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
-    assert res["offrig_manifest"]["registry"].startswith("http://127.0.0.1:")
+    inline_reg_parts = pw.urllib.parse.urlsplit(res["offrig_manifest"]["registry"])
+    assert (inline_reg_parts.scheme, inline_reg_parts.hostname) == ("http", "127.0.0.1")
     assert len(res["offrig_manifest"]["blobs"]) == 4
     assert res["offrig_model"]["digest"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
     assert res["ps"]["models"][0]["digest"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
@@ -4153,6 +4170,1159 @@ def test_offrig_bench_manifest_mode_exercises_inline_stub_ollama_end_to_end(tmp_
     assert len(started_stubs) == 3 and type(started_stubs[2]).__name__ == "_InlineStubOllama"
     assert res_unset["offrig_model"]["digest"] == pw.OFFRIG_MODEL_DIGEST
     assert "offrig_manifest" not in res_unset
+
+
+# ---- PIN_OLLAMA_MIRROR (R&D, 2026-10-23): studio HF mirror of pinned Ollama blobs ----------------------------------------
+
+MIRROR_SENTINEL = "hf_" + "SENTINELneverPERSIST9f3c2a71abcdEFGHijk"
+PINNED_MIRROR_COMMIT = "9dfbad5aa9ecec08cd4275a1779ae2be3bcf2725"
+PINNED_MIRROR_SHA256 = "sha256:9f104ae7d85df083b46d9087b04c9bf44d47f447455d4e1583ebd6d0a66369bb"
+PINNED_MIRROR_BASE = f"https://huggingface.co/studio/role-set-ollama-pins/resolve/{PINNED_MIRROR_COMMIT}"
+
+
+def _start_test_blob_mirror(
+    *,
+    expected_token: str = MIRROR_SENTINEL,
+    revision: str = PINNED_MIRROR_COMMIT,
+    blob_overrides: dict[str, bytes] | None = None,
+    status_overrides: dict[str, int] | None = None,
+):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    overrides_bytes = blob_overrides or {}
+    overrides_status = status_overrides or {}
+    blobs: dict[str, bytes] = {
+        p.name.removeprefix("sha256-"): p.read_bytes()
+        for p in sorted(FIXTURE_MANIFEST_DIR.glob("sha256-*"))
+        if p.is_file()
+    }
+    blobs.update(overrides_bytes)
+    resolve_prefix = f"/studio/role-set-ollama-pins/resolve/{revision}"
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _TestMirror:
+        def __init__(self):
+            self.requests: list[str] = []
+            self.auth_matched: list[bool] = []
+            mir = self
+
+            class Handler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    mir.requests.append(self.path)
+                    auth = self.headers.get("Authorization")
+                    matched = auth == f"Bearer {expected_token}"
+                    mir.auth_matched.append(matched)
+                    if not matched:
+                        self.send_response(401)
+                        self.end_headers()
+                        return
+                    for known_hex, code in overrides_status.items():
+                        if self.path == f"{resolve_prefix}/blobs/sha256-{known_hex}":
+                            self.send_response(code)
+                            self.end_headers()
+                            return
+                    for known_hex, data in blobs.items():
+                        if self.path == f"{resolve_prefix}/blobs/sha256-{known_hex}":
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", 0), Handler)
+            self.host_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            self.base_url = f"{self.host_url}{resolve_prefix}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    return _TestMirror()
+
+
+def _find_git_bash() -> str | None:
+    if os.name == "nt":
+        for p in (
+            Path(r"C:\Program Files\Git\bin\bash.exe"),
+            Path(r"C:\Program Files\Git\usr\bin\bash.exe"),
+        ):
+            if p.is_file():
+                return str(p)
+    b = shutil.which("bash")
+    if b and os.name == "nt" and "system32" in b.lower():
+        return None
+    return b
+
+
+def test_offrig_bench_ollama_mirror_end_to_end_on_fixture_with_auth_header(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    seen_proc_cmds: list[list[str]] = []
+    orig_run_proc = pw.run_proc
+
+    def spy_run_proc(cmd, **kw):
+        if isinstance(cmd, list):
+            seen_proc_cmds.append(list(cmd))
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", spy_run_proc)
+    orig_urlopen = pw.urllib.request.urlopen
+
+    with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+        mir_parts = pw.urllib.parse.urlsplit(mir.base_url)
+
+        def guard_blob_urlopen(req_or_url, *a, **kw):
+            url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+            parts = pw.urllib.parse.urlsplit(url)
+            if "/blobs/" in parts.path and (
+                (parts.scheme, parts.hostname, parts.port) != (mir_parts.scheme, mir_parts.hostname, mir_parts.port)
+                or not parts.path.startswith(f"{mir_parts.path}/blobs/sha256-")
+            ):
+                raise AssertionError(f"blob request went to {url} instead of mirror {mir.base_url}")
+            return orig_urlopen(req_or_url, *a, **kw)
+
+        monkeypatch.setattr(pw.urllib.request, "urlopen", guard_blob_urlopen)
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", mir.base_url)
+        res: dict = {}
+        pw.offrig_bench_window(res)
+
+        assert len(mir.requests) == 4
+        assert mir.auth_matched == [True, True, True, True]
+        assert all(
+            r.startswith(f"/studio/role-set-ollama-pins/resolve/{PINNED_MIRROR_COMMIT}/blobs/sha256-")
+            for r in mir.requests
+        )
+
+    assert not any("pull" in c for c in seen_proc_cmds)
+    assert res["model_errors"] == 0
+    assert res["offrig_manifest"]["mirror"] == {
+        "base": mir.base_url,
+        "revision": PINNED_MIRROR_COMMIT,
+    }
+    assert "registry" not in res["offrig_manifest"]
+    assert res["offrig_model"]["digest"] == FIXTURE_MANIFEST_SHA256
+    assert res["ps"]["models"][0]["digest"] == FIXTURE_MANIFEST_SHA256
+    assert res["ps_end"]["models"][0]["digest"] == FIXTURE_MANIFEST_SHA256
+    assert res["offrig_bench"]["verdicts_count"] == 2
+
+    parsed = json.loads(FIXTURE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    for desc in [parsed["config"], *parsed["layers"]]:
+        bhex = desc["digest"].removeprefix("sha256:")
+        written_blob = work / "ollama-models" / "blobs" / f"sha256-{bhex}"
+        assert written_blob.read_bytes() == (FIXTURE_MANIFEST_DIR / f"sha256-{bhex}").read_bytes()
+
+    # Without the right auth token (or when a mirror blob fails with 401/404), it refuses with no fallback to registry or tag
+    _unlock_offrig_in(work)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    seen_proc_cmds.clear()
+    with (
+        _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir,
+        _start_test_blob_registry() as reg,
+    ):
+        monkeypatch.setattr(pw.urllib.request, "urlopen", orig_urlopen)
+        pw.TOKEN_PATH.write_text("hf_" + "WRONGtoken0000000000000000000000000000\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", mir.base_url)
+        with pytest.raises(RuntimeError, match="HTTP 401"):
+            pw.offrig_bench_window({})
+        assert mir.auth_matched == [False]
+        assert reg.requests == []
+    assert not any("pull" in c for c in seen_proc_cmds)
+
+    # Stub fixture mirror shorthand (`PIN_OLLAMA_MIRROR=stub`) also exercises the local fixture mirror with auth header
+    _unlock_offrig_in(work)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+    monkeypatch.setenv("PIN_OLLAMA_MIRROR", "stub")
+    res_stub_mir: dict = {}
+    pw.offrig_bench_window(res_stub_mir)
+    assert res_stub_mir["offrig_manifest"]["mirror"]["revision"] == PINNED_MIRROR_COMMIT
+    stub_mir_parts = pw.urllib.parse.urlsplit(res_stub_mir["offrig_manifest"]["mirror"]["base"])
+    assert (stub_mir_parts.scheme, stub_mir_parts.hostname) == ("http", "127.0.0.1")
+    assert stub_mir_parts.path == f"/studio/role-set-ollama-pins/resolve/{PINNED_MIRROR_COMMIT}"
+
+
+def _run_mirror_base_mutation_suite(
+    base_url: str,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> dict[str, int]:
+    """Run the single-mutation refusal matrix and positive controls against `base_url` without ever printing `base_url`."""
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    seen_urls: list[str] = []
+    orig_urlopen = pw.urllib.request.urlopen
+
+    def fail_on_network(req_or_url, *a, **kw):
+        url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
+            seen_urls.append(url)
+            raise AssertionError("network call must not happen on disallowed mirror")
+        return orig_urlopen(req_or_url, *a, **kw)
+
+    monkeypatch.setattr(pw.urllib.request, "urlopen", fail_on_network)
+
+    prefix_before_resolve, orig_rev = base_url.rsplit("/resolve/", 1)
+    assert orig_rev == PINNED_MIRROR_COMMIT
+    alt_rev = "a621a793661c9cdbced5bd76318b14e8f5a86ed7"
+    base_parts = pw.urllib.parse.urlsplit(base_url)
+    assert (base_parts.scheme, base_parts.hostname, base_parts.port) == ("https", "huggingface.co", None)
+    after_host = base_parts.path.lstrip("/")
+    acct_part, repo_part, _rest = after_host.split("/", 2)
+    assert repo_part == "role-set-ollama-pins"
+    host_prefix = f"{base_parts.scheme}://{base_parts.hostname}/"
+
+    mutations: list[tuple[str, str, str]] = [
+        (
+            "http_scheme",
+            "http://" + base_url.removeprefix("https://"),
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* must use https:// on a paid window",
+        ),
+        (
+            "other_40hex_revision",
+            f"{prefix_before_resolve}/resolve/{alt_rev}",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* is not in OLLAMA_MIRROR_ALLOWLIST on a paid window",
+        ),
+        (
+            "main_revision",
+            f"{prefix_before_resolve}/resolve/main",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* revision 'main' must be a 40-char lowercase hex commit sha",
+        ),
+        (
+            "trailing_path_blobs",
+            f"{base_url}/blobs",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* revision '.*/blobs' must be a 40-char lowercase hex commit sha",
+        ),
+        (
+            "trailing_path_extra",
+            f"{base_url}/extra",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* revision '.*/extra' must be a 40-char lowercase hex commit sha",
+        ),
+        (
+            "other_repo_name",
+            f"{host_prefix}{acct_part}/other-repo/resolve/{orig_rev}",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* is not in OLLAMA_MIRROR_ALLOWLIST on a paid window",
+        ),
+        (
+            "userinfo",
+            "https://user@" + base_url.removeprefix("https://"),
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* must not include userinfo on a paid window",
+        ),
+        (
+            "port_443",
+            f"https://huggingface.co:443/{after_host}",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* must not specify an explicit port on a paid window",
+        ),
+        (
+            "port_8443",
+            f"https://huggingface.co:8443/{after_host}",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* must not specify an explicit port on a paid window",
+        ),
+        (
+            "path_case_change",
+            f"{host_prefix}{acct_part}/Role-Set-Ollama-Pins/resolve/{orig_rev}",
+            r"REFUSED: PIN_OLLAMA_MIRROR=.* is not in OLLAMA_MIRROR_ALLOWLIST on a paid window",
+        ),
+    ]
+
+    refusal_passes = 0
+    for label, mutated_url, expected_match in mutations:
+        assert mutated_url != base_url, label
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", mutated_url)
+        try:
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+        except RuntimeError as exc:
+            msg = str(exc)
+            if not pw.re.search(expected_match, msg):
+                raise AssertionError(
+                    f"mutation {label!r} raised wrong message (expected {expected_match!r})"
+                ) from None
+        else:
+            raise AssertionError(f"mutation {label!r} was not refused")
+        assert seen_urls == [], label
+        assert not pw.TOKEN_PATH.exists() and pw._TOKEN is None
+        refusal_passes += 1
+
+    # Positive controls on a paid window: exact base and base with trailing slash
+    positive_passes = 0
+    with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+
+        def intercept_mirror_https_to_local(req_or_url, *a, **kw):
+            url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port) == (base_parts.scheme, base_parts.hostname, base_parts.port)
+                and parts.path.startswith(f"{base_parts.path}/")
+            ):
+                seen_urls.append(url)
+                rel_path = parts.path[len(base_parts.path) :]
+                local_url = f"{mir.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
+                headers = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
+                return orig_urlopen(pw.urllib.request.Request(local_url, headers=headers), *a, **kw)
+            return orig_urlopen(req_or_url, *a, **kw)
+
+        monkeypatch.setattr(pw.urllib.request, "urlopen", intercept_mirror_https_to_local)
+        for pos_input in (base_url, f"{base_url}/"):
+            shutil.rmtree(work / "ollama-models", ignore_errors=True)
+            seen_urls.clear()
+            mir.auth_matched.clear()
+            pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", pos_input)
+            res_paid: dict = {}
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_paid)
+            assert res_paid["offrig_manifest"]["mirror"] == {
+                "base": base_url,
+                "revision": PINNED_MIRROR_COMMIT,
+            }
+            assert len(seen_urls) == 4 and all(
+                ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port)
+                == (base_parts.scheme, base_parts.hostname, base_parts.port)
+                and p.path.startswith(f"{base_parts.path}/blobs/sha256-")
+                for u in seen_urls
+            )
+            assert mir.auth_matched == [True, True, True, True]
+            positive_passes += 1
+
+    return {"refusal_passes": refusal_passes, "positive_passes": positive_passes}
+
+
+def test_offrig_bench_ollama_mirror_refuses_unlisted_main_repo_http_trailing_path_and_commit_before_network(
+    tmp_path, monkeypatch
+):
+    assert pw.OLLAMA_MIRROR_ALLOWLIST == (PINNED_MIRROR_SHA256,)
+    pinned_test_sha = f"sha256:{pw.hashlib.sha256(PINNED_MIRROR_BASE.encode('utf-8')).hexdigest()}"
+    monkeypatch.setattr(pw, "OLLAMA_MIRROR_ALLOWLIST", (pinned_test_sha,))
+
+    counts = _run_mirror_base_mutation_suite(PINNED_MIRROR_BASE, tmp_path, monkeypatch)
+    assert counts == {"refusal_passes": 10, "positive_passes": 2}
+
+    # Literal https:// allow-list entry with scheme-case and multi-slash normalisation also works on a paid window
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path / "literal-allow", monkeypatch, stub=False)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+    orig_urlopen = pw.urllib.request.urlopen
+    seen_urls: list[str] = []
+    pinned_parts = pw.urllib.parse.urlsplit(PINNED_MIRROR_BASE)
+    with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+
+        def intercept_mirror_https_to_local(req_or_url, *a, **kw):
+            url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port)
+                == (pinned_parts.scheme, pinned_parts.hostname, pinned_parts.port)
+                and parts.path.startswith(f"{pinned_parts.path}/")
+            ):
+                seen_urls.append(url)
+                rel_path = parts.path[len(pinned_parts.path) :]
+                local_url = f"{mir.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
+                headers = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
+                return orig_urlopen(pw.urllib.request.Request(local_url, headers=headers), *a, **kw)
+            return orig_urlopen(req_or_url, *a, **kw)
+
+        monkeypatch.setattr(pw.urllib.request, "urlopen", intercept_mirror_https_to_local)
+        monkeypatch.setattr(pw, "OLLAMA_MIRROR_ALLOWLIST", (PINNED_MIRROR_BASE,))
+        shutil.rmtree(work / "ollama-models", ignore_errors=True)
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", f"  HTTPS://{PINNED_MIRROR_BASE.removeprefix('https://')}///  ")
+        res_paid: dict = {}
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_paid)
+        assert res_paid["offrig_manifest"]["mirror"] == {
+            "base": PINNED_MIRROR_BASE,
+            "revision": PINNED_MIRROR_COMMIT,
+        }
+        assert len(seen_urls) == 4
+        assert mir.auth_matched == [True, True, True, True]
+
+
+def test_offrig_bench_ollama_mirror_real_pin_allowlist_and_mutations(tmp_path, monkeypatch):
+    real_base = (os.environ.get("ROLE_SET_TEST_MIRROR_BASE") or "").strip()
+    if not real_base:
+        pytest.skip("ROLE_SET_TEST_MIRROR_BASE unset")
+    computed_entry = f"sha256:{pw.hashlib.sha256(real_base.encode('utf-8')).hexdigest()}"
+    assert pw.OLLAMA_MIRROR_ALLOWLIST == (PINNED_MIRROR_SHA256,)
+    assert computed_entry == PINNED_MIRROR_SHA256
+    counts = _run_mirror_base_mutation_suite(real_base, tmp_path, monkeypatch)
+    assert counts == {"refusal_passes": 10, "positive_passes": 2}
+    print(
+        f"REAL_PIN_MUTATION_SUITE refusal_passes={counts['refusal_passes']} "
+        f"positive_passes={counts['positive_passes']} "
+        f"total_passes={counts['refusal_passes'] + counts['positive_passes']} "
+        f"checked_sha256={computed_entry}"
+    )
+
+
+def _start_redirect_test_servers(
+    *,
+    expected_token: str = MIRROR_SENTINEL,
+    revision: str = PINNED_MIRROR_COMMIT,
+    redirect_mode: str = "cross_host",
+    redirect_target_override: str | None = None,
+    cdn_blob_overrides: dict[str, bytes] | None = None,
+    cdn_reject_auth: bool = True,
+):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    blobs: dict[str, bytes] = {
+        p.name.removeprefix("sha256-"): p.read_bytes()
+        for p in sorted(FIXTURE_MANIFEST_DIR.glob("sha256-*"))
+        if p.is_file()
+    }
+    cdn_blobs = {**blobs, **(cdn_blob_overrides or {})}
+    resolve_prefix = f"/studio/role-set-ollama-pins/resolve/{revision}"
+
+    class _Reuse(ThreadingHTTPServer):
+        allow_reuse_address = True
+
+    class _TestCDN:
+        def __init__(self):
+            self.requests: list[str] = []
+            self.saw_auth: list[bool] = []
+            cdn = self
+
+            class CDNHandler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    cdn.requests.append(self.path)
+                    has_auth = any(k.lower() == "authorization" for k in self.headers.keys())
+                    cdn.saw_auth.append(has_auth)
+                    if cdn_reject_auth and has_auth:
+                        self.send_response(400)
+                        self.end_headers()
+                        return
+                    for known_hex, data in cdn_blobs.items():
+                        if self.path == f"/cdn-blobs/sha256-{known_hex}":
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", 0), CDNHandler)
+            self.host_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            self.server.shutdown()
+            self.server.server_close()
+
+    cdn_srv = _TestCDN()
+
+    class _TestOrigin:
+        def __init__(self):
+            self.requests: list[str] = []
+            self.auth_matched: list[bool] = []
+            self.cdn = cdn_srv
+            orig = self
+
+            class OriginHandler(BaseHTTPRequestHandler):
+                def log_message(self, *a):
+                    pass
+
+                def do_GET(self):  # noqa: N802
+                    orig.requests.append(self.path)
+                    auth = self.headers.get("Authorization")
+                    matched = auth == f"Bearer {expected_token}"
+                    orig.auth_matched.append(matched)
+                    if not matched:
+                        self.send_response(401)
+                        self.end_headers()
+                        return
+                    req_path = self.path.split("?", 1)[0]
+                    for idx, (known_hex, data) in enumerate(blobs.items()):
+                        if req_path == f"{resolve_prefix}/blobs/sha256-{known_hex}":
+                            if redirect_target_override is not None:
+                                self.send_response(302)
+                                self.send_header(
+                                    "Location", redirect_target_override.format(hex=known_hex, base=orig.host_url)
+                                )
+                                self.end_headers()
+                                return
+                            if redirect_mode == "cross_host":
+                                code = (301, 302, 303, 307, 308)[idx % 5]
+                                self.send_response(code)
+                                self.send_header("Location", f"{cdn_srv.host_url}/cdn-blobs/sha256-{known_hex}")
+                                self.end_headers()
+                                return
+                            if redirect_mode == "same_host_then_cdn":
+                                loc = (
+                                    f"/same-host-hop/blobs/sha256-{known_hex}"
+                                    if idx % 2 == 0
+                                    else f"{orig.host_url}/same-host-hop/blobs/sha256-{known_hex}"
+                                )
+                                self.send_response(302)
+                                self.send_header("Location", loc)
+                                self.end_headers()
+                                return
+                            if redirect_mode == "signed_hop_missing_location":
+                                self.send_response(302)
+                                self.send_header(
+                                    "Location",
+                                    f"{orig.host_url}/same-host-hop/blobs/sha256-{known_hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+                                )
+                                self.end_headers()
+                                return
+                            if redirect_mode == "loop":
+                                self.send_response(302)
+                                self.send_header("Location", f"{resolve_prefix}/blobs/sha256-{known_hex}")
+                                self.end_headers()
+                                return
+                        if req_path == f"/same-host-hop/blobs/sha256-{known_hex}":
+                            if redirect_mode == "signed_hop_missing_location":
+                                self.send_response(302)
+                                self.end_headers()
+                                return
+                            if idx == len(blobs) - 1:
+                                self.send_response(302)
+                                self.send_header("Location", f"{cdn_srv.host_url}/cdn-blobs/sha256-{known_hex}")
+                                self.end_headers()
+                                return
+                            self.send_response(200)
+                            self.send_header("Content-Type", "application/octet-stream")
+                            self.send_header("Content-Length", str(len(data)))
+                            self.end_headers()
+                            self.wfile.write(data)
+                            return
+                    self.send_response(404)
+                    self.end_headers()
+
+            self.server = _Reuse(("127.0.0.1", 0), OriginHandler)
+            self.host_url = f"http://127.0.0.1:{self.server.server_address[1]}"
+            self.base_url = f"{self.host_url}{resolve_prefix}"
+            threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+        def close(self) -> None:
+            try:
+                self.server.shutdown()
+                self.server.server_close()
+            finally:
+                self.cdn.close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            self.close()
+
+    return _TestOrigin()
+
+
+def test_offrig_bench_ollama_mirror_cross_host_redirect_strips_auth_header(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    with _start_redirect_test_servers(expected_token=MIRROR_SENTINEL, redirect_mode="cross_host") as srv:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+        res: dict = {}
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res)
+
+        assert len(srv.requests) == 4
+        assert srv.auth_matched == [True, True, True, True]
+        assert len(srv.cdn.requests) == 4
+        assert srv.cdn.saw_auth == [False, False, False, False]
+
+    parsed = json.loads(FIXTURE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    for desc in [parsed["config"], *parsed["layers"]]:
+        bhex = desc["digest"].removeprefix("sha256:")
+        written_blob = work / "ollama-models" / "blobs" / f"sha256-{bhex}"
+        assert written_blob.read_bytes() == (FIXTURE_MANIFEST_DIR / f"sha256-{bhex}").read_bytes()
+
+    # Paid window (`PIN_STUB` unset): `https://huggingface.co/...` redirects 302 to `https://us.aws.cdn.hf.co:443/...`
+    # and strips `Authorization` on the CDN hop
+    monkeypatch.delenv("PIN_STUB", raising=False)
+    pinned_test_sha = f"sha256:{pw.hashlib.sha256(PINNED_MIRROR_BASE.encode('utf-8')).hexdigest()}"
+    monkeypatch.setattr(pw, "OLLAMA_MIRROR_ALLOWLIST", (pinned_test_sha,))
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    orig_urlopen = pw.urllib.request.urlopen
+    cdn_https_headers: list[dict[str, str]] = []
+    pinned_parts = pw.urllib.parse.urlsplit(PINNED_MIRROR_BASE)
+    with _start_redirect_test_servers(
+        expected_token=MIRROR_SENTINEL,
+        redirect_target_override="https://us.aws.cdn.hf.co:443/cdn-blobs/sha256-{hex}",
+    ) as srv_paid:
+
+        def route_paid_https_to_local(req_or_url, *a, _srv=srv_paid, **kw):
+            url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+            hdrs = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port)
+                == (pinned_parts.scheme, pinned_parts.hostname, pinned_parts.port)
+                and parts.path.startswith(f"{pinned_parts.path}/")
+            ):
+                rel_path = parts.path[len(pinned_parts.path) :]
+                local_url = f"{_srv.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_url, headers=hdrs), *a, **kw)
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "us.aws.cdn.hf.co", 443):
+                cdn_https_headers.append(hdrs)
+                local_cdn_url = f"{_srv.cdn.host_url}{parts.path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_cdn_url, headers=hdrs), *a, **kw)
+            return orig_urlopen(req_or_url, *a, **kw)
+
+        monkeypatch.setattr(pw.urllib.request, "urlopen", route_paid_https_to_local)
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", PINNED_MIRROR_BASE)
+        res_paid: dict = {}
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_paid)
+        assert srv_paid.auth_matched == [True, True, True, True]
+        assert srv_paid.cdn.saw_auth == [False, False, False, False]
+        assert len(cdn_https_headers) == 4
+        assert all(not any(k.lower() == "authorization" for k in h) for h in cdn_https_headers)
+
+
+def test_offrig_bench_ollama_mirror_same_host_redirect_keeps_auth_header(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    with _start_redirect_test_servers(expected_token=MIRROR_SENTINEL, redirect_mode="same_host_then_cdn") as srv:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+        res: dict = {}
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res)
+
+        # 4 initial origin requests + 4 same-host redirected requests all keep Authorization
+        assert len(srv.requests) == 8
+        assert srv.auth_matched == [True] * 8
+        # The final blob's second hop goes cross-host to the CDN and strips Authorization
+        assert len(srv.cdn.requests) == 1
+        assert srv.cdn.saw_auth == [False]
+    assert (work / "ollama-models" / "manifests" / "registry.ollama.ai" / "library" / "gemma4" / "31b").is_file()
+
+
+def test_offrig_bench_ollama_mirror_refuses_non_hf_redirect_before_network(tmp_path, monkeypatch):
+    _content, _work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    orig_opener_open = pw.urllib.request.OpenerDirector._open
+    leaked_targets: list[str] = []
+
+    for bad_target in (
+        "https://evil.example.com/blobs/sha256-{hex}",
+        "https://huggingface.co.evil.example.com/blobs/sha256-{hex}",
+        "https://evil-hf.co/blobs/sha256-{hex}",
+        "https://registry.ollama.ai/v2/library/gemma4/blobs/sha256:{hex}",
+        "http://huggingface.co/blobs/sha256-{hex}",
+        "https://user@huggingface.co/blobs/sha256-{hex}",
+        "https://huggingface.co:8443/blobs/sha256-{hex}",
+    ):
+        leaked_targets.clear()
+        with _start_redirect_test_servers(
+            expected_token=MIRROR_SENTINEL,
+            redirect_target_override=bad_target,
+        ) as srv:
+            srv_parts = pw.urllib.parse.urlsplit(srv.host_url)
+
+            def guard_opener_open(self_opener, req, data=None, _sp=srv_parts):
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                parts = pw.urllib.parse.urlsplit(url)
+                if (parts.scheme, parts.hostname, parts.port) != (_sp.scheme, _sp.hostname, _sp.port):
+                    leaked_targets.append(url)
+                    raise AssertionError(f"request must never be sent to disallowed redirect target {url}")
+                return orig_opener_open(self_opener, req, data)
+
+            monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", guard_opener_open)
+            pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+            with pytest.raises(RuntimeError, match="REFUSED: mirror redirect target"):
+                pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+            assert leaked_targets == []
+
+    # Signed URLs (?X-Amz-Signature=SECRET#FRAG_SECRET) in a refused redirect target or missing-Location redirect never leak into RuntimeError, say(), or pin-result fields
+    say_lines: list[str] = []
+    monkeypatch.setattr(pw, "say", say_lines.append)
+    for signed_bad_target in (
+        "https://evil.example.com/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://registry.ollama.ai/v2/library/gemma4/blobs/sha256:{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "http://huggingface.co/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://user@huggingface.co/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:8443/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:bad/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+    ):
+        say_lines.clear()
+        with _start_redirect_test_servers(
+            expected_token=MIRROR_SENTINEL,
+            redirect_target_override=signed_bad_target,
+        ) as srv_signed:
+            srv_parts = pw.urllib.parse.urlsplit(srv_signed.host_url)
+
+            def guard_signed_open(self_opener, req, data=None, _sp=srv_parts):
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                parts = pw.urllib.parse.urlsplit(url)
+                if (parts.scheme, parts.hostname, parts.port) != (_sp.scheme, _sp.hostname, _sp.port):
+                    raise AssertionError(f"request must never be sent to disallowed redirect target {url}")
+                return orig_opener_open(self_opener, req, data)
+
+            monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", guard_signed_open)
+            pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv_signed.base_url)
+            res_signed: dict = {}
+            with pytest.raises(RuntimeError, match="REFUSED: mirror redirect target") as exc_info:
+                pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_signed)
+            err_msg = str(exc_info.value)
+            assert "X-Amz-Signature" not in err_msg
+            assert "SECRET" not in err_msg
+            assert "FRAG_SECRET" not in err_msg
+            res_dump = json.dumps(res_signed)
+            assert "X-Amz-Signature" not in res_dump and "SECRET" not in res_dump
+            assert all("X-Amz-Signature" not in ln and "SECRET" not in ln for ln in say_lines)
+
+    # Hop-2 redirect missing Location when cur_url carries ?X-Amz-Signature=SECRET#FRAG_SECRET also strips query and fragment
+    monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", orig_opener_open)
+    say_lines.clear()
+    with _start_redirect_test_servers(
+        expected_token=MIRROR_SENTINEL,
+        redirect_mode="signed_hop_missing_location",
+    ) as srv_missing_loc:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv_missing_loc.base_url)
+        res_missing_loc: dict = {}
+        with pytest.raises(RuntimeError, match="REFUSED: .* redirect HTTP 302 .* missing Location") as exc_loc:
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_missing_loc)
+        loc_msg = str(exc_loc.value)
+        assert "X-Amz-Signature" not in loc_msg
+        assert "SECRET" not in loc_msg
+        assert "FRAG_SECRET" not in loc_msg
+        loc_dump = json.dumps(res_missing_loc)
+        assert "X-Amz-Signature" not in loc_dump and "SECRET" not in loc_dump
+        assert all("X-Amz-Signature" not in ln and "SECRET" not in ln for ln in say_lines)
+
+    # Paid window (`PIN_STUB` unset) also refuses a redirect to loopback `127.0.0.1` and refuses redirect loops (> 5 hops)
+    monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", orig_opener_open)
+    with _start_redirect_test_servers(expected_token=MIRROR_SENTINEL, redirect_mode="loop") as srv_loop:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv_loop.base_url)
+        with pytest.raises(RuntimeError, match="REFUSED: .* exceeded max redirects"):
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+
+
+def test_offrig_bench_ollama_mirror_cross_host_redirect_enforces_size_and_sha256(tmp_path, monkeypatch):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    parsed = json.loads(FIXTURE_MANIFEST_PATH.read_text(encoding="utf-8"))
+    cfg_hex = parsed["config"]["digest"].removeprefix("sha256:")
+    cfg_size = int(parsed["config"]["size"])
+
+    # 1. Cross-host CDN returns wrong byte size -> refused with size mismatch
+    with _start_redirect_test_servers(
+        expected_token=MIRROR_SENTINEL,
+        redirect_mode="cross_host",
+        cdn_blob_overrides={cfg_hex: (FIXTURE_MANIFEST_DIR / f"sha256-{cfg_hex}").read_bytes() + b"extra"},
+    ) as srv:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+        with pytest.raises(RuntimeError, match="size mismatch"):
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+        assert srv.cdn.saw_auth == [False]
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{cfg_hex}").exists()
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{cfg_hex}.part").exists()
+
+    # 2. Cross-host CDN returns exact expected byte size but wrong sha256 -> refused with sha256 mismatch
+    with _start_redirect_test_servers(
+        expected_token=MIRROR_SENTINEL,
+        redirect_mode="cross_host",
+        cdn_blob_overrides={cfg_hex: b"X" * cfg_size},
+    ) as srv:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+        with pytest.raises(RuntimeError, match=r"sha256 mismatch: [0-9a-f]{12} != [0-9a-f]{12}"):
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+        assert srv.cdn.saw_auth == [False]
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{cfg_hex}").exists()
+    assert not (work / "ollama-models" / "blobs" / f"sha256-{cfg_hex}.part").exists()
+
+
+def test_offrig_bench_ollama_mirror_missing_token_non_hex_revision_and_window_prechecks(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    seen_urls: list[str] = []
+    orig_urlopen = pw.urllib.request.urlopen
+
+    def fail_on_network(req_or_url, *a, **kw):
+        url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
+            seen_urls.append(url)
+            raise AssertionError(f"unexpected network call to {url}")
+        return orig_urlopen(req_or_url, *a, **kw)
+
+    monkeypatch.setattr(pw.urllib.request, "urlopen", fail_on_network)
+
+    # 1. PIN_OLLAMA_MIRROR set with no token file -> refused before network
+    pinned_test_sha = f"sha256:{pw.hashlib.sha256(PINNED_MIRROR_BASE.encode('utf-8')).hexdigest()}"
+    monkeypatch.setattr(pw, "OLLAMA_MIRROR_ALLOWLIST", (pinned_test_sha,))
+    pw.TOKEN_PATH.unlink(missing_ok=True)
+    pw.take_token()
+    monkeypatch.setenv("PIN_OLLAMA_MIRROR", PINNED_MIRROR_BASE)
+    res_no_tok: dict = {}
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_OLLAMA_MIRROR is set, but no token file reached the VM"):
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_no_tok)
+    assert seen_urls == []
+    assert all(res_no_tok["token_clean"].values())
+
+    # 2. Non-40-hex /resolve/ revision refused both when listed in OLLAMA_MIRROR_ALLOWLIST (paid) and in stub mode
+    for bad_rev in ("main", "9dfbad5", f"{PINNED_MIRROR_COMMIT}00", PINNED_MIRROR_COMMIT.upper()):
+        bad_paid_url = f"https://huggingface.co/studio/role-set-ollama-pins/resolve/{bad_rev}"
+        bad_paid_sha = f"sha256:{pw.hashlib.sha256(bad_paid_url.encode('utf-8')).hexdigest()}"
+        monkeypatch.setattr(pw, "OLLAMA_MIRROR_ALLOWLIST", (bad_paid_url, bad_paid_sha))
+        monkeypatch.delenv("PIN_STUB", raising=False)
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", bad_paid_url)
+        with pytest.raises(
+            RuntimeError,
+            match=r"REFUSED: PIN_OLLAMA_MIRROR=.* revision .* must be a 40-char lowercase hex commit sha",
+        ):
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+        assert seen_urls == []
+
+        monkeypatch.setenv("PIN_STUB", "1")
+        bad_stub_url = f"http://127.0.0.1:9999/studio/role-set-ollama-pins/resolve/{bad_rev}"
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", bad_stub_url)
+        with pytest.raises(
+            RuntimeError,
+            match=r"REFUSED: PIN_OLLAMA_MIRROR=.* revision .* must be a 40-char lowercase hex commit sha",
+        ):
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
+        assert seen_urls == []
+
+    # 3. offrig_bench_window refuses when both PIN_OLLAMA_MIRROR and PIN_OLLAMA_REGISTRY are set, and records token_clean in finally
+    monkeypatch.setenv("PIN_STUB", "1")
+    pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+    monkeypatch.setenv("PIN_OLLAMA_MIRROR", PINNED_MIRROR_BASE)
+    monkeypatch.setenv("PIN_OLLAMA_REGISTRY", "https://registry.ollama.ai")
+    res_both: dict = {}
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_OLLAMA_MIRROR and PIN_OLLAMA_REGISTRY cannot both be set"):
+        pw.offrig_bench_window(res_both)
+    assert seen_urls == []
+    assert pw._TOKEN is None and not pw.TOKEN_PATH.exists()
+    assert res_both.get("token_clean") == {
+        "file_gone": True,
+        "value_dropped": True,
+        "env_clear": True,
+        "no_cached_token": True,
+        "no_colab_secret": True,
+    }
+    monkeypatch.delenv("PIN_OLLAMA_REGISTRY", raising=False)
+
+    # 4. offrig_bench_window's pre-wave token-residue check refuses before any blob download starts
+    for residue_kind, expected_key in (
+        ("env", "env_clear"),
+        ("cache", "no_cached_token"),
+        ("colab", "no_colab_secret"),
+        ("file", "file_gone"),
+    ):
+        _unlock_offrig_in(work)
+        monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+        monkeypatch.delitem(sys.modules, "huggingface_hub.utils._auth", raising=False)
+        clean_home = tmp_path / f"hf-prewave-{residue_kind}"
+        clean_home.mkdir(exist_ok=True)
+        monkeypatch.setenv("HF_HOME", str(clean_home))
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+        if residue_kind == "env":
+            monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "residue")
+        elif residue_kind == "cache":
+            (clean_home / "token").write_text("residue\n", encoding="utf-8")
+        elif residue_kind == "colab":
+            monkeypatch.setitem(
+                sys.modules, "huggingface_hub.utils._auth", SimpleNamespace(_GOOGLE_COLAB_SECRET="residue")
+            )
+        else:
+            pw.TOKEN_PATH.write_text("residue\n", encoding="utf-8")
+
+        res_pre: dict = {}
+        with pytest.raises(RuntimeError, match=rf"a token residue is left before any wave \(.*{expected_key}"):
+            pw.offrig_bench_window(res_pre)
+        assert seen_urls == []
+        assert res_pre["token_clean"][expected_key] is False
+        assert res_pre["token_clean"]["value_dropped"] is True
+        assert pw._TOKEN is None
+        pw.TOKEN_PATH.unlink(missing_ok=True)
+
+
+def test_offrig_bench_ollama_mirror_token_travels_only_in_header_never_in_url_log_or_pin_result(
+    tmp_path, monkeypatch
+):
+    content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_CONTENT", str(content))
+    monkeypatch.setenv("PIN_WORK", str(work))
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+    monkeypatch.setattr(pw, "take_job_lock", lambda _w: open(work / "job.lock", "w"))  # noqa: SIM115
+
+    # Restore real `say` so job.log captures every log line written during `pw.main()`
+    monkeypatch.setattr(
+        pw,
+        "say",
+        lambda msg: print(f"[{__import__('time').strftime('%H:%M:%S')}] {msg}", flush=True),
+    )
+
+    seen_request_urls: list[str] = []
+    seen_request_headers: list[dict[str, str]] = []
+    orig_urlopen = pw.urllib.request.urlopen
+
+    def inspect_requests(req_or_url, *a, **kw):
+        url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
+        hdrs = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
+            seen_request_urls.append(url)
+            seen_request_headers.append(hdrs)
+        return orig_urlopen(req_or_url, *a, **kw)
+
+    monkeypatch.setattr(pw.urllib.request, "urlopen", inspect_requests)
+
+    with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", mir.base_url)
+        rc = pw.main()
+
+    assert rc == 0
+    assert len(seen_request_urls) == 4
+    # Token is in the Authorization header on every mirror blob request
+    assert all(
+        h.get("Authorization") == f"Bearer {MIRROR_SENTINEL}" or h.get("authorization") == f"Bearer {MIRROR_SENTINEL}"
+        for h in seen_request_headers
+    )
+    # Token is never in any URL
+    assert all(MIRROR_SENTINEL not in u and not pw.TOKEN_SHAPE_RE.search(u) for u in seen_request_urls)
+
+    # Token is never in job.log, pin-result.json, or any file under content / work
+    job_log_text = (work / "job.log").read_text(encoding="utf-8")
+    pin_result_text = (work / "pin-result.json").read_text(encoding="utf-8")
+    assert MIRROR_SENTINEL not in job_log_text and not pw.TOKEN_SHAPE_RE.search(job_log_text)
+    assert MIRROR_SENTINEL not in pin_result_text and not pw.TOKEN_SHAPE_RE.search(pin_result_text)
+    for fpath in content.rglob("*"):
+        if fpath.is_file():
+            raw = fpath.read_bytes()
+            assert MIRROR_SENTINEL.encode("utf-8") not in raw, fpath
+            assert not pw.re.search(rb"hf_[A-Za-z0-9]{30,}", raw), fpath
+
+    pin_res = json.loads(pin_result_text)
+    assert pin_res["ok"] is True
+    assert pin_res["offrig_manifest"]["mirror"] == {
+        "base": mir.base_url,
+        "revision": PINNED_MIRROR_COMMIT,
+    }
+    assert set(pin_res["offrig_manifest"]["mirror"].keys()) == {"base", "revision"}
+
+    # In registry mode (PIN_OLLAMA_MIRROR unset), even if a token file was present on disk, NO Authorization header is ever sent
+    _unlock_offrig_in(work)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    seen_request_urls.clear()
+    seen_request_headers.clear()
+    monkeypatch.delenv("PIN_OLLAMA_MIRROR", raising=False)
+    with _start_test_blob_registry() as reg:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url)
+        monkeypatch.setattr(pw, "take_job_lock", lambda _w: open(work / "job.lock", "w"))  # noqa: SIM115
+        assert pw.main() == 0
+    assert len(seen_request_headers) == 4
+    assert all("Authorization" not in h and "authorization" not in h for h in seen_request_headers)
+
+
+def test_offrig_bench_ollama_mirror_token_clean_is_true_after_fetch_and_refuses_residue(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+
+    # 1. After read_token_file(needed=True) + install_ollama_manifest on the mirror, token_clean is all True, TOKEN_PATH is gone, and _TOKEN is None
+    with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", mir.base_url)
+        res_ok: dict = {}
+        pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_ok)
+
+    assert not pw.token_file().exists()
+    assert pw._TOKEN is None
+    assert pw.token_clean() == {
+        "file_gone": True,
+        "value_dropped": True,
+        "env_clear": True,
+        "no_cached_token": True,
+        "no_colab_secret": True,
+    }
+    assert res_ok["token_clean"] == pw.token_clean()
+    assert all(res_ok["token_clean"].values())
+    assert res_ok["offrig_manifest"]["mirror"]["revision"] == PINNED_MIRROR_COMMIT
+
+    # 2. Any token residue (env, Hub token cache, Colab secret, or leftover file) fails token_clean
+    for residue_kind, expected_key in (
+        ("env", "env_clear"),
+        ("cache", "no_cached_token"),
+        ("colab", "no_colab_secret"),
+        ("file", "file_gone"),
+    ):
+        _unlock_offrig_in(work)
+        shutil.rmtree(work / "ollama-models", ignore_errors=True)
+        monkeypatch.delenv("HUGGING_FACE_HUB_TOKEN", raising=False)
+        monkeypatch.delitem(sys.modules, "huggingface_hub.utils._auth", raising=False)
+        clean_home = tmp_path / f"hf-clean-{residue_kind}"
+        clean_home.mkdir(exist_ok=True)
+        monkeypatch.setenv("HF_HOME", str(clean_home))
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        pw.read_token_file(needed=True)
+
+        if residue_kind == "env":
+            monkeypatch.setenv("HUGGING_FACE_HUB_TOKEN", "residue")
+        elif residue_kind == "cache":
+            (clean_home / "token").write_text("residue\n", encoding="utf-8")
+        elif residue_kind == "colab":
+            monkeypatch.setitem(
+                sys.modules, "huggingface_hub.utils._auth", SimpleNamespace(_GOOGLE_COLAB_SECRET="residue")
+            )
+        else:
+            pw.TOKEN_PATH.write_text("residue\n", encoding="utf-8")
+
+        with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", mir.base_url)
+            res_res: dict = {}
+            with pytest.raises(RuntimeError, match=rf"token residue is left before any wave \(.*{expected_key}"):
+                pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_res)
+            assert res_res["token_clean"][expected_key] is False
+        assert pw._TOKEN is None
+        pw.TOKEN_PATH.unlink(missing_ok=True)
+
+
+def test_smoke_window_accepts_offrig_bench_ollama_pins_read_and_refuses_any_other_token(tmp_path):
+    bash_bin = _find_git_bash()
+    if not bash_bin:
+        pytest.skip("bash not available")
+    script = str(Path(__file__).resolve().parents[1] / "scripts" / "colab" / "smoke_window.sh")
+    binfile = tmp_path / "offrig"
+    binfile.write_bytes(b"x" * 64)
+
+    # 1. smoke_window.sh accepts offrig-bench:HF_TOKEN_OLLAMA_PINS_READ (when empty on the rig, reaches the empty-var check at exit 3)
+    out_empty = tmp_path / "out-empty"
+    env_empty = {
+        **os.environ,
+        "PIN_GPU": "A100",
+        "PIN_GATE_MIN_DISK_GB": "80",
+        "PIN_ROLE": "offrig-bench",
+        "PIN_HF_TOKEN_FROM": "HF_TOKEN_OLLAMA_PINS_READ",
+        "HF_TOKEN_OLLAMA_PINS_READ": "",
+    }
+    r_empty = subprocess.run([bash_bin, script, str(binfile), str(out_empty)], env=env_empty, capture_output=True, text=True, timeout=30)
+    combined_empty = r_empty.stdout + r_empty.stderr
+    assert r_empty.returncode == 3, (r_empty.returncode, combined_empty)
+    assert "PIN_HF_TOKEN_FROM names HF_TOKEN_OLLAMA_PINS_READ, which is empty on the rig" in combined_empty
+
+    # 2. smoke_window.sh refuses offrig-bench with any token other than HF_TOKEN_OLLAMA_PINS_READ before any VM call
+    for bad_tok in ("HF_TOKEN_GGUF_READ", "HF_TOKEN_GGUF_WRITE", "HF_TOKEN", "HF_TOKEN_OTHER"):
+        out_dir = tmp_path / f"out-{bad_tok}"
+        env = {
+            **os.environ,
+            "PIN_GPU": "A100",
+            "PIN_GATE_MIN_DISK_GB": "80",
+            "PIN_ROLE": "offrig-bench",
+            "PIN_HF_TOKEN_FROM": bad_tok,
+            bad_tok: MIRROR_SENTINEL,
+        }
+        r = subprocess.run([bash_bin, script, str(binfile), str(out_dir)], env=env, capture_output=True, text=True, timeout=30)
+        combined = r.stdout + r.stderr
+        assert r.returncode == 2, (bad_tok, r.returncode, combined)
+        assert f"REFUSED: PIN_ROLE=offrig-bench may not send {bad_tok}" in combined
+        assert "offrig-bench: HF_TOKEN_OLLAMA_PINS_READ" in combined
+
+    # 3. smoke_window.sh refuses HF_TOKEN_OLLAMA_PINS_READ for any role other than offrig-bench
+    for other_role in ("pilot", "critic-eval", "prebuild", "smoke"):
+        out_dir = tmp_path / f"out-role-{other_role}"
+        env = {
+            **os.environ,
+            "PIN_GPU": "A100",
+            "PIN_GATE_MIN_DISK_GB": "80",
+            "PIN_ROLE": other_role,
+            "PIN_HF_TOKEN_FROM": "HF_TOKEN_OLLAMA_PINS_READ",
+            "HF_TOKEN_OLLAMA_PINS_READ": MIRROR_SENTINEL,
+        }
+        r = subprocess.run([bash_bin, script, str(binfile), str(out_dir)], env=env, capture_output=True, text=True, timeout=30)
+        combined = r.stdout + r.stderr
+        assert r.returncode == 2, (other_role, r.returncode, combined)
+        assert f"REFUSED: PIN_ROLE={other_role} may not send HF_TOKEN_OLLAMA_PINS_READ" in combined
+
+
+def test_offrig_bench_with_mirror_unset_behaviour_unchanged_from_a621a793(tmp_path, monkeypatch):
+    _content, work, free_port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=False)
+    monkeypatch.delenv("PIN_OLLAMA_MIRROR", raising=False)
+
+    # 1. Manifest mode with PIN_OLLAMA_MIRROR unset uses registry.ollama.ai (or PIN_OLLAMA_REGISTRY), needs no token, and records `registry`
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+    with _start_test_blob_registry() as reg:
+        monkeypatch.setattr(pw, "_resolve_ollama_registry_base", lambda _raw=None: (reg.base_url, None))
+        res_reg: dict = {}
+        pw.offrig_bench_window(res_reg)
+        assert len(reg.requests) == 8  # 4 v2 blob requests + 4 redirected _blobs requests
+    assert res_reg["offrig_manifest"]["registry"] == reg.base_url
+    assert "mirror" not in res_reg["offrig_manifest"]
+    assert all(res_reg["token_clean"].values())
+    assert res_reg["offrig_model"]["digest"] == FIXTURE_MANIFEST_SHA256
+
+    # 2. Non-manifest mode with PIN_OLLAMA_MIRROR unset runs `ollama pull` and records no `offrig_manifest`
+    _unlock_offrig_in(work)
+    shutil.rmtree(work / "ollama-models", ignore_errors=True)
+    monkeypatch.delenv("PIN_OFFRIG_MANIFEST", raising=False)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", pw.OFFRIG_MODEL_DIGEST)
+    seen_proc_cmds: list[list[str]] = []
+    orig_run_proc = pw.run_proc
+
+    def spy_run_proc(cmd, **kw):
+        if isinstance(cmd, list):
+            seen_proc_cmds.append(list(cmd))
+            if cmd[1:3] == ["pull", "gemma4:31b"]:
+                assert kw["env"]["OLLAMA_HOST"] == f"127.0.0.1:{free_port}"
+                return subprocess.CompletedProcess(cmd, 0, "pulling manifest\nsuccess\n", "")
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", spy_run_proc)
+    res_pull: dict = {}
+    pw.offrig_bench_window(res_pull)
+    assert [c[1] for c in seen_proc_cmds] == ["pull", "verify"]
+    assert "offrig_manifest" not in res_pull
+    assert res_pull["offrig_model"]["digest"] == pw.OFFRIG_MODEL_DIGEST
+
 
 
 

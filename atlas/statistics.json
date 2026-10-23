@@ -194,7 +194,7 @@
       },
       {
         "commits": 82,
-        "lines": 465,
+        "lines": 466,
         "path": "CHANGELOG.md"
       },
       {
@@ -269,7 +269,7 @@
       },
       {
         "commits": 52,
-        "lines": 1019,
+        "lines": 1017,
         "path": "atlas/README.md"
       },
       {
@@ -279,17 +279,17 @@
       },
       {
         "commits": 52,
-        "lines": 3396,
+        "lines": 3371,
         "path": "atlas/page.json"
       },
       {
         "commits": 52,
-        "lines": 7682,
+        "lines": 7703,
         "path": "atlas/statistics.json"
       },
       {
         "commits": 52,
-        "lines": 36901,
+        "lines": 36947,
         "path": "atlas/structure.json"
       },
       {
@@ -409,7 +409,7 @@
       },
       {
         "commits": 66,
-        "lines": 9100,
+        "lines": 9658,
         "path": "scripts/colab/pin_window.py"
       },
       {
@@ -428,8 +428,8 @@
         "path": "scripts/colab/preflight_window.py"
       },
       {
-        "commits": 39,
-        "lines": 968,
+        "commits": 40,
+        "lines": 979,
         "path": "scripts/colab/smoke_window.sh"
       },
       {
@@ -963,8 +963,8 @@
         "path": "tests/fixtures/window12g12h-chain.tar.gz"
       },
       {
-        "commits": 7,
-        "lines": 527,
+        "commits": 6,
+        "lines": 513,
         "path": "tests/stub_llama.py"
       },
       {
@@ -1119,7 +1119,7 @@
       },
       {
         "commits": 42,
-        "lines": 6276,
+        "lines": 6821,
         "path": "tests/test_pin_window.py"
       },
       {
@@ -1213,8 +1213,8 @@
         "path": "tests/test_waves.py"
       },
       {
-        "commits": 19,
-        "lines": 1306,
+        "commits": 20,
+        "lines": 1322,
         "path": "tests/test_window_script.py"
       },
       {
@@ -1238,9 +1238,9 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-23T10:45:23.474Z",
+  "generatedAt": "2026-10-23T16:17:27.405Z",
   "generatedFrom": {
-    "commit": "8f319a8adf51e22a3b2ca436f8416d02954c4023"
+    "commit": "28000c8085250bf76a5430f7efeea7892d15c850"
   },
   "pairs": [
     {
@@ -1365,9 +1365,9 @@
     {
       "a": "tests/fake_colab/colab",
       "b": "tests/test_window_script.py",
-      "either": 15,
+      "either": 16,
       "shared": 8,
-      "strength": 0.533333
+      "strength": 0.5
     }
   ],
   "parameters": {
@@ -1380,16 +1380,16 @@
     "floor": "fallen",
     "floorHeld": false,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-23T06:44:55-04:00",
+    "headDate": "2026-10-23T12:15:40-04:00",
     "inScopeFiles": 213,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 173,
+    "qualifyingCommits": 172,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-26T10:44:55.000Z",
+    "since": "2026-04-26T16:15:40.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

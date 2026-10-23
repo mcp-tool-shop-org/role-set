@@ -173,7 +173,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "d197e5c056346d5784acc9bd7b38856399eb6cce821bd6ff120eff90c8620d5c",
+          "hash": "22c189e04ba31ddb3f4953848ad6ff559c9a860a92d447f19e59ecbd93a2cd71",
           "path": "CHANGELOG.md"
         },
         {
@@ -256,7 +256,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 19,
+      "dynamicReads": 20,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 8,
@@ -1053,122 +1053,117 @@
             {
               "in": "_require_sha256",
               "kind": "raise",
-              "line": 2766
+              "line": 2775
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2782
+              "line": 2791
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2793
+              "line": 2802
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2796
+              "line": 2805
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2799
+              "line": 2808
             },
             {
               "in": "zstandard_wheel_sha256",
               "kind": "raise",
-              "line": 2827
+              "line": 2836
             },
             {
               "in": "ensure_zstandard",
               "kind": "except",
-              "line": 2842
+              "line": 2851
             },
             {
               "in": "ensure_zstandard",
               "kind": "raise",
-              "line": 2853
+              "line": 2862
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2865
+              "line": 2874
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2868
+              "line": 2877
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2872
+              "line": 2881
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2876
+              "line": 2885
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2880
+              "line": 2889
             },
             {
               "in": "_safe_tar_filter",
               "kind": "except",
-              "line": 2883
+              "line": 2892
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2884
+              "line": 2893
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2929
+              "line": 2938
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2941
+              "line": 2950
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2961
+              "line": 2970
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2974
+              "line": 2983
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2981
+              "line": 2990
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2986
+              "line": 2995
             },
             {
               "in": "_parse_ollama_model",
               "kind": "raise",
-              "line": 3030
+              "line": 3039
             },
             {
               "in": "_parse_ollama_model",
               "kind": "raise",
-              "line": 3035
-            },
-            {
-              "in": "_resolve_ollama_registry_base",
-              "kind": "raise",
-              "line": 3062
+              "line": 3044
             },
             {
               "in": "_resolve_ollama_registry_base",
@@ -1176,382 +1171,442 @@
               "line": 3071
             },
             {
+              "in": "_resolve_ollama_registry_base",
+              "kind": "raise",
+              "line": 3080
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3100
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3107
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3122
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3126
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3129
+            },
+            {
               "in": "_written_ollama_manifest_digest",
               "kind": "except",
-              "line": 3086
+              "line": 3213
             },
             {
               "in": "_resolve_manifest_path",
               "kind": "raise",
-              "line": 3165
+              "line": 3292
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3171
+              "line": 3298
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3175
+              "line": 3302
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3334
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3193
+              "line": 3337
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3194
+              "line": 3338
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3198
+              "line": 3342
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3203
+              "line": 3347
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3209
+              "line": 3353
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3249
+              "line": 3364
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3263
+              "line": 3393
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3284
+              "line": 3413
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3290
+              "line": 3427
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3295
+              "line": 3448
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3454
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3459
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3299
+              "line": 3463
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3308
+              "line": 3472
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3309
+              "line": 3473
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3333
+              "line": 3497
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3346
+              "line": 3510
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3354
+              "line": 3518
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3355
+              "line": 3519
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3366
+              "line": 3530
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3367
+              "line": 3531
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3378
+              "line": 3542
             },
             {
               "in": "_start_stub_ollama",
               "kind": "except",
-              "line": 3404
+              "line": 3572
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 3545
+              "line": 3713
             },
             {
               "in": "__enter__",
               "kind": "except",
-              "line": 3554
+              "line": 3722
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 3558
+              "line": 3726
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 3561
+              "line": 3729
             },
             {
               "in": "__enter__",
-              "kind": "raise",
-              "line": 3566
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "except",
-              "line": 3601
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3603
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3604
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3606
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3615
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3618
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 3661
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 3665
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 3668
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 3672
-            },
-            {
-              "in": "sample_smi_every_2s",
-              "kind": "except",
-              "line": 3712
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 3728
-            },
-            {
-              "in": "offrig_bench_window",
               "kind": "raise",
               "line": 3734
             },
             {
-              "in": "offrig_bench_window",
+              "in": "pull_ollama_model",
               "kind": "except",
-              "line": 3803
+              "line": 3769
             },
             {
-              "in": "offrig_bench_window",
+              "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 3805
+              "line": 3771
             },
             {
-              "in": "offrig_bench_window",
+              "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 3814
+              "line": 3772
             },
             {
-              "in": "offrig_bench_window",
-              "kind": "except",
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 3774
+            },
+            {
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 3783
+            },
+            {
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 3786
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 3829
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 3833
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
               "line": 3836
             },
             {
-              "in": "offrig_bench_window",
+              "in": "warmup_ollama_model",
               "kind": "raise",
               "line": 3840
             },
             {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 3846
+              "in": "sample_smi_every_2s",
+              "kind": "except",
+              "line": 3880
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 3853
+              "line": 3905
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 3859
+              "line": 3909
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 3915
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 3932
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 3934
             },
             {
               "in": "offrig_bench_window",
               "kind": "except",
-              "line": 3901
+              "line": 3991
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 3993
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4002
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "except",
+              "line": 4024
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4028
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4034
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4041
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4047
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "except",
+              "line": 4089
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 3928
+              "line": 4118
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 3930
+              "line": 4120
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 3933
+              "line": 4123
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 3936
+              "line": 4126
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 3988
+              "line": 4178
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 4018
+              "line": 4208
             },
             {
               "in": "pilot_window",
               "kind": "except",
-              "line": 4092
+              "line": 4282
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 4113
+              "line": 4303
             },
             {
               "in": "runtime",
-              "kind": "raise",
-              "line": 4117
-            },
-            {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 4124
-            },
-            {
-              "in": "done_here",
-              "kind": "except",
-              "line": 4149
-            },
-            {
-              "in": "take_job_lock",
-              "kind": "except",
-              "line": 4162
-            },
-            {
-              "in": "_main",
-              "kind": "raise",
-              "line": 4249
-            },
-            {
-              "in": "_main",
-              "kind": "raise",
-              "line": 4253
-            },
-            {
-              "in": "_main",
-              "kind": "raise",
-              "line": 4259
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 4286
-            },
-            {
-              "in": "_main",
-              "kind": "raise",
-              "line": 4287
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 4288
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 4306
-            },
-            {
-              "in": "_main",
               "kind": "raise",
               "line": 4307
             },
             {
-              "in": "_main",
+              "in": "runtime",
+              "kind": "raise",
+              "line": 4314
+            },
+            {
+              "in": "done_here",
               "kind": "except",
-              "line": 4308
+              "line": 4339
+            },
+            {
+              "in": "take_job_lock",
+              "kind": "except",
+              "line": 4352
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 4310
+              "line": 4443
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4447
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4453
             },
             {
               "in": "_main",
               "kind": "except",
-              "line": 4323
+              "line": 4480
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4481
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4482
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4500
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4501
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4502
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4504
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4517
             }
           ],
-          "hash": "281ca45b406c9177652fe24db274172c46656959a9cf72f3b5a54989b165e75c",
+          "hash": "3d21740296237c0bb80311adce4fba633220ab35bde0b71a4bb3ef0c7f145ab9",
           "importsFiles": [
             "src/role_set/mock.py"
           ],
@@ -1624,7 +1679,7 @@
           "path": "scripts/colab/preflight_window.py"
         },
         {
-          "hash": "fa5a32dba90a28b687699d194b904d9e18e52a606893612ff6163274f2c5997a",
+          "hash": "10d4652ca9b7e01e10eb14d10f00821f99449be00d46fd1a0c055b4fe19be37f",
           "path": "scripts/colab/smoke_window.sh"
         },
         {
@@ -2310,14 +2365,14 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 58,
+          "reads": 59,
           "where": [
             "caller"
           ],
           "writes": 46
         }
       ],
-      "outsideReads": 58,
+      "outsideReads": 59,
       "outsideWrites": 46,
       "role": "code",
       "testRunners": [
@@ -10482,11 +10537,16 @@
             "test_offrig_bench_manifest_sha_mismatch_refuses_before_anything_else",
             "test_offrig_bench_manifest_writes_blobs_and_manifest_byte_for_byte",
             "test_offrig_bench_model_name_validation_rejects_invalid_parts_in_pin_window_and_stub_llama",
+            "test_offrig_bench_ollama_mirror_end_to_end_on_fixture_with_auth_header",
+            "test_offrig_bench_ollama_mirror_refuses_unlisted_main_repo_http_trailing_path_and_commit_before_network",
+            "test_offrig_bench_ollama_mirror_token_clean_is_true_after_fetch_and_refuses_residue",
+            "test_offrig_bench_ollama_mirror_token_travels_only_in_header_never_in_url_log_or_pin_result",
             "test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut",
             "test_offrig_bench_stub_mode_end_to_end_and_real_path_checks",
             "test_offrig_bench_stub_reused_work_dir_ignores_stale_manifest_when_pin_offrig_manifest_unset",
             "test_offrig_bench_token_rules_unchanged_and_residue_refused",
             "test_offrig_bench_unset_manifest_behaves_as_before",
+            "test_offrig_bench_with_mirror_unset_behaviour_unchanged_from_a621a793",
             "test_ollama_served_non_stub_popen_env_and_refusals_and_inline_stub_fallback",
             "test_pilot_window_records_readout_stderr_on_nonzero_exit_and_omits_it_on_zero",
             "test_pilot_window_verifies_pool_sha_before_serving_and_passes_pool_to_common",
@@ -10500,6 +10560,7 @@
             "test_pool_deletes_writer_gguf_when_no_longer_needed_and_keeps_critic_until_last_critique",
             "test_run_proc_timeout_kills_the_shells_children_too",
             "test_run_proc_writes_heartbeat_while_subprocess_lives_and_stops_when_it_exits",
+            "test_smoke_window_accepts_offrig_bench_ollama_pins_read_and_refuses_any_other_token",
             "test_t10_buffers_plan_and_screen_all_keeps_60_slots_and_refusals",
             "test_t10_stub_end_to_end_write_only_then_critique_resume_with_scope_verdict",
             "test_the_first_rewrite_after_a_resume_gets_its_prior_and_nothing_else_does",
@@ -10519,7 +10580,7 @@
             "test_without_a_deadline_nothing_changes",
             "test_write_only_critics_for_and_pilot_batch_no_critic"
           ],
-          "hash": "c0409534d86cb2623abbe0a3f9a3434842643ed51b69e8a2127c97aea4db5d82",
+          "hash": "8df2a0b0d06708eea80d0582a02881530459f1663bd7be1f94673ba730587bb8",
           "importOrder": [
             "scripts/colab/pin_window.py",
             "scripts/colab/checkpoints.py",
@@ -11206,7 +11267,7 @@
             "test_the_token_goes_only_to_the_vm_that_passed_the_gate",
             "test_the_token_reaches_the_job_as_a_file_and_appears_in_nothing_the_window_keeps"
           ],
-          "hash": "4a335a1e7a1e2c07aedbb50fd2a1e018070ccc92f80f25e8ef178f8d2a2fc057",
+          "hash": "265ed085f0bcf893b78b9ce16d7fea1dedb5d882dc5fa660be1f1f6a2b50497c",
           "importsFiles": [
             "tests/stub_llama.py"
           ],
@@ -11731,7 +11792,7 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "8f319a8adf51e22a3b2ca436f8416d02954c4023",
+    "commit": "28000c8085250bf76a5430f7efeea7892d15c850",
     "tracked": 208
   },
   "landings": [
