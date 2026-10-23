@@ -741,3 +741,59 @@ def test_apply_draft_copying_span_from_in_run_or_prior_wave_training_row_is_refu
     assert ("SPENT", carried_span) in spent_codes
     assert ("SPENT", rewritten_span) in spent_codes
 
+
+def test_critic_void_retry_sends_different_seed_and_is_reproducible(tmp_path: Path):
+    from role_set.plan import plan_apply
+
+    slots = plan_lesson("T02", SIDES, seed=0)
+    d_slot = next(s for s in slots if s.kind == "D" and not s.two_turn)
+    b_slot = next(s for s in slots if s.kind == "B")
+    apply_slot = plan_apply("T10", SIDES, seed=0)[0]
+
+    def run_once(run_dir: Path) -> dict[str, list[int | None]]:
+        r, _, base_critic = _runner(run_dir, answer_gate=True)
+        r.pack = {**r.pack, "traits/T10.md": PACK["traits/T02.md"]}
+        r.trait_names = {**r.trait_names, "T10": "goes to the source"}
+        seen_seeds: dict[str, list[int | None]] = {"verdict": [], "twin_verdict": [], "answer": []}
+        counts = {"verdict": 0, "answer": 0}
+
+        def spy_critic(messages, temperature: float = 0.0, **kw):
+            seed = kw.get("seed")
+            sys_text = messages[0]["content"]
+            if "VERDICT:" in sys_text:
+                counts["verdict"] += 1
+                # d_slot uses asks 1..2 (verdict); apply_slot uses asks 3 (main verdict) and 4..5 (twin_verdict)
+                if counts["verdict"] in (1, 2):
+                    seen_seeds["verdict"].append(seed)
+                    if counts["verdict"] == 1:
+                        return types.SimpleNamespace(text="not a verdict", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+                elif counts["verdict"] in (4, 5):
+                    seen_seeds["twin_verdict"].append(seed)
+                    if counts["verdict"] == 4:
+                        return types.SimpleNamespace(text="not a verdict", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+            elif "Solve the puzzle" in sys_text:
+                counts["answer"] += 1
+                seen_seeds["answer"].append(seed)
+                if counts["answer"] == 1:
+                    return types.SimpleNamespace(text="no answer line here", prompt_tokens=1, completion_tokens=1, model="m", seconds=0)
+            return base_critic(messages, temperature=temperature, **({"seed": seed} if seed is not None else {}))
+
+        r.critic = spy_critic
+        assert r.run_slot(d_slot).accepted
+        r.critic = spy_critic
+        base_critic.trait = "T10"
+        assert r.run_slot(apply_slot).accepted
+        base_critic.trait = "T02"
+        assert r.run_slot(b_slot).accepted
+        return seen_seeds
+
+    seeds_1 = run_once(tmp_path / "run1")
+    seeds_2 = run_once(tmp_path / "run2")
+
+    for check_name in ("verdict", "twin_verdict", "answer"):
+        assert len(seeds_1[check_name]) == 2, (check_name, seeds_1[check_name])
+    assert {k: v[0] != v[1] for k, v in seeds_1.items()} == {"verdict": True, "twin_verdict": True, "answer": True}, seeds_1
+    assert seeds_1 == {"verdict": [None, 10001], "twin_verdict": [None, 10001], "answer": [None, 10001]}
+    assert seeds_1 == seeds_2
+
+

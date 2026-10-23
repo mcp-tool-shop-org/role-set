@@ -21,14 +21,43 @@ import threading
 from collections import defaultdict, deque
 from pathlib import Path
 
+from . import cards
 from .guards import GuardError
 from .transport import Completion
 
 JOURNAL_FILE = "calls-journal.jsonl"
+RETRY_SEED_BASE = 10_000
+RETRY_SEED_STRIDE = 100
+RETRY_SEED_BOUND = 100
+
+
+def retry_seed(first_seed: int | None = 0, ask: int = 1) -> int:
+    """Compute the disjoint retry seed `10_000 + first_seed * 100 + ask` for a VOID retry (`ask > 0`).
+
+    Where the first ask (`ask == 0`) sent no `seed` kwarg at all, `first_seed` is `0` (or `None`, treated as `0`).
+    The scheme is disjoint only while every `first_seed` is below 100 (`0 <= first_seed < 100`) and every `ask` is
+    below 100 (`1 <= ask < 100`). Breaking either bound raises `ValueError` loudly (never clamping) so a later seed
+    sweep or ask cap cannot collide silently.
+    """
+    base = 0 if first_seed is None else first_seed
+    if isinstance(base, bool) or not isinstance(base, int) or not (0 <= base < RETRY_SEED_BOUND):
+        raise ValueError(
+            f"REFUSED: retry_seed requires 0 <= first_seed < {RETRY_SEED_BOUND}, got {first_seed!r}"
+        )
+    if isinstance(ask, bool) or not isinstance(ask, int) or not (1 <= ask < RETRY_SEED_BOUND):
+        raise ValueError(
+            f"REFUSED: retry_seed requires 1 <= ask < {RETRY_SEED_BOUND}, got {ask!r}"
+        )
+    return RETRY_SEED_BASE + base * RETRY_SEED_STRIDE + ask
 
 
 def request_key(role: str, args: tuple, kwargs: dict) -> str:
     blob = json.dumps({"role": role, "args": args, "kwargs": kwargs}, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def messages_sha256(messages: object) -> str:
+    blob = json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
@@ -79,7 +108,8 @@ def load(path: Path, *, expected_flaw_prompt: str | None = None) -> dict[str, de
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
                                           seconds=c.get("seconds") or 0.0, finish_reason=c.get("finish_reason"),
-                                          thinking_tokens=c.get("thinking_tokens")))
+                                          thinking_tokens=c.get("thinking_tokens"),
+                                          messages_sha256=d.get("messages_sha256")))
     return reuse
 
 
@@ -108,8 +138,26 @@ class CallJournal:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    def _append(self, key: str, role: str, c: Completion, reused: bool, *, check: str | None = None) -> None:
-        payload: dict = {"key": key, "role": role, "reused": reused}
+    def _append(
+        self,
+        key: str,
+        role: str,
+        c: Completion,
+        reused: bool,
+        *,
+        check: str | None = None,
+        messages_sha256: str | None = None,
+        slot: str | None = None,
+        attempt: int | None = None,
+    ) -> None:
+        payload: dict = {
+            "key": key,
+            "role": role,
+            "reused": reused,
+            "messages_sha256": messages_sha256,
+            "slot": slot,
+            "attempt": attempt,
+        }
         if self.flaw_prompt is not None:
             payload["flaw_prompt"] = self.flaw_prompt
         if check is not None:
@@ -120,27 +168,40 @@ class CallJournal:
             f.write(line + "\n")
             f.flush()
 
-    def wrap(self, role: str, fn):
+    def wrap(self, role: str, fn, *, card: dict | None = None):
         if fn is None:
             return None
+        eff_card = card if card is not None else getattr(fn, "card", None)
 
         def call(*args, **kwargs):
             check = kwargs.pop("check", None)
+            slot = kwargs.pop("slot", None)
+            attempt = kwargs.pop("attempt", None)
             key = request_key(role, args, kwargs)
+            if slot is None:
+                slot = kwargs.get("slot_id")
+            if attempt is None:
+                attempt = kwargs.get("seed")
+            messages = args[0] if args else kwargs.get("messages")
+            sent = cards.apply(eff_card, messages) if (eff_card is not None and messages is not None) else messages
+            default_sha = messages_sha256(sent) if sent is not None else None
             with self.lock:
                 queue = self.reuse.get(key)
                 c = queue.popleft() if queue else None
                 if c is not None:
                     self.counts["reused"] += 1
             if c is not None:
-                self._append(key, role, c, True, check=check)
+                msg_sha = default_sha if eff_card is not None else (getattr(c, "messages_sha256", None) or default_sha)
+                self._append(key, role, c, True, check=check, messages_sha256=msg_sha, slot=slot, attempt=attempt)
                 return c
             c = fn(*args, **kwargs)
             with self.lock:
                 self.counts["called"] += 1
-            self._append(key, role, c, False, check=check)
+            msg_sha = getattr(c, "messages_sha256", None) or default_sha
+            self._append(key, role, c, False, check=check, messages_sha256=msg_sha, slot=slot, attempt=attempt)
             return c
 
+        call.card = eff_card
         call.takes_slot_id = getattr(fn, "takes_slot_id", False)  # the keyed mock is told the slot (Runner._writer_call)
         call.takes_check = True
         return call

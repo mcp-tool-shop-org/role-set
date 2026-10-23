@@ -10,6 +10,7 @@ anything else is raised to the runner, which stops.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.error
@@ -39,6 +40,7 @@ class Completion:
     # broken endpoint (pilot 2's five parse failures were kind B drafts cut off at the cap).
     finish_reason: str | None = None
     thinking_tokens: int | None = None
+    messages_sha256: str | None = None
 
 
 def _post(url: str, body: dict, timeout_s: float) -> dict:
@@ -119,6 +121,8 @@ def chat(
     except (KeyError, IndexError, TypeError) as e:
         raise TransportError("endpoint returned no message content") from e
     usage = out.get("usage") or {}
+    msg_blob = json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str)
+    msg_sha = hashlib.sha256(msg_blob.encode("utf-8")).hexdigest()
     return Completion(
         text=text or "",
         prompt_tokens=usage.get("prompt_tokens"),
@@ -127,4 +131,5 @@ def chat(
         seconds=clock() - t0,
         finish_reason=(out.get("choices") or [{}])[0].get("finish_reason"),
         thinking_tokens=_extract_thinking_tokens(out),
+        messages_sha256=msg_sha,
     )

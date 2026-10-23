@@ -15,11 +15,31 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from role_set.callcache import retry_seed
 from role_set.critic import compare_flaw, compare_verdict, flaw_messages, verdict_messages
 from role_set.gates import Gates
 
 FALSE_REFUSAL_CAP = 0.10
 STATEMENT = re.compile(r"^Statement:\s*(.+?)\s*$", re.M)
+
+
+def _call_critic(
+    critic,
+    messages: list[dict],
+    *,
+    check: str | None = None,
+    slot: str | None = None,
+    attempt: int | None = None,
+    **kwargs,
+):
+    if getattr(critic, "takes_check", False):
+        if check is not None:
+            kwargs["check"] = check
+        if slot is not None:
+            kwargs["slot"] = slot
+        if attempt is not None:
+            kwargs["attempt"] = attempt
+    return critic(messages, **kwargs)
 
 
 @dataclass
@@ -138,14 +158,28 @@ def _ask(gates: Gates, critic, case: Case, seed: int) -> dict:
     v = None
     for ask in range(2):
         # Each run's seeds are spaced apart, so run 0's re-ask never shares run 1's first seed (R&D on #85).
-        c = critic(verdict_messages(case.material, case.statement), seed=seed * 1000 + ask)
+        c = _call_critic(
+            critic,
+            verdict_messages(case.material, case.statement),
+            check="verdict",
+            slot=case.item_id,
+            attempt=ask,
+            seed=seed * 1000 + ask,
+        )
         v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material)
         if v.code != "VOID":
             break
         out["voids"] += 1
     out["v"] = v
     if not case.planted and case.kind == "C" and case.flaw and case.checker_trace and case.checker_verdict:
-        c = critic(flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict), seed=seed * 1000 + 500)
+        c = _call_critic(
+            critic,
+            flaw_messages(case.material, case.statement, case.checker_trace, case.checker_verdict),
+            check="flaw",
+            slot=case.item_id,
+            attempt=0,
+            seed=seed * 1000 + 500,
+        )
         out["flaw"] = compare_flaw(c.text, case.flaw)
     return out
 
@@ -247,7 +281,7 @@ def trait_leg(critic, rows: list[dict], trait_names: dict[str, str], steps: dict
         msgs = trait_messages(teaching_text(r), trait_names, steps)
         votes = []
         for s in range(TRAIT_VOTES):
-            c = critic(msgs, temperature=TRAIT_TEMPERATURE, seed=s)
+            c = _call_critic(critic, msgs, check="trait", slot=r.get("id"), attempt=s, temperature=TRAIT_TEMPERATURE, seed=s)
             seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
             votes.append(trait_named(c.text))
         return r["lesson"], votes
@@ -327,7 +361,14 @@ def answer_leg(critic, rows: list[dict]) -> dict:
             continue
         v, c = None, None
         for ask in range(2):
-            c = critic(answer_messages(r["turns"][0]["user"], key))
+            c = _call_critic(
+                critic,
+                answer_messages(r["turns"][0]["user"], key),
+                check="answer",
+                slot=r.get("id"),
+                attempt=ask,
+                **({"seed": retry_seed(0, ask)} if ask else {}),
+            )
             seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
             v = compare_answer(c.text, key)
             if v.code != "VOID":

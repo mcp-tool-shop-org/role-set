@@ -351,6 +351,8 @@ def _blind_critic(critic, forbidden: set[str], item_id: str):
                     )
         return critic(messages, **kwargs)
 
+    wrapped.takes_check = getattr(critic, "takes_check", False)
+    wrapped.card = getattr(critic, "card", None)
     return wrapped
 
 
@@ -433,6 +435,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
 
     c_model = (cfg.critic_model or ("mock" if cfg.mock else "")).strip()
     c_pins: dict | None = None
+    c_card: dict | None = None
     c_card_pins: dict | None = None
     critic_entry: dict = {"served_as": c_model, "family": ""}
     if listed is not None and c_model in listed.critics:
@@ -552,7 +555,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
         journal = callcache.CallJournal(journal_path, reuse, flaw_prompt=cfg.flaw_prompt)
     except GuardError as e:
         raise CriticEvalError(str(e)) from e
-    journaled_critic = journal.wrap("critic", critic)
+    journaled_critic = journal.wrap("critic", critic, card=c_card)
 
     base_tokens = _window_tokens_from_paths(cfg.items)
     tag = ((header.get("writer_host") or {}).get("machine") or {}).get("colab_release_tag")
@@ -665,7 +668,8 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 v_prompt = 0
                 for _ask in range(2):
                     v_attempts += 1
-                    c = blinded_critic(v_msgs, seed=cfg.critic_seed)
+                    ask_seed = callcache.retry_seed(cfg.critic_seed, _ask) if _ask else cfg.critic_seed
+                    c = blinded_critic(v_msgs, seed=ask_seed, slot=item_id, attempt=_ask)
                     v_raw = c.text
                     raw_t = getattr(c, "thinking_tokens", None)
                     t_val = int(raw_t) if raw_t is not None else None
@@ -722,7 +726,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 flaw_prompt=cfg.flaw_prompt,
             )
             if cfg.flaw_votes == 1:
-                fc = blinded_critic(f_msgs, seed=cfg.critic_seed)
+                fc = blinded_critic(f_msgs, seed=cfg.critic_seed, slot=item_id, attempt=0)
                 f_res = compare_flaw(fc.text, parts["key_flaw"])
                 raw_ft = getattr(fc, "thinking_tokens", None)
                 f_thinking = int(raw_ft) if raw_ft is not None else None
@@ -751,7 +755,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 vote_thinkings: list[int | None] = []
                 for vote_idx in range(cfg.flaw_votes):
                     vote_seed = cfg.critic_seed + vote_idx
-                    fc_k = blinded_critic(f_msgs, seed=vote_seed)
+                    fc_k = blinded_critic(f_msgs, seed=vote_seed, slot=item_id, attempt=vote_idx)
                     f_res_k = compare_flaw(fc_k.text, parts["key_flaw"])
                     raw_ft_k = getattr(fc_k, "thinking_tokens", None)
                     f_thinking_k = int(raw_ft_k) if raw_ft_k is not None else None
