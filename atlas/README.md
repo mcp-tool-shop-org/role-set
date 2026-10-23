@@ -1,6 +1,6 @@
 # role-set: how it works
 
-Mapped at 2026-10-23 from commit 8f319a8 by Atlas 1.24.0.
+Mapped at 2026-10-23 from commit 28000c8 by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,9 +8,9 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (114 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-23 (6e324da)
+## What changed since 2026-10-23 (8f319a8)
 
-Nothing structural changed since 2026-10-23; 4 files changed content.
+Nothing structural changed since 2026-10-23; 5 files changed content.
 
 ## What comes in
 
@@ -87,8 +87,8 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
-- 9 writes and 32 reads use paths built at run time and are not named here.
-- 56 writes and 108 reads go to a path their caller passes, not to this repository.
+- 9 writes and 33 reads use paths built at run time and are not named here.
+- 56 writes and 109 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
