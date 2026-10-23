@@ -4401,6 +4401,470 @@ def test_pin_window_critic_eval_verdict_prompt_and_checks(
     assert len(result["critic_eval"]["runs"]) == 4
 
 
+def test_verdict_from_refuses_report_and_record_verdict_prompt_and_checks_mismatch_in_both_directions(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path
+) -> None:
+    def never_called_critic(messages: list[dict], **kwargs):
+        raise AssertionError("Critic must not be called when --verdict-from preflight fails")
+
+    src_old = tmp_path / "src-old"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_old,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="old",
+            checks="all",
+            mock=True,
+        )
+    )
+    src_def = tmp_path / "src-def"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_def,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="defined",
+            checks="all",
+            mock=True,
+        )
+    )
+
+    # 1. Report verdict_prompt mismatch refuses in both directions (old -> defined, defined -> old)
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('old'\) does not match --verdict-prompt \('defined'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-old-into-def",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=src_old / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('defined'\) does not match --verdict-prompt \('old'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-def-into-old",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=src_def / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # 2. Record verdict_prompt mismatch refuses in both directions (report has matching verdict_prompt, record differs)
+    rec_old_dir = tmp_path / "rec-old-with-def-rep"
+    rec_old_dir.mkdir()
+    shutil.copyfile(src_old / "critic-eval.jsonl", rec_old_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_def / "critic-eval-report.json", rec_old_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'old', expected 'defined'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-old-into-def",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=rec_old_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    rec_def_dir = tmp_path / "rec-def-with-old-rep"
+    rec_def_dir.mkdir()
+    shutil.copyfile(src_def / "critic-eval.jsonl", rec_def_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_old / "critic-eval-report.json", rec_def_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'defined', expected 'old'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-def-into-old",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=rec_def_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # 3. Report and record checks mismatch refuses in both directions (all <-> verdict)
+    src_verdict_only = tmp_path / "src-verdict-only"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=src_verdict_only,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=3,
+            verdict_prompt="old",
+            checks="verdict",
+            mock=True,
+        )
+    )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report checks \('all'\) does not match --checks \('verdict'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-all-into-verdict",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="verdict",
+                verdict_from=src_old / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report checks \('verdict'\) does not match --checks \('all'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rep-verdict-into-all",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=src_verdict_only / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    rec_vo_dir = tmp_path / "rec-vo-with-all-rep"
+    rec_vo_dir.mkdir()
+    shutil.copyfile(src_verdict_only / "critic-eval.jsonl", rec_vo_dir / "critic-eval.jsonl")
+    shutil.copyfile(src_old / "critic-eval-report.json", rec_vo_dir / "critic-eval-report.json")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has checks 'verdict', expected 'all'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "rec-vo-into-all",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=3,
+                verdict_prompt="old",
+                checks="all",
+                verdict_from=rec_vo_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+
+def test_verdict_from_pre_pr_missing_fields_count_as_old_and_all(
+    eval_items_file: Path, pack_dir: Path, tmp_path: Path
+) -> None:
+    def never_called_critic(messages: list[dict], **kwargs):
+        raise AssertionError("Critic must not be called when --verdict-from preflight fails")
+
+    base_dir = tmp_path / "base-run"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=base_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=5,
+            verdict_prompt="old",
+            checks="all",
+            mock=True,
+        )
+    )
+
+    # Strip verdict_prompt and checks from both report and records to simulate a pre-PR #117 artifact
+    pre_pr_dir = tmp_path / "pre-pr"
+    pre_pr_dir.mkdir()
+    rep_obj = json.loads((base_dir / "critic-eval-report.json").read_text(encoding="utf-8"))
+    rep_obj.pop("verdict_prompt", None)
+    rep_obj.pop("checks", None)
+    (pre_pr_dir / "critic-eval-report.json").write_text(json.dumps(rep_obj), encoding="utf-8")
+
+    pre_rows = []
+    for ln in (base_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines():
+        if not ln.strip():
+            continue
+        row = json.loads(ln)
+        row.pop("verdict_prompt", None)
+        row.pop("checks", None)
+        row["input_sha256"] = rep_obj["input_sha256"]
+        pre_rows.append(json.dumps(row))
+    pre_vf = pre_pr_dir / "critic-eval.jsonl"
+    pre_vf.write_text("\n".join(pre_rows) + "\n", encoding="utf-8")
+
+    # Accepted by an `old` (and `checks="all"`) run
+    ok_rep = run_critic_eval(
+        CriticEvalConfig(
+            items=eval_items_file,
+            pack=pack_dir,
+            out=tmp_path / "pre-pr-into-old",
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=5,
+            verdict_prompt="old",
+            checks="all",
+            verdict_from=pre_vf,
+            mock=True,
+        )
+    )
+    assert ok_rep["verdict_reused_count"] == ok_rep["items_scored"]
+
+    # Refused by a `defined` run via report
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from critic-eval\.jsonl report verdict_prompt \('old'\) does not match --verdict-prompt \('defined'\)",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "pre-pr-into-def-report",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=5,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=pre_vf,
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+    # Also refused by a `defined` run via records when no report file sits beside the jsonl
+    pre_no_rep_dir = tmp_path / "pre-pr-no-rep"
+    pre_no_rep_dir.mkdir()
+    shutil.copyfile(pre_vf, pre_no_rep_dir / "critic-eval.jsonl")
+    with pytest.raises(
+        CriticEvalError,
+        match=r"REFUSED: --verdict-from record '.*' has verdict_prompt 'old', expected 'defined'",
+    ):
+        run_critic_eval(
+            CriticEvalConfig(
+                items=eval_items_file,
+                pack=pack_dir,
+                out=tmp_path / "pre-pr-into-def-record",
+                writers_file=ROOT / "writers.json",
+                critic_model=LIGHTNING,
+                critic_seed=5,
+                verdict_prompt="defined",
+                checks="all",
+                verdict_from=pre_no_rep_dir / "critic-eval.jsonl",
+                mock=True,
+            ),
+            critic=never_called_critic,
+        )
+
+
+def test_pin_window_critic_eval_resume_multi_verdict_prompt_maps_each_journal_to_its_own_setting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import io
+    import subprocess
+    import tarfile
+
+    pw_path = ROOT / "scripts" / "colab" / "pin_window.py"
+    spec = importlib.util.spec_from_file_location("pin_window_resume_multi_vp_test", pw_path)
+    assert spec and spec.loader
+    pw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pw)
+
+    work = tmp_path / "work"
+    content = tmp_path / "content"
+    work.mkdir()
+    content.mkdir()
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "CONTENT", content)
+
+    items_file = tmp_path / "items.jsonl"
+    items_file.write_text(
+        json.dumps({"id": "CFR-01", "material": "M1", "statement": "S1", "key": "supported"}) + "\n",
+        encoding="utf-8",
+    )
+    items_sha = hashlib.sha256(items_file.read_bytes()).hexdigest()
+
+    resume_tar = content / "earlier-multi-vp.tar"
+    tar_entries = {
+        # Layout 1 (critic-eval-out.tar) for old/s0 and defined/s1
+        "critic-eval/old/s0/calls-journal.jsonl": b'{"verdict_prompt":"old","seed":0}\n',
+        "critic-eval/defined/s1/calls-journal.jsonl": b'{"verdict_prompt":"defined","seed":1}\n',
+        # Layout 2 (checkpoints.extract) for old/s1 and defined/s0
+        f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl": b'{"verdict_prompt":"old","seed":1}\n',
+        f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl": b'{"verdict_prompt":"defined","seed":0}\n',
+        # Unrelated single-vp path that must NOT be picked up when verdict_prompts=["old", "defined"]
+        "critic-eval/s2/calls-journal.jsonl": b'{"verdict_prompt":"old","seed":2}\n',
+    }
+    with tarfile.open(resume_tar, "w") as tf:
+        for arcname, payload in tar_entries.items():
+            ti = tarfile.TarInfo(name=arcname)
+            ti.size = len(payload)
+            tf.addfile(ti, io.BytesIO(payload))
+    tar_sha = hashlib.sha256(resume_tar.read_bytes()).hexdigest()
+
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d66ce3f6")
+    monkeypatch.setenv("PIN_RND_COMMIT", "00000000")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_CRITIC", LIGHTNING)
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0,1,2")
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "old,defined")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={items_sha}")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_RESUME", str(resume_tar))
+
+    def _fake_sh(cmd_str: str, **kw):
+        if cmd_str.startswith("rm -rf "):
+            target = Path(cmd_str.removeprefix("rm -rf ").strip())
+            if target.exists():
+                shutil.rmtree(target)
+        elif cmd_str.startswith("tar -xf ") and " -C " in cmd_str:
+            rest = cmd_str.removeprefix("tar -xf ")
+            tar_p, dest_p = rest.split(" -C ", 1)
+            with tarfile.open(Path(tar_p.strip()), "r") as tf:
+                tf.extractall(Path(dest_p.strip()), filter="data")
+        return ""
+
+    monkeypatch.setattr(pw, "sh", _fake_sh)
+    monkeypatch.setattr(pw, "take_token", lambda: None)
+    monkeypatch.setattr(pw, "check_token_clean", lambda r: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda c: {"role_set": "role-set", "src": str(ROOT)})
+    monkeypatch.setattr(pw, "install_rnd", lambda c: {"commit": c})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "critic_eval_inputs", lambda r: (tmp_path, items_file, {"items.jsonl": items_sha}))
+
+    class _FakeSrv:
+        log = None
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakePool:
+        def __init__(self, *a, **kw):
+            pass
+        def get(self, name):
+            return {"served_as": name, "gguf_sha256": "c" * 64}
+        def serve(self, name):
+            return _FakeSrv()
+        def proxy(self, name):
+            return None
+
+    monkeypatch.setattr(pw, "Pool", _FakePool)
+    seen_cmds: list[list[str]] = []
+
+    def _fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        out_idx = cmd.index("--out") + 1
+        vp_idx = cmd.index("--verdict-prompt") + 1
+        ck_idx = cmd.index("--checks") + 1
+        sd_idx = cmd.index("--critic-seed") + 1
+        seed_out = Path(cmd[out_idx])
+        (seed_out / "critic-eval-report.json").write_text(
+            json.dumps({
+                "critic_card": {"candidate": "c1"},
+                "verdict_prompt": cmd[vp_idx],
+                "flaw_prompt": "old",
+                "checks": cmd[ck_idx],
+                "flaw_votes": 1,
+                "items_scored": 1,
+                "skipped_count": 0,
+                "calls": {"fresh": 0, "reused": 1, "seed": int(cmd[sd_idx])},
+            }),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pw, "run_proc", _fake_run_proc)
+    result: dict = {}
+    pw.critic_eval_window({}, result)
+
+    assert result["critic_eval_resume"]["tar_sha256"] == tar_sha
+    journals = result["critic_eval_resume"]["journals"]
+    assert set(journals) == {"old/s0", "old/s1", "defined/s0", "defined/s1"}
+    assert Path(journals["old/s0"]).as_posix().endswith("critic-eval/old/s0/calls-journal.jsonl")
+    assert Path(journals["old/s1"]).as_posix().endswith(f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl")
+    assert Path(journals["defined/s0"]).as_posix().endswith(f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl")
+    assert Path(journals["defined/s1"]).as_posix().endswith("critic-eval/defined/s1/calls-journal.jsonl")
+
+    # 6 runs total: (old, 0), (old, 1), (old, 2), (defined, 0), (defined, 1), (defined, 2)
+    assert len(seen_cmds) == 6
+    by_run = {
+        (c[c.index("--verdict-prompt") + 1], int(c[c.index("--critic-seed") + 1])): c
+        for c in seen_cmds
+    }
+    for (vp, s), want_suffix in [
+        (("old", 0), "critic-eval/old/s0/calls-journal.jsonl"),
+        (("old", 1), f"critic-eval-old-s1/calls/{LIGHTNING}.jsonl"),
+        (("defined", 0), f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl"),
+        (("defined", 1), "critic-eval/defined/s1/calls-journal.jsonl"),
+    ]:
+        cmd = by_run[(vp, s)]
+        assert "--reuse-calls" in cmd
+        reuse_arg = Path(cmd[cmd.index("--reuse-calls") + 1]).as_posix()
+        assert reuse_arg.endswith(want_suffix)
+
+    # Seed 2 has no per-verdict-prompt journal (and the single-vp critic-eval/s2/calls-journal.jsonl is ignored)
+    assert "--reuse-calls" not in by_run[("old", 2)]
+    assert "--reuse-calls" not in by_run[("defined", 2)]
+
+
+
 
 
 

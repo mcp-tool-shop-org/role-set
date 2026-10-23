@@ -458,6 +458,18 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                     f"REFUSED: --verdict-from {vf_path.name} report critic_seed ({vf_rep_seed!r}) "
                     f"does not match --critic-seed ({cfg.critic_seed})"
                 )
+            vf_rep_vp = vf_rep.get("verdict_prompt") if vf_rep.get("verdict_prompt") is not None else "old"
+            if vf_rep_vp != cfg.verdict_prompt:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from {vf_path.name} report verdict_prompt ({vf_rep_vp!r}) "
+                    f"does not match --verdict-prompt ({cfg.verdict_prompt!r})"
+                )
+            vf_rep_checks = vf_rep.get("checks") if vf_rep.get("checks") is not None else "all"
+            if vf_rep_checks != cfg.checks:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from {vf_path.name} report checks ({vf_rep_checks!r}) "
+                    f"does not match --checks ({cfg.checks!r})"
+                )
         for r in vf_rows:
             if "input_sha256" in r:
                 if r.get("input_sha256") != input_sha256:
@@ -471,6 +483,18 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 raise CriticEvalError(
                     f"REFUSED: --verdict-from record {r.get('item_id')!r} has seed {r_seed!r}, "
                     f"expected {cfg.critic_seed}"
+                )
+            r_vp = r.get("verdict_prompt") if r.get("verdict_prompt") is not None else "old"
+            if r_vp != cfg.verdict_prompt:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from record {r.get('item_id')!r} has verdict_prompt {r_vp!r}, "
+                    f"expected {cfg.verdict_prompt!r}"
+                )
+            r_checks = r.get("checks") if r.get("checks") is not None else "all"
+            if r_checks != cfg.checks:
+                raise CriticEvalError(
+                    f"REFUSED: --verdict-from record {r.get('item_id')!r} has checks {r_checks!r}, "
+                    f"expected {cfg.checks!r}"
                 )
         if not has_verified_input_sha:
             raise CriticEvalError(
