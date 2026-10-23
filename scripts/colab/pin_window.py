@@ -27,6 +27,7 @@ import sys
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
@@ -2735,6 +2736,8 @@ OLLAMA_MIRROR_REVISION = "9dfbad5aa9ecec08cd4275a1779ae2be3bcf2725"
 OLLAMA_MIRROR_ALLOWLIST: tuple[str, ...] = (
     "sha256:9f104ae7d85df083b46d9087b04c9bf44d47f447455d4e1583ebd6d0a66369bb",
 )
+OLLAMA_MIRROR_REDIRECT_CODES = (301, 302, 303, 307, 308)
+OLLAMA_MIRROR_MAX_REDIRECTS = 5
 OLLAMA_BLOB_READ_TIMEOUT_S = 120.0
 OLLAMA_MODEL_PART_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 HEX40_RE = re.compile(r"^[0-9a-f]{40}$")
@@ -3085,9 +3088,10 @@ def _resolve_ollama_registry_base(raw_reg: str | None) -> tuple[str, object | No
 
 def _resolve_ollama_mirror_base(raw_mirror: str, *, expected_token: str | None = None) -> tuple[str, str, object | None]:
     """Resolve and validate `PIN_OLLAMA_MIRROR`: on paid windows (`not stub_mode()`), refuse any base that does not
-    use `https://`, does not equal an exact entry in `OLLAMA_MIRROR_ALLOWLIST` (normalising scheme case and trailing
-    slashes, never prefix-matching), or does not end with `/resolve/<40-hex-commit>`. In stub mode, allow a local
-    HTTP stub base (or start the local fixture mirror when set to `1` or `stub`)."""
+    use `https://`, contains userinfo or an explicit port, does not end with `/resolve/<40-hex-commit>`, or does not
+    equal an exact entry in `OLLAMA_MIRROR_ALLOWLIST` (normalising scheme case and trailing slashes, never
+    prefix-matching). In stub mode, allow a local HTTP stub base (or start the local fixture mirror when set to `1`
+    or `stub`)."""
 
     cleaned = _normalise_ollama_registry_base(raw_mirror)
     if stub_mode():
@@ -3107,6 +3111,26 @@ def _resolve_ollama_mirror_base(raw_mirror: str, *, expected_token: str | None =
         raise RuntimeError(
             f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must use https:// on a paid window (got {cleaned!r})"
         )
+    parts = urllib.parse.urlsplit(cleaned)
+    if parts.username is not None or parts.password is not None or "@" in (parts.netloc or ""):
+        raise RuntimeError(f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must not include userinfo on a paid window")
+    try:
+        explicit_port = parts.port
+    except ValueError as e:
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must not specify an explicit port on a paid window"
+        ) from e
+    if explicit_port is not None or (parts.netloc or "").endswith(":"):
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must not specify an explicit port on a paid window"
+        )
+    if "/resolve/" not in cleaned:
+        raise RuntimeError(f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must end with /resolve/<40-hex-commit>")
+    revision = cleaned.rsplit("/resolve/", 1)[1]
+    if not HEX40_RE.fullmatch(revision):
+        raise RuntimeError(
+            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} revision {revision!r} must be a 40-char lowercase hex commit sha"
+        )
     allowed_urls = {
         _normalise_ollama_registry_base(u)
         for u in OLLAMA_MIRROR_ALLOWLIST
@@ -3122,14 +3146,109 @@ def _resolve_ollama_mirror_base(raw_mirror: str, *, expected_token: str | None =
         raise RuntimeError(
             f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} ({cleaned!r}) is not in OLLAMA_MIRROR_ALLOWLIST on a paid window"
         )
-    if "/resolve/" not in cleaned:
-        raise RuntimeError(f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} must end with /resolve/<40-hex-commit>")
-    revision = cleaned.rsplit("/resolve/", 1)[1]
-    if not HEX40_RE.fullmatch(revision):
-        raise RuntimeError(
-            f"REFUSED: PIN_OLLAMA_MIRROR={raw_mirror!r} revision {revision!r} must be a 40-char lowercase hex commit sha"
-        )
     return cleaned, revision, None
+
+
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def http_error_301(self, req, fp, code, msg, headers):
+        return fp
+
+    http_error_302 = http_error_303 = http_error_307 = http_error_308 = http_error_301
+
+
+_NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirectHandler())
+_STDLIB_URLOPEN = urllib.request.urlopen
+
+
+def _open_no_redirect(req: urllib.request.Request, *, timeout: float):
+    if urllib.request.urlopen is _STDLIB_URLOPEN:
+        return _NO_REDIRECT_OPENER.open(req, timeout=timeout)
+    prev_opener = urllib.request._opener
+    urllib.request._opener = _NO_REDIRECT_OPENER
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)  # noqa: S310 - allow-listed/stub source via test spy
+    finally:
+        urllib.request._opener = prev_opener
+
+
+def _validate_ollama_mirror_redirect_target(target_url: str) -> None:
+    if "ollama.ai" in target_url.lower():
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must never target ollama.ai")
+    parts = urllib.parse.urlsplit(target_url)
+    scheme = parts.scheme.lower()
+    host = (parts.hostname or "").lower()
+    if parts.username is not None or parts.password is not None or "@" in (parts.netloc or ""):
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must not include userinfo")
+    try:
+        port = parts.port
+    except ValueError as e:
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} has an invalid port") from e
+    if (parts.netloc or "").endswith(":"):
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} has an empty port")
+    if stub_mode() and host == "127.0.0.1" and scheme in ("http", "https"):
+        return
+    if scheme != "https":
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must use https://")
+    if port not in (None, 443):
+        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must use port 443 or no explicit port")
+    if not (
+        host in ("huggingface.co", "hf.co")
+        or host.endswith(".huggingface.co")
+        or host.endswith(".hf.co")
+    ):
+        raise RuntimeError(
+            f"REFUSED: mirror redirect target {target_url!r} host {host!r} is not an allowed Hugging Face host"
+        )
+
+
+def _open_ollama_mirror_blob(
+    origin_url: str,
+    *,
+    mirror_token: str,
+    blob_digest: str,
+    read_timeout: float,
+):
+    origin_netloc = urllib.parse.urlsplit(origin_url).netloc.lower()
+    cur_url = origin_url
+    keep_auth = True
+    cur_headers: dict[str, str] = {"Authorization": f"Bearer {mirror_token}"}
+    for hop in range(OLLAMA_MIRROR_MAX_REDIRECTS + 1):
+        check_deadline(f"downloading ollama blob {blob_digest}")
+        req = urllib.request.Request(cur_url, headers=cur_headers)
+        resp = _open_no_redirect(req, timeout=read_timeout)
+        keep_open = False
+        try:
+            status = getattr(resp, "status", None) or resp.getcode()
+            if status is not None and int(status) in OLLAMA_MIRROR_REDIRECT_CODES:
+                hdrs = getattr(resp, "headers", None)
+                loc = hdrs.get("Location") if hdrs is not None else None
+                if not loc or not loc.strip():
+                    raise RuntimeError(
+                        f"REFUSED: ollama blob {blob_digest} redirect HTTP {status} from {cur_url} missing Location"
+                    )
+                if hop >= OLLAMA_MIRROR_MAX_REDIRECTS:
+                    raise RuntimeError(
+                        f"REFUSED: ollama blob {blob_digest} exceeded max redirects "
+                        f"({OLLAMA_MIRROR_MAX_REDIRECTS}) from {origin_url}"
+                    )
+                target_url = urllib.parse.urljoin(cur_url, loc.strip())
+                _validate_ollama_mirror_redirect_target(target_url)
+                target_netloc = urllib.parse.urlsplit(target_url).netloc.lower()
+                if keep_auth and target_netloc == origin_netloc:
+                    cur_headers = {"Authorization": f"Bearer {mirror_token}"}
+                else:
+                    keep_auth = False
+                    cur_headers = {}
+                cur_url = target_url
+                continue
+            keep_open = True
+            return resp
+        finally:
+            if not keep_open:
+                resp.close()
+    raise RuntimeError(
+        f"REFUSED: ollama blob {blob_digest} exceeded max redirects ({OLLAMA_MIRROR_MAX_REDIRECTS}) from {origin_url}"
+    )
 
 
 def _start_stub_ollama_mirror(blob_dir: Path | None = None, port: int = 0, *, expected_token: str | None = None):
@@ -3406,8 +3525,18 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                 check_deadline(f"downloading ollama blob {blob_digest}")
                 say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
                 hasher = hashlib.sha256()
-                req = urllib.request.Request(url, headers=req_headers)
-                with urllib.request.urlopen(req, timeout=read_timeout) as resp:  # noqa: S310 - allow-listed/stub source
+                if use_mirror:
+                    assert mirror_token is not None
+                    blob_cm = _open_ollama_mirror_blob(
+                        url,
+                        mirror_token=mirror_token,
+                        blob_digest=blob_digest,
+                        read_timeout=read_timeout,
+                    )
+                else:
+                    req = urllib.request.Request(url, headers=req_headers)
+                    blob_cm = urllib.request.urlopen(req, timeout=read_timeout)  # noqa: S310 - allow-listed/stub source
+                with blob_cm as resp:
                     status = getattr(resp, "status", None) or resp.getcode()
                     if status is None or not (200 <= int(status) < 300):
                         raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {url}")
@@ -4090,6 +4219,7 @@ def offrig_bench_window(result: dict) -> None:
                 result["tar_error"] = str(e)[:300]
     finally:
         take_token()
+        result.setdefault("token_clean", token_clean())
 
 
 def resolve_pilot_pool(rs: dict, plan: Path, twins_plan: Path | None = None) -> tuple[Path | None, str | None]:
