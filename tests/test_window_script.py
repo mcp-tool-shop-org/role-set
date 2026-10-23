@@ -324,10 +324,153 @@ def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm()
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
 
 
+def test_card_rates_refusals_and_g4_margin_check():
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-cardrates-"))
+    binfile = tmp / "bin.dat"
+    binfile.write_bytes(b"x" * 100)
+    script = str(ROOT / "scripts/colab/smoke_window.sh")
+
+    # 1. Each known card:high_mem combination has the same measured rate in both CARD_RATE (margin check) and GPU_RATE (neighbourclose fallback)
+    for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
+        ("G4", "0", "8.90", "0.3", "121"),
+        ("G4", "1", "8.90", "0.3", "121"),
+        ("A100", "1", "6.77", "0.3", "159"),
+        ("A100", "0", "5.3", "0.2", "135"),
+        ("CPU", "1", "0.26", "0.01", "138"),
+        ("CPU", "0", "0.08", "0.003", "135"),
+    ):
+        out_m = tmp / f"out-m-{gpu}-{high_mem}"
+        env_m = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-m-{gpu}-{high_mem}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-m-{gpu}-{high_mem}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_GPU": gpu,
+            "PIN_HIGH_MEM": high_mem,
+            "PIN_CAP_MARGIN": bad_margin,
+        }
+        r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
+        assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
+        assert f"REFUSED: grace 60s + fetch 120s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s" in r_m.stderr, (
+            gpu,
+            high_mem,
+            r_m.stderr,
+        )
+        assert not (tmp / f"st-m-{gpu}-{high_mem}" / "news").exists()
+
+        rig_fb, _job_fb, out_fb = _window(
+            "neighbourclose",
+            extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": high_mem, "PIN_MOCK_S": "1", "PIN_GATE": "0"},
+        )
+        assert f"own rate {rate_str}/hr" in rig_fb, (gpu, high_mem, rig_fb)
+        assert (out_fb / "pin-result.json").exists()
+
+    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 180 s) above and passes at 0.5 (0.5 / 8.9 h = 202 s >= 180 s)
+    rig_g4_pass, job_g4_pass, out_g4_pass = _window(
+        "normal",
+        extra={
+            "PIN_DEADLINE_GRACE_S": "",
+            "PIN_FETCH_ALLOW_S": "",
+            "PIN_GPU": "G4",
+            "PIN_CAP_MARGIN": "0.5",
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "REFUSED" not in rig_g4_pass and job_g4_pass.count("PIN_RESULT") == 1, rig_g4_pass
+    assert (out_g4_pass / "pin-result.json").exists()
+
+    # 3. Cards accepted on line 12 with no measured rate (H100, L4, T4) are refused at start before asking for any VM
+    for unmeasured in ("H100", "L4", "T4"):
+        out_u = tmp / f"out-u-{unmeasured}"
+        env_u = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-u-{unmeasured}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-u-{unmeasured}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_GPU": unmeasured,
+        }
+        r_u = subprocess.run(["bash", script, str(binfile), str(out_u)], env=env_u, capture_output=True, text=True, timeout=30, check=False)
+        assert r_u.returncode == 2, (unmeasured, r_u.returncode, r_u.stdout, r_u.stderr)
+        assert f"REFUSED: PIN_GPU={unmeasured} (PIN_HIGH_MEM=0) has no measured rate yet; refuse until one is measured" in r_u.stderr, (
+            unmeasured,
+            r_u.stderr,
+        )
+        assert not (tmp / f"st-u-{unmeasured}" / "news").exists()
+
+
 def test_the_stub_call_knob_never_runs_on_a_gpu_window():
     rig, job, out = _window("normal", extra={"PIN_STUB_CALL_S": "30"})  # the fake's default card: A100
     assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on A100" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job
+
+
+def test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend():
+    import hashlib
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-bincheck-"))
+    binfile = tmp / "bin.dat"
+    bin_bytes = b"fake-llama-server-binary-bytes"
+    binfile.write_bytes(bin_bytes)
+    bin_sha = hashlib.sha256(bin_bytes).hexdigest()
+    default_sha = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+    g4_sha = "39742d8a0354d4577da8dcc9cb3a5b9f03f02593d106eff41297e952d6ebfc95"
+    script = str(ROOT / "scripts/colab/smoke_window.sh")
+
+    # 1. Refusal: malformed PIN_SERVER_SHA256 is refused before `colab new` (even when PIN_SKIP_BINARY=1)
+    for idx, bad in enumerate(("", "a" * 63, "a" * 65, g4_sha.upper(), "g" + "a" * 63)):
+        out_bad = tmp / f"out-bad-{idx}"
+        env_bad = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-bad-{idx}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-bad-{idx}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_SKIP_BINARY": "1",
+            "PIN_SERVER_SHA256": bad,
+        }
+        r_bad = subprocess.run(["bash", script, str(binfile), str(out_bad)], env=env_bad, capture_output=True, text=True, timeout=30, check=False)
+        assert r_bad.returncode == 2, (bad, r_bad.returncode, r_bad.stdout, r_bad.stderr)
+        assert f"REFUSED: PIN_SERVER_SHA256={bad} must be 64 lowercase hex characters" in r_bad.stderr, r_bad.stderr
+        assert not (tmp / f"st-bad-{idx}" / "news").exists()
+
+    # 2. Refusal: when PIN_SKIP_BINARY is not 1, binary sha256 mismatch is refused before `colab new` (both default and overridden)
+    for tag, env_sha, want_sha in (("default", {}, default_sha), ("override", {"PIN_SERVER_SHA256": g4_sha}, g4_sha)):
+        out_mism = tmp / f"out-mism-{tag}"
+        env_mism = {
+            **os.environ,
+            "PATH": f"{FAKE}:{os.environ['PATH']}",
+            "FAKE_ST": str(tmp / f"st-mism-{tag}"),
+            "FAKE_MODE": "normal",
+            "PIN_OPEN_LOCK": str(tmp / f"lock-mism-{tag}"),
+            "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_SKIP_BINARY": "0",
+            **env_sha,
+        }
+        r_mism = subprocess.run(["bash", script, str(binfile), str(out_mism)], env=env_mism, capture_output=True, text=True, timeout=30, check=False)
+        assert r_mism.returncode == 2, (tag, r_mism.returncode, r_mism.stdout, r_mism.stderr)
+        assert f"REFUSED: llama-server {binfile} sha256 {bin_sha} != expected {want_sha}" in r_mism.stderr, r_mism.stderr
+        assert not (tmp / f"st-mism-{tag}" / "news").exists()
+        assert not (out_mism / "upload").exists()
+
+    # 3. Pass: when sha256sum "$BIN" equals PIN_SERVER_SHA256 (with PIN_SKIP_BINARY=0), the window opens, uploads the binary, and runs the job
+    default_window_bin_sha = hashlib.sha256(b"x" * 1000).hexdigest()
+    rig_pass, job_pass, out_pass = _window(
+        "normal",
+        extra={
+            "PIN_SKIP_BINARY": "0",
+            "PIN_SERVER_SHA256": default_window_bin_sha,
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "REFUSED" not in rig_pass and "uploaded llama-server.gz.part00" in rig_pass, rig_pass
+    assert job_pass.count("PIN_RESULT") == 1 and (out_pass / "pin-result.json").exists(), job_pass
 
 
 def test_offrig_bench_stub_window_uploads_binary_and_gold_and_downloads_out_tar_and_ps():

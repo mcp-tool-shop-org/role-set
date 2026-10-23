@@ -2122,6 +2122,193 @@ def test_pin_cuda_archs_default_override_and_refusals(tmp_path, monkeypatch):
     assert seen_cmds == []
 
 
+def test_pin_server_sha256_default_override_all_sites_and_refusals(tmp_path, monkeypatch):
+    from subprocess import CompletedProcess
+
+    default_sha = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+    g4_sha = "39742d8a0354d4577da8dcc9cb3a5b9f03f02593d106eff41297e952d6ebfc95"
+    other_sha = "1111111111111111111111111111111111111111111111111111111111111111"
+    assert pw.SERVER_SHA256 == default_sha
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    pack = content / "pack"
+    pack.mkdir()
+    (pack / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+    machine_file = work / "machine.json"
+    machine_file.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    rs = _role_set_cmd()
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+
+    seen_critic_cmds: list[list[str]] = []
+    seen_pilot_commons: list[list[str]] = []
+    seen_sh_cmds: list[str] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_critic_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, "ok", "")
+
+    def fake_pilot_batch(rs_arg, common, plan, out_dir, writers, critic_for, pool, **kw):
+        seen_pilot_commons.append(list(common))
+        return {w: {"waves": [{"wave": "write", "exit": 0}], "last": None} for w in writers}
+
+    def fake_sh(cmd: str, **kw) -> str:
+        seen_sh_cmds.append(cmd)
+        if "pip freeze" in cmd:
+            return f"nvidia-cublas=={pw.CUBLAS_VERSION}\nnvidia-cuda-runtime=={pw.NVCC_VERSION}"
+        if "pack verify" in cmd or cmd.startswith("tar "):
+            return "ok"
+        if "plan --lessons" in cmd:
+            out_idx = cmd.split().index("--out") + 1
+            out_p = Path(cmd.split()[out_idx])
+            out_p.write_text(
+                json.dumps({"slots": [{"id": "T02-C-01", "lesson": "T02", "kind": "C"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+            return "planned"
+        return "ok"
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    monkeypatch.setattr(pw, "pilot_batch", fake_pilot_batch)
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    monkeypatch.setattr(pw, "machine_line", lambda **kw: {"gpu": "A100"})
+    monkeypatch.setattr(pw, "read_token_file", lambda **kw: None)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T02")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "T02-C-01")
+
+    server_path = work / "llama-server"
+    server_path.write_bytes(b"fake-server")
+    current_binary_sha = default_sha
+    monkeypatch.setattr(pw, "sha256", lambda p: current_binary_sha if Path(p) == server_path else "0" * 64)
+
+    # 1. Unset gives default b4659b3f at all four sites + pin-result.json records server_sha256_override=False
+    monkeypatch.delenv("PIN_SERVER_SHA256", raising=False)
+    assert pw.server_sha256() == default_sha
+
+    seen_critic_cmds.clear()
+    pw.critic_control(rs, {"served_as": "muse-glimmer-30b", "gguf_sha256": "c" * 64}, machine_file, 0, None)
+    cc_cmd = seen_critic_cmds[-1]
+    assert cc_cmd[cc_cmd.index("--llama-server-sha256") + 1] == default_sha
+
+    seen_pilot_commons.clear()
+    pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    pw_common = seen_pilot_commons[-1]
+    assert pw_common[pw_common.index("--llama-server-sha256") + 1] == default_sha
+
+    rt_default = pw.runtime()
+    assert rt_default["sha256"] == default_sha and rt_default["sha256_override"] is False
+    assert rt_default["commit"] == pw.LLAMA_CPP_COMMIT and rt_default["archs"] == "80;90;100 (SASS only, no PTX)"
+
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_STUB", "1")
+    rc = pw._main()
+    assert rc == 0
+    pin_res_default = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res_default["server_sha256"] == default_sha
+    assert pin_res_default["server_sha256_override"] is False
+    assert pin_res_default["server_pin"] == {
+        "commit": pw.LLAMA_CPP_COMMIT,
+        "sha256": default_sha,
+        "archs": "80;90;100 (SASS only, no PTX)",
+    }
+    assert pin_res_default["llama_server"]["sha256"] == default_sha
+    assert pin_res_default["llama_server"]["archs"] == "80;90;100 (SASS only, no PTX)"
+    assert pin_res_default["llama_server"]["sha256_override"] is False
+
+    # 2. Valid 64-char lowercase hex override reaches all four sites + pin-result.json records server_sha256_override=True and G4 server_pin
+    monkeypatch.setenv("PIN_SERVER_SHA256", g4_sha)
+    assert pw.server_sha256() == g4_sha
+
+    seen_critic_cmds.clear()
+    pw.critic_control(rs, {"served_as": "muse-glimmer-30b", "gguf_sha256": "c" * 64}, machine_file, 0, None)
+    cc_cmd_ov = seen_critic_cmds[-1]
+    assert cc_cmd_ov[cc_cmd_ov.index("--llama-server-sha256") + 1] == g4_sha
+
+    seen_pilot_commons.clear()
+    pw.pilot_window({}, {"machine": {"gpu": "G4"}})
+    pw_common_ov = seen_pilot_commons[-1]
+    assert pw_common_ov[pw_common_ov.index("--llama-server-sha256") + 1] == g4_sha
+
+    # 3. runtime() refuses a binary whose sha differs from the override (including window 1's default binary) or an unlisted sha, and accepts matching G4 sha
+    current_binary_sha = default_sha
+    with pytest.raises(RuntimeError, match=f"llama-server {default_sha[:12]} isn't pinned {g4_sha[:12]}"):
+        pw.runtime()
+    current_binary_sha = other_sha
+    with pytest.raises(RuntimeError, match=f"llama-server {other_sha[:12]} isn't pinned {g4_sha[:12]}"):
+        pw.runtime()
+    current_binary_sha = g4_sha
+    rt_ov = pw.runtime()
+    assert rt_ov["sha256"] == g4_sha and rt_ov["sha256_override"] is True
+    assert rt_ov["commit"] == pw.LLAMA_CPP_COMMIT and rt_ov["archs"] == "80;90;100;120 (sm_120a SASS)"
+
+    rc_ov = pw._main()
+    assert rc_ov == 0
+    pin_res_ov = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res_ov["server_sha256"] == g4_sha
+    assert pin_res_ov["server_sha256_override"] is True
+    assert pin_res_ov["server_pin"] == {
+        "commit": pw.LLAMA_CPP_COMMIT,
+        "sha256": g4_sha,
+        "archs": "80;90;100;120 (sm_120a SASS)",
+    }
+    assert pin_res_ov["llama_server"]["sha256"] == g4_sha
+    assert pin_res_ov["llama_server"]["archs"] == "80;90;100;120 (sm_120a SASS)"
+    assert pin_res_ov["llama_server"]["sha256_override"] is True
+    assert seen_pilot_commons[-1][seen_pilot_commons[-1].index("--llama-server-sha256") + 1] == g4_sha
+
+    # Unlisted 64-hex sha is refused by server_pin_entry before work
+    monkeypatch.setenv("PIN_SERVER_SHA256", other_sha)
+    with pytest.raises(RuntimeError, match=f"REFUSED: llama-server {other_sha[:12]} is not a pinned build in writers.json"):
+        pw.runtime()
+    rc_unlisted = pw._main()
+    assert rc_unlisted == 1
+    pin_res_unlisted = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res_unlisted["ok"] is False
+    assert f"REFUSED: llama-server {other_sha[:12]} is not a pinned build in writers.json" in pin_res_unlisted["error"]
+
+    # 4. Malformed values (63 hex, 65 hex, uppercase, non-hex, empty) are refused with REFUSED: before any work
+    for bad in (
+        "",
+        "a" * 63,
+        "a" * 65,
+        g4_sha.upper(),
+        "A" + "a" * 63,
+        "g" + "a" * 63,
+        "b4659b3f-not-hex" + "0" * 48,
+        g4_sha + "\n",
+    ):
+        monkeypatch.setenv("PIN_SERVER_SHA256", bad)
+        seen_sh_cmds.clear()
+        with pytest.raises(RuntimeError, match=r"REFUSED: PIN_SERVER_SHA256=.* must be 64 lowercase hex characters"):
+            pw.server_sha256()
+        with pytest.raises(RuntimeError, match=r"REFUSED: PIN_SERVER_SHA256=.* must be 64 lowercase hex characters"):
+            pw.runtime()
+        assert seen_sh_cmds == []
+        rc_bad = pw._main()
+        assert rc_bad == 1
+        assert seen_sh_cmds == []
+        pin_res_bad = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+        assert pin_res_bad["ok"] is False
+        assert "REFUSED: PIN_SERVER_SHA256=" in pin_res_bad["error"]
+
+
 # ---- PIN_ROLE=offrig-bench (R&D, 2026-10-23): Ollama 0.40.4 + offrig verify calibrate cross-rig baseline -----------------
 
 

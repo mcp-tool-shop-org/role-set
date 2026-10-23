@@ -298,7 +298,7 @@ def _critic_control(args: argparse.Namespace) -> int:
         gates = load_gates()
         listed = proven.load(Path(args.writers))
         machine = proven.load_machine(Path(args.machine) if args.machine else None)
-        server = proven.require_server(listed.server, args.llama_server_sha256)
+        server = proven.require_server(listed, args.llama_server_sha256)
         if proven.needs_grant(machine):
             require_grant(args.grant, uses_card=True)
             if not args.heartbeat:
