@@ -820,6 +820,7 @@ BROAD_HANDLERS = {
     "pilot_window": "the tar in finally, after the waves",
     "rescore_window": "the tar in finally, after the rescore",
     "critic_eval_window": "the tar in finally, after the critic-eval runs",
+    "offrig_bench_window": "the tar in finally, after the calibrate run",
     "_main": "re-raises DeadlineReached first in the smoke role's two; the last records it as cut_at_deadline",
 }
 
@@ -2119,6 +2120,425 @@ def test_pin_cuda_archs_default_override_and_refusals(tmp_path, monkeypatch):
         with pytest.raises(RuntimeError, match=r"REFUSED: PIN_CUDA_ARCHS=.* must match \^\[0-9\]\+\(;\[0-9\]\+\)\*\$"):
             pw.build()
     assert seen_cmds == []
+
+
+# ---- PIN_ROLE=offrig-bench (R&D, 2026-10-23): Ollama 0.40.4 + offrig verify calibrate cross-rig baseline -----------------
+
+
+from stub_llama import FAKE_OFFRIG_PY  # noqa: E402
+
+
+def _write_offrig_fixtures(content: Path) -> tuple[Path, str, Path, str]:
+    offrig_bin = content / "offrig"
+    offrig_bin.write_text(FAKE_OFFRIG_PY, encoding="utf-8", newline="\n")
+    offrig_bin.chmod(0o755)
+    gold = content / "bench30.jsonl"
+    gold_lines = [
+        json.dumps({"id": "c-01", "claim": "West pier opens at 06:00.", "label": "unsupported", "split": "tune"}),
+        json.dumps({"id": "c-02", "claim": "East pier closes at 22:00.", "label": "unsupported", "split": "tune"}),
+    ]
+    gold.write_text("\n".join(gold_lines) + "\n", encoding="utf-8", newline="\n")
+    return offrig_bin, pw.sha256(offrig_bin), gold, pw.sha256(gold)
+
+
+def test_offrig_bench_inputs_and_install_ollama_pin_checks_and_refusals(tmp_path, monkeypatch):
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+
+    assert pw.OLLAMA_VERSION == "0.40.4"
+    assert pw.OLLAMA_SHA256 == "15f31e9576d15a481e099b4145dba6e9f8c1f295927d6b8895300ae30ed3740a"
+    assert pw.OFFRIG_MODEL == "gemma4:31b"
+    assert pw.OFFRIG_MODEL_DIGEST == "6316f0629137b426c9d9b853ffc4c8209589f30ee39aebede6285096c0ff47e7"
+    assert pw.OFFRIG_GOLD_SHA256 == "0c88ec0f915c911a99d3fcf2d2e91104c0c65b0f279656f27afa2244099ce547"
+    assert pw.SMI_INTERVAL_S == 2.0
+
+    offrig_bin, bin_sha, gold, gold_sha = _write_offrig_fixtures(content)
+
+    # 1. Missing or malformed PIN_OFFRIG_SHA256 / PIN_OFFRIG_GOLD_SHA256 refuses
+    monkeypatch.delenv("PIN_OFFRIG_SHA256", raising=False)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_OFFRIG_SHA256 must be a 64-char hex sha256"):
+        pw.offrig_bench_inputs({})
+
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", "not-a-sha")
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_OFFRIG_GOLD_SHA256 must be a 64-char hex sha256"):
+        pw.offrig_bench_inputs({})
+
+    # 2. Binary or gold sha256 mismatch refuses before anything runs
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", "0" * 64)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    with pytest.raises(RuntimeError, match=rf"REFUSED: offrig binary sha256 mismatch: {bin_sha[:12]} != PIN_OFFRIG_SHA256 000000000000"):
+        pw.offrig_bench_inputs({})
+
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", "f" * 64)
+    with pytest.raises(RuntimeError, match=rf"REFUSED: offrig gold bench30\.jsonl sha256 mismatch: {gold_sha[:12]} != PIN_OFFRIG_GOLD_SHA256 ffffffffffff"):
+        pw.offrig_bench_inputs({})
+
+    # 3. Matching shas stage read-only inputs and record offrig_bench_inputs
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    res_in: dict = {}
+    staged_bin, staged_gold, meta = pw.offrig_bench_inputs(res_in)
+    assert staged_bin.is_file() and staged_gold.is_file()
+    assert meta == {"offrig_sha256": bin_sha, "gold": "bench30.jsonl", "gold_sha256": gold_sha}
+    assert res_in["offrig_bench_inputs"] == meta
+    assert not os.access(staged_gold, os.W_OK)
+
+    # 4. install_ollama refuses wrong version or bad sha256 before unpacking or running
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+
+    monkeypatch.setenv("PIN_OLLAMA_VERSION", "0.39.0")
+    with pytest.raises(RuntimeError, match="REFUSED: PIN_OLLAMA_VERSION must be '0.40.4'"):
+        pw.install_ollama({})
+    monkeypatch.delenv("PIN_OLLAMA_VERSION", raising=False)
+
+    fake_archive = content / "ollama-linux-amd64.tar.zst"
+    fake_archive.write_bytes(b"fake-ollama-archive-bytes")
+    arch_sha = pw.sha256(fake_archive)
+    monkeypatch.setenv("PIN_OLLAMA_SHA256", "1" * 64)
+    with pytest.raises(RuntimeError, match=rf"REFUSED: ollama archive sha256 mismatch: {arch_sha[:12]} != PIN_OLLAMA_SHA256 111111111111"):
+        pw.install_ollama({})
+
+    # 5. install_ollama unpacks archive when sha matches and checks `ollama --version` == 0.40.4
+    monkeypatch.setenv("PIN_OLLAMA_SHA256", arch_sha)
+    ver_out = "ollama version is 0.40.4"
+
+    def fake_sh(cmd: str, **kw) -> str:
+        if cmd.startswith("tar -xf"):
+            dest = Path(cmd.split("-C ", 1)[1].strip())
+            (dest / "bin").mkdir(parents=True, exist_ok=True)
+            (dest / "bin" / "ollama").write_text("#!/bin/sh\n", encoding="utf-8")
+            return ""
+        if cmd.endswith("--version"):
+            return ver_out
+        raise AssertionError(f"unexpected sh: {cmd}")
+
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    res_ol: dict = {}
+    installed_bin = pw.install_ollama(res_ol)
+    assert installed_bin == work / "ollama-install" / "bin" / "ollama"
+    assert res_ol["ollama"] == {
+        "version": "0.40.4",
+        "sha256": arch_sha,
+        "bin": str(installed_bin),
+        "version_line": "ollama version is 0.40.4",
+    }
+
+    # Wrong version reported by binary refuses
+    ver_out = "ollama version is 0.35.0"
+    with pytest.raises(RuntimeError, match="REFUSED: ollama --version is 'ollama version is 0.35.0', expected 0.40.4"):
+        pw.install_ollama({})
+
+
+def test_offrig_bench_token_rules_unchanged_and_residue_refused(tmp_path, monkeypatch):
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    shm = tmp_path / "shm"
+    shm.mkdir()
+    tok_file = shm / "hf.token"
+    sentinel = "hf_" + "SENTINELneverPERSIST9f3c2a71abcdEFGHijk"
+    tok_file.write_text(sentinel + "\n", encoding="utf-8")
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tok_file)
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setenv("PIN_ROLE", "offrig-bench")
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.delenv("PIN_GGUF_REPO", raising=False)
+
+    # 1. At _main() start, needs_token is False for offrig-bench: any token file is deleted and _TOKEN stays None.
+    def stop_at_machine(**kw):
+        assert not tok_file.exists()
+        assert pw._TOKEN is None
+        raise RuntimeError("stopped after token check")
+
+    monkeypatch.setattr(pw, "machine_line", stop_at_machine)
+    assert pw._main() == 1
+    assert not tok_file.exists() and pw._TOKEN is None
+
+    # 2. Any token residue before offrig_bench_window stops the window before inputs or Ollama setup.
+    monkeypatch.setenv("HF_TOKEN", "residue")
+    monkeypatch.setattr(pw, "offrig_bench_inputs", lambda *a: pytest.fail("must not read inputs when token_clean fails"))
+    with pytest.raises(RuntimeError, match=r"token residue is left before any wave \(.*env_clear"):
+        pw.offrig_bench_window({})
+
+
+def test_offrig_bench_stub_mode_end_to_end_and_real_path_checks(tmp_path, monkeypatch):
+    import socket as _socket
+    import tarfile
+
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    shm = tmp_path / "shm"
+    shm.mkdir()
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "JOB_LOG", work / "job.log")
+    monkeypatch.setattr(pw, "TOKEN_PATH", shm / "hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    monkeypatch.setattr(pw, "CUT_AT", None)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_DEADLINE", "PIN_STUB_CALL_S"):
+        monkeypatch.delenv(k, raising=False)
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free_port = s.getsockname()[1]
+    monkeypatch.setattr(pw, "OLLAMA_PORT", free_port)
+    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.05)
+
+    offrig_bin, bin_sha, gold, gold_sha = _write_offrig_fixtures(content)
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL", pw.OFFRIG_MODEL)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", pw.OFFRIG_MODEL_DIGEST)
+
+    orig_run_proc = pw.run_proc
+    seen_calibrate_cmds: list[list[str]] = []
+
+    def cross_platform_run_proc(cmd, **kw):
+        if isinstance(cmd, list) and cmd and str(cmd[0]).endswith("offrig"):
+            seen_calibrate_cmds.append(list(cmd))
+            if os.name == "nt":
+                cmd = [sys.executable, str(cmd[0]), *cmd[1:]]
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", cross_platform_run_proc)
+
+    def tar_sh(cmd: str, **kw) -> str:
+        if cmd.startswith(f"tar -C {work} -cf {work}/offrig-bench-out.tar offrig-bench"):
+            with tarfile.open(work / "offrig-bench-out.tar", "w") as tf:
+                tf.add(work / "offrig-bench", arcname="offrig-bench")
+            return ""
+        return pw.sh(cmd, **kw)
+
+    monkeypatch.setattr(pw, "sh", tar_sh)
+
+    # 1. Stub mode (PIN_STUB=1) runs the full path against StubLlama on CPU
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLE", "offrig-bench")
+    res_stub: dict = {"machine": pw.machine_line(), "role": "offrig-bench", "stub": True}
+    pw.offrig_bench_window(res_stub)
+
+    assert res_stub["model_errors"] == 0
+    assert all(res_stub["token_clean"].values())
+    assert res_stub["ollama"]["version"] == "0.40.4" and res_stub["ollama"]["stub"] is True
+    assert res_stub["offrig_model"]["model"] == "gemma4:31b"
+    assert res_stub["offrig_model"]["digest"] == pw.OFFRIG_MODEL_DIGEST
+    assert len(res_stub["ps"]["models"]) == 1
+    assert res_stub["ps"]["models"][0]["size_vram"] == res_stub["ps"]["models"][0]["size"]
+    assert (work / "ps.json").is_file()
+    assert (work / "offrig-bench-out.tar").is_file()
+    assert res_stub["smi"]["samples"] >= 1
+    assert res_stub["offrig_bench"]["verdicts_count"] == 2
+    assert res_stub["offrig_bench"]["stub"] is True
+    assert res_stub["offrig_bench"]["stdout_tail"].startswith("# STUB RUN (PIN_STUB=1)\n")
+
+    assert len(seen_calibrate_cmds) == 1
+    cal_cmd = seen_calibrate_cmds[0]
+    assert cal_cmd[1:13] == [
+        "verify",
+        "calibrate",
+        str(work / "offrig-bench-in" / "bench30.jsonl"),
+        "--model",
+        "gemma4:31b",
+        "--think",
+        "on",
+        "--structured",
+        "on",
+        "--split",
+        "tune",
+        "--jobs",
+    ]
+    assert cal_cmd[13] == "1"
+
+    with tarfile.open(work / "offrig-bench-out.tar") as tf:
+        names = set(tf.getnames())
+    for expected in (
+        "offrig-bench/ps.json",
+        "offrig-bench/ps-end.json",
+        "offrig-bench/smi.csv",
+        "offrig-bench/offrig.log",
+        "offrig-bench/out/verdicts.jsonl",
+        "offrig-bench/out/manifest.json",
+        "offrig-bench/out/metrics.json",
+    ):
+        assert expected in names, (expected, names)
+    manifest = json.loads((work / "offrig-bench" / "out" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["stub"] is True and manifest["jobs"] == 1 and manifest["think"] == "on" and manifest["structured"] == "on"
+
+    # 2. Digest mismatch in /api/tags refuses before warm-up or calibrate
+    seen_calibrate_cmds.clear()
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+    monkeypatch.setattr(
+        pw,
+        "_start_stub_ollama",
+        lambda model, digest, port, version="0.40.4": __import__("stub_llama").StubLlama(
+            model, model, port=port, ollama_model=model, ollama_digest="a" * 64, ollama_version=version
+        ),
+    )
+    with pytest.raises(RuntimeError, match="REFUSED: model gemma4:31b digest aaaaaaaaaaaa != PIN_OFFRIG_MODEL_DIGEST 6316f0629137"):
+        pw.offrig_bench_window({})
+    assert seen_calibrate_cmds == []
+
+    # 3. Offloaded model in /api/ps (size_vram < size) refuses before calibrate
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+
+    def _offloaded_stub(model, digest, port, version="0.40.4"):
+        s = __import__("stub_llama").StubLlama(
+            model, model, port=port, ollama_model=model, ollama_digest=digest, ollama_version=version
+        )
+        s.ollama_size_vram = s.ollama_size - 1024
+        return s
+
+    monkeypatch.setattr(pw, "_start_stub_ollama", _offloaded_stub)
+    with pytest.raises(RuntimeError, match="REFUSED: gemma4:31b offloaded in /api/ps: size_vram"):
+        pw.offrig_bench_window({})
+    assert seen_calibrate_cmds == []
+
+
+def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monkeypatch):
+    import socket as _socket
+    import tarfile
+    import time as _t
+
+    content = tmp_path / "content"
+    work = content / "pin"
+    content.mkdir()
+    work.mkdir()
+    shm = tmp_path / "shm"
+    shm.mkdir()
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "JOB_LOG", work / "job.log")
+    monkeypatch.setattr(pw, "TOKEN_PATH", shm / "hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+    monkeypatch.setattr(pw, "CUT_AT", None)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_STUB", "PIN_DEADLINE", "PIN_STUB_CALL_S"):
+        monkeypatch.delenv(k, raising=False)
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        free_port = s.getsockname()[1]
+    monkeypatch.setattr(pw, "OLLAMA_PORT", free_port)
+    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.05)
+
+    offrig_bin, bin_sha, gold, gold_sha = _write_offrig_fixtures(content)
+    monkeypatch.setenv("PIN_ROLE", "offrig-bench")
+    monkeypatch.setenv("PIN_OFFRIG_SHA256", bin_sha)
+    monkeypatch.setenv("PIN_OFFRIG_GOLD_SHA256", gold_sha)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL", pw.OFFRIG_MODEL)
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", pw.OFFRIG_MODEL_DIGEST)
+
+    fake_ollama_bin = work / "ollama-install" / "bin" / "ollama"
+    fake_ollama_bin.parent.mkdir(parents=True)
+    fake_ollama_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        pw,
+        "install_ollama",
+        lambda res: res.__setitem__("ollama", {"version": "0.40.4", "sha256": pw.OLLAMA_SHA256, "bin": str(fake_ollama_bin)}) or fake_ollama_bin,
+    )
+
+    # Stand in OllamaServed.__enter__/__exit__ with StubLlama while verifying pull_ollama_model runs `ollama pull`
+    stub_holder: dict = {}
+
+    def fake_enter(self):
+        stub_holder["srv"] = __import__("stub_llama").StubLlama(
+            self.model,
+            self.model,
+            port=self.port,
+            ollama_model=self.model,
+            ollama_digest=self.digest,
+            ollama_version=pw.OLLAMA_VERSION,
+        )
+        return self
+
+    def fake_exit(self, *exc):
+        if stub_holder.get("srv") is not None:
+            stub_holder["srv"].close()
+            stub_holder["srv"] = None
+
+    monkeypatch.setattr(pw.OllamaServed, "__enter__", fake_enter)
+    monkeypatch.setattr(pw.OllamaServed, "__exit__", fake_exit)
+
+    smi_samples = iter([
+        "2026/10/23 00:00:01.000, 21450 MiB, 82 %, 58, 265.10 W\n",
+        "2026/10/23 00:00:03.000, 24120 MiB, 94 %, 61, 298.40 W\n",
+    ])
+    monkeypatch.setattr(pw, "_query_smi_csv", lambda: next(smi_samples, "2026/10/23 00:00:05.000, 23800 MiB, 90 %, 60, 280.00 W\n"))
+
+    def tar_sh(cmd: str, **kw) -> str:
+        if cmd.startswith(f"tar -C {work} -cf {work}/offrig-bench-out.tar offrig-bench"):
+            with tarfile.open(work / "offrig-bench-out.tar", "w") as tf:
+                tf.add(work / "offrig-bench", arcname="offrig-bench")
+            return ""
+        raise AssertionError(f"unexpected sh: {cmd}")
+
+    monkeypatch.setattr(pw, "sh", tar_sh)
+
+    orig_run_proc = pw.run_proc
+    seen_proc_calls: list[tuple[list[str], dict]] = []
+
+    def real_mode_run_proc(cmd, **kw):
+        seen_proc_calls.append((list(cmd), kw))
+        if cmd[1:3] == ["pull", "gemma4:31b"]:
+            assert kw["env"]["OLLAMA_HOST"] == f"127.0.0.1:{free_port}"
+            return subprocess.CompletedProcess(cmd, 0, "pulling manifest\nsuccess\n", "")
+        if os.name == "nt" and str(cmd[0]).endswith("offrig"):
+            cmd = [sys.executable, str(cmd[0]), *cmd[1:]]
+        return orig_run_proc(cmd, **kw)
+
+    monkeypatch.setattr(pw, "run_proc", real_mode_run_proc)
+
+    res_real: dict = {}
+    pw.offrig_bench_window(res_real)
+    assert [c[0][1] for c in seen_proc_calls] == ["pull", "verify"]
+    assert res_real["smi"]["peak_vram_mib"] == 24120
+    assert res_real["smi"]["samples"] >= 1
+    assert "stub" not in res_real["offrig_bench"]
+    assert not res_real["offrig_bench"]["stdout_tail"].startswith("# STUB")
+
+    # Deadline cut during offrig verify calibrate records CUT_AT and still tars offrig-bench-out.tar in finally
+    for p in sorted((work / "offrig-bench-in").rglob("*")):
+        os.chmod(p, 0o700)
+    os.chmod(work / "offrig-bench-in", 0o700)
+    monkeypatch.setenv("PIN_DEADLINE", str(int(_t.time() + 20)))
+
+    def deadline_run_proc(cmd, **kw):
+        if cmd[1:3] == ["pull", "gemma4:31b"]:
+            return subprocess.CompletedProcess(cmd, 0, "ok\n", "")
+        assert kw["term_first"] is True and kw["timeout"] <= 20
+        raise subprocess.TimeoutExpired(cmd, kw["timeout"])
+
+    monkeypatch.setattr(pw, "run_proc", deadline_run_proc)
+    with pytest.raises(pw.DeadlineReached, match="offrig-bench calibrate run was cut at the window's deadline"):
+        pw.offrig_bench_window({})
+    assert pw.CUT_AT["wave"] == "offrig-bench" and pw.CUT_AT["model"] == "gemma4:31b"
+    assert (work / "offrig-bench-out.tar").is_file() and (work / "ps.json").is_file()
+
+
 
 
 
