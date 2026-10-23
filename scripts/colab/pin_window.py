@@ -3171,33 +3171,38 @@ def _open_no_redirect(req: urllib.request.Request, *, timeout: float):
         urllib.request._opener = prev_opener
 
 
+def _strip_url_query_and_fragment(url: str) -> str:
+    return url.split("?", 1)[0].split("#", 1)[0]
+
+
 def _validate_ollama_mirror_redirect_target(target_url: str) -> None:
+    safe_target = _strip_url_query_and_fragment(target_url)
     if "ollama.ai" in target_url.lower():
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must never target ollama.ai")
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} must never target ollama.ai")
     parts = urllib.parse.urlsplit(target_url)
     scheme = parts.scheme.lower()
     host = (parts.hostname or "").lower()
     if parts.username is not None or parts.password is not None or "@" in (parts.netloc or ""):
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must not include userinfo")
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} must not include userinfo")
     try:
         port = parts.port
     except ValueError as e:
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} has an invalid port") from e
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} has an invalid port") from e
     if (parts.netloc or "").endswith(":"):
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} has an empty port")
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} has an empty port")
     if stub_mode() and host == "127.0.0.1" and scheme in ("http", "https"):
         return
     if scheme != "https":
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must use https://")
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} must use https://")
     if port not in (None, 443):
-        raise RuntimeError(f"REFUSED: mirror redirect target {target_url!r} must use port 443 or no explicit port")
+        raise RuntimeError(f"REFUSED: mirror redirect target {safe_target!r} must use port 443 or no explicit port")
     if not (
         host in ("huggingface.co", "hf.co")
         or host.endswith(".huggingface.co")
         or host.endswith(".hf.co")
     ):
         raise RuntimeError(
-            f"REFUSED: mirror redirect target {target_url!r} host {host!r} is not an allowed Hugging Face host"
+            f"REFUSED: mirror redirect target {safe_target!r} host {host!r} is not an allowed Hugging Face host"
         )
 
 
@@ -3224,12 +3229,13 @@ def _open_ollama_mirror_blob(
                 loc = hdrs.get("Location") if hdrs is not None else None
                 if not loc or not loc.strip():
                     raise RuntimeError(
-                        f"REFUSED: ollama blob {blob_digest} redirect HTTP {status} from {cur_url} missing Location"
+                        f"REFUSED: ollama blob {blob_digest} redirect HTTP {status} from "
+                        f"{_strip_url_query_and_fragment(cur_url)} missing Location"
                     )
                 if hop >= OLLAMA_MIRROR_MAX_REDIRECTS:
                     raise RuntimeError(
                         f"REFUSED: ollama blob {blob_digest} exceeded max redirects "
-                        f"({OLLAMA_MIRROR_MAX_REDIRECTS}) from {origin_url}"
+                        f"({OLLAMA_MIRROR_MAX_REDIRECTS}) from {_strip_url_query_and_fragment(origin_url)}"
                     )
                 target_url = urllib.parse.urljoin(cur_url, loc.strip())
                 _validate_ollama_mirror_redirect_target(target_url)
@@ -3247,7 +3253,8 @@ def _open_ollama_mirror_blob(
             if not keep_open:
                 resp.close()
     raise RuntimeError(
-        f"REFUSED: ollama blob {blob_digest} exceeded max redirects ({OLLAMA_MIRROR_MAX_REDIRECTS}) from {origin_url}"
+        f"REFUSED: ollama blob {blob_digest} exceeded max redirects "
+        f"({OLLAMA_MIRROR_MAX_REDIRECTS}) from {_strip_url_query_and_fragment(origin_url)}"
     )
 
 
@@ -3509,11 +3516,11 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
             if use_mirror:
                 url = f"{mirror_base}/blobs/sha256-{blob_hex}"
                 if "ollama.ai" in url.lower():
-                    raise RuntimeError(f"REFUSED: mirror request must never target {url}")
-                req_headers = {"Authorization": f"Bearer {mirror_token}"}
+                    raise RuntimeError(f"REFUSED: mirror request must never target {_strip_url_query_and_fragment(url)}")
             else:
                 url = f"{registry_base}/v2/{namespace}/{name}/blobs/{blob_digest}"
                 req_headers = {}
+            safe_url = _strip_url_query_and_fragment(url)
             tmp_file = blobs_dir / f"sha256-{blob_hex}.part"
             final_file = blobs_dir / f"sha256-{blob_hex}"
             tmp_file.unlink(missing_ok=True)
@@ -3523,7 +3530,7 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
             got_size = 0
             try:
                 check_deadline(f"downloading ollama blob {blob_digest}")
-                say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {url}")
+                say(f"downloading ollama blob {blob_digest} ({expected_size} bytes) from {safe_url}")
                 hasher = hashlib.sha256()
                 if use_mirror:
                     assert mirror_token is not None
@@ -3539,7 +3546,7 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                 with blob_cm as resp:
                     status = getattr(resp, "status", None) or resp.getcode()
                     if status is None or not (200 <= int(status) < 300):
-                        raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {url}")
+                        raise RuntimeError(f"REFUSED: ollama blob {blob_digest} HTTP {status} from {safe_url}")
                     with tmp_file.open("wb") as fh:
                         while True:
                             cur_left = deadline_left()
@@ -3590,7 +3597,7 @@ def install_ollama_manifest(manifest_path: Path, model: str, digest: str, result
                         )
                     os.replace(tmp_file, final_file)
             except urllib.error.HTTPError as e:
-                reason = f"REFUSED: ollama blob {blob_digest} HTTP {e.code} from {url}"
+                reason = f"REFUSED: ollama blob {blob_digest} HTTP {e.code} from {safe_url}"
                 manifest_rec["failed_blob"] = {
                     "digest": blob_digest,
                     "bytes_received": got_size,

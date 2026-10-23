@@ -3683,7 +3683,8 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
 
     def fail_on_blob_network(req_or_url, *a, **kw):
         url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-        if "/v2/" in url and "/blobs/" in url:
+        parts = pw.urllib.parse.urlsplit(url)
+        if "/v2/" in parts.path and "/blobs/" in parts.path:
             seen_urls.append(url)
             raise AssertionError(f"network call must not happen on disallowed registry: {url}")
         return orig_urlopen(req_or_url, *a, **kw)
@@ -3730,11 +3731,16 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
 
         def intercept_https_to_local(req_or_url, *a, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-            for allowed_host in ("https://registry.ollama.ai", "https://mirror.studio.example/ollama"):
-                if url.startswith(allowed_host + "/"):
-                    seen_urls.append(url)
-                    local_url = reg.base_url + url[len(allowed_host) :]
-                    return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
+            parts = pw.urllib.parse.urlsplit(url)
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "registry.ollama.ai", None) and parts.path.startswith("/"):
+                seen_urls.append(url)
+                local_url = f"{reg.base_url}{parts.path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "mirror.studio.example", None) and parts.path.startswith("/ollama/"):
+                seen_urls.append(url)
+                rel_path = parts.path.removeprefix("/ollama")
+                local_url = f"{reg.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
+                return orig_urlopen(pw.urllib.request.Request(local_url), *a, **kw)
             return orig_urlopen(req_or_url, *a, **kw)
 
         monkeypatch.setattr(pw.urllib.request, "urlopen", intercept_https_to_local)
@@ -3744,7 +3750,11 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         res_default: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_default)
         assert res_default["offrig_manifest"]["registry"] == "https://registry.ollama.ai"
-        assert seen_urls and all(u.startswith("https://registry.ollama.ai/v2/") for u in seen_urls)
+        assert seen_urls and all(
+            ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port) == ("https", "registry.ollama.ai", None)
+            and p.path.startswith("/v2/")
+            for u in seen_urls
+        )
 
         # Default with uppercase scheme and trailing slashes
         seen_urls.clear()
@@ -3761,7 +3771,11 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         res_listed: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_listed)
         assert res_listed["offrig_manifest"]["registry"] == "https://mirror.studio.example/ollama"
-        assert len(seen_urls) == 4 and all(u.startswith("https://mirror.studio.example/ollama/v2/") for u in seen_urls)
+        assert len(seen_urls) == 4 and all(
+            ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port) == ("https", "mirror.studio.example", None)
+            and p.path.startswith("/ollama/v2/")
+            for u in seen_urls
+        )
 
         monkeypatch.setenv("PIN_OLLAMA_REGISTRY", "https://mirror.studio.example/ollama-evil")
         with pytest.raises(
@@ -3776,7 +3790,8 @@ def test_offrig_bench_manifest_registry_allowlist_on_paid_and_stub_windows(tmp_p
         monkeypatch.delenv("PIN_OLLAMA_REGISTRY", raising=False)
         res_stub_auto: dict = {}
         pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_stub_auto)
-        assert res_stub_auto["offrig_manifest"]["registry"].startswith("http://127.0.0.1:")
+        stub_reg_parts = pw.urllib.parse.urlsplit(res_stub_auto["offrig_manifest"]["registry"])
+        assert (stub_reg_parts.scheme, stub_reg_parts.hostname) == ("http", "127.0.0.1")
         assert res_stub_auto["offrig_manifest"]["stub"] is True
 
         monkeypatch.setenv("PIN_OLLAMA_REGISTRY", reg.base_url + "/")
@@ -4117,7 +4132,8 @@ def test_offrig_bench_manifest_mode_exercises_inline_stub_ollama_end_to_end(tmp_
     assert [type(s).__name__ for s in started_stubs] == ["_InlineStubOllama"]
     assert res["model_errors"] == 0
     assert res["offrig_manifest"]["sha256"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
-    assert res["offrig_manifest"]["registry"].startswith("http://127.0.0.1:")
+    inline_reg_parts = pw.urllib.parse.urlsplit(res["offrig_manifest"]["registry"])
+    assert (inline_reg_parts.scheme, inline_reg_parts.hostname) == ("http", "127.0.0.1")
     assert len(res["offrig_manifest"]["blobs"]) == 4
     assert res["offrig_model"]["digest"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
     assert res["ps"]["models"][0]["digest"] == pw.STUB_OLLAMA_MANIFEST_DIGEST
@@ -4271,10 +4287,15 @@ def test_offrig_bench_ollama_mirror_end_to_end_on_fixture_with_auth_header(tmp_p
     orig_urlopen = pw.urllib.request.urlopen
 
     with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
+        mir_parts = pw.urllib.parse.urlsplit(mir.base_url)
 
         def guard_blob_urlopen(req_or_url, *a, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-            if "/blobs/" in url and not url.startswith(mir.base_url + "/blobs/sha256-"):
+            parts = pw.urllib.parse.urlsplit(url)
+            if "/blobs/" in parts.path and (
+                (parts.scheme, parts.hostname, parts.port) != (mir_parts.scheme, mir_parts.hostname, mir_parts.port)
+                or not parts.path.startswith(f"{mir_parts.path}/blobs/sha256-")
+            ):
                 raise AssertionError(f"blob request went to {url} instead of mirror {mir.base_url}")
             return orig_urlopen(req_or_url, *a, **kw)
 
@@ -4335,9 +4356,9 @@ def test_offrig_bench_ollama_mirror_end_to_end_on_fixture_with_auth_header(tmp_p
     res_stub_mir: dict = {}
     pw.offrig_bench_window(res_stub_mir)
     assert res_stub_mir["offrig_manifest"]["mirror"]["revision"] == PINNED_MIRROR_COMMIT
-    assert res_stub_mir["offrig_manifest"]["mirror"]["base"].endswith(
-        f"/studio/role-set-ollama-pins/resolve/{PINNED_MIRROR_COMMIT}"
-    )
+    stub_mir_parts = pw.urllib.parse.urlsplit(res_stub_mir["offrig_manifest"]["mirror"]["base"])
+    assert (stub_mir_parts.scheme, stub_mir_parts.hostname) == ("http", "127.0.0.1")
+    assert stub_mir_parts.path == f"/studio/role-set-ollama-pins/resolve/{PINNED_MIRROR_COMMIT}"
 
 
 def _run_mirror_base_mutation_suite(
@@ -4355,7 +4376,7 @@ def _run_mirror_base_mutation_suite(
 
     def fail_on_network(req_or_url, *a, **kw):
         url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-        if "/blobs/" in url:
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
             seen_urls.append(url)
             raise AssertionError("network call must not happen on disallowed mirror")
         return orig_urlopen(req_or_url, *a, **kw)
@@ -4365,11 +4386,12 @@ def _run_mirror_base_mutation_suite(
     prefix_before_resolve, orig_rev = base_url.rsplit("/resolve/", 1)
     assert orig_rev == PINNED_MIRROR_COMMIT
     alt_rev = "a621a793661c9cdbced5bd76318b14e8f5a86ed7"
-    host_prefix = "https://huggingface.co/"
-    assert base_url.startswith(host_prefix)
-    after_host = base_url[len(host_prefix) :]
+    base_parts = pw.urllib.parse.urlsplit(base_url)
+    assert (base_parts.scheme, base_parts.hostname, base_parts.port) == ("https", "huggingface.co", None)
+    after_host = base_parts.path.lstrip("/")
     acct_part, repo_part, _rest = after_host.split("/", 2)
     assert repo_part == "role-set-ollama-pins"
+    host_prefix = f"{base_parts.scheme}://{base_parts.hostname}/"
 
     mutations: list[tuple[str, str, str]] = [
         (
@@ -4449,9 +4471,14 @@ def _run_mirror_base_mutation_suite(
 
         def intercept_mirror_https_to_local(req_or_url, *a, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-            if url.startswith(base_url + "/"):
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port) == (base_parts.scheme, base_parts.hostname, base_parts.port)
+                and parts.path.startswith(f"{base_parts.path}/")
+            ):
                 seen_urls.append(url)
-                local_url = mir.base_url + url[len(base_url) :]
+                rel_path = parts.path[len(base_parts.path) :]
+                local_url = f"{mir.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
                 headers = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
                 return orig_urlopen(pw.urllib.request.Request(local_url, headers=headers), *a, **kw)
             return orig_urlopen(req_or_url, *a, **kw)
@@ -4469,7 +4496,12 @@ def _run_mirror_base_mutation_suite(
                 "base": base_url,
                 "revision": PINNED_MIRROR_COMMIT,
             }
-            assert len(seen_urls) == 4 and all(u.startswith(f"{base_url}/blobs/sha256-") for u in seen_urls)
+            assert len(seen_urls) == 4 and all(
+                ((p := pw.urllib.parse.urlsplit(u)).scheme, p.hostname, p.port)
+                == (base_parts.scheme, base_parts.hostname, base_parts.port)
+                and p.path.startswith(f"{base_parts.path}/blobs/sha256-")
+                for u in seen_urls
+            )
             assert mir.auth_matched == [True, True, True, True]
             positive_passes += 1
 
@@ -4492,13 +4524,20 @@ def test_offrig_bench_ollama_mirror_refuses_unlisted_main_repo_http_trailing_pat
     monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
     orig_urlopen = pw.urllib.request.urlopen
     seen_urls: list[str] = []
+    pinned_parts = pw.urllib.parse.urlsplit(PINNED_MIRROR_BASE)
     with _start_test_blob_mirror(expected_token=MIRROR_SENTINEL) as mir:
 
         def intercept_mirror_https_to_local(req_or_url, *a, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-            if url.startswith(PINNED_MIRROR_BASE + "/"):
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port)
+                == (pinned_parts.scheme, pinned_parts.hostname, pinned_parts.port)
+                and parts.path.startswith(f"{pinned_parts.path}/")
+            ):
                 seen_urls.append(url)
-                local_url = mir.base_url + url[len(PINNED_MIRROR_BASE) :]
+                rel_path = parts.path[len(pinned_parts.path) :]
+                local_url = f"{mir.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
                 headers = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
                 return orig_urlopen(pw.urllib.request.Request(local_url, headers=headers), *a, **kw)
             return orig_urlopen(req_or_url, *a, **kw)
@@ -4617,8 +4656,9 @@ def _start_redirect_test_servers(
                         self.send_response(401)
                         self.end_headers()
                         return
+                    req_path = self.path.split("?", 1)[0]
                     for idx, (known_hex, data) in enumerate(blobs.items()):
-                        if self.path == f"{resolve_prefix}/blobs/sha256-{known_hex}":
+                        if req_path == f"{resolve_prefix}/blobs/sha256-{known_hex}":
                             if redirect_target_override is not None:
                                 self.send_response(302)
                                 self.send_header(
@@ -4642,12 +4682,24 @@ def _start_redirect_test_servers(
                                 self.send_header("Location", loc)
                                 self.end_headers()
                                 return
+                            if redirect_mode == "signed_hop_missing_location":
+                                self.send_response(302)
+                                self.send_header(
+                                    "Location",
+                                    f"{orig.host_url}/same-host-hop/blobs/sha256-{known_hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+                                )
+                                self.end_headers()
+                                return
                             if redirect_mode == "loop":
                                 self.send_response(302)
                                 self.send_header("Location", f"{resolve_prefix}/blobs/sha256-{known_hex}")
                                 self.end_headers()
                                 return
-                        if self.path == f"/same-host-hop/blobs/sha256-{known_hex}":
+                        if req_path == f"/same-host-hop/blobs/sha256-{known_hex}":
+                            if redirect_mode == "signed_hop_missing_location":
+                                self.send_response(302)
+                                self.end_headers()
+                                return
                             if idx == len(blobs) - 1:
                                 self.send_response(302)
                                 self.send_header("Location", f"{cdn_srv.host_url}/cdn-blobs/sha256-{known_hex}")
@@ -4714,6 +4766,7 @@ def test_offrig_bench_ollama_mirror_cross_host_redirect_strips_auth_header(tmp_p
     shutil.rmtree(work / "ollama-models", ignore_errors=True)
     orig_urlopen = pw.urllib.request.urlopen
     cdn_https_headers: list[dict[str, str]] = []
+    pinned_parts = pw.urllib.parse.urlsplit(PINNED_MIRROR_BASE)
     with _start_redirect_test_servers(
         expected_token=MIRROR_SENTINEL,
         redirect_target_override="https://us.aws.cdn.hf.co:443/cdn-blobs/sha256-{hex}",
@@ -4722,12 +4775,18 @@ def test_offrig_bench_ollama_mirror_cross_host_redirect_strips_auth_header(tmp_p
         def route_paid_https_to_local(req_or_url, *a, _srv=srv_paid, **kw):
             url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
             hdrs = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
-            if url.startswith(PINNED_MIRROR_BASE + "/"):
-                local_url = _srv.base_url + url[len(PINNED_MIRROR_BASE) :]
+            parts = pw.urllib.parse.urlsplit(url)
+            if (
+                (parts.scheme, parts.hostname, parts.port)
+                == (pinned_parts.scheme, pinned_parts.hostname, pinned_parts.port)
+                and parts.path.startswith(f"{pinned_parts.path}/")
+            ):
+                rel_path = parts.path[len(pinned_parts.path) :]
+                local_url = f"{_srv.base_url}{rel_path}" + (f"?{parts.query}" if parts.query else "")
                 return orig_urlopen(pw.urllib.request.Request(local_url, headers=hdrs), *a, **kw)
-            if url.startswith("https://us.aws.cdn.hf.co:443/"):
+            if (parts.scheme, parts.hostname, parts.port) == ("https", "us.aws.cdn.hf.co", 443):
                 cdn_https_headers.append(hdrs)
-                local_cdn_url = _srv.cdn.host_url + url[len("https://us.aws.cdn.hf.co:443") :]
+                local_cdn_url = f"{_srv.cdn.host_url}{parts.path}" + (f"?{parts.query}" if parts.query else "")
                 return orig_urlopen(pw.urllib.request.Request(local_cdn_url, headers=hdrs), *a, **kw)
             return orig_urlopen(req_or_url, *a, **kw)
 
@@ -4785,10 +4844,12 @@ def test_offrig_bench_ollama_mirror_refuses_non_hf_redirect_before_network(tmp_p
             expected_token=MIRROR_SENTINEL,
             redirect_target_override=bad_target,
         ) as srv:
+            srv_parts = pw.urllib.parse.urlsplit(srv.host_url)
 
-            def guard_opener_open(self_opener, req, data=None, _srv=srv):
+            def guard_opener_open(self_opener, req, data=None, _sp=srv_parts):
                 url = req.full_url if hasattr(req, "full_url") else str(req)
-                if not url.startswith(_srv.host_url):
+                parts = pw.urllib.parse.urlsplit(url)
+                if (parts.scheme, parts.hostname, parts.port) != (_sp.scheme, _sp.hostname, _sp.port):
                     leaked_targets.append(url)
                     raise AssertionError(f"request must never be sent to disallowed redirect target {url}")
                 return orig_opener_open(self_opener, req, data)
@@ -4799,6 +4860,66 @@ def test_offrig_bench_ollama_mirror_refuses_non_hf_redirect_before_network(tmp_p
             with pytest.raises(RuntimeError, match="REFUSED: mirror redirect target"):
                 pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, {})
             assert leaked_targets == []
+
+    # Signed URLs (?X-Amz-Signature=SECRET#FRAG_SECRET) in a refused redirect target or missing-Location redirect never leak into RuntimeError, say(), or pin-result fields
+    say_lines: list[str] = []
+    monkeypatch.setattr(pw, "say", say_lines.append)
+    for signed_bad_target in (
+        "https://evil.example.com/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://registry.ollama.ai/v2/library/gemma4/blobs/sha256:{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "http://huggingface.co/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://user@huggingface.co/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:8443/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:bad/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+        "https://huggingface.co:/blobs/sha256-{hex}?X-Amz-Signature=SECRET#FRAG_SECRET",
+    ):
+        say_lines.clear()
+        with _start_redirect_test_servers(
+            expected_token=MIRROR_SENTINEL,
+            redirect_target_override=signed_bad_target,
+        ) as srv_signed:
+            srv_parts = pw.urllib.parse.urlsplit(srv_signed.host_url)
+
+            def guard_signed_open(self_opener, req, data=None, _sp=srv_parts):
+                url = req.full_url if hasattr(req, "full_url") else str(req)
+                parts = pw.urllib.parse.urlsplit(url)
+                if (parts.scheme, parts.hostname, parts.port) != (_sp.scheme, _sp.hostname, _sp.port):
+                    raise AssertionError(f"request must never be sent to disallowed redirect target {url}")
+                return orig_opener_open(self_opener, req, data)
+
+            monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", guard_signed_open)
+            pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv_signed.base_url)
+            res_signed: dict = {}
+            with pytest.raises(RuntimeError, match="REFUSED: mirror redirect target") as exc_info:
+                pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_signed)
+            err_msg = str(exc_info.value)
+            assert "X-Amz-Signature" not in err_msg
+            assert "SECRET" not in err_msg
+            assert "FRAG_SECRET" not in err_msg
+            res_dump = json.dumps(res_signed)
+            assert "X-Amz-Signature" not in res_dump and "SECRET" not in res_dump
+            assert all("X-Amz-Signature" not in ln and "SECRET" not in ln for ln in say_lines)
+
+    # Hop-2 redirect missing Location when cur_url carries ?X-Amz-Signature=SECRET#FRAG_SECRET also strips query and fragment
+    monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", orig_opener_open)
+    say_lines.clear()
+    with _start_redirect_test_servers(
+        expected_token=MIRROR_SENTINEL,
+        redirect_mode="signed_hop_missing_location",
+    ) as srv_missing_loc:
+        pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+        monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv_missing_loc.base_url)
+        res_missing_loc: dict = {}
+        with pytest.raises(RuntimeError, match="REFUSED: .* redirect HTTP 302 .* missing Location") as exc_loc:
+            pw.install_ollama_manifest(FIXTURE_MANIFEST_PATH, pw.OFFRIG_MODEL, FIXTURE_MANIFEST_SHA256, res_missing_loc)
+        loc_msg = str(exc_loc.value)
+        assert "X-Amz-Signature" not in loc_msg
+        assert "SECRET" not in loc_msg
+        assert "FRAG_SECRET" not in loc_msg
+        loc_dump = json.dumps(res_missing_loc)
+        assert "X-Amz-Signature" not in loc_dump and "SECRET" not in loc_dump
+        assert all("X-Amz-Signature" not in ln and "SECRET" not in ln for ln in say_lines)
 
     # Paid window (`PIN_STUB` unset) also refuses a redirect to loopback `127.0.0.1` and refuses redirect loops (> 5 hops)
     monkeypatch.setattr(pw.urllib.request.OpenerDirector, "_open", orig_opener_open)
@@ -4859,7 +4980,7 @@ def test_offrig_bench_ollama_mirror_missing_token_non_hex_revision_and_window_pr
 
     def fail_on_network(req_or_url, *a, **kw):
         url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
-        if "/blobs/" in url:
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
             seen_urls.append(url)
             raise AssertionError(f"unexpected network call to {url}")
         return orig_urlopen(req_or_url, *a, **kw)
@@ -4983,7 +5104,7 @@ def test_offrig_bench_ollama_mirror_token_travels_only_in_header_never_in_url_lo
     def inspect_requests(req_or_url, *a, **kw):
         url = req_or_url.full_url if hasattr(req_or_url, "full_url") else str(req_or_url)
         hdrs = dict(req_or_url.header_items()) if hasattr(req_or_url, "header_items") else {}
-        if "/blobs/" in url:
+        if "/blobs/" in pw.urllib.parse.urlsplit(url).path:
             seen_request_urls.append(url)
             seen_request_headers.append(hdrs)
         return orig_urlopen(req_or_url, *a, **kw)
