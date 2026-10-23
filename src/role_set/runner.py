@@ -652,7 +652,11 @@ class Runner:
         taught = lesson_terms(lesson_text, others)
         messages = warmup_messages(self.pack, lesson)
         for attempt in range(1, WARMUP_MISSES + 1):
-            c = self.writer(messages, seed=attempt)
+            c = self.writer(
+                messages,
+                seed=attempt,
+                **({"slot": lesson, "attempt": attempt} if getattr(self.writer, "takes_check", False) else {}),
+            )
             self._count_tokens(c)
             answer: dict = {}
             try:
@@ -710,13 +714,30 @@ class Runner:
         """The writer, with the slot's id for a mock that asks for it (wave mode's keyed mock, so its drafts depend on
         the slot and attempt, not the order of calls). A real writer is never told: the prompt carries no id."""
 
+        kw: dict = {"seed": seed}
         if getattr(self.writer, "takes_slot_id", False):
-            return self.writer(messages, seed=seed, slot_id=slot.id)
-        return self.writer(messages, seed=seed)
+            kw["slot_id"] = slot.id
+        if getattr(self.writer, "takes_check", False):
+            kw["slot"] = slot.id
+            kw["attempt"] = seed
+        return self.writer(messages, **kw)
 
-    def _critic_call(self, messages: list[dict], *, check: str | None = None, **kwargs):
-        if getattr(self.critic, "takes_check", False) and check is not None:
-            return self.critic(messages, check=check, **kwargs)
+    def _critic_call(
+        self,
+        messages: list[dict],
+        *,
+        check: str | None = None,
+        slot: str | None = None,
+        attempt: int | None = None,
+        **kwargs,
+    ):
+        if getattr(self.critic, "takes_check", False):
+            if check is not None:
+                kwargs["check"] = check
+            if slot is not None:
+                kwargs["slot"] = slot
+            if attempt is not None:
+                kwargs["attempt"] = attempt
         return self.critic(messages, **kwargs)
 
     def _refusal(self, code: str, detail: str) -> dict:
@@ -765,7 +786,13 @@ class Runner:
                 turns.append((material, row["verdict"], row["deciding"]))
             for seen_material, key_verdict, key_deciding in turns:
                 for ask in range(2):
-                    c = self._critic_call(verdict_messages(seen_material, statement), check="verdict")
+                    c = self._critic_call(
+                        verdict_messages(seen_material, statement),
+                        check="verdict",
+                        slot=slot.id,
+                        attempt=ask,
+                        seed=ask,
+                    )
                     self._count_tokens(c)
                     v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
                     if v.code != "VOID":
@@ -778,7 +805,13 @@ class Runner:
             twin = row.get("r10_twin")
             if isinstance(twin, dict) and twin.get("statement") and twin.get("verdict"):
                 for ask in range(2):
-                    c = self._critic_call(verdict_messages(material, twin["statement"]), check="twin_verdict")
+                    c = self._critic_call(
+                        verdict_messages(material, twin["statement"]),
+                        check="twin_verdict",
+                        slot=slot.id,
+                        attempt=ask,
+                        seed=ask,
+                    )
                     self._count_tokens(c)
                     tv = compare_twin_verdict(self.gates, c.text, twin["verdict"])
                     if tv.code != "VOID":
@@ -787,7 +820,12 @@ class Runner:
                 self._note(slot, "twin_verdict", tv, c.text)
                 verdicts.append((tv, c.text))
             if slot.kind == "C":
-                c = self._critic_call(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]), check="flaw")
+                c = self._critic_call(
+                    flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]),
+                    check="flaw",
+                    slot=slot.id,
+                    attempt=0,
+                )
                 self._count_tokens(c)
                 f = compare_flaw(c.text, row["planted_flaw"])
                 self._note(slot, "flaw", f, c.text)
@@ -799,7 +837,13 @@ class Runner:
                     self._log("flaw_advisory", slot=slot.id, detail=f.detail, critic_raw=c.text[:2000])
         elif slot.kind == "B":
             for ask in range(2):
-                c = self._critic_call(answer_messages(row["turns"][0]["user"], row["answer"]), check="answer")
+                c = self._critic_call(
+                    answer_messages(row["turns"][0]["user"], row["answer"]),
+                    check="answer",
+                    slot=slot.id,
+                    attempt=ask,
+                    seed=ask,
+                )
                 self._count_tokens(c)
                 v = compare_answer(c.text, row["answer"])
                 if v.code != "VOID":
@@ -811,7 +855,7 @@ class Runner:
         votes = []
         for seed in range(TRAIT_VOTES):
             c = self._critic_call(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS),
-                                  check="trait", temperature=TRAIT_TEMPERATURE, seed=seed)
+                                  check="trait", slot=slot.id, attempt=seed, temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
             votes.append(c.text)
         trait = compare_trait_votes(votes, slot.lesson)

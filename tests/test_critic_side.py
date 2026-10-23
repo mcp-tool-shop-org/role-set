@@ -191,11 +191,15 @@ def test_the_answer_leg_scores_closed_keys_and_lists_every_disagreement():
             b(5, "Noah ordered juice because it cost two pounds"), {"id": "T02-A-01", "kind": "A", "turns": [{"user": "u", "thinking": "", "reply": ""}]},
             b(6, "the red lamp")]
     answers = {"Facts 1.": "ANSWER: Zoe", "Facts 2.": "ANSWER: test, setup, deploy", "Facts 3.": "ANSWER: noah=red; mira=yellow", "Facts 4.": "No idea."}
+    void_seeds = []
 
     def critic(messages, **kw):
+        if messages[1]["content"].startswith("Facts 4."):
+            void_seeds.append(kw.get("seed"))
         return _said(next(v for k, v in answers.items() if messages[1]["content"].startswith(k)))
 
     leg = answer_leg(critic, rows)
+    assert void_seeds == [0, 1]
     assert leg["puzzles"] == 6 and leg["keys_left_out"] == ["T02-B-05"] and leg["combined"] == {"items": 4, "agree": 2, "rate": 0.5}
     assert leg["descriptive_keys_left_out"] == ["T02-B-06"]  # "the red lamp" where the puzzle names only colours
     assert leg["bar"] == ANSWER_BAR and leg["passes"] is False and leg["voids"] == 2 and leg["as_written_below_bar"] is True

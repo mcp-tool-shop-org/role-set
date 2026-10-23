@@ -32,6 +32,11 @@ def request_key(role: str, args: tuple, kwargs: dict) -> str:
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def messages_sha256(messages: object) -> str:
+    blob = json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
 def _completion_dict(c: Completion) -> dict:
     out = {"text": c.text, "prompt_tokens": c.prompt_tokens, "completion_tokens": c.completion_tokens, "model": c.model,
            "seconds": c.seconds, "finish_reason": getattr(c, "finish_reason", None)}
@@ -108,8 +113,26 @@ class CallJournal:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.touch()
 
-    def _append(self, key: str, role: str, c: Completion, reused: bool, *, check: str | None = None) -> None:
-        payload: dict = {"key": key, "role": role, "reused": reused}
+    def _append(
+        self,
+        key: str,
+        role: str,
+        c: Completion,
+        reused: bool,
+        *,
+        check: str | None = None,
+        messages_sha256: str | None = None,
+        slot: str | None = None,
+        attempt: int | None = None,
+    ) -> None:
+        payload: dict = {
+            "key": key,
+            "role": role,
+            "reused": reused,
+            "messages_sha256": messages_sha256,
+            "slot": slot,
+            "attempt": attempt,
+        }
         if self.flaw_prompt is not None:
             payload["flaw_prompt"] = self.flaw_prompt
         if check is not None:
@@ -126,19 +149,29 @@ class CallJournal:
 
         def call(*args, **kwargs):
             check = kwargs.pop("check", None)
+            slot = kwargs.pop("slot", None)
+            attempt = kwargs.pop("attempt", None)
             key = request_key(role, args, kwargs)
+            if slot is None:
+                slot = kwargs.get("slot_id")
+            if attempt is None:
+                attempt = kwargs.get("seed")
+            messages = args[0] if args else kwargs.get("messages")
+            msg_sha = messages_sha256(messages) if messages is not None else None
             with self.lock:
                 queue = self.reuse.get(key)
+                if not queue and role == "critic" and kwargs == {"seed": 0}:
+                    queue = self.reuse.get(request_key(role, args, {}))
                 c = queue.popleft() if queue else None
                 if c is not None:
                     self.counts["reused"] += 1
             if c is not None:
-                self._append(key, role, c, True, check=check)
+                self._append(key, role, c, True, check=check, messages_sha256=msg_sha, slot=slot, attempt=attempt)
                 return c
             c = fn(*args, **kwargs)
             with self.lock:
                 self.counts["called"] += 1
-            self._append(key, role, c, False, check=check)
+            self._append(key, role, c, False, check=check, messages_sha256=msg_sha, slot=slot, attempt=attempt)
             return c
 
         call.takes_slot_id = getattr(fn, "takes_slot_id", False)  # the keyed mock is told the slot (Runner._writer_call)

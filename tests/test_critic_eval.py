@@ -317,9 +317,11 @@ def test_critic_eval_void_reply_retries_once_then_records(
 
     base_critic = MockCritic(answers=waves.load_answers(h))
     attempt_counter = {"n": 0}
+    seen_seeds: list[int | None] = []
 
     def void_once_critic(messages: list[dict], **kwargs):
         attempt_counter["n"] += 1
+        seen_seeds.append(kwargs.get("seed"))
         if attempt_counter["n"] == 1:
             return Completion(
                 text="not valid verdict lines at all", prompt_tokens=10, completion_tokens=5, model="mock", seconds=0.01
@@ -342,6 +344,7 @@ def test_critic_eval_void_reply_retries_once_then_records(
         )
     )
     assert attempt_counter["n"] == 2
+    assert seen_seeds == [5, 6]
     row1 = json.loads((out1 / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()[0])
     assert row1["verdict_check"]["code"] == "AGREE"
     assert row1["verdict_check"]["void_retries"] == 1

@@ -327,7 +327,7 @@ def answer_leg(critic, rows: list[dict]) -> dict:
             continue
         v, c = None, None
         for ask in range(2):
-            c = critic(answer_messages(r["turns"][0]["user"], key))
+            c = critic(answer_messages(r["turns"][0]["user"], key), seed=ask)
             seconds.append(float(getattr(c, "seconds", 0.0) or 0.0))
             v = compare_answer(c.text, key)
             if v.code != "VOID":
