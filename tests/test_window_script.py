@@ -559,10 +559,167 @@ def test_offrig_bench_stub_window_uploads_binary_and_gold_and_downloads_out_tar_
     assert "offrig-bench/out/verdicts.jsonl" in names and "offrig-bench/smi.csv" in names
 
 
+def test_update_banner_is_silenced_and_stripped_so_idle_retry_fires():
+    import json
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-banner-"))
+    settings_path = tmp / "colab-cli" / "settings.json"
+    settings_path.parent.mkdir(parents=True, exist_ok=True)
+    settings_path.write_text('{"default_gpu": "A100", "enable_update_check": true}\n', encoding="utf-8")
+
+    # Even when a banner is printed on status (`FAKE_BANNER=always`), the banner lines are stripped before `cut -c1-300`
+    # so `Status: IDLE` is kept in status.log and the `EXEC NEVER STARTED` retry fires and completes the job.
+    rig, job, out = _window(
+        "lostfirst",
+        extra={
+            "COLAB_SETTINGS_FILE": str(settings_path),
+            "FAKE_BANNER": "always",
+            "PIN_MOCK_S": "3",
+        },
+    )
+    saved_settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    assert saved_settings["enable_update_check"] is False and saved_settings["default_gpu"] == "A100", saved_settings
+    status_lines = [ln for ln in (out / "status.log").read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert status_lines and all("Status:" in ln for ln in status_lines), status_lines
+    assert all("[colab] A new version" not in ln for ln in status_lines), status_lines
+    assert rig.count("EXEC NEVER STARTED") == 1, rig
+    assert "STALL" not in rig and job.count("PIN_RESULT") == 1, (rig, job)
+
+
+def test_timed_out_or_nonzero_upload_and_new_fail_under_pipefail():
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-pipefail-"))
+    binfile = tmp / "bin.dat"
+    binfile.write_bytes(b"x" * 1000)
+    upload_in = tmp / "input.txt"
+    upload_in.write_text("payload\n", encoding="utf-8")
+
+    # 1. A timed-out upload (exit 124) whose last line holds neither "fail" nor "error" must fail, never run the job.
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "PIN_UPLOADS": str(upload_in),
+            "FAKE_UPLOAD_MODE": "timeout_silent",
+            "PIN_UPLOAD_RETRY_SLEEP_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "UPLOAD FAILED: input.txt" in rig, rig
+    assert not (out.parent / "st" / "execs").exists() and not job, (rig, job)
+
+    # 2. A failing `colab new` whose output is piped to `tail -2` must exit 2 with `no A100 assigned`.
+    rig_new, job_new, out_new = _window(
+        "normal",
+        extra={"FAKE_NEW_FAIL": "1"},
+    )
+    assert "no A100 assigned" in rig_new, rig_new
+    assert not (out_new.parent / "st" / "execs").exists() and not job_new, (rig_new, job_new)
+
+
+def test_scrub_log_redacts_proxy_tokens_access_tokens_and_jwts_across_all_logs():
+    # Split token pieces so no literal token pattern sits in the test source.
+    jwt_hdr = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ"
+    jwt_pay = "eyJzdWIiOiJ3aW5kb3cxOGEiLCJpYXQiOjE3MDAwMDAwMDB9"
+    jwt_sig = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    fake_jwt = f"{jwt_hdr}.{jwt_pay}.{jwt_sig}"
+    fake_access = "ya29.a0AfH6SMB_SECRET_ACCESS_TOKEN_998877"
+    leak_line = (
+        "Server error '500 Internal Server Error' for url "
+        "'https://8080-gpu-a100-s-kkb-usc1b2-1a2b.prod.colab.dev/api/contents/content/input.txt"
+        f"?colab-runtime-proxy-token={fake_jwt}&access_token={fake_access}'"
+    )
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-scrub-"))
+    upload_in = tmp / "input.txt"
+    upload_in.write_text("hello\n", encoding="utf-8")
+
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "PIN_UPLOADS": str(upload_in),
+            "FAKE_LEAK_URL": leak_line,
+            "FAKE_UPLOAD_FAIL_ONCE": "1",
+            "FAKE_DOWNLOAD_LEAK_ONCE": "1",
+            "PIN_UPLOAD_RETRY_SLEEP_S": "1",
+            "PIN_MOCK_S": "3",
+        },
+    )
+    assert job.count("PIN_RESULT") == 1, (rig, job)
+    assert "colab-runtime-proxy-token=[REDACTED]" in rig, rig
+    assert "access_token=[REDACTED]" in rig, rig
+    status_text = (out / "status.log").read_text(encoding="utf-8")
+    exec_text = (out / "smoke-window.log").read_text(encoding="utf-8")
+    assert "colab-runtime-proxy-token=[REDACTED]" in status_text, status_text
+    assert "colab-runtime-proxy-token=[REDACTED]" in exec_text, exec_text
+    for secret in (fake_jwt, jwt_pay, jwt_sig, fake_access):
+        assert secret not in rig, (secret, rig)
+        for p in out.rglob("*"):
+            if p.is_file():
+                assert secret.encode("utf-8") not in p.read_bytes(), (secret, p)
+
+
+def test_rejected_gate_vms_are_counted_in_running_spend_and_deadline():
+    import json
+    import re
+
+    # 1 rejected gate VM (try 1 = bad, try 2 = good): try 1 runs `sleep 15` + `vm_gate` + `colab stop` + `sleep 5` (>= 20 s).
+    # Without counting rejected gate VMs, `spent` only counts the ~2 s after try 2 passed (~0.01 units at 5.30/hr).
+    # With rejected gate VMs counted, the ~20 s from try 1 are booked into T_OPEN, PIN_DEADLINE, and `spent` (>= 0.03 units).
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "FAKE_GATE": "bad,good",
+            "PIN_MOCK_S": "2",
+        },
+    )
+    assert "VM gate rejected try 1" in rig and "VM gate passed (try 2)" in rig, rig
+    m_rej = re.search(r"rejected gate VMs: (\d+)s", rig)
+    assert m_rej is not None and int(m_rej.group(1)) >= 20, rig
+    rejected_s = int(m_rej.group(1))
+    draft = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    # 20 s of rejected VM #1 + >= 2 s of accepted VM #2 at 5.30/hr is >= 22 * 5.30 / 3600 = 0.032 units -> >= 0.03 in draft.
+    assert draft["spent"] >= round(5.30 * rejected_s / 3600, 2), (draft, rejected_s)
+
+
+def test_open_lock_is_released_before_vm_gate_runs_and_preserves_neighbour_rate():
+    rig, job, out = _window(
+        "neighbourclose",
+        extra={
+            "FAKE_GATE": "bad,good",
+            "PIN_MOCK_S": "2",
+        },
+    )
+    st = out.parent / "st"
+    new_locks = (st / "new-lock.log").read_text(encoding="utf-8").splitlines()
+    gate_locks = (st / "gate-lock.log").read_text(encoding="utf-8").splitlines()
+    stop_locks = (st / "stop-lock.log").read_text(encoding="utf-8").splitlines()
+    assert new_locks == ["locked", "locked"], new_locks
+    assert gate_locks == ["unlocked", "unlocked"], gate_locks
+    assert stop_locks == ["locked", "locked"], stop_locks
+    assert "own rate 5.3/hr" in rig and job.count("PIN_RESULT") == 1, rig
+
+
+def test_gate_jsonl_records_vm_name_zone_and_pool_from_colab_sessions_for_every_try():
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "FAKE_GATE": "bad,dead,good",
+            "FAKE_VM": "gpu-a100-s-kkb-usc1b2-1111,gpu-a100-s-kkb-usc1b2-2222,gpu-a100-s-kkb-usw1a1-3333",
+            "PIN_GATE_TIMEOUT_S": "3",
+            "PIN_MOCK_S": "2",
+        },
+    )
+    rows = _gate_rows(out)
+    assert [(r["try"], r.get("vm"), r.get("zone"), r.get("pool"), r["gate"]["ok"]) for r in rows] == [
+        (1, "gpu-a100-s-kkb-usc1b2-1111", "usc1b2", "kkb", False),
+        (2, "gpu-a100-s-kkb-usc1b2-2222", "usc1b2", "kkb", False),
+        (3, "gpu-a100-s-kkb-usw1a1-3333", "usw1a1", "kkb", True),
+    ], rows
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
+    only = set(sys.argv[1:])
     failed = 0
     for name, fn in list(globals().items()):
-        if name.startswith("test_"):
+        if name.startswith("test_") and (not only or name in only):
             try:
                 fn()
                 print(f"PASS {name}")

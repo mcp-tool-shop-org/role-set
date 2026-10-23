@@ -5324,5 +5324,50 @@ def test_offrig_bench_with_mirror_unset_behaviour_unchanged_from_a621a793(tmp_pa
     assert res_pull["offrig_model"]["digest"] == pw.OFFRIG_MODEL_DIGEST
 
 
+def test_offrig_bench_mirror_non_http_exception_strips_signed_url_query_and_fragment(tmp_path, monkeypatch, capsys):
+    _content, work, _port = _setup_offrig_manifest_env(tmp_path, monkeypatch, stub=True)
+    monkeypatch.setenv("PIN_ROLE", "offrig-bench")
+    monkeypatch.setenv("PIN_OFFRIG_MANIFEST", str(FIXTURE_MANIFEST_PATH))
+    monkeypatch.setenv("PIN_OFFRIG_MODEL_DIGEST", FIXTURE_MANIFEST_SHA256)
+    monkeypatch.setenv("PIN_HF_TOKEN_FROM", "HF_TOKEN_OLLAMA_PINS_READ")
 
+    signed_cdn_url = (
+        "https://cas-bridge.xethub.hf.co/xet-bridge-us/blobs/sha256-deadbeef"
+        "?X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Signature=SECRET#FRAG_SECRET"
+    )
+    for exc_factory in (
+        lambda: pw.urllib.error.URLError(f"TLS EOF on {signed_cdn_url}"),
+        lambda: OSError(f"connection reset by peer for {signed_cdn_url} ({MIRROR_SENTINEL})"),
+        lambda: ValueError(f"invalid chunk header from {signed_cdn_url}"),
+        lambda: RuntimeError(f"proxy error fetching {signed_cdn_url}"),
+    ):
+        with _start_redirect_test_servers(expected_token=MIRROR_SENTINEL) as srv:
+            monkeypatch.setenv("PIN_OLLAMA_MIRROR", srv.base_url)
+            orig_open_no_redirect = pw._open_no_redirect
+            hop_count = 0
+
+            def fail_on_cdn_hop(req, *, timeout, _make_exc=exc_factory, _orig=orig_open_no_redirect):
+                nonlocal hop_count
+                hop_count += 1
+                if hop_count >= 2:
+                    raise _make_exc()
+                return _orig(req, timeout=timeout)
+
+            monkeypatch.setattr(pw, "_open_no_redirect", fail_on_cdn_hop)
+            pw.TOKEN_PATH.write_text(MIRROR_SENTINEL + "\n", encoding="utf-8")
+            capsys.readouterr()
+            rc = pw._main()
+            out_log = capsys.readouterr().out
+            assert rc == 1
+            pin_res = json.loads((work / "pin-result.json").read_text(encoding="utf-8"))
+            assert pin_res["ok"] is False
+            failed_reason = pin_res["offrig_manifest"]["failed_blob"]["reason"]
+            err_field = pin_res["error"]
+            assert "https://cas-bridge.xethub.hf.co/xet-bridge-us/blobs/sha256-deadbeef" in failed_reason
+            assert "https://cas-bridge.xethub.hf.co/xet-bridge-us/blobs/sha256-deadbeef" in err_field
+            for surface in (failed_reason, err_field, json.dumps(pin_res), out_log):
+                assert "X-Amz-Signature" not in surface
+                assert "SECRET" not in surface
+                assert "FRAG_SECRET" not in surface
+                assert MIRROR_SENTINEL not in surface
 
