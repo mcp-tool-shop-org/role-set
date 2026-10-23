@@ -210,7 +210,11 @@ WATCH=$!
 # The binary goes up gzipped in 40 MB parts, each retried; a part that never lands ends the window (the trap stops the VM).
 # PIN_SKIP_BINARY=1 (a test of this script with mock_job.py) sends none.
 UP="$OUT/upload"; mkdir -p "$UP"; rm -f "$UP"/llama-server.gz*
-[ "${PIN_SKIP_BINARY:-0}" = 1 ] || { gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"; }
+if [ "${PIN_SKIP_BINARY:-0}" != 1 ] && [ "${PIN_ROLE:-}" = offrig-bench ]; then
+  PIN_UPLOADS="$BIN ${PIN_UPLOADS:-}"
+elif [ "${PIN_SKIP_BINARY:-0}" != 1 ]; then
+  gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"
+fi
 for part in "$UP"/llama-server.gz.part*; do
   [ -e "$part" ] || continue
   ok=0
@@ -275,7 +279,9 @@ echo "exec exit=$rc wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/nul
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
   f0=$(date +%s)
   fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
-  for f in ${PIN_DOWNLOADS:-pin-result.json pilot-out.tar lib.tar generations.jsonl}; do
+  DEFAULT_DL="pin-result.json pilot-out.tar lib.tar generations.jsonl"
+  [ "${PIN_ROLE:-}" = offrig-bench ] && DEFAULT_DL="pin-result.json offrig-bench-out.tar ps.json"
+  for f in ${PIN_DOWNLOADS:-$DEFAULT_DL}; do
     timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
   done
   # The exit sequence's fetch time, the measure for PIN_CAP_MARGIN.
