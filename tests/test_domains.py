@@ -209,6 +209,40 @@ def test_the_writer_brief_names_the_domain_and_frame(table_file: Path):
     assert "Set the passage in this field of work" in a_brief and "Frame:" not in a_brief
 
 
+def test_cd_domain_line_applies_to_framing_only_and_grounding_sentence_on_decided_cd(table_file: Path):
+    from role_set.cli import VERIFIER_SIDES
+    from role_set.prompts import slot_brief
+
+    slots = plan_batch({"T10": VERIFIER_SIDES["T10"]}, seed=0, buffers=True)
+    domains.assign(slots, domains.load(table_file), seed=0)
+
+    a = next(s for s in slots if s.kind == "A")
+    a_brief = slot_brief(a, [])
+    assert (
+        f"Domain: {a.domain['title']} (NAICS {a.domain['code']}). Set the passage in this field of work, "
+        "with the people, documents and terms it really has; never a famous or implausible subject."
+    ) in a_brief
+    assert "The statement names only people, products, places and terms that the material names." not in a_brief
+
+    e_verdict = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
+    e_brief = slot_brief(e_verdict, [])
+    assert "Set the material, the statement and the framing in this field of work" in e_brief
+    assert "The statement names only people, products, places and terms that the material names." not in e_brief
+
+    grounding = "The statement names only people, products, places and terms that the material names."
+    for s in slots:
+        if s.kind not in ("C", "D"):
+            continue
+        b = slot_brief(s, [])
+        assert "Set the framing in this field of work" in b, s.id
+        assert "Set the material, the statement and the framing in this field of work" not in b, s.id
+        if s.verdict in ("supported", "unsupported"):
+            assert grounding in b, s.id
+        else:
+            assert grounding not in b, s.id
+
+
+
 def test_a_real_write_refuses_a_plan_without_domains(tmp_path: Path):
     from role_set.write import WriteConfig, WriteRefused, build
 
