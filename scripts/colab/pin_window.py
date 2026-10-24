@@ -2437,6 +2437,54 @@ def _check_write_setting_flags(rs: dict, writer_names: list[str]) -> None:
             )
 
 
+def pilot_quant_policies(writer_for_arm: dict[str, str] | None = None) -> dict[str, str]:
+    """Parse PIN_PILOT_QUANT (<arm_or_writer>=<policy>,...), refusing conflicting policies for arms that share a writer."""
+
+    w_map = dict(writer_for_arm or {})
+    raw_entries: list[tuple[str, str]] = []
+    for item in (os.environ.get("PIN_PILOT_QUANT") or "").split(","):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        k, v = [p.strip() for p in item.split("=", 1)]
+        if k and v:
+            raw_entries.append((k, v))
+    by_writer_sources: dict[str, list[tuple[str, str]]] = {}
+    explicit: dict[str, str] = {}
+    for k, v in raw_entries:
+        if k in explicit and explicit[k] != v:
+            raise RuntimeError(
+                f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for {k!r} ({k}={explicit[k]}, {k}={v})"
+            )
+        explicit[k] = v
+        w = w_map.get(k, k)
+        by_writer_sources.setdefault(w, []).append((k, v))
+    policies: dict[str, str] = {}
+    for w, pairs in by_writer_sources.items():
+        vals = list(dict.fromkeys(v for _, v in pairs))
+        if len(vals) > 1:
+            detail = ", ".join(f"{k}={v}" for k, v in pairs)
+            raise RuntimeError(
+                f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for writer {w!r} ({detail}); "
+                f"arms sharing a writer share one GGUF"
+            )
+        policies[w] = vals[0]
+    if w_map:
+        arms_by_writer: dict[str, list[str]] = {}
+        for arm, w in w_map.items():
+            arms_by_writer.setdefault(w, []).append(arm)
+        for w, arms_for_w in arms_by_writer.items():
+            if len(arms_for_w) > 1 and w in by_writer_sources and w not in explicit:
+                resolved = {a: explicit.get(a, "q8") for a in arms_for_w}
+                if len(set(resolved.values())) > 1:
+                    detail = ", ".join(f"{a}={resolved[a]}" for a in arms_for_w)
+                    raise RuntimeError(
+                        f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for writer {w!r} ({detail}); "
+                        f"arms sharing a writer share one GGUF"
+                    )
+    return policies
+
+
 def check_pins(names: list, listed: dict, policies: dict) -> None:
     """Every model the window will set up has a pin in MODELS, equal to writers.json's, before anything downloads (R&D,
     from Argon's review: three writers had none, so a mismatch showed only at w0, after 15-27 minutes of setup). A Q6_K
@@ -4709,6 +4757,7 @@ def pilot_window(built: dict, result: dict) -> None:
     if any(k == "PIN_VERDICT_PROMPT" or k.startswith("PIN_VERDICT_PROMPT_") for k, v in os.environ.items() if v.strip()):
         result["verdict_prompt"] = verdict_prompt(writer_names=writer_names)
     _check_write_setting_flags(rs, writer_names)
+    policies = pilot_quant_policies(writer_for_arm)
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
@@ -4744,8 +4793,6 @@ def pilot_window(built: dict, result: dict) -> None:
     result["pool_sha256"] = pool_sha
     training_files = training_inputs(result) if plan_has_apply_slots(plan) else []
 
-    raw_policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
-    policies = {writer_for_arm.get(k, k): v for k, v in raw_policies.items()}
     writers_path = Path(rs["src"]) / "writers.json"
     result["server_pin"] = server_pin_entry(server_sha256(), writers_path)
     if isinstance(result.get("llama_server"), dict):
