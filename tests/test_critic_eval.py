@@ -4866,6 +4866,241 @@ def test_pin_window_critic_eval_resume_multi_verdict_prompt_maps_each_journal_to
     assert "--reuse-calls" not in by_run[("defined", 2)]
 
 
+def test_verdict_prompt_exclusive_and_three_value_journal_and_resume(
+    tmp_path: Path, eval_items_file: Path, pack_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import importlib.util
+    import io
+    import subprocess
+    import tarfile
+
+    from role_set import callcache, cli, critic, prompts
+    from role_set.guards import GuardError
+    from role_set.transport import Completion
+
+    expected_exclusive_line = (
+        'A statement that names a different item, place or scope than the material, '
+        'where the material has no word that excludes the others (such as "only"), '
+        'is cannot_tell, not unsupported.'
+    )
+    assert critic.VERDICT_PROMPT_SETTINGS == ("old", "defined", "exclusive")
+    assert critic.VERDICT_EXCLUSIVE_LINE == expected_exclusive_line
+    assert critic.CRITIC_SYSTEM_EXCLUSIVE == f"{critic.CRITIC_SYSTEM_DEFINED}\n{expected_exclusive_line}"
+
+    # Writer's brief definitions and CANNOT_TELL_SILENT stay unchanged
+    assert prompts.CANNOT_TELL_SILENT == "silent on the statement: it neither shows it nor rules it out"
+    assert critic.VERDICT_DEFINITIONS == {
+        "supported": "the material shows the statement is true",
+        "unsupported": "the material rules the statement out",
+        "cannot_tell": "the material is silent on the statement: it neither shows it nor rules it out",
+    }
+
+    mat = "Line 1: pump pressure is 40 psi.\nLine 2: valve B is closed."
+    stmt = "Pump pressure exceeds 30 psi."
+
+    old_msgs = critic.verdict_messages(mat, stmt, verdict_prompt="old")
+    def_msgs = critic.verdict_messages(mat, stmt, verdict_prompt="defined")
+    exc_msgs = critic.verdict_messages(mat, stmt, verdict_prompt="exclusive")
+
+    # old and defined are byte-identical (messages and call key)
+    assert old_msgs[0]["content"] == critic.CRITIC_SYSTEM
+    assert def_msgs[0]["content"] == critic.CRITIC_SYSTEM_DEFINED
+    assert exc_msgs[1] == def_msgs[1] == old_msgs[1]
+    assert exc_msgs[0]["content"] == f"{def_msgs[0]['content']}\n{expected_exclusive_line}"
+
+    k_none = callcache.request_key("critic", (old_msgs,), {"seed": 0})
+    k_old = callcache.request_key("critic", (old_msgs,), {"seed": 0}, verdict_prompt="old")
+    k_def = callcache.request_key("critic", (def_msgs,), {"seed": 0}, verdict_prompt="defined")
+    k_exc = callcache.request_key("critic", (exc_msgs,), {"seed": 0}, verdict_prompt="exclusive")
+    assert k_none == k_old
+    assert len({k_old, k_def, k_exc}) == 3
+
+    # Journal written under any of ("old", "defined", "exclusive") refuses to replay or append under the other two
+    comp = Completion(
+        text="VERDICT: supported",
+        prompt_tokens=10,
+        completion_tokens=5,
+        model=LIGHTNING,
+        seconds=0.1,
+        finish_reason="stop",
+    )
+    for written_vp in ("old", "defined", "exclusive"):
+        jp = tmp_path / f"journal-{written_vp}.jsonl"
+        j = callcache.CallJournal(jp, verdict_prompt=written_vp, checks="verdict")
+        j.wrap("critic", lambda m, *, seed=0: comp)(exc_msgs, seed=0, slot="CFR-01", attempt=0)
+        loaded_ok = callcache.load(jp, expected_verdict_prompt=written_vp, expected_checks="verdict")
+        assert len(loaded_ok) == 1
+        for other_vp in ("old", "defined", "exclusive"):
+            if other_vp == written_vp:
+                continue
+            with pytest.raises(
+                GuardError,
+                match=f"written under verdict_prompt={written_vp!r}, cannot reuse under verdict_prompt={other_vp!r}",
+            ):
+                callcache.load(jp, expected_verdict_prompt=other_vp, expected_checks="verdict")
+            with pytest.raises(
+                GuardError,
+                match=f"written under verdict_prompt={written_vp!r}, cannot append under verdict_prompt={other_vp!r}",
+            ):
+                callcache.CallJournal(jp, verdict_prompt=other_vp, checks="verdict")
+
+    # CLI --verdict-prompt exclusive records verdict_prompt="exclusive" on rows, report, and journal
+    out_exc = tmp_path / "eval-exc"
+    rc = cli.main([
+        "critic-eval",
+        "--items", str(eval_items_file),
+        "--pack", str(pack_dir),
+        "--writers", str(ROOT / "writers.json"),
+        "--critic-model", LIGHTNING,
+        "--critic-seed", "0",
+        "--verdict-prompt", "exclusive",
+        "--checks", "verdict",
+        "--out", str(out_exc),
+        "--mock",
+    ])
+    assert rc == 0
+    rep_exc = json.loads((out_exc / "critic-eval-report.json").read_text(encoding="utf-8"))
+    assert rep_exc["verdict_prompt"] == "exclusive"
+    assert rep_exc["calls"]["verdict_prompt"] == "exclusive"
+    rows_exc = [
+        json.loads(x)
+        for x in (out_exc / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()
+        if x.strip()
+    ]
+    assert all(r["verdict_prompt"] == "exclusive" for r in rows_exc)
+
+    # pin_window maps all three values (old,defined,exclusive) to their journals on resume
+    pw_path = ROOT / "scripts" / "colab" / "pin_window.py"
+    spec = importlib.util.spec_from_file_location("pin_window_resume_three_vp_test", pw_path)
+    assert spec and spec.loader
+    pw = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(pw)
+
+    work = tmp_path / "work"
+    content = tmp_path / "content"
+    work.mkdir()
+    content.mkdir()
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "CONTENT", content)
+
+    items_file = tmp_path / "items.jsonl"
+    items_file.write_text(
+        json.dumps({"id": "CFR-01", "material": "M1", "statement": "S1", "key": "supported"}) + "\n",
+        encoding="utf-8",
+    )
+    items_sha = hashlib.sha256(items_file.read_bytes()).hexdigest()
+
+    resume_tar = content / "earlier-three-vp.tar"
+    tar_entries = {
+        "critic-eval/old/s0/calls-journal.jsonl": b'{"verdict_prompt":"old","seed":0}\n',
+        f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl": b'{"verdict_prompt":"defined","seed":0}\n',
+        "critic-eval/exclusive/s0/calls-journal.jsonl": b'{"verdict_prompt":"exclusive","seed":0}\n',
+    }
+    with tarfile.open(resume_tar, "w") as tf:
+        for arcname, payload in tar_entries.items():
+            ti = tarfile.TarInfo(name=arcname)
+            ti.size = len(payload)
+            tf.addfile(ti, io.BytesIO(payload))
+
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    (content / "card-values.json").write_text("{}", encoding="utf-8")
+
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "d66ce3f6")
+    monkeypatch.setenv("PIN_RND_COMMIT", "00000000")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_CRITIC", LIGHTNING)
+    monkeypatch.setenv("PIN_CRITIC_SEEDS", "0")
+    monkeypatch.setenv("PIN_CRITIC_VERDICT_PROMPT", "old,defined,exclusive")
+    monkeypatch.setenv("PIN_CRITIC_CHECKS", "verdict")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_SHAS", f"items.jsonl={items_sha}")
+    monkeypatch.setenv("PIN_CRITIC_EVAL_RESUME", str(resume_tar))
+
+    def _fake_sh(cmd_str: str, **kw):
+        if cmd_str.startswith("rm -rf "):
+            target = Path(cmd_str.removeprefix("rm -rf ").strip())
+            if target.exists():
+                shutil.rmtree(target)
+        elif cmd_str.startswith("tar -xf ") and " -C " in cmd_str:
+            rest = cmd_str.removeprefix("tar -xf ")
+            tar_p, dest_p = rest.split(" -C ", 1)
+            with tarfile.open(Path(tar_p.strip()), "r") as tf:
+                tf.extractall(Path(dest_p.strip()), filter="data")
+        return ""
+
+    monkeypatch.setattr(pw, "sh", _fake_sh)
+    monkeypatch.setattr(pw, "take_token", lambda: None)
+    monkeypatch.setattr(pw, "check_token_clean", lambda r: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda c: {"role_set": "role-set", "src": str(ROOT)})
+    monkeypatch.setattr(pw, "install_rnd", lambda c: {"commit": c})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "critic_eval_inputs", lambda r: (tmp_path, items_file, {"items.jsonl": items_sha}))
+
+    class _FakeSrv:
+        log = None
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    class _FakePool:
+        def __init__(self, *a, **kw):
+            pass
+        def get(self, name):
+            return {"served_as": name, "gguf_sha256": "c" * 64}
+        def serve(self, name):
+            return _FakeSrv()
+        def proxy(self, name):
+            return None
+
+    monkeypatch.setattr(pw, "Pool", _FakePool)
+    seen_cmds: list[list[str]] = []
+
+    def _fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        out_idx = cmd.index("--out") + 1
+        vp_idx = cmd.index("--verdict-prompt") + 1
+        ck_idx = cmd.index("--checks") + 1
+        sd_idx = cmd.index("--critic-seed") + 1
+        seed_out = Path(cmd[out_idx])
+        (seed_out / "critic-eval-report.json").write_text(
+            json.dumps({
+                "critic_card": {"candidate": "c1"},
+                "verdict_prompt": cmd[vp_idx],
+                "flaw_prompt": "old",
+                "checks": cmd[ck_idx],
+                "flaw_votes": 1,
+                "items_scored": 1,
+                "skipped_count": 0,
+                "calls": {"fresh": 0, "reused": 1, "seed": int(cmd[sd_idx])},
+            }),
+            encoding="utf-8",
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="{}", stderr="")
+
+    monkeypatch.setattr(pw, "run_proc", _fake_run_proc)
+    result: dict = {}
+    pw.critic_eval_window({}, result)
+
+    journals = result["critic_eval_resume"]["journals"]
+    assert set(journals) == {"old/s0", "defined/s0", "exclusive/s0"}
+    assert Path(journals["old/s0"]).as_posix().endswith("critic-eval/old/s0/calls-journal.jsonl")
+    assert Path(journals["defined/s0"]).as_posix().endswith(f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl")
+    assert Path(journals["exclusive/s0"]).as_posix().endswith("critic-eval/exclusive/s0/calls-journal.jsonl")
+    assert result["critic_eval"]["verdict_prompts"] == ["old", "defined", "exclusive"]
+    assert len(seen_cmds) == 3
+    by_run = {c[c.index("--verdict-prompt") + 1]: c for c in seen_cmds}
+    assert Path(by_run["old"][by_run["old"].index("--reuse-calls") + 1]).as_posix().endswith(
+        "critic-eval/old/s0/calls-journal.jsonl"
+    )
+    assert Path(by_run["defined"][by_run["defined"].index("--reuse-calls") + 1]).as_posix().endswith(
+        f"critic-eval-defined-s0/calls/{LIGHTNING}.jsonl"
+    )
+    assert Path(by_run["exclusive"][by_run["exclusive"].index("--reuse-calls") + 1]).as_posix().endswith(
+        "critic-eval/exclusive/s0/calls-journal.jsonl"
+    )
+
+
 
 
 

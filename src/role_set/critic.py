@@ -28,7 +28,7 @@ CRITIC_SYSTEM = (
 
 # Shared between the writer's slot brief (prompts.py) and the critic's `defined` verdict prompt (T10 item 6).
 CANNOT_TELL_SILENT = "silent on the statement: it neither shows it nor rules it out"
-VERDICT_PROMPT_SETTINGS = ("old", "defined")
+VERDICT_PROMPT_SETTINGS = ("old", "defined", "exclusive")
 VERDICT_DEFINITIONS = {
     "supported": "the material shows the statement is true",
     "unsupported": "the material rules the statement out",
@@ -36,6 +36,12 @@ VERDICT_DEFINITIONS = {
 }
 VERDICT_DEFINITIONS_SENTENCE = "; ".join(f"{v}: {VERDICT_DEFINITIONS[v]}" for v in VERDICTS) + "."
 CRITIC_SYSTEM_DEFINED = f"{CRITIC_SYSTEM}\n{VERDICT_DEFINITIONS_SENTENCE}"
+VERDICT_EXCLUSIVE_LINE = (
+    'A statement that names a different item, place or scope than the material, '
+    'where the material has no word that excludes the others (such as "only"), '
+    'is cannot_tell, not unsupported.'
+)
+CRITIC_SYSTEM_EXCLUSIVE = f"{CRITIC_SYSTEM_DEFINED}\n{VERDICT_EXCLUSIVE_LINE}"
 
 # One line per flaw label, as the lessons and the reviewed data use them. Window A (2026-10-11) showed the
 # critic guessing at the bare labels: "caved" read as "guess", "obeyed_material" as "rubber_stamp".
@@ -112,7 +118,11 @@ def verdict_messages(
 ) -> list[dict]:
     if verdict_prompt not in VERDICT_PROMPT_SETTINGS:
         raise ValueError(f"unknown verdict_prompt {verdict_prompt!r}; expected one of {VERDICT_PROMPT_SETTINGS}")
-    system = CRITIC_SYSTEM if verdict_prompt == "old" else CRITIC_SYSTEM_DEFINED
+    system = (
+        CRITIC_SYSTEM
+        if verdict_prompt == "old"
+        else (CRITIC_SYSTEM_DEFINED if verdict_prompt == "defined" else CRITIC_SYSTEM_EXCLUSIVE)
+    )
     return [{"role": "system", "content": system}, {"role": "user", "content": f"Material:\n{material.rstrip()}\n\nStatement: {statement.strip()}"}]
 
 

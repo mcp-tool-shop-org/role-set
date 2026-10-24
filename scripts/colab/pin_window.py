@@ -2633,9 +2633,9 @@ def critic_eval_window(built: dict, result: dict) -> None:
             or "old"
         ).strip()
         verdict_prompts = [x.strip() for x in raw_verdict_prompt.split(",") if x.strip()]
-        if not verdict_prompts or any(vp not in ("old", "defined") for vp in verdict_prompts):
+        if not verdict_prompts or any(vp not in ("old", "defined", "exclusive") for vp in verdict_prompts):
             raise RuntimeError(
-                f"REFUSED: PIN_CRITIC_VERDICT_PROMPT must be 'old' or 'defined' (or 'old,defined'), got {raw_verdict_prompt!r}"
+                f"REFUSED: PIN_CRITIC_VERDICT_PROMPT must be 'old', 'defined' or 'exclusive' (or comma-separated), got {raw_verdict_prompt!r}"
             )
         checks = (
             os.environ.get("PIN_CRITIC_CHECKS")
