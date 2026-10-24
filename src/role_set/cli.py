@@ -559,8 +559,8 @@ def build_parser() -> argparse.ArgumentParser:
     ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
     ce.add_argument("--flaw-prompt", choices=("old", "new", "trackb"), default="old",
                     help="critic flaw-check prompt wording ('old', 'new' or 'trackb'; default 'old')")
-    ce.add_argument("--verdict-prompt", choices=("old", "defined"), default=None,
-                    help="critic verdict-check prompt wording ('old' or 'defined'; default 'old')")
+    ce.add_argument("--verdict-prompt", choices=("old", "defined", "exclusive"), default=None,
+                    help="critic verdict-check prompt wording ('old', 'defined' or 'exclusive'; default 'old')")
     ce.add_argument("--checks", choices=("all", "verdict"), default=None,
                     help="which critic checks to run ('all' or 'verdict' only; default 'all')")
     ce.add_argument("--flaw-votes", type=int, choices=(1, 3), default=1,
