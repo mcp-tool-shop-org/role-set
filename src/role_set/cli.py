@@ -148,7 +148,9 @@ def _plan(args: argparse.Namespace) -> int:
         figures = []
     else:
         figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name], side_pairing=args.side_pairing) for name in lessons]
-    out = {"role": args.role, "seed": args.seed, "side_pairing": args.side_pairing, "figures": figures, "slots": [s.as_dict() for s in slots]}
+    out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
+    if args.side_pairing != "default":
+        out["side_pairing"] = args.side_pairing
     if args.pilot or args.pilot_twins:
         out["pilot"] = True
     if table is not None:

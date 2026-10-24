@@ -585,9 +585,9 @@ def test_all_default_settings_match_4033ebd_writer_and_critic_requests_over_full
     plan_path = tmp_path / "plan.json"
     assert cli_main(["plan", "--lessons", "T10", "--buffers", "--seed", "0", "--domains", str(naics), "--out", str(plan_path)]) == 0
     plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
-    assert plan_data["side_pairing"] == "default"
+    assert "side_pairing" not in plan_data
     assert len(plan_data["slots"]) == 60
-    assert all(s["side_pairing"] == "default" for s in plan_data["slots"])
+    assert all("side_pairing" not in s for s in plan_data["slots"])
 
     files = {
         "role.md": "# L\n\nr\n",

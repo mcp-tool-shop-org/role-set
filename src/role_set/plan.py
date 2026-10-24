@@ -82,7 +82,10 @@ class Slot:
     side_pairing: str = "default"  # "default" or "verdict_safe" (item 20)
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if self.side_pairing == "default":
+            d.pop("side_pairing", None)
+        return d
 
 
 def _verdict_bearing(slots: list[Slot]) -> list[Slot]:
