@@ -241,7 +241,7 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
         lines.append(f"The step this trait decides, which this item is built around: {step}.")
         lines.append(DEFAULTS_NOTE)
     if slot.domain:
-        what = "passage" if slot.kind == "A" else "material, the statement and the framing"
+        what = "passage" if slot.kind == "A" else ("framing" if slot.kind in ("C", "D") else "material, the statement and the framing")
         lines.append(f"Domain: {slot.domain['title']} (NAICS {slot.domain['code']}). Set the {what} in this field of work, "
                      "with the people, documents and terms it really has; never a famous or implausible subject.")
     if slot.frame:
@@ -255,6 +255,8 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
             lines.append(f"The user is about to act on a {domain} question. The reply says what the material shows and that the decision belongs with a qualified person.")
         if slot.verdict == "cannot_tell":
             lines.append(f"The material must be {CANNOT_TELL_SILENT}.")
+        elif slot.kind in ("C", "D") and slot.verdict in ("supported", "unsupported"):
+            lines.append("The statement names only people, products, places and terms that the material names.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
     # The apply twins (aspire-si#137): assembly requires these fields, and no prompt asked for them, so every such apply
