@@ -259,21 +259,6 @@ def build(cfg: WriteConfig, *, now=time.time):
         )
     if cfg.domain_scope != "default":
         pins["domain_scope"] = cfg.domain_scope
-    if cfg.side_pairing is not None:
-        if cfg.side_pairing not in SIDE_PAIRING_SETTINGS:
-            raise WriteRefused(
-                f"REFUSED: --side-pairing must be one of {SIDE_PAIRING_SETTINGS}, got {cfg.side_pairing!r}"
-            )
-        from role_set.cli import VERIFIER_SIDES
-        for lesson_id in sorted({s.lesson for s in slots}):
-            lesson_sides = VERIFIER_SIDES.get(lesson_id) or sides.get(lesson_id)
-            if lesson_sides is not None:
-                _align_verdict_sides([s for s in slots if s.lesson == lesson_id], lesson_sides, side_pairing=cfg.side_pairing)
-    active_side_pairing = cfg.side_pairing or next((s.side_pairing for s in slots if s.side_pairing != "default"), "default")
-    if active_side_pairing != "default":
-        pins["side_pairing"] = active_side_pairing
-    if cfg.post_refusal_span:
-        pins["post_refusal_span"] = True
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
@@ -286,6 +271,37 @@ def build(cfg: WriteConfig, *, now=time.time):
         pins["drafts_sha256"] = waves.file_sha256(cfg.drafts)
     elif cfg.drafts is not None:
         raise WriteRefused("REFUSED: --drafts is for a critique or rewrite wave")
+    effective_side_pairing = cfg.side_pairing
+    if effective_side_pairing is None and header:
+        effective_side_pairing = (header.get("batch_pins") or {}).get("side_pairing")
+    if effective_side_pairing is None and drafts_in:
+        effective_side_pairing = next(
+            (d.get("slot", {}).get("side_pairing") for d in drafts_in if isinstance(d.get("slot"), dict) and d["slot"].get("side_pairing")),
+            None,
+        )
+    if effective_side_pairing is not None:
+        if effective_side_pairing not in SIDE_PAIRING_SETTINGS:
+            raise WriteRefused(
+                f"REFUSED: --side-pairing must be one of {SIDE_PAIRING_SETTINGS}, got {effective_side_pairing!r}"
+            )
+        from role_set.cli import VERIFIER_SIDES
+        from role_set.plan import PlanError, check_plan
+        for lesson_id in sorted({s.lesson for s in slots}):
+            lesson_sides = VERIFIER_SIDES.get(lesson_id) or sides.get(lesson_id)
+            if lesson_sides is not None:
+                primary_side = lesson_sides[0] if isinstance(lesson_sides, (tuple, list)) else str(lesson_sides)
+                lesson_slots = [s for s in slots if s.lesson == lesson_id]
+                _align_verdict_sides(lesson_slots, primary_side, side_pairing=effective_side_pairing)
+                if not bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot")) and any(s.split != "apply" for s in lesson_slots):
+                    try:
+                        check_plan(lesson_slots, side_pairing=effective_side_pairing)
+                    except PlanError as e:
+                        raise WriteRefused(f"REFUSED: {e}") from e
+    active_side_pairing = effective_side_pairing or next((s.side_pairing for s in slots if s.side_pairing != "default"), "default")
+    if active_side_pairing != "default":
+        pins["side_pairing"] = active_side_pairing
+    if cfg.post_refusal_span:
+        pins["post_refusal_span"] = True
     pins.setdefault("drafts_sha256", None)
     pins["wave"] = cfg.wave
     try:

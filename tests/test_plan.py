@@ -481,3 +481,33 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     assert probe_slot.side_pairing == "default"
     assert probe_slot.side == "an equivalent wording still matches"
 
+    # FIX 1: write.build(--side-pairing verdict_safe) passes primary_side (str, not tuple), runs check_plan, and inherits from wave header.
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.write import WriteConfig, WriteRefused, build as build_write
+
+    files = {
+        "role.md": "# L\n\nr\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nProportion decides.\n",
+        "kinds.md": "## 2. What to deliver\n\nk\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    pack_dir = tmp_path / "pack_fix1"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    w_slots, _, _, _, _, _, _, w_pins, _ = build_write(
+        WriteConfig(plan=out_def, pack=pack_dir, out=tmp_path / "out_fix1", mock=True, side_pairing="verdict_safe")
+    )
+    assert w_pins.get("side_pairing") == "verdict_safe"
+    assert all(isinstance(s.side, str) for s in w_slots)
+    assert all(
+        s.side == "judges the exact size"
+        for s in w_slots
+        if s.verdict is not None and s.verdict != "supported"
+    )
+    with pytest.raises(WriteRefused, match="--side-pairing"):
+        build_write(WriteConfig(plan=out_def, pack=pack_dir, out=tmp_path / "out_bad_sp", mock=True, side_pairing="bad"))
+
