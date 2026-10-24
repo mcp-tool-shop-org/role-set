@@ -1994,7 +1994,9 @@ def critics_for(
         return {}
     if any(c.strip().lower() == "none" for c in over.values()):
         raise RuntimeError("REFUSED: 'none' is only valid as PIN_PILOT_CRITIC=none with PIN_PILOT_WAVES=1")
-    w_of = lambda n: (writer_for_arm or {}).get(n, n)  # noqa: E731
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
+
     out = {n: over.get(n, over.get(w_of(n), default)) for n in writer_names}
     missing = [n for n, c in out.items() if not c]
     if missing:
@@ -2011,7 +2013,9 @@ def critics_for(
 def _needed_models(arms: dict, critic_for: dict, i: int, left_in_wave: list[str], kind: str,
                    *, twins_after: bool, later_arms: list[str], finished_batch: bool = False,
                    writer_for_arm: dict[str, str] | None = None) -> set[str]:
-    w_of = lambda n: (writer_for_arm or {}).get(n, n)  # noqa: E731
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
+
     needed: set[str] = set()
     if not finished_batch:
         if kind == "critique":
@@ -2047,7 +2051,8 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
     waves, then each critic once for the arms it reads, then all rewrites, and so on. Every model is set up the first
     time it is needed (Pool). Returns each arm's waves and its last directory."""
 
-    w_of = lambda n: (writer_for_arm or {}).get(n, n)  # noqa: E731
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
     arms = {name: {"waves": [], "drafts": None, "done": False} for name in arms_in}
     start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
     calls = resume_calls() if extra is None else {}
@@ -2302,7 +2307,15 @@ def _resolve_pilot_setting(
                 if k in per_arm:
                     raise RuntimeError(f"REFUSED: duplicate arm {k!r} in {var}={raw!r}")
                 per_arm[k] = _parse_pilot_setting_value(var, v, valid, is_bool=is_bool)
-    norm = lambda s: s.lower().replace("-", "_")  # noqa: E731
+    def _norm(s: str) -> str:
+        return s.lower().replace("-", "_")
+
+    env_arms: list[str] | None = None
+    if writer_names is None and (
+        (os.environ.get("PIN_PILOT_ARMS") or "").strip()
+        or (os.environ.get("PIN_PILOT_WRITERS") or "").strip()
+    ):
+        env_arms = pilot_arms()[0]
     for env_k, env_v in sorted(os.environ.items()):
         if not env_k.startswith(f"{var}_") or not env_v.strip():
             continue
@@ -2311,12 +2324,28 @@ def _resolve_pilot_setting(
             raise RuntimeError(f"REFUSED: malformed {env_k}={env_v!r}")
         parsed_v = _parse_pilot_setting_value(env_k, env_v, valid, is_bool=is_bool)
         if writer_names is not None:
-            matches = [n for n in writer_names if n == suffix or norm(n) == norm(suffix)]
+            matches = [n for n in writer_names if n == suffix or _norm(n) == _norm(suffix)]
             if not matches:
                 raise RuntimeError(f"REFUSED: {env_k} names unknown writer arm {suffix!r} (writers: {writer_names})")
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"REFUSED: {env_k} suffix {suffix!r} is ambiguous across writer arms {', '.join(matches)}"
+                )
             per_arm[matches[0]] = parsed_v
+        elif env_arms is not None:
+            matches = [n for n in env_arms if n == suffix or _norm(n) == _norm(suffix)]
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"REFUSED: {env_k} suffix {suffix!r} is ambiguous across writer arms {', '.join(matches)}"
+                )
+            if matches:
+                per_arm[matches[0]] = parsed_v
+            elif arm is None or arm in env_arms:
+                raise RuntimeError(f"REFUSED: {env_k} names unknown writer arm {suffix!r} (writers: {env_arms})")
+            else:
+                per_arm[suffix] = parsed_v
         elif arm is not None:
-            if arm == suffix or norm(arm) == norm(suffix):
+            if arm == suffix or _norm(arm) == _norm(suffix):
                 per_arm[arm] = parsed_v
             else:
                 per_arm[suffix] = parsed_v
