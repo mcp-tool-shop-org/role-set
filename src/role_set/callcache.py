@@ -58,12 +58,15 @@ def request_key(
     *,
     verdict_prompt: str | None = None,
     cannot_tell_construction: str | None = None,
+    domain_scope: str | None = None,
 ) -> str:
     payload: dict = {"role": role, "args": args, "kwargs": kwargs}
     if verdict_prompt not in (None, "old"):
         payload["verdict_prompt"] = verdict_prompt
     if cannot_tell_construction not in (None, "default"):
         payload["cannot_tell_construction"] = cannot_tell_construction
+    if domain_scope not in (None, "default"):
+        payload["domain_scope"] = domain_scope
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -88,17 +91,19 @@ def load(
     expected_verdict_prompt: str | None = None,
     expected_checks: str | None = None,
     expected_cannot_tell_construction: str | None = None,
+    expected_domain_scope: str | None = None,
 ) -> dict[str, deque]:
     """An earlier journal, as each request key's completions in journal order. A torn last line (the VM went mid-write)
-    is left out: its call runs again. When `expected_flaw_prompt`, `expected_verdict_prompt`, `expected_checks` or
-    `expected_cannot_tell_construction` is given, any journal entry (or adjacent report) written under a different
-    setting refuses the resume."""
+    is left out: its call runs again. When `expected_flaw_prompt`, `expected_verdict_prompt`, `expected_checks`,
+    `expected_cannot_tell_construction` or `expected_domain_scope` is given, any journal entry (or adjacent report)
+    written under a different setting refuses the resume."""
 
     if (
         expected_flaw_prompt is not None
         or expected_verdict_prompt is not None
         or expected_checks is not None
         or expected_cannot_tell_construction is not None
+        or expected_domain_scope is not None
     ):
         if not path.is_file():
             raise GuardError(f"REFUSED: cannot read call journal {path}")
@@ -170,6 +175,13 @@ def load(
                     f"REFUSED: call journal {path} was written under cannot_tell_construction={rec_ctc!r}, "
                     f"cannot reuse under cannot_tell_construction={expected_cannot_tell_construction!r}"
                 )
+        if expected_domain_scope is not None:
+            rec_ds = str(d.get("domain_scope") or "default")
+            if rec_ds != expected_domain_scope:
+                raise GuardError(
+                    f"REFUSED: call journal {path} was written under domain_scope={rec_ds!r}, "
+                    f"cannot reuse under domain_scope={expected_domain_scope!r}"
+                )
         c = d["completion"]
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
@@ -191,6 +203,7 @@ class CallJournal:
         verdict_prompt: str | None = None,
         checks: str | None = None,
         cannot_tell_construction: str | None = None,
+        domain_scope: str | None = None,
     ):
         if (
             (
@@ -198,6 +211,7 @@ class CallJournal:
                 or verdict_prompt is not None
                 or checks is not None
                 or cannot_tell_construction is not None
+                or domain_scope is not None
             )
             and path.is_file()
             and path.stat().st_size > 0
@@ -236,12 +250,20 @@ class CallJournal:
                                 f"REFUSED: call journal {path} was written under cannot_tell_construction={rec_ctc!r}, "
                                 f"cannot append under cannot_tell_construction={cannot_tell_construction!r}"
                             )
+                    if domain_scope is not None:
+                        rec_ds = str(d.get("domain_scope") or "default")
+                        if rec_ds != domain_scope:
+                            raise GuardError(
+                                f"REFUSED: call journal {path} was written under domain_scope={rec_ds!r}, "
+                                f"cannot append under domain_scope={domain_scope!r}"
+                            )
         self.path = path
         self.reuse = reuse or {}
         self.flaw_prompt = flaw_prompt
         self.verdict_prompt = verdict_prompt
         self.checks = checks
         self.cannot_tell_construction = cannot_tell_construction
+        self.domain_scope = domain_scope
         self.lock = threading.Lock()
         self.counts = {"reused": 0, "called": 0}
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -275,6 +297,8 @@ class CallJournal:
             payload["checks"] = self.checks
         if self.cannot_tell_construction is not None:
             payload["cannot_tell_construction"] = self.cannot_tell_construction
+        if self.domain_scope is not None:
+            payload["domain_scope"] = self.domain_scope
         if check is not None:
             payload["check"] = check
         payload["completion"] = _completion_dict(c)
@@ -298,6 +322,7 @@ class CallJournal:
                 kwargs,
                 verdict_prompt=self.verdict_prompt,
                 cannot_tell_construction=self.cannot_tell_construction,
+                domain_scope=self.domain_scope,
             )
             if slot is None:
                 slot = kwargs.get("slot_id")
@@ -338,4 +363,6 @@ class CallJournal:
             out["checks"] = self.checks
         if self.cannot_tell_construction not in (None, "default"):
             out["cannot_tell_construction"] = self.cannot_tell_construction
+        if self.domain_scope not in (None, "default"):
+            out["domain_scope"] = self.domain_scope
         return out

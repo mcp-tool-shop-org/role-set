@@ -541,8 +541,8 @@ def test_t10_replan_changes_only_b05_b07_b08_and_journal_replays_unchanged_slots
 
     old_sha = hashlib.sha256(old_plan.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
     new_sha = hashlib.sha256(new_plan.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
-    assert old_sha == "78ec357230b1ae4fdd1671862d4e378957df08215216d6b9b3fb2f99f2dde784"
-    assert new_sha == "086b0a1649a0d84c8a1c71daf4ad03d1081a90af5abd71f3af2a110e38b1f5f6"
+    assert old_sha == "c7cdd73dd4213bd7f0ba0c73e429d02ef30144371384de5c1011ef0c9c7e8b4c"
+    assert new_sha == "aaf81419166634ae6b8751dcb8dc3e43943f782a09c8ac5b2f7ce155ce93bf7d"
 
     assert t10_replan_check.main(["--old", str(old_plan), "--new", str(new_plan)]) == 0
     out_text = capsys.readouterr().out

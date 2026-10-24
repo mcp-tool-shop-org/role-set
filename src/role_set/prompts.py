@@ -17,6 +17,7 @@ from role_set.plan import Slot
 from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 
 CANNOT_TELL_CONSTRUCTION_SETTINGS = ("default", "coarse_vs_sharp")
+DOMAIN_SCOPE_SETTINGS = ("default", "framing_only")
 T10_COARSE_VS_SHARP = (
     'Build this T10 cannot_tell item as coarse-versus-sharp: the material gives a coarse quantity, range or one-sided '
     'bound ("a few", "several", "some", "at least N"), and the statement claims a sharper value compatible with it '
@@ -245,6 +246,7 @@ def slot_brief(
     closed_form: dict | None = None,
     *,
     cannot_tell_construction: str = "default",
+    domain_scope: str = "default",
 ) -> str:
     """What this slot fixes, and what the batch still needs, in plain words."""
 
@@ -253,6 +255,10 @@ def slot_brief(
             f"REFUSED: cannot_tell_construction must be one of {CANNOT_TELL_CONSTRUCTION_SETTINGS}, "
             f"got {cannot_tell_construction!r}"
         )
+    if domain_scope not in DOMAIN_SCOPE_SETTINGS:
+        raise ValueError(
+            f"REFUSED: domain_scope must be one of {DOMAIN_SCOPE_SETTINGS}, got {domain_scope!r}"
+        )
     lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}.",
              f"The item teaches its side, '{slot.side}': the reply shows it in this item's own words, and a reply that argues the trait's other side fails."]
     step = trait_step(slot.lesson)
@@ -260,7 +266,10 @@ def slot_brief(
         lines.append(f"The step this trait decides, which this item is built around: {step}.")
         lines.append(DEFAULTS_NOTE)
     if slot.domain:
-        what = "passage" if slot.kind == "A" else ("framing" if slot.kind in ("C", "D") else "material, the statement and the framing")
+        if domain_scope == "framing_only":
+            what = "passage" if slot.kind == "A" else ("framing" if slot.kind in ("C", "D") else "material, the statement and the framing")
+        else:
+            what = "passage" if slot.kind == "A" else "material, the statement and the framing"
         lines.append(f"Domain: {slot.domain['title']} (NAICS {slot.domain['code']}). Set the {what} in this field of work, "
                      "with the people, documents and terms it really has; never a famous or implausible subject.")
     if slot.frame:
@@ -276,7 +285,7 @@ def slot_brief(
             lines.append(f"The material must be {CANNOT_TELL_SILENT}.")
             if cannot_tell_construction == "coarse_vs_sharp" and slot.lesson == "T10":
                 lines.append(T10_COARSE_VS_SHARP)
-        elif slot.kind in ("C", "D") and slot.verdict in ("supported", "unsupported"):
+        elif domain_scope == "framing_only" and slot.kind in ("C", "D") and slot.verdict in ("supported", "unsupported"):
             lines.append("The statement names only people, products, places and terms that the material names.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
@@ -332,6 +341,7 @@ def writer_messages(
     closed_form: dict | None = None,
     locked_brief: str | None = None,
     cannot_tell_construction: str = "default",
+    domain_scope: str = "default",
 ) -> list[dict]:
     trait = pack.get(f"traits/{slot.lesson}.md", "")
     kinds = pack.get("kinds.md", "")
@@ -357,6 +367,7 @@ def writer_messages(
             trait_words,
             closed_form,
             cannot_tell_construction=cannot_tell_construction,
+            domain_scope=domain_scope,
         ),
     ]
     if locked_brief is not None:

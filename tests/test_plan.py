@@ -352,11 +352,18 @@ def test_select_and_trim_on_mock_batch_and_refusals(tmp_path: Path):
         select_and_trim(rows, plan, {p1, p2}, gates=gates)
 
 
-def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side():
+def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp_path: Path):
+    import hashlib
+    from role_set.cli import main as cli_main
+
     sides = VERIFIER_SIDES["T10"]
     for buffers in (True, False):
         for seed in range(5):
-            slots = plan_lesson("T10", sides, seed=seed, buffers=buffers) + plan_apply("T10", sides, seed=seed, buffers=buffers)
+            slots = (
+                plan_lesson("T10", sides, seed=seed, buffers=buffers, side_pairing="verdict_safe")
+                + plan_apply("T10", sides, seed=seed, buffers=buffers, side_pairing="verdict_safe")
+            )
+            assert all(s.side_pairing == "verdict_safe" for s in slots)
             bad = [
                 (s.id, s.verdict, s.side)
                 for s in slots
@@ -367,16 +374,99 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side():
                 if s.verdict in ("cannot_tell", "unsupported"):
                     assert s.side == "judges the exact size"
 
-    # check_plan also refuses a non-supported verdict paired with "an equivalent wording still matches".
-    base_slots = plan_lesson("T10", sides, seed=0, buffers=True)
+    # default reproduces 4033ebd's base plan exactly (10 non-supported equivalent-wording slots on T10 seed 0 buffered).
+    default_slots = plan_lesson("T10", sides, seed=0, buffers=True) + plan_apply("T10", sides, seed=0, buffers=True)
+    safe_slots = (
+        plan_lesson("T10", sides, seed=0, buffers=True, side_pairing="verdict_safe")
+        + plan_apply("T10", sides, seed=0, buffers=True, side_pairing="verdict_safe")
+    )
+    assert all(s.side_pairing == "default" for s in default_slots)
+    default_bad_ids = [
+        s.id
+        for s in default_slots
+        if s.verdict is not None and s.verdict != "supported" and s.side == "an equivalent wording still matches"
+    ]
+    assert default_bad_ids == [
+        "T10-C-02",
+        "T10-C-06",
+        "T10-C-08",
+        "T10-D-02",
+        "T10-D-08",
+        "T10-E-08",
+        "T10-C-10",
+        "T10-D-10",
+        "T10-D-AP-02",
+        "T10-D-AP-06",
+    ]
+    for d_slot, v_slot in zip(default_slots, safe_slots):
+        d_dict = {k: v for k, v in d_slot.as_dict().items() if k not in ("side", "side_pairing")}
+        v_dict = {k: v for k, v in v_slot.as_dict().items() if k not in ("side", "side_pairing")}
+        assert d_dict == v_dict
+        if d_slot.id in default_bad_ids:
+            assert d_slot.side == "an equivalent wording still matches"
+            assert v_slot.side == "judges the exact size"
+        else:
+            assert d_slot.side == v_slot.side
+
+    # Plan header and per-slot recording for default and verdict_safe; default equals 4033ebd's base plan.
+    naics = REPO_ROOT / "roles" / "domains" / "naics-2022.json"
+    out_def = tmp_path / "plan-default.json"
+    out_safe = tmp_path / "plan-safe.json"
+    assert cli_main(["plan", "--lessons", "T10", "--buffers", "--seed", "0", "--domains", str(naics), "--out", str(out_def)]) == 0
+    assert (
+        cli_main(
+            [
+                "plan",
+                "--lessons",
+                "T10",
+                "--buffers",
+                "--seed",
+                "0",
+                "--domains",
+                str(naics),
+                "--side-pairing",
+                "verdict_safe",
+                "--out",
+                str(out_safe),
+            ]
+        )
+        == 0
+    )
+    data_def = json.loads(out_def.read_text(encoding="utf-8"))
+    data_safe = json.loads(out_safe.read_text(encoding="utf-8"))
+    assert data_def["side_pairing"] == "default"
+    assert all(s["side_pairing"] == "default" for s in data_def["slots"])
+    assert data_safe["side_pairing"] == "verdict_safe"
+    assert all(s["side_pairing"] == "verdict_safe" for s in data_safe["slots"])
+    assert [
+        s["id"]
+        for s in data_safe["slots"]
+        if s["verdict"] is not None and s["verdict"] != "supported" and s["side"] == "an equivalent wording still matches"
+    ] == []
+    # Stripping the new side_pairing key reproduces 4033ebd's exact plan JSON byte-for-byte.
+    stripped_def = {
+        k: ([{sk: sv for sk, sv in s.items() if sk != "side_pairing"} for s in v] if k == "slots" else v)
+        for k, v in data_def.items()
+        if k != "side_pairing"
+    }
+    stripped_bytes = json.dumps(stripped_def, indent=1).encode("utf-8")
+    assert hashlib.sha256(stripped_bytes).hexdigest() == "421a38119dc9524ccf9f1b9a9d36eb68c0322ee54d955ea5e0dd6e536908191a"
+
+    # check_plan under verdict_safe refuses a non-supported verdict paired with "an equivalent wording still matches".
+    base_slots = plan_lesson("T10", sides, seed=0, buffers=True, side_pairing="verdict_safe")
     ct_slot = next(s for s in base_slots if s.verdict == "cannot_tell")
     ct_slot.side = "an equivalent wording still matches"
     with pytest.raises(PlanError, match="equivalent wording"):
-        check_plan(base_slots)
+        check_plan(base_slots, side_pairing="verdict_safe")
 
-    apply_slots = plan_apply("T10", sides, seed=0, buffers=True)
+    apply_slots = plan_apply("T10", sides, seed=0, buffers=True, side_pairing="verdict_safe")
     ap_ct = next(s for s in apply_slots if s.verdict == "cannot_tell")
     ap_ct.side = "an equivalent wording still matches"
     with pytest.raises(PlanError, match="equivalent wording"):
-        check_plan(apply_slots)
+        check_plan(apply_slots, side_pairing="verdict_safe")
+
+    with pytest.raises(PlanError, match="side_pairing must be one of"):
+        plan_lesson("T10", sides, seed=0, side_pairing="unknown")
+    with pytest.raises(PlanError, match="side_pairing must be one of"):
+        plan_apply("T10", sides, seed=0, side_pairing="unknown")
 

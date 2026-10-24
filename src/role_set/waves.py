@@ -47,6 +47,8 @@ WAVE_LOCAL = (
     "llama_server_archs",
     "writers_list_sha256",
     "cannot_tell_construction",
+    "domain_scope",
+    "side_pairing",
     "post_refusal_span",
 )
 
@@ -182,10 +184,12 @@ def _completion_dict(c) -> dict:
 
 def record(st: SlotState, state: str, *, completion=None, receipt: dict | None = None, row: dict | None = None,
            model: dict | None = None, lookup: bool = False, seq: int | None = None,
-           cannot_tell_construction: str = "default", post_refusal_span: bool = False) -> dict:
+           cannot_tell_construction: str = "default", domain_scope: str = "default",
+           post_refusal_span: bool = False) -> dict:
     return {
         "type": "draft", "slot": st.slot.as_dict(), "state": state, "attempt": st.attempt, "ended": st.ended,
-        "cannot_tell_construction": cannot_tell_construction, "post_refusal_span": bool(post_refusal_span),
+        "cannot_tell_construction": cannot_tell_construction, "domain_scope": domain_scope,
+        "post_refusal_span": bool(post_refusal_span),
         "messages": st.messages,
         "material": {"text": st.material.text, "source": st.material.source} if st.material else None,
         "facts": st.facts, "spent": st.spent, "refusals": st.refusals,
@@ -195,11 +199,13 @@ def record(st: SlotState, state: str, *, completion=None, receipt: dict | None =
 
 
 def bare(slot: Slot, state: str, *, refusals: list | None = None, skip_reason: str | None = None,
-         cannot_tell_construction: str = "default", post_refusal_span: bool = False) -> dict:
+         cannot_tell_construction: str = "default", domain_scope: str = "default",
+         post_refusal_span: bool = False) -> dict:
     """A slot that never reached a draft: skipped, or dropped before its first writer call."""
 
     return {"type": "draft", "slot": slot.as_dict(), "state": state, "attempt": 0, "ended": False,
-            "cannot_tell_construction": cannot_tell_construction, "post_refusal_span": bool(post_refusal_span),
+            "cannot_tell_construction": cannot_tell_construction, "domain_scope": domain_scope,
+            "post_refusal_span": bool(post_refusal_span),
             "messages": [],
             "material": None, "facts": None, "spent": [], "refusals": list(refusals or []), "candidate": None,
             "row": None, "model": None, "lookup": False, "receipt": None, "accepted_seq": None, "skip_reason": skip_reason}
@@ -296,7 +302,7 @@ def preload(runner: Runner, drafts: list[dict], *, include_awaiting: bool = True
 # ---- the waves ----------------------------------------------------------------------------------------------
 
 def _drop(runner: Runner, st: SlotState, *, cannot_tell_construction: str | None = None,
-          post_refusal_span: bool | None = None) -> dict:
+          domain_scope: str | None = None, post_refusal_span: bool | None = None) -> dict:
     out = Runner.outcome_of(st)
     with runner.lock:
         runner.finished.append(out)
@@ -306,12 +312,13 @@ def _drop(runner: Runner, st: SlotState, *, cannot_tell_construction: str | None
         st,
         "dropped",
         cannot_tell_construction=cannot_tell_construction or runner.cannot_tell_construction,
+        domain_scope=domain_scope or runner.domain_scope,
         post_refusal_span=runner.post_refusal_span if post_refusal_span is None else post_refusal_span,
     )
 
 
 def _accepted(runner: Runner, st: SlotState, cand, *, cannot_tell_construction: str | None = None,
-              post_refusal_span: bool | None = None) -> dict:
+              domain_scope: str | None = None, post_refusal_span: bool | None = None) -> dict:
     with runner.lock:
         seq = runner.accept_order[st.slot.id]
         runner.finished.append(Runner.outcome_of(st, cand.row))
@@ -326,6 +333,7 @@ def _accepted(runner: Runner, st: SlotState, cand, *, cannot_tell_construction: 
         lookup=cand.lookup,
         seq=seq,
         cannot_tell_construction=cannot_tell_construction or runner.cannot_tell_construction,
+        domain_scope=domain_scope or runner.domain_scope,
         post_refusal_span=runner.post_refusal_span if post_refusal_span is None else post_refusal_span,
     )
 
@@ -345,6 +353,7 @@ def _write_one(runner: Runner, st: SlotState) -> dict:
         completion=cand.completion,
         lookup=cand.lookup,
         cannot_tell_construction=runner.cannot_tell_construction,
+        domain_scope=runner.domain_scope,
         post_refusal_span=runner.post_refusal_span,
     )
 
@@ -354,18 +363,19 @@ def _critique_one(runner: Runner, d: dict) -> dict:
     draft, so a draft that changed in transit, or a lookup cap filled since, is refused, never accepted."""
 
     ctc = d.get("cannot_tell_construction") or runner.cannot_tell_construction
+    ds = d.get("domain_scope") or runner.domain_scope
     prs = bool(d.get("post_refusal_span") or runner.post_refusal_span)
     st, c = state_of(d), completion_of(d)
     refusal, cand, glyphs = runner.mechanical(st, c)
     if cand is not None:
         refusal = runner.critique_step(st, cand)
         if refusal is None:
-            return _accepted(runner, st, cand, cannot_tell_construction=ctc, post_refusal_span=prs)
+            return _accepted(runner, st, cand, cannot_tell_construction=ctc, domain_scope=ds, post_refusal_span=prs)
         glyphs = cand.glyphs
     runner.refuse(st, c, refusal, glyphs)
     if st.attempt >= MAX_ATTEMPTS:
-        return _drop(runner, st, cannot_tell_construction=ctc, post_refusal_span=prs)
-    return record(st, "needs_rewrite", cannot_tell_construction=ctc, post_refusal_span=prs)
+        return _drop(runner, st, cannot_tell_construction=ctc, domain_scope=ds, post_refusal_span=prs)
+    return record(st, "needs_rewrite", cannot_tell_construction=ctc, domain_scope=ds, post_refusal_span=prs)
 
 
 AVOID_HEADER = "## Do not use these framings or phrases; they are spent\n"
@@ -419,7 +429,10 @@ def _rewrite_one(runner: Runner, d: dict) -> dict:
 
     st = state_of(d)
     st.messages = refresh_avoid(st.messages, list(runner.avoid[-60:]))
-    if (d.get("cannot_tell_construction") or "default") != runner.cannot_tell_construction:
+    if (
+        (d.get("cannot_tell_construction") or "default") != runner.cannot_tell_construction
+        or (d.get("domain_scope") or "default") != runner.domain_scope
+    ):
         st.messages = refresh_slot_brief(
             st.messages,
             slot_brief(
@@ -428,6 +441,7 @@ def _rewrite_one(runner: Runner, d: dict) -> dict:
                 runner.gates.trait_words(st.slot.lesson),
                 runner.gates.closed_form,
                 cannot_tell_construction=runner.cannot_tell_construction,
+                domain_scope=runner.domain_scope,
             ),
         )
     return _write_one(runner, st)
@@ -476,7 +490,7 @@ def write_wave(runner: Runner, slots: list[Slot], *, stop_after_s: float | None 
             if why:
                 runner.status.skipped[why] = runner.status.skipped.get(why, 0) + 1
                 return bare(slot, "skipped", skip_reason=why, cannot_tell_construction=runner.cannot_tell_construction,
-                            post_refusal_span=runner.post_refusal_span)
+                            domain_scope=runner.domain_scope, post_refusal_span=runner.post_refusal_span)
             runner.status.attempted += 1
         st = runner.open_slot(slot)
         if isinstance(st, Outcome):
@@ -484,12 +498,12 @@ def write_wave(runner: Runner, slots: list[Slot], *, stop_after_s: float | None 
                 runner.finished.append(st)
                 runner._andon(slot, st)
             return bare(slot, "dropped", refusals=st.refusals, cannot_tell_construction=runner.cannot_tell_construction,
-                        post_refusal_span=runner.post_refusal_span)
+                        domain_scope=runner.domain_scope, post_refusal_span=runner.post_refusal_span)
         return _write_one(runner, st)
 
     train_slots = [s for s in ordered if s.split != "apply"]
     apply_slots = [s for s in ordered if s.split == "apply"]
-    halted_fn = lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot", cannot_tell_construction=runner.cannot_tell_construction, post_refusal_span=runner.post_refusal_span)  # noqa: E731
+    halted_fn = lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot", cannot_tell_construction=runner.cannot_tell_construction, domain_scope=runner.domain_scope, post_refusal_span=runner.post_refusal_span)  # noqa: E731
     return _each(runner, train_slots, fn, halted_state=halted_fn) + _each(runner, apply_slots, fn, halted_state=halted_fn)
 
 
@@ -508,7 +522,8 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
         # The drafts hold every slot of this plan, in the plan's order (Argon §9.4 #6): a truncated, reordered or
         # padded file is refused, even under a matching seal.
         want_slots = json.loads(json.dumps([s.as_dict() for s in interleave(slots)]))
-        if [d["slot"] for d in drafts_in] != want_slots:
+        have_slots = json.loads(json.dumps([Slot(**d["slot"]).as_dict() for d in drafts_in]))
+        if have_slots != want_slots:
             raise WaveError(f"REFUSED: the drafts hold {len(drafts_in)} slots that don't match this plan's "
                             f"{len(want_slots)} in order; a wave continues only its own batch, whole")
         load_andon(runner, header_in.get("andon") or {})

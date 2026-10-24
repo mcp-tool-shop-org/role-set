@@ -209,37 +209,131 @@ def test_the_writer_brief_names_the_domain_and_frame(table_file: Path):
     assert "Set the passage in this field of work" in a_brief and "Frame:" not in a_brief
 
 
-def test_cd_domain_line_applies_to_framing_only_and_grounding_sentence_on_decided_cd(table_file: Path):
-    from role_set.cli import VERIFIER_SIDES
-    from role_set.prompts import slot_brief
+def test_cd_domain_line_applies_to_framing_only_and_grounding_sentence_on_decided_cd(table_file: Path, tmp_path: Path):
+    from role_set import callcache
+    from role_set.cli import VERIFIER_SIDES, main as cli_main
+    from role_set.guards import GuardError
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.prompts import slot_brief, writer_messages
+    from role_set.transport import Completion
+    from role_set.write import WriteConfig, WriteRefused, run as run_write
 
     slots = plan_batch({"T10": VERIFIER_SIDES["T10"]}, seed=0, buffers=True)
     domains.assign(slots, domains.load(table_file), seed=0)
 
+    grounding = "The statement names only people, products, places and terms that the material names."
+
+    # 1. default is byte-identical to 4033ebd's base brief for kinds A, C and D (and B and E).
     a = next(s for s in slots if s.kind == "A")
-    a_brief = slot_brief(a, [])
+    c_sup = next(s for s in slots if s.kind == "C" and s.verdict == "supported")
+    c_unsup = next(s for s in slots if s.kind == "C" and s.verdict == "unsupported")
+    c_ct = next(s for s in slots if s.kind == "C" and s.verdict == "cannot_tell")
+    d_sup = next(s for s in slots if s.kind == "D" and s.verdict == "supported")
+    e_verdict = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
+
+    for s in (a, c_sup, c_unsup, c_ct, d_sup, e_verdict):
+        assert slot_brief(s, []) == slot_brief(s, [], domain_scope="default")
+        assert grounding not in slot_brief(s, [], domain_scope="default")
+
     assert (
         f"Domain: {a.domain['title']} (NAICS {a.domain['code']}). Set the passage in this field of work, "
         "with the people, documents and terms it really has; never a famous or implausible subject."
-    ) in a_brief
-    assert "The statement names only people, products, places and terms that the material names." not in a_brief
+    ) in slot_brief(a, [], domain_scope="default")
+    for s in (c_sup, c_unsup, c_ct, d_sup, e_verdict):
+        assert (
+            f"Domain: {s.domain['title']} (NAICS {s.domain['code']}). Set the material, the statement and the framing "
+            "in this field of work, with the people, documents and terms it really has; never a famous or implausible subject."
+        ) in slot_brief(s, [], domain_scope="default")
 
-    e_verdict = next(s for s in slots if s.kind == "E" and s.e_type == "verdict")
-    e_brief = slot_brief(e_verdict, [])
-    assert "Set the material, the statement and the framing in this field of work" in e_brief
-    assert "The statement names only people, products, places and terms that the material names." not in e_brief
-
-    grounding = "The statement names only people, products, places and terms that the material names."
+    # 2. framing_only changes only C/D briefs; the grounding sentence appears only on supported and unsupported C/D slots.
     for s in slots:
+        b_def = slot_brief(s, [], domain_scope="default")
+        b_frm = slot_brief(s, [], domain_scope="framing_only")
         if s.kind not in ("C", "D"):
-            continue
-        b = slot_brief(s, [])
-        assert "Set the framing in this field of work" in b, s.id
-        assert "Set the material, the statement and the framing in this field of work" not in b, s.id
-        if s.verdict in ("supported", "unsupported"):
-            assert grounding in b, s.id
+            assert b_frm == b_def, s.id
+            assert grounding not in b_frm, s.id
         else:
-            assert grounding not in b, s.id
+            assert b_frm != b_def, s.id
+            assert "Set the framing in this field of work" in b_frm, s.id
+            assert "Set the material, the statement and the framing in this field of work" not in b_frm, s.id
+            if s.verdict in ("supported", "unsupported"):
+                assert grounding in b_frm, s.id
+                b_frm_without_grounding = b_frm.replace(f"{grounding}\n", "")
+                expected_without_grounding = b_def.replace(
+                    "Set the material, the statement and the framing in this field of work",
+                    "Set the framing in this field of work",
+                )
+                assert b_frm_without_grounding == expected_without_grounding, s.id
+            else:
+                assert grounding not in b_frm, s.id
+                expected_from_base = b_def.replace(
+                    "Set the material, the statement and the framing in this field of work",
+                    "Set the framing in this field of work",
+                )
+                assert b_frm == expected_from_base, s.id
+
+    with pytest.raises( ValueError, match="domain_scope must be one of"):
+        slot_brief(c_sup, [], domain_scope="unknown")
+
+    # 3. Recorded per draft and part of the call key, like flaw_prompt.
+    msgs_def = writer_messages(c_sup, {"traits/T10.md": "# T10\n\nx\n"}, material_text="m", exemplars=[], avoid=[], domain_scope="default")
+    msgs_frm = writer_messages(c_sup, {"traits/T10.md": "# T10\n\nx\n"}, material_text="m", exemplars=[], avoid=[], domain_scope="framing_only")
+    assert grounding not in msgs_def[1]["content"] and grounding in msgs_frm[1]["content"]
+
+    k_none = callcache.request_key("writer", (msgs_def,), {"seed": 0})
+    k_def = callcache.request_key("writer", (msgs_def,), {"seed": 0}, domain_scope="default")
+    k_frm = callcache.request_key("writer", (msgs_def,), {"seed": 0}, domain_scope="framing_only")
+    assert k_def == k_none and k_frm != k_def
+
+    j_path = tmp_path / "calls.jsonl"
+    j = callcache.CallJournal(j_path, None, domain_scope="framing_only")
+    w_wrapped = j.wrap(
+        "writer",
+        lambda m, seed=0, **kw: Completion(text="ok", prompt_tokens=1, completion_tokens=1, model="m", seconds=0.1),
+    )
+    w_wrapped(msgs_frm, seed=0)
+    assert len(callcache.load(j_path, expected_domain_scope="framing_only")) == 1
+    with pytest.raises(GuardError, match="domain_scope"):
+        callcache.load(j_path, expected_domain_scope="default")
+
+    plan_file = tmp_path / "plan.json"
+    assert cli_main(["plan", "--lessons", "T10", "--seed", "0", "--domains", str(table_file), "--out", str(plan_file)]) == 0
+    files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nCheck the exact size.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    out_frm = tmp_path / "out_frm"
+    assert (
+        cli_main(
+            [
+                "write",
+                "--plan",
+                str(plan_file),
+                "--pack",
+                str(pack_dir),
+                "--out",
+                str(out_frm),
+                "--mock",
+                "--domain-scope",
+                "framing_only",
+            ]
+        )
+        == 0
+    )
+    draft_rows = [json.loads(x) for x in (out_frm / "mock" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert draft_rows and all(r.get("domain_scope") == "framing_only" for r in draft_rows)
+
+    with pytest.raises(WriteRefused, match="--domain-scope"):
+        run_write(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "bad_ds", mock=True, domain_scope="invalid"))
 
 
 
