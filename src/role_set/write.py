@@ -33,7 +33,7 @@ from role_set.harvest import load_pool
 from role_set.mock import MockCritic, MockWriter, answers_from_drafts, mock_excerpts, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
-from role_set.prompts import load_pack
+from role_set.prompts import CANNOT_TELL_CONSTRUCTION_SETTINGS, load_pack
 from role_set.runner import RunHalted, Runner, interleave
 from role_set.stuckrule import StuckRuleError
 from role_set.stuckrule import load as load_stuck
@@ -95,6 +95,7 @@ class WriteConfig:
     call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
     reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
     critique_scope: str = "all"  # "all" or "verdict" (design §11 F2: skip A, B and written E when "verdict")
+    cannot_tell_construction: str = "default"  # "default" or "coarse_vs_sharp" (item 22)
 
 
 def _pool(cfg: WriteConfig, slots: list[Slot], pins: dict) -> dict[str, list] | None:
@@ -242,6 +243,13 @@ def build(cfg: WriteConfig, *, now=time.time):
     header, drafts_in = None, []
     if cfg.critique_scope not in ("all", "verdict"):
         raise WriteRefused(f"REFUSED: --critique-scope must be all or verdict, got {cfg.critique_scope!r}")
+    if cfg.cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
+        raise WriteRefused(
+            f"REFUSED: --cannot-tell-construction must be one of {CANNOT_TELL_CONSTRUCTION_SETTINGS}, "
+            f"got {cfg.cannot_tell_construction!r}"
+        )
+    if cfg.cannot_tell_construction != "default":
+        pins["cannot_tell_construction"] = cfg.cannot_tell_construction
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
@@ -391,8 +399,19 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     excerpts = _pool(cfg, slots, pins)
     out = output_dir(cfg.out, pins, mock=cfg.mock)
     # Every finished call is journaled as it returns; a resume replays an earlier journal (R&D, 2026-10-17).
-    journal = callcache.CallJournal(cfg.call_journal or out / callcache.JOURNAL_FILE,
-                                    callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
+    try:
+        reused = (
+            callcache.load(cfg.reuse_calls, expected_cannot_tell_construction=cfg.cannot_tell_construction)
+            if cfg.reuse_calls
+            else None
+        )
+        journal = callcache.CallJournal(
+            cfg.call_journal or out / callcache.JOURNAL_FILE,
+            reused,
+            cannot_tell_construction=cfg.cannot_tell_construction,
+        )
+    except GuardError as e:
+        raise WriteRefused(str(e)) from e
     writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
@@ -421,7 +440,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
-                    critique_scope=cfg.critique_scope)
+                    critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -479,7 +498,7 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
-                    critique_scope=cfg.critique_scope)
+                    critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)

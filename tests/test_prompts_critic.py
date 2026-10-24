@@ -218,3 +218,146 @@ def test_compare_verdict_repairs_unique_mark_stripped_quote_and_refuses_ambiguou
     )
     assert not v_none.ok and v_none.code == "VOID" and v_none.repairs == []
 
+
+def test_cannot_tell_construction_setting_brief_callkey_and_per_draft_recording(tmp_path):
+    from role_set import callcache, prompts
+    from role_set.cli import VERIFIER_SIDES, main as cli_main
+    from role_set.guards import GuardError
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.plan import plan_lesson
+
+    assert prompts.CANNOT_TELL_CONSTRUCTION_SETTINGS == ("default", "coarse_vs_sharp")
+
+    t10_slots = plan_lesson("T10", VERIFIER_SIDES["T10"], seed=0, buffers=True)
+    t02_slots = plan_lesson("T02", VERIFIER_SIDES["T02"], seed=0, buffers=True)
+
+    for s in t10_slots + t02_slots:
+        base_brief = prompts.slot_brief(s, [])
+        assert prompts.slot_brief(s, [], cannot_tell_construction="default") == base_brief
+        cvs_brief = prompts.slot_brief(s, [], cannot_tell_construction="coarse_vs_sharp")
+        if s.lesson == "T10" and s.verdict == "cannot_tell":
+            assert prompts.T10_COARSE_VS_SHARP in cvs_brief
+            assert prompts.T10_COARSE_VS_SHARP not in base_brief
+            assert cvs_brief.replace("\n" + prompts.T10_COARSE_VS_SHARP, "", 1) == base_brief
+        else:
+            assert cvs_brief == base_brief
+
+    with pytest.raises(ValueError, match="cannot_tell_construction"):
+        prompts.slot_brief(t10_slots[0], [], cannot_tell_construction="bogus")
+
+    from role_set import waves
+    from role_set.mock import mock_gates
+    from role_set.runner import Runner
+    from role_set.write import WriteConfig, WriteRefused, build as build_write, run as run_write
+
+    with pytest.raises(ValueError, match="cannot_tell_construction"):
+        Runner(gates=mock_gates(), pack={}, trait_names={}, writer=None, critic=None, out_dir=tmp_path / "r", cannot_tell_construction="bogus")
+
+    refreshed = waves.refresh_slot_brief(
+        [{"role": "user", "content": "## The trait lesson\nx\n\n## This slot\nold brief\n\n## The material\nm"}],
+        "new brief",
+    )
+    assert "## This slot\nnew brief\n\n## The material" in refreshed[0]["content"]
+    refreshed_tail = waves.refresh_slot_brief(
+        [{"role": "user", "content": "## This slot\nold brief\n\nReturn the JSON object now."}],
+        "new brief",
+    )
+    assert "## This slot\nnew brief\n\nReturn the JSON object now." in refreshed_tail[0]["content"]
+
+    # Call key: default is byte-identical to None/unset; coarse_vs_sharp changes the key.
+    k_none = callcache.request_key("writer", ([{"role": "user", "content": "hi"}],), {"seed": 1})
+    k_def = callcache.request_key(
+        "writer", ([{"role": "user", "content": "hi"}],), {"seed": 1}, cannot_tell_construction="default"
+    )
+    k_cvs = callcache.request_key(
+        "writer", ([{"role": "user", "content": "hi"}],), {"seed": 1}, cannot_tell_construction="coarse_vs_sharp"
+    )
+    assert k_def == k_none
+    assert k_cvs != k_def
+
+    # Journal cross-setting guard.
+    j_path = tmp_path / "calls-journal.jsonl"
+    j = callcache.CallJournal(j_path, cannot_tell_construction="default")
+    wrapped = j.wrap("writer", lambda msgs, seed=0: callcache.Completion(text="ok", prompt_tokens=1, completion_tokens=1, model="m", seconds=0.0))
+    wrapped([{"role": "user", "content": "hi"}], seed=1)
+    with pytest.raises(GuardError, match="cannot_tell_construction"):
+        callcache.load(j_path, expected_cannot_tell_construction="coarse_vs_sharp")
+    with pytest.raises(GuardError, match="cannot_tell_construction"):
+        callcache.CallJournal(j_path, cannot_tell_construction="coarse_vs_sharp")
+
+    # Per-draft recording in drafts.jsonl and wave-drafts.jsonl.
+    plan_file = tmp_path / "plan.json"
+    assert cli_main(["plan", "--lessons", "T10", "--seed", "0", "--out", str(plan_file)]) == 0
+    files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nCheck the exact size.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    out_inline = tmp_path / "out_inline"
+    assert (
+        cli_main(
+            [
+                "write",
+                "--plan",
+                str(plan_file),
+                "--pack",
+                str(pack_dir),
+                "--out",
+                str(out_inline),
+                "--mock",
+                "--cannot-tell-construction",
+                "coarse_vs_sharp",
+            ]
+        )
+        == 0
+    )
+    draft_rows = [json.loads(x) for x in (out_inline / "mock" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert draft_rows and all(r.get("cannot_tell_construction") == "coarse_vs_sharp" for r in draft_rows)
+
+    out_w0 = tmp_path / "out_w0"
+    assert (
+        cli_main(
+            [
+                "write",
+                "--plan",
+                str(plan_file),
+                "--pack",
+                str(pack_dir),
+                "--out",
+                str(out_w0),
+                "--mock",
+                "--wave",
+                "write",
+                "--cannot-tell-construction",
+                "coarse_vs_sharp",
+            ]
+        )
+        == 0
+    )
+    wave_lines = [json.loads(x) for x in (out_w0 / "mock" / "wave-drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert all(d.get("cannot_tell_construction") == "coarse_vs_sharp" for d in wave_lines[1:])
+
+    with pytest.raises(WriteRefused, match="cannot-tell-construction"):
+        build_write(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "bad_out", mock=True, cannot_tell_construction="bogus"))
+    with pytest.raises(WriteRefused, match="cannot_tell_construction"):
+        run_write(
+            WriteConfig(
+                plan=plan_file,
+                pack=pack_dir,
+                out=tmp_path / "bad_reuse",
+                mock=True,
+                reuse_calls=j_path,
+                cannot_tell_construction="coarse_vs_sharp",
+            )
+        )
+
+
+

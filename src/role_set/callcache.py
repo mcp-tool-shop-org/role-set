@@ -51,10 +51,19 @@ def retry_seed(first_seed: int | None = 0, ask: int = 1) -> int:
     return RETRY_SEED_BASE + base * RETRY_SEED_STRIDE + ask
 
 
-def request_key(role: str, args: tuple, kwargs: dict, *, verdict_prompt: str | None = None) -> str:
+def request_key(
+    role: str,
+    args: tuple,
+    kwargs: dict,
+    *,
+    verdict_prompt: str | None = None,
+    cannot_tell_construction: str | None = None,
+) -> str:
     payload: dict = {"role": role, "args": args, "kwargs": kwargs}
     if verdict_prompt not in (None, "old"):
         payload["verdict_prompt"] = verdict_prompt
+    if cannot_tell_construction not in (None, "default"):
+        payload["cannot_tell_construction"] = cannot_tell_construction
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -78,12 +87,19 @@ def load(
     expected_flaw_prompt: str | None = None,
     expected_verdict_prompt: str | None = None,
     expected_checks: str | None = None,
+    expected_cannot_tell_construction: str | None = None,
 ) -> dict[str, deque]:
     """An earlier journal, as each request key's completions in journal order. A torn last line (the VM went mid-write)
-    is left out: its call runs again. When `expected_flaw_prompt`, `expected_verdict_prompt` or `expected_checks` is
-    given, any journal entry (or adjacent report) written under a different setting refuses the resume."""
+    is left out: its call runs again. When `expected_flaw_prompt`, `expected_verdict_prompt`, `expected_checks` or
+    `expected_cannot_tell_construction` is given, any journal entry (or adjacent report) written under a different
+    setting refuses the resume."""
 
-    if expected_flaw_prompt is not None or expected_verdict_prompt is not None or expected_checks is not None:
+    if (
+        expected_flaw_prompt is not None
+        or expected_verdict_prompt is not None
+        or expected_checks is not None
+        or expected_cannot_tell_construction is not None
+    ):
         if not path.is_file():
             raise GuardError(f"REFUSED: cannot read call journal {path}")
         rep_path = path.parent / "critic-eval-report.json"
@@ -147,6 +163,13 @@ def load(
                     f"REFUSED: call journal {path} was written under checks={rec_ck!r}, "
                     f"cannot reuse under checks={expected_checks!r}"
                 )
+        if expected_cannot_tell_construction is not None:
+            rec_ctc = str(d.get("cannot_tell_construction") or "default")
+            if rec_ctc != expected_cannot_tell_construction:
+                raise GuardError(
+                    f"REFUSED: call journal {path} was written under cannot_tell_construction={rec_ctc!r}, "
+                    f"cannot reuse under cannot_tell_construction={expected_cannot_tell_construction!r}"
+                )
         c = d["completion"]
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
@@ -167,9 +190,15 @@ class CallJournal:
         flaw_prompt: str | None = None,
         verdict_prompt: str | None = None,
         checks: str | None = None,
+        cannot_tell_construction: str | None = None,
     ):
         if (
-            (flaw_prompt is not None or verdict_prompt is not None or checks is not None)
+            (
+                flaw_prompt is not None
+                or verdict_prompt is not None
+                or checks is not None
+                or cannot_tell_construction is not None
+            )
             and path.is_file()
             and path.stat().st_size > 0
         ):
@@ -200,11 +229,19 @@ class CallJournal:
                                 f"REFUSED: call journal {path} was written under checks={rec_ck!r}, "
                                 f"cannot append under checks={checks!r}"
                             )
+                    if cannot_tell_construction is not None:
+                        rec_ctc = str(d.get("cannot_tell_construction") or "default")
+                        if rec_ctc != cannot_tell_construction:
+                            raise GuardError(
+                                f"REFUSED: call journal {path} was written under cannot_tell_construction={rec_ctc!r}, "
+                                f"cannot append under cannot_tell_construction={cannot_tell_construction!r}"
+                            )
         self.path = path
         self.reuse = reuse or {}
         self.flaw_prompt = flaw_prompt
         self.verdict_prompt = verdict_prompt
         self.checks = checks
+        self.cannot_tell_construction = cannot_tell_construction
         self.lock = threading.Lock()
         self.counts = {"reused": 0, "called": 0}
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,6 +273,8 @@ class CallJournal:
             payload["verdict_prompt"] = self.verdict_prompt
         if self.checks is not None:
             payload["checks"] = self.checks
+        if self.cannot_tell_construction is not None:
+            payload["cannot_tell_construction"] = self.cannot_tell_construction
         if check is not None:
             payload["check"] = check
         payload["completion"] = _completion_dict(c)
@@ -253,7 +292,13 @@ class CallJournal:
             check = kwargs.pop("check", None)
             slot = kwargs.pop("slot", None)
             attempt = kwargs.pop("attempt", None)
-            key = request_key(role, args, kwargs, verdict_prompt=self.verdict_prompt)
+            key = request_key(
+                role,
+                args,
+                kwargs,
+                verdict_prompt=self.verdict_prompt,
+                cannot_tell_construction=self.cannot_tell_construction,
+            )
             if slot is None:
                 slot = kwargs.get("slot_id")
             if attempt is None:
@@ -291,4 +336,6 @@ class CallJournal:
             out["verdict_prompt"] = self.verdict_prompt
         if self.checks is not None:
             out["checks"] = self.checks
+        if self.cannot_tell_construction not in (None, "default"):
+            out["cannot_tell_construction"] = self.cannot_tell_construction
         return out
