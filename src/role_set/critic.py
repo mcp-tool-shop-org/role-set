@@ -389,3 +389,50 @@ def same_answer(a: tuple, b: tuple) -> bool:
     if ka == "groups":
         return sorted(sorted(bare(x) for x in g) for g in va) == sorted(sorted(bare(x) for x in g) for g in vb)
     return bare(str(va)) == bare(str(vb))
+
+
+# Post-refusal span call (item 24): tooling (default off) that fires only after a confirmed VERDICT_MISMATCH.
+SPAN_REASONS = ("ABSENT_FROM_MATERIAL", "NOT_RULED_OUT_BY_MATERIAL", "CONTRADICTED_BY_MATERIAL")
+SPAN_SYSTEM = (
+    "You checked a statement against material and reached a different verdict from the item's key. Identify the exact "
+    "verbatim substring of the Statement that prevented the key verdict, and the single reason from the closed list. "
+    "Answer with exactly two lines and nothing else:\n"
+    "SPAN: <exact verbatim substring of the statement>\n"
+    "WHY: ABSENT_FROM_MATERIAL | NOT_RULED_OUT_BY_MATERIAL | CONTRADICTED_BY_MATERIAL"
+)
+SPAN_LINE = re.compile(r"^\s*\**\s*SPAN\s*\**\s*:\s*(.+?)\s*$", re.I | re.M)
+WHY_LINE = re.compile(r"^\s*\**\s*WHY\s*\**\s*:\s*\**\s*([A-Z_]+)\b", re.I | re.M)
+
+
+def span_messages(material: str, statement: str, critic_verdict: str, key_verdict: str) -> list[dict]:
+    return [
+        {"role": "system", "content": SPAN_SYSTEM},
+        {
+            "role": "user",
+            "content": (
+                f"Material:\n{material.rstrip()}\n\nStatement: {statement.strip()}\n\n"
+                f"Your verdict: {critic_verdict}\nKey verdict: {key_verdict}"
+            ),
+        },
+    ]
+
+
+def parse_refusal_span(reply: str, statement: str) -> tuple[str, str] | None:
+    """Parse SPAN and WHY from the post-refusal span call and check that SPAN is a verbatim substring of `statement`."""
+
+    sm = SPAN_LINE.search(reply)
+    wm = WHY_LINE.search(reply)
+    if not sm or not wm:
+        return None
+    raw_span = sm.group(1).strip()
+    why = wm.group(1).upper()
+    if why not in SPAN_REASONS or not raw_span:
+        return None
+    if raw_span in statement:
+        return raw_span, why
+    if len(raw_span) >= 2 and raw_span[0] == raw_span[-1] and raw_span[0] in ("'", '"'):
+        unquoted = raw_span[1:-1]
+        if unquoted and unquoted in statement:
+            return unquoted, why
+    return None
+

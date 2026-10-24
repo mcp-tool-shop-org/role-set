@@ -360,4 +360,214 @@ def test_cannot_tell_construction_setting_brief_callkey_and_per_draft_recording(
         )
 
 
+def test_post_refusal_span_call_off_vs_on_and_fallback(tmp_path):
+    from role_set import critic as critic_mod
+    from role_set.assemble import Material
+    from role_set.gates import load_gates
+    from role_set.plan import Slot
+    from role_set.runner import SUGGESTIONS, Runner
+    from role_set.transport import Completion
+
+    assert critic_mod.SPAN_REASONS == (
+        "ABSENT_FROM_MATERIAL",
+        "NOT_RULED_OUT_BY_MATERIAL",
+        "CONTRADICTED_BY_MATERIAL",
+    )
+    stmt = "The clinic opens at 08:00 on Sundays."
+    msgs = critic_mod.span_messages("Clinic hours: 09:00-17:00 Mon-Fri.", stmt, "cannot_tell", "supported")
+    assert len(msgs) == 2
+    assert "Your verdict: cannot_tell" in msgs[1]["content"]
+    assert "Key verdict: supported" in msgs[1]["content"]
+
+    assert critic_mod.parse_refusal_span("SPAN: on Sundays\nWHY: ABSENT_FROM_MATERIAL", stmt) == (
+        "on Sundays",
+        "ABSENT_FROM_MATERIAL",
+    )
+    assert critic_mod.parse_refusal_span('SPAN: "on Sundays"\nWHY: NOT_RULED_OUT_BY_MATERIAL', stmt) == (
+        "on Sundays",
+        "NOT_RULED_OUT_BY_MATERIAL",
+    )
+    # Not a verbatim substring of statement -> None.
+    assert critic_mod.parse_refusal_span("SPAN: on Saturdays\nWHY: ABSENT_FROM_MATERIAL", stmt) is None
+    # Unknown reason -> None.
+    assert critic_mod.parse_refusal_span("SPAN: on Sundays\nWHY: OTHER_REASON", stmt) is None
+    # Missing lines -> None.
+    assert critic_mod.parse_refusal_span("no span here", stmt) is None
+
+    gates = load_gates()
+    slot = Slot(
+        id="T10-C-01",
+        lesson="T10",
+        kind="C",
+        side="judges the exact size",
+        tier=1,
+        content_kind="notice",
+        verdict="supported",
+        escalate="no",
+        domain={"code": "5412", "title": "Accounting"},
+        frame="ask",
+    )
+    mat_text = "Desk notice\nThe front desk is open on Mondays from 09:00 to 17:00.\n"
+    draft_fields = {
+        "framing": "Check the statement against the notice.",
+        "statement": "The front desk is open on Mondays and Tuesdays.",
+        "checker_trace": "The notice says the desk is open on Mondays, so I assumed Tuesdays too.",
+        "checker_verdict": "unsupported",
+        "planted_flaw": "guess",
+        "deciding": ["The front desk is open on Mondays from 09:00 to 17:00."],
+        "thinking": "The statement claims Mondays and Tuesdays; line 2 states Mondays from 09:00 to 17:00.",
+        "reply": "The notice states that the front desk is open on Mondays from 09:00 to 17:00.",
+    }
+    row = {
+        "id": "T10-C-01",
+        "lesson": "T10",
+        "kind": "C",
+        "tier": 1,
+        "material": mat_text,
+        "verdict": "supported",
+        "deciding": ["The front desk is open on Mondays from 09:00 to 17:00."],
+        "escalate": "no",
+        "checker_verdict": "unsupported",
+        "planted_flaw": "guess",
+        "turns": [{"user": "Check it.\n\nMaterial:\n" + mat_text + "\nStatement: " + draft_fields["statement"], "thinking": draft_fields["thinking"], "reply": draft_fields["reply"]}],
+    }
+
+    def make_critic(span_reply: str, *, verdict_reply: str = "VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no"):
+        calls: list[str] = []
+
+        def _critic(messages, **kw):
+            check = kw.get("check", "")
+            calls.append(check)
+            if check == "verdict":
+                return Completion(text=verdict_reply, prompt_tokens=10, completion_tokens=5, model="c", seconds=0.01)
+            if check == "flaw":
+                return Completion(text="guess", prompt_tokens=10, completion_tokens=2, model="c", seconds=0.01)
+            if check == "trait":
+                return Completion(text="TRAIT: T10\nCONTRASTED: none", prompt_tokens=10, completion_tokens=4, model="c", seconds=0.01)
+            if check == "refusal_span":
+                return Completion(text=span_reply, prompt_tokens=10, completion_tokens=6, model="c", seconds=0.01)
+            raise AssertionError(f"unexpected check {check!r}")
+
+        _critic.takes_check = True
+        return _critic, calls
+
+    # 1. Off: byte-identical suggestion, refusal_span never called, recorded as False.
+    c_off, calls_off = make_critic("SPAN: and Tuesdays\nWHY: ABSENT_FROM_MATERIAL")
+    r_off = Runner(
+        gates=gates,
+        pack={"traits/T10.md": "# T10\n\njudge size\n"},
+        trait_names={"T10": "judges the exact size"},
+        writer=None,
+        critic=c_off,
+        out_dir=tmp_path / "off",
+    )
+    ref_off = r_off._critic_pass(slot, row, draft_fields)
+    r_off._record_call(slot, 1, Completion(text="{}", prompt_tokens=1, completion_tokens=1, model="w", seconds=0.01), "VERDICT_MISMATCH", 0, Material(mat_text, {}))
+    assert "refusal_span" not in calls_off
+    assert ref_off["suggestion"] == SUGGESTIONS["VERDICT_MISMATCH"].format(detail="the critic read cannot_tell, the key says supported")
+    draft_off = json.loads((tmp_path / "off" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert draft_off["post_refusal_span"] is False
+
+    # 2. On with valid verbatim span: fires once on confirmed VERDICT_MISMATCH, feeds SUGGESTIONS["VERDICT_MISMATCH"], recorded per draft.
+    c_on, calls_on = make_critic("SPAN: and Tuesdays\nWHY: ABSENT_FROM_MATERIAL")
+    r_on = Runner(
+        gates=gates,
+        pack={"traits/T10.md": "# T10\n\njudge size\n"},
+        trait_names={"T10": "judges the exact size"},
+        writer=None,
+        critic=c_on,
+        out_dir=tmp_path / "on",
+        post_refusal_span=True,
+    )
+    ref_on = r_on._critic_pass(slot, row, draft_fields)
+    r_on._record_call(slot, 1, Completion(text="{}", prompt_tokens=1, completion_tokens=1, model="w", seconds=0.01), "VERDICT_MISMATCH", 0, Material(mat_text, {}))
+    assert calls_on.count("refusal_span") == 1
+    assert "span 'and Tuesdays': ABSENT_FROM_MATERIAL" in ref_on["suggestion"]
+    draft_on = json.loads((tmp_path / "on" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert draft_on["post_refusal_span"] is True
+    assert any(n.get("check") == "refusal_span" and n.get("span") == "and Tuesdays" for n in draft_on["critic"])
+
+    # 3. On with bad (non-substring) span: falls back to today's exact suggestion string.
+    c_bad, calls_bad = make_critic("SPAN: on Wednesdays\nWHY: ABSENT_FROM_MATERIAL")
+    r_bad = Runner(
+        gates=gates,
+        pack={"traits/T10.md": "# T10\n\njudge size\n"},
+        trait_names={"T10": "judges the exact size"},
+        writer=None,
+        critic=c_bad,
+        out_dir=tmp_path / "bad",
+        post_refusal_span=True,
+    )
+    ref_bad = r_bad._critic_pass(slot, row, draft_fields)
+    assert calls_bad.count("refusal_span") == 1
+    assert ref_bad["suggestion"] == ref_off["suggestion"]
+
+    # 4. On when verdict agrees: refusal_span does not fire.
+    c_agree, calls_agree = make_critic(
+        "SPAN: and Tuesdays\nWHY: ABSENT_FROM_MATERIAL",
+        verdict_reply="VERDICT: supported\nDECIDING: The front desk is open on Mondays from 09:00 to 17:00.\nESCALATE: no",
+    )
+    r_agree = Runner(
+        gates=gates,
+        pack={"traits/T10.md": "# T10\n\njudge size\n"},
+        trait_names={"T10": "judges the exact size"},
+        writer=None,
+        critic=c_agree,
+        out_dir=tmp_path / "agree",
+        post_refusal_span=True,
+    )
+    assert r_agree._critic_pass(slot, row, draft_fields) is None
+    assert "refusal_span" not in calls_agree
+
+    # 5. MockCritic span branch and CLI --post-refusal-span recording.
+    from role_set.cli import main as cli_main
+    from role_set.mock import MockCritic
+    from role_set.pack import PackManifest, pack_hash
+
+    mc = MockCritic()
+    mc_res = mc(msgs)
+    assert critic_mod.parse_refusal_span(mc_res.text, stmt) == ("The", "ABSENT_FROM_MATERIAL")
+
+    r_on._note_refusal(slot, 1, ref_on, draft="{}")
+    refusal_row = json.loads((tmp_path / "on" / "refusals.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert refusal_row["refusal_span"]["span"] == "and Tuesdays"
+
+    plan_file = tmp_path / "plan_prs.json"
+    assert cli_main(["plan", "--lessons", "T10", "--seed", "0", "--out", str(plan_file)]) == 0
+    files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nCheck the exact size.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    pack_dir = tmp_path / "pack_prs"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    out_prs = tmp_path / "out_prs"
+    assert (
+        cli_main(
+            [
+                "write",
+                "--plan",
+                str(plan_file),
+                "--pack",
+                str(pack_dir),
+                "--out",
+                str(out_prs),
+                "--mock",
+                "--post-refusal-span",
+            ]
+        )
+        == 0
+    )
+    prs_rows = [json.loads(x) for x in (out_prs / "mock" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert prs_rows and all(r.get("post_refusal_span") is True for r in prs_rows)
+
+
+
+
 
