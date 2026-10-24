@@ -445,6 +445,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
                 cfg.reuse_calls,
                 expected_cannot_tell_construction=cfg.cannot_tell_construction,
                 expected_domain_scope=cfg.domain_scope,
+                expected_side_pairing=pins.get("side_pairing", "default"),
+                expected_post_refusal_span=cfg.post_refusal_span,
             )
             if cfg.reuse_calls
             else None
@@ -454,6 +456,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
             reused,
             cannot_tell_construction=cfg.cannot_tell_construction,
             domain_scope=cfg.domain_scope,
+            side_pairing=pins.get("side_pairing", "default"),
+            post_refusal_span=cfg.post_refusal_span,
         )
     except GuardError as e:
         raise WriteRefused(str(e)) from e

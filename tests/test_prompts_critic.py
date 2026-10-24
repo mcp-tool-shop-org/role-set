@@ -657,6 +657,109 @@ def test_all_default_settings_match_4033ebd_writer_and_critic_requests_over_full
     assert c_digest == "9d28acf09c1d6a368cdaf40411aaa23a58cc3930b0e7e64a81208ced093a290d"
 
 
+def test_callcache_and_write_guard_side_pairing_and_post_refusal_span_while_keeping_default_bytes_identical(tmp_path):
+    """FIX 3: request_key, callcache.load, CallJournal, and write.run include side_pairing and post_refusal_span
+    only when non-default, keeping 4033ebd default keys and journal lines byte-identical while refusing cross-setting replay."""
+    from role_set import callcache
+    from role_set.guards import GuardError
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.plan import Slot
+    from role_set.transport import Completion
+    from role_set.write import WriteConfig, WriteRefused, run
+
+    msgs = ([{"role": "user", "content": "hi"}],)
+    k_base = callcache.request_key("writer", msgs, {})
+    assert callcache.request_key("writer", msgs, {}, side_pairing=None, post_refusal_span=None) == k_base
+    assert callcache.request_key("writer", msgs, {}, side_pairing="default", post_refusal_span=False) == k_base
+    k_vs = callcache.request_key("writer", msgs, {}, side_pairing="verdict_safe")
+    k_prs = callcache.request_key("writer", msgs, {}, post_refusal_span=True)
+    assert len({k_base, k_vs, k_prs}) == 3
+
+    # Default journal omits side_pairing and post_refusal_span keys so 4033ebd lines stay byte-identical.
+    j_def_path = tmp_path / "j_def.jsonl"
+    j_def = callcache.CallJournal(j_def_path, side_pairing="default", post_refusal_span=False)
+    w_def = j_def.wrap("writer", lambda m, **kw: Completion("ok", 1, 1, "m", 0.01))
+    w_def([{"role": "user", "content": "hi"}], slot="T10-A-01", attempt=0)
+    def_line = json.loads(j_def_path.read_text(encoding="utf-8").splitlines()[0])
+    assert "side_pairing" not in def_line
+    assert "post_refusal_span" not in def_line
+    assert "side_pairing" not in j_def.summary()
+    assert "post_refusal_span" not in j_def.summary()
+
+    # Loading or appending to a default journal under non-default side_pairing or post_refusal_span is refused.
+    assert callcache.load(j_def_path, expected_side_pairing="default", expected_post_refusal_span=False)
+    with pytest.raises(GuardError, match=r"side_pairing='default'.*side_pairing='verdict_safe'"):
+        callcache.load(j_def_path, expected_side_pairing="verdict_safe")
+    with pytest.raises(GuardError, match=r"post_refusal_span=False.*post_refusal_span=True"):
+        callcache.load(j_def_path, expected_post_refusal_span=True)
+    with pytest.raises(GuardError, match=r"side_pairing='default'.*side_pairing='verdict_safe'"):
+        callcache.CallJournal(j_def_path, side_pairing="verdict_safe")
+    with pytest.raises(GuardError, match=r"post_refusal_span=False.*post_refusal_span=True"):
+        callcache.CallJournal(j_def_path, post_refusal_span=True)
+
+    # Non-default journal records side_pairing and post_refusal_span and refuses default load/append.
+    j_nondef_path = tmp_path / "j_nondef.jsonl"
+    j_nondef = callcache.CallJournal(j_nondef_path, side_pairing="verdict_safe", post_refusal_span=True)
+    w_nondef = j_nondef.wrap("writer", lambda m, **kw: Completion("ok", 1, 1, "m", 0.01))
+    w_nondef([{"role": "user", "content": "hi"}], slot="T10-A-01", attempt=0)
+    nondef_line = json.loads(j_nondef_path.read_text(encoding="utf-8").splitlines()[0])
+    assert nondef_line["side_pairing"] == "verdict_safe"
+    assert nondef_line["post_refusal_span"] is True
+    assert j_nondef.summary()["side_pairing"] == "verdict_safe"
+    assert j_nondef.summary()["post_refusal_span"] is True
+    with pytest.raises(GuardError, match=r"side_pairing='verdict_safe'.*side_pairing='default'"):
+        callcache.load(j_nondef_path, expected_side_pairing="default")
+    with pytest.raises(GuardError, match=r"post_refusal_span=True.*post_refusal_span=False"):
+        callcache.load(j_nondef_path, expected_post_refusal_span=False)
+
+    # End-to-end via write.run: replaying a default journal under side_pairing='verdict_safe' or post_refusal_span=True is refused.
+    slot_c = Slot(
+        id="T10-C-01",
+        lesson="T10",
+        side="judges the exact size",
+        kind="C",
+        tier=1,
+        verdict="supported",
+        domain={"code": "522110", "title": "Commercial Banking"},
+    )
+    plan_file = tmp_path / "plan.json"
+    plan_file.write_text(
+        json.dumps(
+            {
+                "role": "verifier",
+                "seed": 0,
+                "pilot": True,
+                "sides": {"T10": ["judges the exact size", "an equivalent wording still matches"]},
+                "figures": [],
+                "slots": [slot_c.as_dict()],
+            }
+        ),
+        encoding="utf-8",
+    )
+    files = {
+        "role.md": "# L\n\nr\n",
+        "traits/T10.md": "## 10. As a verifier, you read size words strictly\n\nExactly, at least and at most mean what they say.\n",
+        "kinds.md": "## 2. What to deliver\n\nk\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    out_def = tmp_path / "out_def"
+    run(WriteConfig(plan=plan_file, pack=pack_dir, out=out_def, mock=True))
+    def_journal = out_def / "mock" / callcache.JOURNAL_FILE
+
+    with pytest.raises(WriteRefused, match=r"side_pairing='default'.*side_pairing='verdict_safe'"):
+        run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "out_vs", mock=True, side_pairing="verdict_safe", reuse_calls=def_journal))
+    with pytest.raises(WriteRefused, match=r"post_refusal_span=False.*post_refusal_span=True"):
+        run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "out_prs", mock=True, post_refusal_span=True, reuse_calls=def_journal))
+
+
+
 
 
 

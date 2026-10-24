@@ -59,6 +59,8 @@ def request_key(
     verdict_prompt: str | None = None,
     cannot_tell_construction: str | None = None,
     domain_scope: str | None = None,
+    side_pairing: str | None = None,
+    post_refusal_span: bool | None = None,
 ) -> str:
     payload: dict = {"role": role, "args": args, "kwargs": kwargs}
     if verdict_prompt not in (None, "old"):
@@ -67,6 +69,10 @@ def request_key(
         payload["cannot_tell_construction"] = cannot_tell_construction
     if domain_scope not in (None, "default"):
         payload["domain_scope"] = domain_scope
+    if side_pairing not in (None, "default"):
+        payload["side_pairing"] = side_pairing
+    if post_refusal_span is True:
+        payload["post_refusal_span"] = True
     blob = json.dumps(payload, sort_keys=True, ensure_ascii=False, default=str)
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
@@ -92,11 +98,13 @@ def load(
     expected_checks: str | None = None,
     expected_cannot_tell_construction: str | None = None,
     expected_domain_scope: str | None = None,
+    expected_side_pairing: str | None = None,
+    expected_post_refusal_span: bool | None = None,
 ) -> dict[str, deque]:
     """An earlier journal, as each request key's completions in journal order. A torn last line (the VM went mid-write)
     is left out: its call runs again. When `expected_flaw_prompt`, `expected_verdict_prompt`, `expected_checks`,
-    `expected_cannot_tell_construction` or `expected_domain_scope` is given, any journal entry (or adjacent report)
-    written under a different setting refuses the resume."""
+    `expected_cannot_tell_construction`, `expected_domain_scope`, `expected_side_pairing` or `expected_post_refusal_span`
+    is given, any journal entry (or adjacent report) written under a different setting refuses the resume."""
 
     if (
         expected_flaw_prompt is not None
@@ -104,6 +112,8 @@ def load(
         or expected_checks is not None
         or expected_cannot_tell_construction is not None
         or expected_domain_scope is not None
+        or expected_side_pairing is not None
+        or expected_post_refusal_span is not None
     ):
         if not path.is_file():
             raise GuardError(f"REFUSED: cannot read call journal {path}")
@@ -182,6 +192,20 @@ def load(
                     f"REFUSED: call journal {path} was written under domain_scope={rec_ds!r}, "
                     f"cannot reuse under domain_scope={expected_domain_scope!r}"
                 )
+        if expected_side_pairing is not None:
+            rec_sp = str(d.get("side_pairing") or "default")
+            if rec_sp != expected_side_pairing:
+                raise GuardError(
+                    f"REFUSED: call journal {path} was written under side_pairing={rec_sp!r}, "
+                    f"cannot reuse under side_pairing={expected_side_pairing!r}"
+                )
+        if expected_post_refusal_span is not None:
+            rec_prs = bool(d.get("post_refusal_span") or False)
+            if rec_prs != bool(expected_post_refusal_span):
+                raise GuardError(
+                    f"REFUSED: call journal {path} was written under post_refusal_span={rec_prs!r}, "
+                    f"cannot reuse under post_refusal_span={bool(expected_post_refusal_span)!r}"
+                )
         c = d["completion"]
         reuse[d["key"]].append(Completion(text=c["text"], prompt_tokens=c.get("prompt_tokens"),
                                           completion_tokens=c.get("completion_tokens"), model=c.get("model") or "",
@@ -204,6 +228,8 @@ class CallJournal:
         checks: str | None = None,
         cannot_tell_construction: str | None = None,
         domain_scope: str | None = None,
+        side_pairing: str | None = None,
+        post_refusal_span: bool | None = None,
     ):
         if (
             (
@@ -212,6 +238,8 @@ class CallJournal:
                 or checks is not None
                 or cannot_tell_construction is not None
                 or domain_scope is not None
+                or side_pairing is not None
+                or post_refusal_span is not None
             )
             and path.is_file()
             and path.stat().st_size > 0
@@ -257,6 +285,20 @@ class CallJournal:
                                 f"REFUSED: call journal {path} was written under domain_scope={rec_ds!r}, "
                                 f"cannot append under domain_scope={domain_scope!r}"
                             )
+                    if side_pairing is not None:
+                        rec_sp = str(d.get("side_pairing") or "default")
+                        if rec_sp != side_pairing:
+                            raise GuardError(
+                                f"REFUSED: call journal {path} was written under side_pairing={rec_sp!r}, "
+                                f"cannot append under side_pairing={side_pairing!r}"
+                            )
+                    if post_refusal_span is not None:
+                        rec_prs = bool(d.get("post_refusal_span") or False)
+                        if rec_prs != bool(post_refusal_span):
+                            raise GuardError(
+                                f"REFUSED: call journal {path} was written under post_refusal_span={rec_prs!r}, "
+                                f"cannot append under post_refusal_span={bool(post_refusal_span)!r}"
+                            )
         self.path = path
         self.reuse = reuse or {}
         self.flaw_prompt = flaw_prompt
@@ -264,6 +306,8 @@ class CallJournal:
         self.checks = checks
         self.cannot_tell_construction = cannot_tell_construction
         self.domain_scope = domain_scope
+        self.side_pairing = side_pairing
+        self.post_refusal_span = post_refusal_span
         self.lock = threading.Lock()
         self.counts = {"reused": 0, "called": 0}
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -299,6 +343,10 @@ class CallJournal:
             payload["cannot_tell_construction"] = self.cannot_tell_construction
         if self.domain_scope is not None:
             payload["domain_scope"] = self.domain_scope
+        if self.side_pairing not in (None, "default"):
+            payload["side_pairing"] = self.side_pairing
+        if self.post_refusal_span is True:
+            payload["post_refusal_span"] = True
         if check is not None:
             payload["check"] = check
         payload["completion"] = _completion_dict(c)
@@ -323,6 +371,8 @@ class CallJournal:
                 verdict_prompt=self.verdict_prompt,
                 cannot_tell_construction=self.cannot_tell_construction,
                 domain_scope=self.domain_scope,
+                side_pairing=self.side_pairing,
+                post_refusal_span=self.post_refusal_span,
             )
             if slot is None:
                 slot = kwargs.get("slot_id")
@@ -365,4 +415,8 @@ class CallJournal:
             out["cannot_tell_construction"] = self.cannot_tell_construction
         if self.domain_scope not in (None, "default"):
             out["domain_scope"] = self.domain_scope
+        if self.side_pairing not in (None, "default"):
+            out["side_pairing"] = self.side_pairing
+        if self.post_refusal_span is True:
+            out["post_refusal_span"] = True
         return out
