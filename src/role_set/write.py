@@ -286,20 +286,38 @@ def build(cfg: WriteConfig, *, now=time.time):
                 f"REFUSED: --side-pairing must be one of {SIDE_PAIRING_SETTINGS}, got {effective_side_pairing!r}"
             )
         from role_set.cli import VERIFIER_SIDES
-        from role_set.plan import PlanError, check_plan
+        from role_set.plan import APPLY_PER_KIND, KINDS, PER_KIND, PlanError, check_plan, check_side_pairing
+
+        is_pilot_plan = bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot"))
         for lesson_id in sorted({s.lesson for s in slots}):
+            lesson_slots = [s for s in slots if s.lesson == lesson_id]
             lesson_sides = VERIFIER_SIDES.get(lesson_id) or sides.get(lesson_id)
             if lesson_sides is not None:
                 primary_side = lesson_sides[0] if isinstance(lesson_sides, (tuple, list)) else str(lesson_sides)
-                lesson_slots = [s for s in slots if s.lesson == lesson_id]
                 _align_verdict_sides(lesson_slots, primary_side, side_pairing=effective_side_pairing)
-                if effective_side_pairing == "verdict_safe" and not bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot")) and any(s.split != "apply" for s in lesson_slots):
-                    try:
+            try:
+                check_side_pairing(lesson_slots, side_pairing=effective_side_pairing)
+                if effective_side_pairing == "verdict_safe" and not is_pilot_plan:
+                    train_base = [s for s in lesson_slots if s.split != "apply" and not s.buffer]
+                    apply_base = [s for s in lesson_slots if s.split == "apply" and not s.buffer]
+                    full_train = len(train_base) == len(KINDS) * PER_KIND and all(
+                        sum(1 for s in train_base if s.kind == k) == PER_KIND for k in KINDS
+                    )
+                    full_apply = len(apply_base) == 2 * APPLY_PER_KIND and all(
+                        sum(1 for s in apply_base if s.kind == k) == APPLY_PER_KIND for k in ("C", "D")
+                    )
+                    if (train_base and full_train and (not apply_base or full_apply)) or (not train_base and full_apply):
                         check_plan(lesson_slots, side_pairing=effective_side_pairing)
-                    except PlanError as e:
-                        raise WriteRefused(f"REFUSED: {e}") from e
+            except PlanError as e:
+                raise WriteRefused(f"REFUSED: {e}") from e
     active_side_pairing = effective_side_pairing or next((s.side_pairing for s in slots if s.side_pairing != "default"), "default")
     if active_side_pairing != "default":
+        from role_set.plan import PlanError, check_side_pairing
+
+        try:
+            check_side_pairing(slots, side_pairing=active_side_pairing)
+        except PlanError as e:
+            raise WriteRefused(f"REFUSED: {e}") from e
         pins["side_pairing"] = active_side_pairing
     if cfg.post_refusal_span:
         pins["post_refusal_span"] = True

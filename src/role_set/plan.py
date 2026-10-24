@@ -292,6 +292,22 @@ def _multi_line_need(decided: list[Slot], slots: list[Slot]) -> int:
     return max(1, math.ceil((len(decided) + changes) * FLOOR_SHARE))
 
 
+def check_side_pairing(slots: list[Slot], *, side_pairing: str | None = None) -> None:
+    """Enforce the verdict_safe side-pairing invariant directly on the slots in play (screened, apply-only, or full)."""
+    if side_pairing is not None and side_pairing not in SIDE_PAIRING_SETTINGS:
+        raise PlanError(f"REFUSED: side_pairing must be one of {SIDE_PAIRING_SETTINGS}, got {side_pairing!r}")
+    bad_sides = [
+        s.id
+        for s in slots
+        if (side_pairing == "verdict_safe" or s.side_pairing == "verdict_safe")
+        and s.verdict is not None
+        and s.verdict != "supported"
+        and s.side in MATCHING_ONLY_SIDES
+    ]
+    if bad_sides:
+        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
+
+
 def _check_apply_plan(apply_slots: list[Slot], *, side_pairing: str | None = None) -> None:
     base = [s for s in apply_slots if not s.buffer]
     buf = [s for s in apply_slots if s.buffer]
@@ -318,16 +334,7 @@ def _check_apply_plan(apply_slots: list[Slot], *, side_pairing: str | None = Non
         raise PlanError("apply: no ESCALATE yes item")
     if not any(s.verdict == "cannot_tell" and s.escalate == "no" for s in base):
         raise PlanError("apply: no everyday cannot_tell with ESCALATE no")
-    bad_sides = [
-        s.id
-        for s in apply_slots
-        if (side_pairing == "verdict_safe" or s.side_pairing == "verdict_safe")
-        and s.verdict is not None
-        and s.verdict != "supported"
-        and s.side in MATCHING_ONLY_SIDES
-    ]
-    if bad_sides:
-        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
+    check_side_pairing(apply_slots, side_pairing=side_pairing)
 
 
 def check_plan(slots: list[Slot], *, side_pairing: str | None = None) -> dict:
@@ -399,16 +406,7 @@ def check_plan(slots: list[Slot], *, side_pairing: str | None = None) -> dict:
     real = sum(1 for s in base if s.real_source)
     if real < 4:
         raise PlanError(f"real-source items {real} of 4")
-    bad_sides = [
-        s.id
-        for s in slots
-        if (side_pairing == "verdict_safe" or s.side_pairing == "verdict_safe")
-        and s.verdict is not None
-        and s.verdict != "supported"
-        and s.side in MATCHING_ONLY_SIDES
-    ]
-    if bad_sides:
-        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
+    check_side_pairing(slots, side_pairing=side_pairing)
     return {
         "lesson": next(iter(lessons)),
         "items": len(base),

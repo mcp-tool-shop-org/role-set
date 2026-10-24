@@ -593,3 +593,89 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     assert rewritten_d["slot"]["side"] == "an equivalent wording still matches"
     assert "side: an equivalent wording still matches" in rewritten_d["messages"][1]["content"]
 
+
+def test_verdict_safe_on_screened_and_apply_only_plans(tmp_path):
+    """Round 4 Item 3 (§6 FIX 3): under verdict_safe, enforce the side-pairing invariant directly on the slots in play
+    (screened, apply-only, or full) without applying full-lesson count rules to a screened subset."""
+    from role_set.cli import main as cli_main
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.plan import PlanError, Slot, check_side_pairing
+    from role_set.write import WriteConfig, WriteRefused, build as build_write
+
+    files = {
+        "role.md": "# L\n\nr\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nProportion decides.\n",
+        "kinds.md": "## 2. What to deliver\n\nk\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    with pytest.raises(PlanError, match="side_pairing must be one of"):
+        check_side_pairing([], side_pairing="bogus")
+
+    # 1. Screened non-pilot T10 plan (5 slots): aligns verdict_safe sides without crashing on 8-per-kind full-lesson counts.
+    full_plan_path = tmp_path / "full_t10.json"
+    assert cli_main(["plan", "--lessons", "T10", "--buffers", "--seed", "0", "--out", str(full_plan_path)]) == 0
+    full_plan = json.loads(full_plan_path.read_text(encoding="utf-8"))
+    keep_ids = {"T10-C-01", "T10-C-02", "T10-D-01", "T10-D-02", "T10-E-01"}
+    screened_plan = {**full_plan, "slots": [s for s in full_plan["slots"] if s["id"] in keep_ids]}
+    assert "pilot" not in screened_plan and len(screened_plan["slots"]) == 5
+    screened_plan_path = tmp_path / "screened_t10.json"
+    screened_plan_path.write_text(json.dumps(screened_plan), encoding="utf-8")
+
+    scr_slots, _, _, _, _, _, _, scr_pins, _ = build_write(
+        WriteConfig(plan=screened_plan_path, pack=pack_dir, out=tmp_path / "out_scr", mock=True, side_pairing="verdict_safe")
+    )
+    assert len(scr_slots) == 5
+    assert scr_pins["side_pairing"] == "verdict_safe"
+    assert all(
+        s.side == "judges the exact size"
+        for s in scr_slots
+        if s.verdict is not None and s.verdict != "supported"
+    )
+
+    # Screened subset with an unaligned matching-only non-supported slot is refused via check_side_pairing.
+    bad_scr_slot = Slot(
+        id="T10-C-02",
+        lesson="T99",
+        kind="C",
+        side="an equivalent wording still matches",
+        tier=1,
+        verdict="cannot_tell",
+        side_pairing="verdict_safe",
+    ).as_dict()
+    bad_scr_path = tmp_path / "bad_screened.json"
+    bad_scr_path.write_text(json.dumps({"role": "verifier", "seed": 0, "slots": [bad_scr_slot]}), encoding="utf-8")
+    with pytest.raises(WriteRefused, match="non-supported verdict paired with matching-only side"):
+        build_write(WriteConfig(plan=bad_scr_path, pack=pack_dir, out=tmp_path / "out_bad_scr", mock=True, side_pairing="verdict_safe"))
+    with pytest.raises(WriteRefused, match="non-supported verdict paired with matching-only side"):
+        build_write(WriteConfig(plan=bad_scr_path, pack=pack_dir, out=tmp_path / "out_bad_scr2", mock=True))
+
+    # 2. Apply-only T10 plan: aligns verdict_safe sides and runs check_plan (_check_apply_plan + check_side_pairing).
+    apply_plan_path = tmp_path / "apply_t10.json"
+    assert cli_main(["plan", "--lessons", "T10", "--apply", "--buffers", "--seed", "0", "--out", str(apply_plan_path)]) == 0
+    app_slots, _, _, _, _, _, _, app_pins, _ = build_write(
+        WriteConfig(plan=apply_plan_path, pack=pack_dir, out=tmp_path / "out_app", mock=True, side_pairing="verdict_safe")
+    )
+    assert len(app_slots) == 12
+    assert app_pins["side_pairing"] == "verdict_safe"
+    assert all(
+        s.side == "judges the exact size"
+        for s in app_slots
+        if s.verdict is not None and s.verdict != "supported"
+    )
+
+    # Full unscreened apply-only plan violating _check_apply_plan (e.g. a paired apply slot) is refused under verdict_safe.
+    bad_apply_plan = json.loads(apply_plan_path.read_text(encoding="utf-8"))
+    bad_apply_plan["slots"][0]["pair"] = "T10-P1"
+    bad_apply_path = tmp_path / "bad_apply_t10.json"
+    bad_apply_path.write_text(json.dumps(bad_apply_plan), encoding="utf-8")
+    with pytest.raises(WriteRefused, match="apply items carry no pairs"):
+        build_write(WriteConfig(plan=bad_apply_path, pack=pack_dir, out=tmp_path / "out_bad_app", mock=True, side_pairing="verdict_safe"))
+
+
