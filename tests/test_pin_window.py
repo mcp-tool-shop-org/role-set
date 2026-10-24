@@ -5434,13 +5434,13 @@ def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refus
     pw.write_wave(rs, ["--plan", "p.json"], "critique", tmp_path / "qwen3.6-35b-a3b" / "w1", critic=critic, drafts=tmp_path / "d.jsonl")
     pw.write_wave(rs, ["--plan", "p.json"], "rewrite", tmp_path / "qwen3.6-35b-a3b" / "w2", writer=writer_a, drafts=tmp_path / "d.jsonl")
     for cmd in seen_cmds:
-        assert cmd[cmd.index("--side-pairing") + 1] == "default"
-        assert cmd[cmd.index("--domain-scope") + 1] == "default"
-        assert cmd[cmd.index("--cannot-tell-construction") + 1] == "default"
-        assert cmd[cmd.index("--post-refusal-span") + 1] == "false"
-        assert cmd[cmd.index("--verdict-prompt") + 1] == "old"
+        assert "--side-pairing" not in cmd
+        assert "--domain-scope" not in cmd
+        assert "--cannot-tell-construction" not in cmd
+        assert "--post-refusal-span" not in cmd
+        assert "--verdict-prompt" not in cmd
 
-    # 2. Per-arm settings pass explicitly (defaults included) on every arm across write, critique, and rewrite waves.
+    # 2. Per-arm settings pass only on the configured arm across write, critique, and rewrite waves.
     seen_cmds.clear()
     monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
     monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
@@ -5475,16 +5475,16 @@ def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refus
 
     for i in range(0, 6, 2):
         cmd_a, cmd_b = seen_cmds[i], seen_cmds[i + 1]
-        assert cmd_a[cmd_a.index("--side-pairing") + 1] == "default"
-        assert cmd_a[cmd_a.index("--domain-scope") + 1] == "default"
-        assert cmd_a[cmd_a.index("--cannot-tell-construction") + 1] == "default"
-        assert cmd_a[cmd_a.index("--post-refusal-span") + 1] == "false"
-        assert cmd_a[cmd_a.index("--verdict-prompt") + 1] == "old"
+        assert "--side-pairing" not in cmd_a
+        assert "--domain-scope" not in cmd_a
+        assert "--cannot-tell-construction" not in cmd_a
+        assert "--post-refusal-span" not in cmd_a
+        assert "--verdict-prompt" not in cmd_a
         assert cmd_b[cmd_b.index("--side-pairing") + 1] == "verdict_safe"
         assert cmd_b[cmd_b.index("--domain-scope") + 1] == "framing_only"
         assert cmd_b[cmd_b.index("--cannot-tell-construction") + 1] == "coarse_vs_sharp"
-        assert cmd_b[cmd_b.index("--post-refusal-span") + 1] == "true"
-        assert cmd_b[cmd_b.index("--verdict-prompt") + 1] == "old"
+        assert "--post-refusal-span" in cmd_b
+        assert "--verdict-prompt" not in cmd_b
 
     # 3. Malformed values are refused before check_pins / prefetch / serve in pilot_window.
     content = tmp_path / "content"
@@ -5923,6 +5923,101 @@ def test_two_arm_mock_pilot_window_w0_and_cross_arm_resume_refused(tmp_path, mon
     old_w1_journal_wave = res3["arms"]["old"]["pilot"]["waves"][0]
     assert old_w1_journal_wave["exit"] == 2
     assert "REFUSED: call journal" in old_w1_journal_wave["stderr"]
+
+
+def test_write_wave_default_arm_command_line_unchanged_from_b246455(tmp_path, monkeypatch):
+    """Round 5 Fix 1 (§4 FIX 1): write_wave sends each setting flag only when non-default so an all-default
+    arm's command line is unchanged from b246455, and pilot_window checks write --help at window start
+    before fetching any model when a non-default flag will be sent."""
+    from subprocess import CompletedProcess
+
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_CRITIQUE_SCOPE",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW", "GRANITE_4_2_30B"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    monkeypatch.setattr(pw, "PILOT_PORT", 8091)
+    monkeypatch.setattr(pw, "deadline_left", lambda: None)
+    seen_cmds: list[list[str]] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, '{"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}\n', "")
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    rs = {"role_set": "role-set", "src": str(tmp_path)}
+    writer = {"served_as": "granite-4.2-30b", "gguf_sha256": "a" * 64}
+    critic = {"served_as": "muse-glimmer-30b", "gguf_sha256": "b" * 64}
+    arm_dir = tmp_path / "pilot" / "granite-4.2-30b"
+    drafts_p = arm_dir / "w0" / "wave-drafts.jsonl"
+
+    pw.write_wave(rs, ["--plan", "p.json"], "write", arm_dir / "w0", writer=writer)
+    pw.write_wave(rs, ["--plan", "p.json"], "critique", arm_dir / "w1", critic=critic, drafts=drafts_p)
+    pw.write_wave(rs, ["--plan", "p.json"], "rewrite", arm_dir / "w2", writer=writer, drafts=drafts_p)
+    pw.write_wave(rs, ["--plan", "p.json"], "inline", arm_dir / "w3", writer=writer, critic=critic)
+
+    assert seen_cmds == [
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "write", "--out", str(arm_dir / "w0"),
+            "--call-journal", str(arm_dir / "calls-w0-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "critique", "--out", str(arm_dir / "w1"),
+            "--critique-scope", "all",
+            "--call-journal", str(arm_dir / "calls-w1-muse-glimmer-30b.jsonl"),
+            "--critic-endpoint", "http://127.0.0.1:8091/v1", "--critic-model", "muse-glimmer-30b", "--critic-gguf-sha256", "b" * 64,
+            "--drafts", str(drafts_p),
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "rewrite", "--out", str(arm_dir / "w2"),
+            "--call-journal", str(arm_dir / "calls-w2-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+            "--drafts", str(drafts_p),
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "inline", "--out", str(arm_dir / "w3"),
+            "--critique-scope", "all",
+            "--call-journal", str(arm_dir / "calls-w3-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+            "--critic-endpoint", "http://127.0.0.1:8091/v1", "--critic-model", "muse-glimmer-30b", "--critic-gguf-sha256", "b" * 64,
+        ],
+    ]
+
+    # Window-start write --help check refuses before check_pins / model fetch if a non-default flag is missing from write --help.
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: {"commit": commit, "role_set": "role-set", "src": str(tmp_path)})
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setattr(
+        pw,
+        "sh",
+        lambda cmd, **kw: "usage: role-set write [--wave WAVE] [--plan PLAN]" if "write --help" in cmd else "ok",
+    )
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "4033ebd6f4090096c882f26049d577fc66322c47")
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "granite-4.2-30b")
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "verdict_safe")
+    with pytest.raises(RuntimeError, match="REFUSED:.*--side-pairing.*write --help"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
 
 
 
