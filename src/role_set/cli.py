@@ -237,6 +237,7 @@ def _write(args: argparse.Namespace) -> int:
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
         critique_scope=args.critique_scope,
+        cannot_tell_construction=args.cannot_tell_construction,
     )
     try:
         result = run_write(cfg)
@@ -500,6 +501,8 @@ def build_parser() -> argparse.ArgumentParser:
                         "defaults. Every receipt records the settings used")
     w.add_argument("--critique-scope", choices=("all", "verdict"), default="all",
                    help="all checks every slot; verdict skips A, B and written E in _critic_pass (design §11 F2)")
+    w.add_argument("--cannot-tell-construction", choices=("default", "coarse_vs_sharp"), default="default",
+                   help="writer-brief setting for cannot_tell construction: default or coarse_vs_sharp (item 22)")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")
