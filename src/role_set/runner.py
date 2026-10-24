@@ -23,9 +23,10 @@ from pathlib import Path
 
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
 from role_set.callcache import retry_seed
-from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw,
-                             compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages,
-                             parse_refusal_span, span_messages, teaching_text, trait_messages, verdict_messages)
+from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, VERDICT_PROMPT_SETTINGS, answer_messages,
+                             compare_answer, compare_flaw, compare_trait_votes, compare_twin_verdict, compare_verdict,
+                             flaw_messages, parse_refusal_span, span_messages, teaching_text, trait_messages,
+                             verdict_messages)
 from role_set import solvefirst
 from role_set.frames import check_frame
 from role_set.solvefirst import SolveFirstError
@@ -508,6 +509,7 @@ class Runner:
         cannot_tell_construction: str = "default",  # "default" or "coarse_vs_sharp" (item 22)
         domain_scope: str = "default",  # "default" or "framing_only" (item 23)
         post_refusal_span: bool = False,  # post-refusal span call on confirmed VERDICT_MISMATCH (item 24)
+        verdict_prompt: str = "old",  # "old", "defined" or "exclusive" (item 25)
     ) -> None:
         if cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
             raise ValueError(
@@ -518,6 +520,11 @@ class Runner:
             raise ValueError(
                 f"REFUSED: domain_scope must be one of {DOMAIN_SCOPE_SETTINGS}, "
                 f"got {domain_scope!r}"
+            )
+        if verdict_prompt not in VERDICT_PROMPT_SETTINGS:
+            raise ValueError(
+                f"REFUSED: verdict_prompt must be one of {VERDICT_PROMPT_SETTINGS}, "
+                f"got {verdict_prompt!r}"
             )
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -534,6 +541,7 @@ class Runner:
         self.cannot_tell_construction = cannot_tell_construction
         self.domain_scope = domain_scope
         self.post_refusal_span = bool(post_refusal_span)
+        self.verdict_prompt = verdict_prompt
         self.pins = pins or {}
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
@@ -819,7 +827,7 @@ class Runner:
             for seen_material, key_verdict, key_deciding in turns:
                 for ask in range(2):
                     c = self._critic_call(
-                        verdict_messages(seen_material, statement),
+                        verdict_messages(seen_material, statement, verdict_prompt=self.verdict_prompt),
                         check="verdict",
                         slot=slot.id,
                         attempt=ask,
@@ -840,7 +848,7 @@ class Runner:
             if isinstance(twin, dict) and twin.get("statement") and twin.get("verdict"):
                 for ask in range(2):
                     c = self._critic_call(
-                        verdict_messages(material, twin["statement"]),
+                        verdict_messages(material, twin["statement"], verdict_prompt=self.verdict_prompt),
                         check="twin_verdict",
                         slot=slot.id,
                         attempt=ask,

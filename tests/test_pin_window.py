@@ -5371,3 +5371,180 @@ def test_offrig_bench_mirror_non_http_exception_strips_signed_url_query_and_frag
                 assert "FRAG_SECRET" not in surface
                 assert MIRROR_SENTINEL not in surface
 
+
+def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refuses_malformed(tmp_path, monkeypatch):
+    """FIX 5: PIN_SIDE_PAIRING, PIN_DOMAIN_SCOPE, PIN_CANNOT_TELL_CONSTRUCTION, and PIN_POST_REFUSAL_SPAN
+    are wired for pilot_window's write, critique, and rewrite waves; unset is default and byte-identical to today;
+    each value is recorded in pin-result.json; and malformed values are refused."""
+    from subprocess import CompletedProcess
+
+    for var in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN", "PIN_VERDICT_PROMPT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("PIN_CRITIQUE_SCOPE", raising=False)
+    monkeypatch.delenv("PIN_DEADLINE", raising=False)
+
+    seen_cmds: list[list[str]] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, '{"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}\n', "")
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    rs = {"role_set": "role-set", "src": str(tmp_path)}
+    writer_a = {"served_as": "qwen3.6-35b-a3b", "gguf_sha256": "a" * 64}
+    writer_b = {"served_as": "muse-glimmer-30b", "gguf_sha256": "b" * 64}
+    critic = {"served_as": "nemotron-3.5-lightning-30b-a3b", "gguf_sha256": "c" * 64}
+
+    # 1. Unset means default and byte-identical to today across write, critique, and rewrite waves.
+    assert pw.side_pairing() == "default"
+    assert pw.domain_scope() == "default"
+    assert pw.cannot_tell_construction() == "default"
+    assert pw.post_refusal_span() is False
+    pw.write_wave(rs, ["--plan", "p.json"], "write", tmp_path / "qwen3.6-35b-a3b" / "w0", writer=writer_a)
+    pw.write_wave(rs, ["--plan", "p.json"], "critique", tmp_path / "qwen3.6-35b-a3b" / "w1", critic=critic, drafts=tmp_path / "d.jsonl")
+    pw.write_wave(rs, ["--plan", "p.json"], "rewrite", tmp_path / "qwen3.6-35b-a3b" / "w2", writer=writer_a, drafts=tmp_path / "d.jsonl")
+    for cmd in seen_cmds:
+        assert "--side-pairing" not in cmd
+        assert "--domain-scope" not in cmd
+        assert "--cannot-tell-construction" not in cmd
+        assert "--post-refusal-span" not in cmd
+
+    # 2. Per-arm settings pass only on the configured arm across write, critique, and rewrite waves.
+    seen_cmds.clear()
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION", "qwen3.6-35b-a3b=default,muse-glimmer-30b=coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN", "qwen3.6-35b-a3b=0,muse-glimmer-30b=1")
+
+    arms_list = ["qwen3.6-35b-a3b", "muse-glimmer-30b"]
+    assert pw.side_pairing(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "verdict_safe"}
+    assert pw.domain_scope(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "framing_only"}
+    assert pw.cannot_tell_construction(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "coarse_vs_sharp"}
+    assert pw.post_refusal_span(writer_names=arms_list) == {"qwen3.6-35b-a3b": False, "muse-glimmer-30b": True}
+
+    for wave_idx, wave_name in enumerate(("write", "critique", "rewrite")):
+        pw.write_wave(
+            rs,
+            ["--plan", "p.json"],
+            wave_name,
+            tmp_path / "qwen3.6-35b-a3b" / f"w{wave_idx}",
+            writer=writer_a if wave_name != "critique" else None,
+            critic=critic if wave_name == "critique" else None,
+            drafts=tmp_path / "d.jsonl" if wave_name != "write" else None,
+        )
+        pw.write_wave(
+            rs,
+            ["--plan", "p.json"],
+            wave_name,
+            tmp_path / "muse-glimmer-30b" / f"w{wave_idx}",
+            writer=writer_b if wave_name != "critique" else None,
+            critic=critic if wave_name == "critique" else None,
+            drafts=tmp_path / "d.jsonl" if wave_name != "write" else None,
+        )
+
+    for i in range(0, 6, 2):
+        cmd_a, cmd_b = seen_cmds[i], seen_cmds[i + 1]
+        assert "--side-pairing" not in cmd_a
+        assert "--domain-scope" not in cmd_a
+        assert "--cannot-tell-construction" not in cmd_a
+        assert "--post-refusal-span" not in cmd_a
+        assert cmd_b[cmd_b.index("--side-pairing") + 1] == "verdict_safe"
+        assert cmd_b[cmd_b.index("--domain-scope") + 1] == "framing_only"
+        assert cmd_b[cmd_b.index("--cannot-tell-construction") + 1] == "coarse_vs_sharp"
+        assert "--post-refusal-span" in cmd_b
+
+    # 3. Malformed values are refused before check_pins / prefetch / serve in pilot_window.
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "sh", lambda cmd, **kw: "ok")
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "qwen3.6-35b-a3b,muse-glimmer-30b")
+
+    for bad_var, bad_val in (
+        ("PIN_SIDE_PAIRING", "bogus"),
+        ("PIN_SIDE_PAIRING", "unknown-arm=verdict_safe"),
+        ("PIN_SIDE_PAIRING", "default,verdict_safe"),
+        ("PIN_DOMAIN_SCOPE", "material_only"),
+        ("PIN_CANNOT_TELL_CONSTRUCTION", "sharp_only"),
+        ("PIN_POST_REFUSAL_SPAN", "maybe"),
+    ):
+        for v in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN"):
+            monkeypatch.delenv(v, raising=False)
+        monkeypatch.setenv(bad_var, bad_val)
+        res_bad: dict = {"machine": {"gpu": "A100"}}
+        with pytest.raises(RuntimeError, match=f"REFUSED:.*{bad_var}"):
+            pw.pilot_window({}, res_bad)
+
+    # 4. pilot_window records each value in result (pin-result.json) both when unset and when set per-arm.
+    root_repo = Path(__file__).resolve().parents[1]
+    rs_real = {"role_set": "role-set", "src": str(root_repo)}
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs_real)
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "server_sha256", lambda: "d" * 64)
+    monkeypatch.setattr(pw, "server_pin_entry", lambda sha, wp=None: {"commit": "abc", "sha256": sha, "archs": "90"})
+    monkeypatch.setattr(
+        pw,
+        "pilot_batch",
+        lambda rs, common, plan, base, writer_names, critic_for, pool, **kw: {
+            n: {"waves": [{"exit": 0}], "last": base / n / "w0"} for n in writer_names
+        },
+    )
+
+    def fake_plan_sh(cmd: str, **kw) -> str:
+        if " role-set plan " in f" {cmd} " or cmd.startswith("role-set plan "):
+            out_flag = cmd.split("--out", 1)[1].strip().split()[0]
+            Path(out_flag).write_text(
+                json.dumps({"slots": [{"id": "s1"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_plan_sh)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "nemotron-3.5-lightning-30b-a3b")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    for v in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN"):
+        monkeypatch.delenv(v, raising=False)
+
+    res_unset: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_unset)
+    assert res_unset["side_pairing"] == "default"
+    assert res_unset["domain_scope"] == "default"
+    assert res_unset["cannot_tell_construction"] == "default"
+    assert res_unset["post_refusal_span"] is False
+    for arm_name in ("qwen3.6-35b-a3b", "muse-glimmer-30b"):
+        assert res_unset["arms"][arm_name]["side_pairing"] == "default"
+        assert res_unset["arms"][arm_name]["domain_scope"] == "default"
+        assert res_unset["arms"][arm_name]["cannot_tell_construction"] == "default"
+        assert res_unset["arms"][arm_name]["post_refusal_span"] is False
+
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION", "qwen3.6-35b-a3b=default,muse-glimmer-30b=coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN", "qwen3.6-35b-a3b=false,muse-glimmer-30b=true")
+    res_set: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_set)
+    assert res_set["side_pairing"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "verdict_safe"}
+    assert res_set["domain_scope"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "framing_only"}
+    assert res_set["cannot_tell_construction"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "coarse_vs_sharp"}
+    assert res_set["post_refusal_span"] == {"qwen3.6-35b-a3b": False, "muse-glimmer-30b": True}
+    assert res_set["arms"]["qwen3.6-35b-a3b"]["side_pairing"] == "default"
+    assert res_set["arms"]["muse-glimmer-30b"]["side_pairing"] == "verdict_safe"
+    assert res_set["arms"]["muse-glimmer-30b"]["domain_scope"] == "framing_only"
+    assert res_set["arms"]["muse-glimmer-30b"]["cannot_tell_construction"] == "coarse_vs_sharp"
+    assert res_set["arms"]["muse-glimmer-30b"]["post_refusal_span"] is True
+
+
+
