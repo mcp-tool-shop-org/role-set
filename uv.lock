@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [[package]]
 name = "aspire-si-gates"
 version = "1.7.6"
-source = { git = "https://github.com/mcp-tool-shop-org/aspire-si?subdirectory=packages%2Faspire-si-gates&rev=6a603baa97ff07516c9312462b661f21b4b98c03#6a603baa97ff07516c9312462b661f21b4b98c03" }
+source = { git = "https://github.com/mcp-tool-shop-org/aspire-si-gates?rev=8ed78f2fee388e81443953f8dd3753c73e1ff2bd#8ed78f2fee388e81443953f8dd3753c73e1ff2bd" }
 
 [[package]]
 name = "colorama"
@@ -145,7 +145,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "aspire-si-gates", git = "https://github.com/mcp-tool-shop-org/aspire-si?subdirectory=packages%2Faspire-si-gates&rev=6a603baa97ff07516c9312462b661f21b4b98c03" }]
+requires-dist = [{ name = "aspire-si-gates", git = "https://github.com/mcp-tool-shop-org/aspire-si-gates?rev=8ed78f2fee388e81443953f8dd3753c73e1ff2bd" }]
 
 [package.metadata.requires-dev]
 dev = [
