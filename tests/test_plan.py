@@ -535,7 +535,7 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     w0_drafts = tmp_path / "w0_safe" / "mock" / waves.DRAFTS_FILE
     assert w_res["wave"] == "write" and w0_drafts.is_file()
 
-    # Critique wave without --side-pairing inherits verdict_safe from the wave header and succeeds.
+    # Critique wave with matching side_pairing='verdict_safe' succeeds.
     c_res = run_write(
         WriteConfig(
             plan=out_def,
@@ -544,25 +544,35 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
             mock=True,
             wave="critique",
             drafts=w0_drafts,
+            side_pairing="verdict_safe",
             training=(train_file,),
         )
     )
     assert c_res["wave"] == "critique"
 
-    # Critique or rewrite wave given a different side_pairing from its write wave is refused via batch pins (never a slot-mismatch crash).
-    with pytest.raises(WriteRefused, match=r"other batch pins \(side_pairing\)"):
-        run_write(
-            WriteConfig(
-                plan=out_def,
-                pack=pack_dir,
-                out=tmp_path / "c0_mismatch",
-                mock=True,
-                wave="critique",
-                drafts=w0_drafts,
-                side_pairing="default",
-                training=(train_file,),
+    # Critique or rewrite wave omitting side_pairing (no silent inheritance from header) or given a mismatched setting
+    # among any of the five is refused via batch pins.
+    for bad_kw, want_pin in (
+        ({}, "side_pairing"),
+        ({"side_pairing": "default"}, "side_pairing"),
+        ({"side_pairing": "verdict_safe", "domain_scope": "framing_only"}, "domain_scope"),
+        ({"side_pairing": "verdict_safe", "cannot_tell_construction": "coarse_vs_sharp"}, "cannot_tell_construction"),
+        ({"side_pairing": "verdict_safe", "post_refusal_span": True}, "post_refusal_span"),
+        ({"side_pairing": "verdict_safe", "verdict_prompt": "defined"}, "verdict_prompt"),
+    ):
+        with pytest.raises(WriteRefused, match=rf"other batch pins \({want_pin}\)"):
+            run_write(
+                WriteConfig(
+                    plan=out_def,
+                    pack=pack_dir,
+                    out=tmp_path / f"c0_mismatch_{want_pin}",
+                    mock=True,
+                    wave="critique",
+                    drafts=w0_drafts,
+                    training=(train_file,),
+                    **bad_kw,
+                )
             )
-        )
 
     # _rewrite_one refreshes slot_brief when slot.side or slot.side_pairing changes.
     _, w0_records = waves.read(w0_drafts)

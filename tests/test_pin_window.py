@@ -381,9 +381,12 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
                              "transforms": ["reattach_thinking"]} for c in [*writers, critic]]}
     (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
 
-    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
+    repo_root = Path(__file__).resolve().parents[1]
+    committed_pool = repo_root / "roles" / "verifier" / "pool.jsonl"
     shutil.copy(committed_pool, content / "pool.jsonl")
     pool_sha = pw.sha256(content / "pool.jsonl")
+    pw.sh(f"git clone -q {repo_root} {content / 'role-set'}")
+    head_sha = pw.sh(f"git -C {content / 'role-set'} rev-parse HEAD")
 
     slots_pilot = "T02-A-01,T02-C-01,T02-D-01,T02-E-01,T02-B-01,T02-A-02,T02-C-08,T02-D-05"
     monkeypatch.setenv("PIN_STUB", "1")
@@ -391,7 +394,7 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
     monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", head_sha)
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
     monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
@@ -5404,12 +5407,13 @@ def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refus
     pw.write_wave(rs, ["--plan", "p.json"], "critique", tmp_path / "qwen3.6-35b-a3b" / "w1", critic=critic, drafts=tmp_path / "d.jsonl")
     pw.write_wave(rs, ["--plan", "p.json"], "rewrite", tmp_path / "qwen3.6-35b-a3b" / "w2", writer=writer_a, drafts=tmp_path / "d.jsonl")
     for cmd in seen_cmds:
-        assert "--side-pairing" not in cmd
-        assert "--domain-scope" not in cmd
-        assert "--cannot-tell-construction" not in cmd
-        assert "--post-refusal-span" not in cmd
+        assert cmd[cmd.index("--side-pairing") + 1] == "default"
+        assert cmd[cmd.index("--domain-scope") + 1] == "default"
+        assert cmd[cmd.index("--cannot-tell-construction") + 1] == "default"
+        assert cmd[cmd.index("--post-refusal-span") + 1] == "false"
+        assert cmd[cmd.index("--verdict-prompt") + 1] == "old"
 
-    # 2. Per-arm settings pass only on the configured arm across write, critique, and rewrite waves.
+    # 2. Per-arm settings pass explicitly (defaults included) on every arm across write, critique, and rewrite waves.
     seen_cmds.clear()
     monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
     monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
@@ -5444,14 +5448,16 @@ def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refus
 
     for i in range(0, 6, 2):
         cmd_a, cmd_b = seen_cmds[i], seen_cmds[i + 1]
-        assert "--side-pairing" not in cmd_a
-        assert "--domain-scope" not in cmd_a
-        assert "--cannot-tell-construction" not in cmd_a
-        assert "--post-refusal-span" not in cmd_a
+        assert cmd_a[cmd_a.index("--side-pairing") + 1] == "default"
+        assert cmd_a[cmd_a.index("--domain-scope") + 1] == "default"
+        assert cmd_a[cmd_a.index("--cannot-tell-construction") + 1] == "default"
+        assert cmd_a[cmd_a.index("--post-refusal-span") + 1] == "false"
+        assert cmd_a[cmd_a.index("--verdict-prompt") + 1] == "old"
         assert cmd_b[cmd_b.index("--side-pairing") + 1] == "verdict_safe"
         assert cmd_b[cmd_b.index("--domain-scope") + 1] == "framing_only"
         assert cmd_b[cmd_b.index("--cannot-tell-construction") + 1] == "coarse_vs_sharp"
-        assert "--post-refusal-span" in cmd_b
+        assert cmd_b[cmd_b.index("--post-refusal-span") + 1] == "true"
+        assert cmd_b[cmd_b.index("--verdict-prompt") + 1] == "old"
 
     # 3. Malformed values are refused before check_pins / prefetch / serve in pilot_window.
     content = tmp_path / "content"
@@ -5679,6 +5685,218 @@ def test_pilot_window_arm_labels_same_writer_per_arm_overrides_and_unset_identit
     assert res_ab["arms"]["new"]["cannot_tell_construction"] == "coarse_vs_sharp"
     assert res_ab["arms"]["new"]["post_refusal_span"] is True
     assert res_ab["arms"]["new"]["verdict_prompt"] == "defined"
+
+
+def test_two_arm_mock_pilot_window_w0_and_cross_arm_resume_refused(tmp_path, monkeypatch):
+    """Round 4 Item 2 (§6 FIX 2) end-to-end stub test: a two-arm mock pilot window (old and new) of
+    gemma-4-31b-it on T10 seed 0 with buffers on runs w0, then a resume of arm old given arm new's
+    drafts (or journal) is refused."""
+    from test_cards import SAMPLING
+
+    from role_set import waves
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.runner import models_line
+
+    content = tmp_path / "content"
+    work1 = content / "pin-w0"
+    work2 = content / "pin-w1-cross"
+    work3 = content / "pin-w1-cross-journal"
+    content.mkdir()
+    work1.mkdir()
+    work2.mkdir()
+    work3.mkdir()
+
+    pack_dir = content / "pack"
+    trait_files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nProportion decides.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    for name, text in trait_files.items():
+        p = pack_dir / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(trait_files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    writer = "gemma-4-31b-it"
+    critic = "muse-glimmer-30b"
+    cards = {
+        "candidates": [
+            {
+                "candidate": c,
+                "revision": "r1",
+                "sampling": dict(SAMPLING),
+                "chat_template_kwargs": {"enable_thinking": True},
+                "transforms": ["reattach_thinking"],
+            }
+            for c in (writer, critic)
+        ]
+    }
+    (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
+
+    t01_b_model = {
+        "entities": ["Ash", "Briar", "Cole"],
+        "attributes": {"turn": {"values": ["turn 1", "turn 2", "turn 3"], "ordered": True}},
+        "facts": [{"line": 2, "rule": ["is_not", "Ash", "turn", "turn 1"]}, {"line": 3, "rule": ["after", "Briar", "Ash", "turn"]}],
+        "flavour": [1],
+        "asks": {"attribute": "turn"},
+    }
+    t01_b_row = {
+        "id": "T01-B-01",
+        "lesson": "T01",
+        "trait": "skeptical",
+        "kind": "B",
+        "side": "skeptical",
+        "content_kind": "puzzle",
+        "tier": 3,
+        "sources": [{"invented": "fixture"}],
+        "invented": True,
+        "key_basis": "construction",
+        "tags": [],
+        "answer": "ash=turn 2; briar=turn 3; cole=turn 1",
+        "structure": "constraint_grid",
+        "turns": [{"user": "1. Three canoes.\nQuestion: Which turn?", "thinking": "1. Step.", "reply": "1. Step.\nAnswer: ash=turn 2; briar=turn 3; cole=turn 1"}],
+    }
+    t01_b_line = json.dumps(t01_b_row, ensure_ascii=False)
+    t01_b_sidecar = json.dumps(models_line("T01-B-01", "constraint_grid", t01_b_line, t01_b_model), ensure_ascii=False) + "\n"
+    training_tar = content / "training-inputs.tar"
+    training_shas = _make_training_tar(
+        training_tar,
+        {
+            "batch2-t01.jsonl": (t01_b_line + "\n").encode("utf-8"),
+            "batch2-t01.models.jsonl": t01_b_sidecar.encode("utf-8"),
+        },
+    )
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/batch2-t01.jsonl", training_shas["batch2-t01.jsonl"]),),
+    )
+
+    rs = _role_set_cmd()
+    committed_pool = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    committed_pool_sha = pw.sha256(committed_pool)
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw.Pool, "proxy", lambda self, name: None)
+
+    import socket as _socket
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(pw, "PILOT_PORT", s.getsockname()[1])
+
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_GGUF_REPO", "PIN_GGUF_REVISION", "PIN_POOL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm-hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+
+    for base_var in (
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    # Window 1: two-arm mock pilot window (old and new) of gemma-4-31b-it on T10, seed 0, buffers on, running w0.
+    monkeypatch.setattr(pw, "WORK", work1)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
+    monkeypatch.setenv("PIN_PILOT_WRITERS", writer)
+    monkeypatch.setenv("PIN_PILOT_ARMS", f"old:{writer},new:{writer}")
+    monkeypatch.setenv("PIN_SIDE_PAIRING_NEW", "verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE_NEW", "framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION_NEW", "coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN_NEW", "1")
+    monkeypatch.setenv("PIN_VERDICT_PROMPT_NEW", "defined")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "1")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T10")
+    monkeypatch.setenv("PIN_PILOT_SEED", "0")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "ALL")
+    monkeypatch.setenv("PIN_POOL_SHA256", committed_pool_sha)
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(training_tar))
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in training_shas.items()))
+    monkeypatch.delenv("PIN_CRITIQUE_SCOPE", raising=False)
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_WAVE", raising=False)
+    monkeypatch.delenv("PIN_RESUME_DIR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_CALLS_DIR", raising=False)
+
+    res1: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res1)
+    assert res1["model_errors"] == 0, res1["arms"]
+    assert set(res1["arms"]) == {"old", "new"}
+
+    old_w0_drafts = work1 / "pilot" / "pilot" / "old" / "w0" / waves.DRAFTS_FILE
+    new_w0_drafts = work1 / "pilot" / "pilot" / "new" / "w0" / waves.DRAFTS_FILE
+    old_h, old_d = waves.read(old_w0_drafts)
+    new_h, new_d = waves.read(new_w0_drafts)
+    assert len(old_d) == 60 and len(new_d) == 60
+    assert "side_pairing" not in old_h["batch_pins"]
+    assert "domain_scope" not in old_h["batch_pins"]
+    assert new_h["batch_pins"]["side_pairing"] == "verdict_safe"
+    assert new_h["batch_pins"]["domain_scope"] == "framing_only"
+    assert new_h["batch_pins"]["cannot_tell_construction"] == "coarse_vs_sharp"
+    assert new_h["batch_pins"]["post_refusal_span"] is True
+    assert new_h["batch_pins"]["verdict_prompt"] == "defined"
+
+    # Window 2: Resume arm `old` given arm `new`'s w0 drafts -> must be REFUSED.
+    resume_dir = tmp_path / "resume-cross-drafts"
+    resume_dir.mkdir()
+    shutil.copyfile(new_w0_drafts, resume_dir / "old.jsonl")
+    shutil.copyfile(new_w0_drafts.with_name(new_w0_drafts.name + ".sha256"), resume_dir / "old.jsonl.sha256")
+
+    monkeypatch.setattr(pw, "WORK", work2)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
+    monkeypatch.setenv("PIN_PILOT_WAVES", "2")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "0")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(resume_dir))
+
+    res2: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res2)
+    assert res2["model_errors"] == 1
+    old_w1_wave = res2["arms"]["old"]["pilot"]["waves"][0]
+    assert old_w1_wave["exit"] == 2
+    assert "REFUSED: the drafts were written under other batch pins" in old_w1_wave["stderr"]
+    for k in ("cannot_tell_construction", "domain_scope", "post_refusal_span", "side_pairing", "verdict_prompt"):
+        assert k in old_w1_wave["stderr"]
+
+    # Window 3: Resume arm `old` given its own drafts but arm `new`'s w0 call journal -> must also be REFUSED.
+    resume_own_dir = tmp_path / "resume-own-drafts"
+    resume_own_dir.mkdir()
+    shutil.copyfile(old_w0_drafts, resume_own_dir / "old.jsonl")
+    shutil.copyfile(old_w0_drafts.with_name(old_w0_drafts.name + ".sha256"), resume_own_dir / "old.jsonl.sha256")
+    calls_cross_dir = tmp_path / "resume-cross-calls"
+    calls_cross_dir.mkdir()
+    new_w0_journal = work1 / "pilot" / "pilot" / "new" / f"calls-w0-{writer}.jsonl"
+    shutil.copyfile(new_w0_journal, calls_cross_dir / "old.jsonl")
+
+    monkeypatch.setattr(pw, "WORK", work3)
+    monkeypatch.setenv("PIN_RESUME_DIR", str(resume_own_dir))
+    monkeypatch.setenv("PIN_RESUME_CALLS_DIR", str(calls_cross_dir))
+
+    res3: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res3)
+    assert res3["model_errors"] == 1
+    old_w1_journal_wave = res3["arms"]["old"]["pilot"]["waves"][0]
+    assert old_w1_journal_wave["exit"] == 2
+    assert "REFUSED: call journal" in old_w1_journal_wave["stderr"]
+
 
 
 

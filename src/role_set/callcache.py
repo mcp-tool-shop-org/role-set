@@ -257,12 +257,22 @@ class CallJournal:
                                 f"REFUSED: call journal {path} was written under flaw_prompt={rec_fp!r}, "
                                 f"cannot append under flaw_prompt={flaw_prompt!r}"
                             )
-                    if verdict_prompt is not None:
+                    eff_vp = verdict_prompt if verdict_prompt is not None else (
+                        "old"
+                        if (
+                            cannot_tell_construction is not None
+                            or domain_scope is not None
+                            or side_pairing is not None
+                            or post_refusal_span is not None
+                        )
+                        else None
+                    )
+                    if eff_vp is not None:
                         rec_vp = str(d.get("verdict_prompt") or "old")
-                        if rec_vp != verdict_prompt:
+                        if rec_vp != eff_vp:
                             raise GuardError(
                                 f"REFUSED: call journal {path} was written under verdict_prompt={rec_vp!r}, "
-                                f"cannot append under verdict_prompt={verdict_prompt!r}"
+                                f"cannot append under verdict_prompt={eff_vp!r}"
                             )
                     if checks is not None:
                         rec_ck = str(d.get("checks") or "all")
