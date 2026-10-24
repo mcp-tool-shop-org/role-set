@@ -6,6 +6,11 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Never pair a non-supported verdict with a matching-only side (`"an equivalent wording still matches"`, item 20)** (`src/role_set/plan.py`, `src/role_set/generate/t10_record.json`, `tests/test_plan.py`, `tests/test_solvefirst.py`; R&D, 2026-10-24):
+  - **`_align_verdict_sides` and `check_plan` / `_check_apply_plan` refusal (`MATCHING_ONLY_SIDES`)** (`src/role_set/plan.py`): defines `MATCHING_ONLY_SIDES = ("an equivalent wording still matches",)` and `_align_verdict_sides(slots, primary_side)` so every `cannot_tell` and `unsupported` slot in `plan_lesson` and `plan_apply` (buffered or unbuffered) takes `sides[0]` (`"judges the exact size"` on `T10`) instead of `"an equivalent wording still matches"`, and refuses any plan in `check_plan` or `_check_apply_plan` where a non-supported verdict is paired with a `MATCHING_ONLY_SIDES` side. Sibling scope traits `T09` (`("same facts, same verdict", "a real difference changes the verdict")`, where both sides state verdict invariance or change across rewording/difference and hold for all verdicts) and `T16` (not in `VERIFIER_SIDES`) do not have a matching-only counterweight in `VERIFIER_SIDES`. Updates `t10_record.json` `sha256` (`src/role_set/plan.py` is in `RECORD_HASH_FILES`; `builds` unchanged) and the `T10` seed-0 buffered plan hashes in `tests/test_solvefirst.py`.
+
 ### Changed
 
 - **Python: `requires-python` is `>=3.13` (was `>=3.12,<3.13`); Python 3.12 is dropped.** 3.15 is the main target (`.python-version`); CI runs the suite on 3.15 (the required check `test`, with the Atlas check and the Codecov upload), 3.13 (`test-py313`) and 3.14 (`test-py314`). The sweep job runs on 3.15. The pinned dependency `aspire-si-gates` needs `>=3.10`, so it was never the limit; role-set's own pin was. The dev dependency `zstandard==0.25.0` has no cp315 wheel (PyPI, read 2026-10-25), so on 3.15 it builds from its source distribution (measured on Windows with uv: the C extension builds).
