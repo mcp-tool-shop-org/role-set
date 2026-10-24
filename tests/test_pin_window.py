@@ -5992,6 +5992,54 @@ def test_write_wave_default_arm_command_line_unchanged_from_b246455(tmp_path, mo
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
 
 
+def test_pilot_setting_override_refuses_ambiguous_arm_suffix(tmp_path, monkeypatch):
+    """Round 5 Fix 2 (§4 FIX 2): _resolve_pilot_setting refuses when more than one arm matches a
+    PIN_<SETTING>_<ARM> suffix, naming the matching arms (e.g. arms arm-b and arm_b with PIN_SIDE_PAIRING_ARM_B)."""
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_PILOT_WRITERS",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("ARM_B", "arm_b", "OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_ARMS", "arm-b:gemma-4-31b-it,arm_b:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_SIDE_PAIRING_ARM_B", "verdict_safe")
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.side_pairing(writer_names=["arm-b", "arm_b"])
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.side_pairing("arm-b")
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: {"role_set": "role-set", "src": str(tmp_path)})
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "sh", lambda cmd, **kw: "ok")
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+
+
 
 
 
