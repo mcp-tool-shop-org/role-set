@@ -6039,6 +6039,91 @@ def test_pilot_setting_override_refuses_ambiguous_arm_suffix(tmp_path, monkeypat
         pw.pilot_window({}, {"machine": {"gpu": "A100"}})
 
 
+def test_pilot_window_refuses_conflicting_per_arm_quant_for_one_writer(tmp_path, monkeypatch):
+    """Round 5 Fix 3 (§4 FIX 3): PIN_PILOT_QUANT=old=q6,new=q8 on two arms of one writer is refused
+    (naming the writer and arms), while old=q8,new=q8 is accepted."""
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_PILOT_WRITERS",
+        "PIN_PILOT_QUANT",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    root_repo = Path(__file__).resolve().parents[1]
+    rs_real = {"role_set": "role-set", "src": str(root_repo)}
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs_real)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "server_sha256", lambda: "d" * 64)
+    monkeypatch.setattr(pw, "server_pin_entry", lambda sha, wp=None: {"commit": "abc", "sha256": sha, "archs": "90"})
+    monkeypatch.setattr(
+        pw,
+        "pilot_batch",
+        lambda rs, common, plan, base, writer_names, critic_for, pool, **kw: {
+            n: {"waves": [{"exit": 0}], "last": base / n / "w0"} for n in writer_names
+        },
+    )
+
+    def fake_plan_sh(cmd: str, **kw) -> str:
+        if " role-set plan " in f" {cmd} " or cmd.startswith("role-set plan "):
+            out_flag = cmd.split("--out", 1)[1].strip().split()[0]
+            Path(out_flag).write_text(
+                json.dumps({"slots": [{"id": "s1"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    seen_policies: list[dict] = []
+
+    def tracking_check_pins(names, listed, policies):
+        seen_policies.append(dict(policies))
+
+    monkeypatch.setattr(pw, "sh", fake_plan_sh)
+    monkeypatch.setattr(pw, "check_pins", tracking_check_pins)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_ARMS", "old:gemma-4-31b-it,new:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "muse-glimmer-30b")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    # 1. old=q6,new=q8 on two arms of one writer is refused before check_pins runs:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q6,new=q8")
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_PILOT_QUANT.*gemma-4-31b-it.*old=q6, new=q8"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert seen_policies == []
+
+    # 2. Omitting one arm while setting non-default q6 on the other is also refused:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q6")
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_PILOT_QUANT.*gemma-4-31b-it.*old=q6, new=q8"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert seen_policies == []
+
+    # 3. old=q8,new=q8 is accepted:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q8,new=q8")
+    res_ok: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_ok)
+    assert seen_policies == [{"gemma-4-31b-it": "q8"}]
+
+
+
 
 
 
