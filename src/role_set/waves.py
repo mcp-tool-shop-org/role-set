@@ -48,7 +48,6 @@ WAVE_LOCAL = (
     "writers_list_sha256",
     "cannot_tell_construction",
     "domain_scope",
-    "side_pairing",
     "post_refusal_span",
 )
 
@@ -424,14 +423,19 @@ def refresh_slot_brief(messages: list[dict], new_brief: str) -> list[dict]:
     return out
 
 
-def _rewrite_one(runner: Runner, d: dict) -> dict:
+def _rewrite_one(runner: Runner, d: dict, slot: Slot | None = None) -> dict:
     from role_set.prompts import slot_brief  # noqa: PLC0415
 
     st = state_of(d)
+    old_side, old_sp = st.slot.side, st.slot.side_pairing
+    if slot is not None:
+        st.slot = slot
     st.messages = refresh_avoid(st.messages, list(runner.avoid[-60:]))
     if (
         (d.get("cannot_tell_construction") or "default") != runner.cannot_tell_construction
         or (d.get("domain_scope") or "default") != runner.domain_scope
+        or st.slot.side != old_side
+        or st.slot.side_pairing != old_sp
     ):
         st.messages = refresh_slot_brief(
             st.messages,
@@ -539,12 +543,17 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
             if isinstance(runner.critic, MockCritic):
                 for k, v in answers_from_drafts(drafts_in).items():
                     runner.critic.answers.setdefault(k, v)
-        fn = _critique_one if wave == "critique" else _rewrite_one
+        ordered = interleave(slots)
+        fn = (
+            (lambda idx: _critique_one(runner, drafts_in[idx]))
+            if wave == "critique"
+            else (lambda idx: _rewrite_one(runner, drafts_in[idx], slot=ordered[idx]))
+        )
         train_todo = [i for i in todo if drafts_in[i]["slot"].get("split") != "apply"]
         apply_todo = [i for i in todo if drafts_in[i]["slot"].get("split") == "apply"]
         done = (
-            _each(runner, [drafts_in[i] for i in train_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
-            + _each(runner, [drafts_in[i] for i in apply_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+            _each(runner, train_todo, fn, halted_state=lambda idx: drafts_in[idx])
+            + _each(runner, apply_todo, fn, halted_state=lambda idx: drafts_in[idx])
         )
         drafts = list(drafts_in)
         for i, d in zip(train_todo + apply_todo, done):

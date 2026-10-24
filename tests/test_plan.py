@@ -511,3 +511,75 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     with pytest.raises(WriteRefused, match="--side-pairing"):
         build_write(WriteConfig(plan=out_def, pack=pack_dir, out=tmp_path / "out_bad_sp", mock=True, side_pairing="bad"))
 
+    # FIX 2: side_pairing is a batch pin carried through critique and rewrite; mismatch is refused as a batch pin,
+    # and _rewrite_one refreshes the slot brief when side or side_pairing changes.
+    from role_set import waves
+    from role_set.write import run as run_write
+
+    train_file = tmp_path / "train_fix2.jsonl"
+    train_file.write_text(
+        json.dumps({"id": "T01-A-01", "lesson": "T01", "kind": "A", "split": "train", "turns": [{"user": "u", "thinking": "t", "reply": "r"}]}) + "\n",
+        encoding="utf-8",
+    )
+    w_res = run_write(
+        WriteConfig(
+            plan=out_def,
+            pack=pack_dir,
+            out=tmp_path / "w0_safe",
+            mock=True,
+            wave="write",
+            side_pairing="verdict_safe",
+            training=(train_file,),
+        )
+    )
+    w0_drafts = tmp_path / "w0_safe" / "mock" / waves.DRAFTS_FILE
+    assert w_res["wave"] == "write" and w0_drafts.is_file()
+
+    # Critique wave without --side-pairing inherits verdict_safe from the wave header and succeeds.
+    c_res = run_write(
+        WriteConfig(
+            plan=out_def,
+            pack=pack_dir,
+            out=tmp_path / "c0_safe",
+            mock=True,
+            wave="critique",
+            drafts=w0_drafts,
+            training=(train_file,),
+        )
+    )
+    assert c_res["wave"] == "critique"
+
+    # Critique or rewrite wave given a different side_pairing from its write wave is refused via batch pins (never a slot-mismatch crash).
+    with pytest.raises(WriteRefused, match=r"other batch pins \(side_pairing\)"):
+        run_write(
+            WriteConfig(
+                plan=out_def,
+                pack=pack_dir,
+                out=tmp_path / "c0_mismatch",
+                mock=True,
+                wave="critique",
+                drafts=w0_drafts,
+                side_pairing="default",
+                training=(train_file,),
+            )
+        )
+
+    # _rewrite_one refreshes slot_brief when slot.side or slot.side_pairing changes.
+    _, w0_records = waves.read(w0_drafts)
+    sample_d = dict(next(d for d in w0_records if d["slot"]["id"] == "T10-C-02"))
+    sample_d["state"] = "needs_rewrite"
+    flipped_slot = Slot(**{**sample_d["slot"], "side": "an equivalent wording still matches", "side_pairing": "default"})
+    mock_runner = Runner(
+        gates=load_gates(),
+        pack=files,
+        trait_names=trait_names_from_pack(files),
+        writer=MockWriter(answers={}, keyed_order={"T10-C-02": 0}),
+        critic=None,
+        out_dir=tmp_path / "rw_probe",
+        excerpts=mock_excerpts(),
+        pins={"writer_revision": "deadbeef"},
+    )
+    rewritten_d = waves._rewrite_one(mock_runner, sample_d, slot=flipped_slot)
+    assert rewritten_d["slot"]["side"] == "an equivalent wording still matches"
+    assert "side: an equivalent wording still matches" in rewritten_d["messages"][1]["content"]
+
