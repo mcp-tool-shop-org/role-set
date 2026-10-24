@@ -6,6 +6,10 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Changed
+
+- **The gates are pinned from their own repository:** `aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si-gates@8ed78f2`, in place of aspire-si's `packages/aspire-si-gates` at `6a603baa`. The package source is byte-identical, so `gates_identity()` is unchanged.
+
 ### Fixed
 
 - **Colab window script hardening (`scripts/colab/smoke_window.sh`, `scripts/colab/pin_window.py`)** (`scripts/colab/smoke_window.sh`, `scripts/colab/pin_window.py`, `tests/fake_colab/colab`, `tests/test_window_script.py`, `tests/test_pin_window.py`; R&D, 2026-10-23, `colab-lanes` wave 0 and control-plane dialogue):
