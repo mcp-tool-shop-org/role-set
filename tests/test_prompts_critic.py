@@ -568,6 +568,96 @@ def test_post_refusal_span_call_off_vs_on_and_fallback(tmp_path):
     assert prs_rows and all(r.get("post_refusal_span") is True for r in prs_rows)
 
 
+def test_all_default_settings_match_4033ebd_writer_and_critic_requests_over_full_generated_plan(tmp_path):
+    """With all settings at default (side_pairing='default', domain_scope='default', cannot_tell_construction='default',
+    post_refusal_span=False, verdict_prompt='old'), every writer and critic request over a full generated plan equals
+    4033ebd's byte-for-byte."""
+    import hashlib
+    from pathlib import Path
+
+    from role_set import callcache
+    from role_set.cli import main as cli_main
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.write import WriteConfig, run
+
+    root = Path(__file__).resolve().parents[1]
+    naics = root / "roles" / "domains" / "naics-2022.json"
+    plan_path = tmp_path / "plan.json"
+    assert cli_main(["plan", "--lessons", "T10", "--buffers", "--seed", "0", "--domains", str(naics), "--out", str(plan_path)]) == 0
+    plan_data = json.loads(plan_path.read_text(encoding="utf-8"))
+    assert plan_data["side_pairing"] == "default"
+    assert len(plan_data["slots"]) == 60
+    assert all(s["side_pairing"] == "default" for s in plan_data["slots"])
+
+    files = {
+        "role.md": "# L\n\nr\n",
+        "traits/T10.md": "## 10. As a verifier, you read size words strictly\n\nExactly, at least and at most mean what they say.\n",
+        "kinds.md": "## 2. What to deliver\n\nk\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    train_file = tmp_path / "train.jsonl"
+    train_file.write_text(
+        json.dumps({"id": "T01-A-01", "lesson": "T01", "kind": "A", "split": "train", "turns": [{"user": "u", "thinking": "t", "reply": "r"}]}) + "\n",
+        encoding="utf-8",
+    )
+
+    res = run(
+        WriteConfig(
+            plan=plan_path,
+            pack=pack_dir,
+            out=tmp_path / "out_default",
+            mock=True,
+            wave="inline",
+            training=(train_file,),
+        )
+    )
+    assert res["accepted"] == 60 and res["batch_check"] == "clean"
+    assert "cannot_tell_construction" not in res["calls"]
+    assert "domain_scope" not in res["calls"]
+
+    journal_path = tmp_path / "out_default" / "mock" / callcache.JOURNAL_FILE
+    rows = [json.loads(x) for x in journal_path.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 349
+    writer_rows = [r for r in rows if r["role"] == "writer"]
+    critic_rows = [r for r in rows if r["role"] == "critic"]
+    assert len(writer_rows) == 91
+    assert len(critic_rows) == 258
+    assert all(r.get("cannot_tell_construction") == "default" for r in rows)
+    assert all(r.get("domain_scope") == "default" for r in rows)
+    assert not any(r.get("check") == "refusal_span" for r in rows)
+
+    items = [
+        {
+            "role": r["role"],
+            "slot": r["slot"],
+            "attempt": r["attempt"],
+            "check": r.get("check"),
+            "key": r["key"],
+            "messages_sha256": r["messages_sha256"],
+        }
+        for r in rows
+    ]
+    all_digest = hashlib.sha256(json.dumps(items, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    w_digest = hashlib.sha256(
+        json.dumps([x for x in items if x["role"] == "writer"], sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    c_digest = hashlib.sha256(
+        json.dumps([x for x in items if x["role"] == "critic"], sort_keys=True, ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    # Exact 4033ebd request digests across all 60 slots (91 writer requests, 258 critic requests).
+    assert all_digest == "d6bb48008ff06ed9764d932c57bf61b57684429df890a9dbccc36b5aa4c4249a"
+    assert w_digest == "39dd39229aed65464bf0fdca1ba9c25b6f82fe167dbbf36586cf8e693a860c56"
+    assert c_digest == "9d28acf09c1d6a368cdaf40411aaa23a58cc3930b0e7e64a81208ced093a290d"
+
+
+
 
 
 

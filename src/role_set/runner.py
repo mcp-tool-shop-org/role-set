@@ -34,6 +34,7 @@ from role_set.plan import Slot
 from role_set.puzzle import PuzzleError, check_puzzle
 from role_set.prompts import (
     CANNOT_TELL_CONSTRUCTION_SETTINGS,
+    DOMAIN_SCOPE_SETTINGS,
     FIELDS,
     kind_key,
     material_messages,
@@ -505,12 +506,18 @@ class Runner:
         prior=None,  # role_set.exclusion.State: every row earlier batches accepted (BUILD-SPEC B4)
         critique_scope: str = "all",  # "all" or "verdict" (design §11 F2: skip A, B, and written E when "verdict")
         cannot_tell_construction: str = "default",  # "default" or "coarse_vs_sharp" (item 22)
+        domain_scope: str = "default",  # "default" or "framing_only" (item 23)
         post_refusal_span: bool = False,  # post-refusal span call on confirmed VERDICT_MISMATCH (item 24)
     ) -> None:
         if cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
             raise ValueError(
                 f"REFUSED: cannot_tell_construction must be one of {CANNOT_TELL_CONSTRUCTION_SETTINGS}, "
                 f"got {cannot_tell_construction!r}"
+            )
+        if domain_scope not in DOMAIN_SCOPE_SETTINGS:
+            raise ValueError(
+                f"REFUSED: domain_scope must be one of {DOMAIN_SCOPE_SETTINGS}, "
+                f"got {domain_scope!r}"
             )
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -525,6 +532,7 @@ class Runner:
         self._used_excerpts: dict[str, set[int]] = {}
         self.critique_scope = critique_scope
         self.cannot_tell_construction = cannot_tell_construction
+        self.domain_scope = domain_scope
         self.post_refusal_span = bool(post_refusal_span)
         self.pins = pins or {}
         self.clock = clock
@@ -625,6 +633,7 @@ class Runner:
                   "prompt_tokens": getattr(c, "prompt_tokens", None), "completion_tokens": getattr(c, "completion_tokens", None),
                   "seconds": round(getattr(c, "seconds", 0.0) or 0.0, 2), "glyphs_normalized": glyphs,
                   "cannot_tell_construction": self.cannot_tell_construction,
+                  "domain_scope": self.domain_scope,
                   "post_refusal_span": self.post_refusal_span, "draft": text}
         # Every critic check this draft went through, agreeing or not (gating or advisory), so the critic's behaviour
         # on a paid run can be read per draft. Absent when the draft never reached the critic.
@@ -948,6 +957,7 @@ class Runner:
             closed_form=self.gates.closed_form,
             locked_brief=solvefirst.brief(locked) if locked else None,
             cannot_tell_construction=self.cannot_tell_construction,
+            domain_scope=self.domain_scope,
         )
         return SlotState(slot=slot, messages=messages, material=material, facts=facts)
 
