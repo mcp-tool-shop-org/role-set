@@ -434,8 +434,9 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     )
     data_def = json.loads(out_def.read_text(encoding="utf-8"))
     data_safe = json.loads(out_safe.read_text(encoding="utf-8"))
-    assert data_def["side_pairing"] == "default"
-    assert all(s["side_pairing"] == "default" for s in data_def["slots"])
+    assert "side_pairing" not in data_def
+    assert all("side_pairing" not in s for s in data_def["slots"])
+    assert all(Slot(**s).side_pairing == "default" for s in data_def["slots"])
     assert data_safe["side_pairing"] == "verdict_safe"
     assert all(s["side_pairing"] == "verdict_safe" for s in data_safe["slots"])
     assert [
@@ -443,14 +444,9 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
         for s in data_safe["slots"]
         if s["verdict"] is not None and s["verdict"] != "supported" and s["side"] == "an equivalent wording still matches"
     ] == []
-    # Stripping the new side_pairing key reproduces 4033ebd's exact plan JSON byte-for-byte.
-    stripped_def = {
-        k: ([{sk: sv for sk, sv in s.items() if sk != "side_pairing"} for s in v] if k == "slots" else v)
-        for k, v in data_def.items()
-        if k != "side_pairing"
-    }
-    stripped_bytes = json.dumps(stripped_def, indent=1).encode("utf-8")
-    assert hashlib.sha256(stripped_bytes).hexdigest() == "421a38119dc9524ccf9f1b9a9d36eb68c0322ee54d955ea5e0dd6e536908191a"
+    # Default plan bytes equal 4033ebd's exact plan JSON byte-for-byte with no stripping.
+    def_lf_bytes = out_def.read_bytes().replace(b"\r\n", b"\n")
+    assert hashlib.sha256(def_lf_bytes).hexdigest() == "421a38119dc9524ccf9f1b9a9d36eb68c0322ee54d955ea5e0dd6e536908191a"
 
     # check_plan under verdict_safe refuses a non-supported verdict paired with "an equivalent wording still matches".
     base_slots = plan_lesson("T10", sides, seed=0, buffers=True, side_pairing="verdict_safe")

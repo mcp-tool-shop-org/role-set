@@ -161,7 +161,6 @@ def _plan_lesson_full(
     plan_obj = {
         "role": "verifier",
         "seed": seed,
-        "side_pairing": "default",
         "figures": figures,
         "slots": [s.as_dict() for s in slots],
         "domain_table": table.pin(),
