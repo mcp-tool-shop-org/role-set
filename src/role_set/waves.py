@@ -46,10 +46,6 @@ WAVE_LOCAL = (
     "llama_server_sha256",
     "llama_server_archs",
     "writers_list_sha256",
-    "cannot_tell_construction",
-    "domain_scope",
-    "post_refusal_span",
-    "verdict_prompt",
 )
 
 

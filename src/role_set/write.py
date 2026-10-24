@@ -280,13 +280,6 @@ def build(cfg: WriteConfig, *, now=time.time):
     elif cfg.drafts is not None:
         raise WriteRefused("REFUSED: --drafts is for a critique or rewrite wave")
     effective_side_pairing = cfg.side_pairing
-    if effective_side_pairing is None and header:
-        effective_side_pairing = (header.get("batch_pins") or {}).get("side_pairing")
-    if effective_side_pairing is None and drafts_in:
-        effective_side_pairing = next(
-            (d.get("slot", {}).get("side_pairing") for d in drafts_in if isinstance(d.get("slot"), dict) and d["slot"].get("side_pairing")),
-            None,
-        )
     if effective_side_pairing is not None:
         if effective_side_pairing not in SIDE_PAIRING_SETTINGS:
             raise WriteRefused(
@@ -300,7 +293,7 @@ def build(cfg: WriteConfig, *, now=time.time):
                 primary_side = lesson_sides[0] if isinstance(lesson_sides, (tuple, list)) else str(lesson_sides)
                 lesson_slots = [s for s in slots if s.lesson == lesson_id]
                 _align_verdict_sides(lesson_slots, primary_side, side_pairing=effective_side_pairing)
-                if not bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot")) and any(s.split != "apply" for s in lesson_slots):
+                if effective_side_pairing == "verdict_safe" and not bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot")) and any(s.split != "apply" for s in lesson_slots):
                     try:
                         check_plan(lesson_slots, side_pairing=effective_side_pairing)
                     except PlanError as e:

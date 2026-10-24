@@ -218,6 +218,17 @@ def _closed_form_arg(text: str | None) -> dict | None:
     return value
 
 
+def _bool_flag_arg(text: str | bool) -> bool:
+    if isinstance(text, bool):
+        return text
+    v = str(text).strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"must be true/false (or 1/0), got {text!r}")
+
+
 def _write(args: argparse.Namespace) -> int:
     cfg = WriteConfig(
         plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
@@ -515,7 +526,7 @@ def build_parser() -> argparse.ArgumentParser:
                    help="writer-brief setting for C/D domain scope: default or framing_only (item 23)")
     w.add_argument("--side-pairing", choices=("default", "verdict_safe"), default=None,
                    help="override the plan's side pairing for verdict-bearing slots: default or verdict_safe (item 20)")
-    w.add_argument("--post-refusal-span", action="store_true",
+    w.add_argument("--post-refusal-span", nargs="?", const=True, default=False, type=_bool_flag_arg,
                    help="ask the critic for the verbatim statement span and reason after a confirmed VERDICT_MISMATCH (item 24)")
     w.add_argument("--verdict-prompt", choices=("old", "defined", "exclusive"), default="old",
                    help="critic verdict-check prompt wording ('old', 'defined' or 'exclusive'; default 'old') (item 25)")

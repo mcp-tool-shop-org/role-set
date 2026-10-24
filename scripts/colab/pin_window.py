@@ -1633,20 +1633,13 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
     if wave in ("write", "critique", "rewrite", "inline"):
-        sp = side_pairing(arm)
-        if sp != "default":
-            cmd += ["--side-pairing", sp]
-        ds = domain_scope(arm)
-        if ds != "default":
-            cmd += ["--domain-scope", ds]
-        ctc = cannot_tell_construction(arm)
-        if ctc != "default":
-            cmd += ["--cannot-tell-construction", ctc]
-        if post_refusal_span(arm):
-            cmd += ["--post-refusal-span"]
-        vp = verdict_prompt(arm)
-        if vp != "old":
-            cmd += ["--verdict-prompt", vp]
+        cmd += [
+            "--side-pairing", side_pairing(arm),
+            "--domain-scope", domain_scope(arm),
+            "--cannot-tell-construction", cannot_tell_construction(arm),
+            "--post-refusal-span", "true" if post_refusal_span(arm) else "false",
+            "--verdict-prompt", verdict_prompt(arm),
+        ]
     journal = out.parent / f"calls-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
     cmd += ["--call-journal", str(journal)]
     if reuse_calls is not None:
