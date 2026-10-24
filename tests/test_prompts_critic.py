@@ -759,6 +759,83 @@ def test_callcache_and_write_guard_side_pairing_and_post_refusal_span_while_keep
         run(WriteConfig(plan=plan_file, pack=pack_dir, out=tmp_path / "out_prs", mock=True, post_refusal_span=True, reuse_calls=def_journal))
 
 
+def test_runner_critic_pass_honours_verdict_prompt_and_refuses_malformed(tmp_path):
+    """FIX 5: Runner._critic_pass passes verdict_prompt ('old', 'defined', 'exclusive') to verdict_messages
+    for both primary verdict and r10_twin verdict checks, and refuses malformed values."""
+    from role_set import critic as critic_mod
+    from role_set.mock import MockWriter, mock_excerpts, mock_gates
+    from role_set.plan import Slot
+    from role_set.prompts import load_pack
+    from role_set.runner import Runner
+    from role_set.transport import Completion
+    from role_set.write import trait_names_from_pack
+
+    files = {
+        "role.md": "# L\n\nr\n",
+        "traits/T10.md": "## 10. As a verifier, you read size words strictly\n\nExactly, at least and at most mean what they say.\n",
+        "kinds.md": "## 2. What to deliver\n\nk\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    pack_dir = tmp_path / "pack"
+    for name, text in files.items():
+        (pack_dir / name).parent.mkdir(parents=True, exist_ok=True)
+        (pack_dir / name).write_text(text, encoding="utf-8", newline="\n")
+    pack = load_pack(pack_dir)
+    trait_names = trait_names_from_pack(pack)
+    gates = mock_gates()
+
+    with pytest.raises(ValueError, match="verdict_prompt must be one of"):
+        Runner(gates=gates, pack=pack, trait_names=trait_names, writer=None, critic=None, out_dir=tmp_path / "bad", verdict_prompt="bogus")
+
+    slot_d_apply = Slot(
+        id="T10-D-AP-01",
+        lesson="T10",
+        side="judges the exact size",
+        kind="D",
+        tier=1,
+        verdict="supported",
+        split="apply",
+        domain={"code": "522110", "title": "Commercial Banking"},
+    )
+    train_row = {"id": "T01-A-01", "lesson": "T01", "kind": "A", "split": "train", "turns": [{"user": "u", "thinking": "t", "reply": "r"}]}
+
+    expected_sys = {
+        "old": critic_mod.CRITIC_SYSTEM,
+        "defined": critic_mod.CRITIC_SYSTEM_DEFINED,
+        "exclusive": critic_mod.CRITIC_SYSTEM_EXCLUSIVE,
+    }
+    for vp, want_sys in expected_sys.items():
+        seen_verdict_sys: list[tuple[str, str]] = []
+        from role_set.mock import MockCritic
+
+        answers: dict = {}
+        base_critic = MockCritic(answers=answers)
+
+        def spy_critic(messages, **kwargs):
+            check = kwargs.get("check")
+            if check in ("verdict", "twin_verdict"):
+                seen_verdict_sys.append((check, messages[0]["content"]))
+            return base_critic(messages, **{k: v for k, v in kwargs.items() if k not in ("check", "slot", "attempt")})
+
+        spy_critic.takes_check = True
+        r = Runner(
+            gates=gates,
+            pack=pack,
+            trait_names=trait_names,
+            writer=MockWriter(keyed_order={slot_d_apply.id: 0}, answers=answers),
+            critic=spy_critic,
+            out_dir=tmp_path / f"out_{vp}",
+            excerpts=mock_excerpts(),
+            training=[train_row],
+            verdict_prompt=vp,
+        )
+        outcomes = r.run([slot_d_apply])
+        assert outcomes[0].accepted is True
+        assert [c for c, _ in seen_verdict_sys] == ["verdict", "twin_verdict"]
+        assert all(sys_text == want_sys for _, sys_text in seen_verdict_sys)
+
+
+
 
 
 

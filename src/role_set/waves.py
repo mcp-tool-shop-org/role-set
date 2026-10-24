@@ -49,6 +49,7 @@ WAVE_LOCAL = (
     "cannot_tell_construction",
     "domain_scope",
     "post_refusal_span",
+    "verdict_prompt",
 )
 
 

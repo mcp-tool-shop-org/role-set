@@ -243,6 +243,7 @@ def _write(args: argparse.Namespace) -> int:
         domain_scope=args.domain_scope,
         side_pairing=args.side_pairing,
         post_refusal_span=args.post_refusal_span,
+        verdict_prompt=args.verdict_prompt,
     )
     try:
         result = run_write(cfg)
@@ -516,6 +517,8 @@ def build_parser() -> argparse.ArgumentParser:
                    help="override the plan's side pairing for verdict-bearing slots: default or verdict_safe (item 20)")
     w.add_argument("--post-refusal-span", action="store_true",
                    help="ask the critic for the verbatim statement span and reason after a confirmed VERDICT_MISMATCH (item 24)")
+    w.add_argument("--verdict-prompt", choices=("old", "defined", "exclusive"), default="old",
+                   help="critic verdict-check prompt wording ('old', 'defined' or 'exclusive'; default 'old') (item 25)")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")

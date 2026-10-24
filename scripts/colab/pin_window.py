@@ -1632,6 +1632,21 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
+    if wave in ("write", "critique", "rewrite", "inline"):
+        sp = side_pairing(arm)
+        if sp != "default":
+            cmd += ["--side-pairing", sp]
+        ds = domain_scope(arm)
+        if ds != "default":
+            cmd += ["--domain-scope", ds]
+        ctc = cannot_tell_construction(arm)
+        if ctc != "default":
+            cmd += ["--cannot-tell-construction", ctc]
+        if post_refusal_span(arm):
+            cmd += ["--post-refusal-span"]
+        vp = verdict_prompt(arm)
+        if vp != "old":
+            cmd += ["--verdict-prompt", vp]
     journal = out.parent / f"calls-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
     cmd += ["--call-journal", str(journal)]
     if reuse_calls is not None:
@@ -2168,6 +2183,115 @@ def critique_scope() -> str:
     if scope not in ("all", "verdict"):
         raise RuntimeError(f"REFUSED: PIN_CRITIQUE_SCOPE must be 'all' or 'verdict', got {scope!r}")
     return scope
+
+
+PILOT_SIDE_PAIRING_VALUES = ("default", "verdict_safe")
+PILOT_DOMAIN_SCOPE_VALUES = ("default", "framing_only")
+PILOT_CANNOT_TELL_CONSTRUCTION_VALUES = ("default", "coarse_vs_sharp")
+PILOT_VERDICT_PROMPT_VALUES = ("old", "defined", "exclusive")
+
+
+def _parse_pilot_setting_value(var: str, raw_val: str, valid: tuple[str, ...], *, is_bool: bool = False):
+    v = raw_val.strip()
+    if is_bool:
+        vl = v.lower()
+        if vl in ("0", "false"):
+            return False
+        if vl in ("1", "true"):
+            return True
+        raise RuntimeError(f"REFUSED: {var} must be '0', '1', 'false' or 'true', got {raw_val!r}")
+    if v not in valid:
+        raise RuntimeError(f"REFUSED: {var} must be one of {valid}, got {raw_val!r}")
+    return v
+
+
+def _resolve_pilot_setting(
+    var: str,
+    valid: tuple[str, ...],
+    default,
+    *,
+    arm: str | None = None,
+    writer_names: list[str] | None = None,
+    is_bool: bool = False,
+):
+    raw = (os.environ.get(var) or "").strip()
+    if not raw:
+        return default
+    parts = [p.strip() for p in raw.split(",")]
+    if any(not p for p in parts):
+        raise RuntimeError(f"REFUSED: malformed {var}={raw!r}")
+    if len(parts) == 1 and "=" not in parts[0]:
+        return _parse_pilot_setting_value(var, parts[0], valid, is_bool=is_bool)
+    per_arm: dict = {}
+    fallback = default
+    has_fallback = False
+    for part in parts:
+        if "=" not in part:
+            if has_fallback:
+                raise RuntimeError(f"REFUSED: malformed {var}={raw!r} (multiple unkeyed values)")
+            fallback = _parse_pilot_setting_value(var, part, valid, is_bool=is_bool)
+            has_fallback = True
+            continue
+        k, v = part.split("=", 1)
+        k, v = k.strip(), v.strip()
+        if not k or not v or "=" in v:
+            raise RuntimeError(f"REFUSED: malformed {var} entry {part!r}")
+        if k in per_arm:
+            raise RuntimeError(f"REFUSED: duplicate arm {k!r} in {var}={raw!r}")
+        per_arm[k] = _parse_pilot_setting_value(var, v, valid, is_bool=is_bool)
+    if writer_names is not None:
+        unknown = [k for k in per_arm if k not in writer_names]
+        if unknown:
+            raise RuntimeError(f"REFUSED: {var} names unknown writer arm(s) {', '.join(unknown)} (writers: {writer_names})")
+    if arm is not None:
+        return per_arm.get(arm, fallback)
+    if writer_names is not None:
+        return {n: per_arm.get(n, fallback) for n in writer_names}
+    return per_arm
+
+
+def side_pairing(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_SIDE_PAIRING=default|verdict_safe (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_SIDE_PAIRING", PILOT_SIDE_PAIRING_VALUES, "default", arm=arm, writer_names=writer_names
+    )
+
+
+def domain_scope(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_DOMAIN_SCOPE=default|framing_only (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_DOMAIN_SCOPE", PILOT_DOMAIN_SCOPE_VALUES, "default", arm=arm, writer_names=writer_names
+    )
+
+
+def cannot_tell_construction(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_CANNOT_TELL_CONSTRUCTION=default|coarse_vs_sharp (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        PILOT_CANNOT_TELL_CONSTRUCTION_VALUES,
+        "default",
+        arm=arm,
+        writer_names=writer_names,
+    )
+
+
+def post_refusal_span(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_POST_REFUSAL_SPAN=0|1|false|true (or <arm>=<val>,... per arm; default False)."""
+
+    return _resolve_pilot_setting(
+        "PIN_POST_REFUSAL_SPAN", (), False, arm=arm, writer_names=writer_names, is_bool=True
+    )
+
+
+def verdict_prompt(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_VERDICT_PROMPT=old|defined|exclusive (or <arm>=<val>,... per arm; default 'old')."""
+
+    return _resolve_pilot_setting(
+        "PIN_VERDICT_PROMPT", PILOT_VERDICT_PROMPT_VALUES, "old", arm=arm, writer_names=writer_names
+    )
 
 
 def check_pins(names: list, listed: dict, policies: dict) -> None:
@@ -4432,6 +4556,12 @@ def pilot_window(built: dict, result: dict) -> None:
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     result["critique_scope"] = critique_scope()
+    result["side_pairing"] = side_pairing(writer_names=writer_names)
+    result["domain_scope"] = domain_scope(writer_names=writer_names)
+    result["cannot_tell_construction"] = cannot_tell_construction(writer_names=writer_names)
+    result["post_refusal_span"] = post_refusal_span(writer_names=writer_names)
+    if (os.environ.get("PIN_VERDICT_PROMPT") or "").strip():
+        result["verdict_prompt"] = verdict_prompt(writer_names=writer_names)
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
@@ -4505,7 +4635,13 @@ def pilot_window(built: dict, result: dict) -> None:
         result["pilot_seconds"] = round(time.time() - t0)
         twins_writers = {}
         for n, a in pilot.items():
-            result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
+            result["arms"][n] = {
+                "side_pairing": side_pairing(n, writer_names=writer_names),
+                "domain_scope": domain_scope(n, writer_names=writer_names),
+                "cannot_tell_construction": cannot_tell_construction(n, writer_names=writer_names),
+                "post_refusal_span": post_refusal_span(n, writer_names=writer_names),
+                "pilot": {"waves": a["waves"], "last": str(a.get("last"))},
+            }
             if a.get("funnel_stop"):
                 result["arms"][n]["funnel_stop"] = a["funnel_stop"]
             why = twins_skip_reason(a)

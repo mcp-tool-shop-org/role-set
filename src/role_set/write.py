@@ -20,6 +20,7 @@ from pathlib import Path
 
 from role_set import callcache, cards, domains, exclusion, proven, waves
 from role_set.assemble import trait_name
+from role_set.critic import VERDICT_PROMPT_SETTINGS
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
 from role_set.guards import (
@@ -99,6 +100,7 @@ class WriteConfig:
     domain_scope: str = "default"  # "default" or "framing_only" (item 23)
     side_pairing: str | None = None  # None (use plan's), "default" or "verdict_safe" (item 20)
     post_refusal_span: bool = False  # post-refusal span call on confirmed VERDICT_MISMATCH (item 24)
+    verdict_prompt: str = "old"  # "old", "defined" or "exclusive" (item 25)
 
 
 def _pool(cfg: WriteConfig, slots: list[Slot], pins: dict) -> dict[str, list] | None:
@@ -259,6 +261,12 @@ def build(cfg: WriteConfig, *, now=time.time):
         )
     if cfg.domain_scope != "default":
         pins["domain_scope"] = cfg.domain_scope
+    if cfg.verdict_prompt not in VERDICT_PROMPT_SETTINGS:
+        raise WriteRefused(
+            f"REFUSED: --verdict-prompt must be one of {VERDICT_PROMPT_SETTINGS}, got {cfg.verdict_prompt!r}"
+        )
+    if cfg.verdict_prompt != "old":
+        pins["verdict_prompt"] = cfg.verdict_prompt
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
@@ -443,6 +451,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         reused = (
             callcache.load(
                 cfg.reuse_calls,
+                expected_verdict_prompt=cfg.verdict_prompt,
                 expected_cannot_tell_construction=cfg.cannot_tell_construction,
                 expected_domain_scope=cfg.domain_scope,
                 expected_side_pairing=pins.get("side_pairing", "default"),
@@ -454,6 +463,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
         journal = callcache.CallJournal(
             cfg.call_journal or out / callcache.JOURNAL_FILE,
             reused,
+            verdict_prompt=cfg.verdict_prompt if cfg.verdict_prompt != "old" else None,
             cannot_tell_construction=cfg.cannot_tell_construction,
             domain_scope=cfg.domain_scope,
             side_pairing=pins.get("side_pairing", "default"),
@@ -490,7 +500,7 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
                     critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction,
-                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span)
+                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span, verdict_prompt=cfg.verdict_prompt)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -549,7 +559,7 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
                     critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction,
-                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span)
+                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span, verdict_prompt=cfg.verdict_prompt)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)
