@@ -43,6 +43,8 @@ MIN_PAIRS = 2
 ESCALATE_DOMAINS = ("medical", "legal", "safety", "money")
 ESCALATE_KEY = re.compile(r"^(no|yes \((medical|legal|safety|money)[^)]*\))$")
 MIN_TWO_TURN = 2
+# Sides that assert the statement matches the material: never paired with a non-supported verdict (R&D item 20).
+MATCHING_ONLY_SIDES = ("an equivalent wording still matches",)
 
 
 class PlanError(ValueError):
@@ -85,6 +87,13 @@ def _verdict_bearing(slots: list[Slot]) -> list[Slot]:
     return [s for s in slots if s.kind in ("C", "D") or (s.kind == "E" and s.e_type == "verdict")]
 
 
+def _align_verdict_sides(slots: list[Slot], primary_side: str) -> None:
+    """Never pair a non-supported verdict with a side that asserts the statement matches (e.g. T10's counterweight)."""
+    for s in slots:
+        if s.verdict is not None and s.verdict != "supported" and s.side in MATCHING_ONLY_SIDES:
+            s.side = primary_side
+
+
 def _assign_escalate_and_multi_line(slots: list[Slot], esc_domain: str) -> None:
     base = [s for s in slots if not s.buffer and s.split != "apply"]
     bearing = _verdict_bearing(base)
@@ -105,7 +114,9 @@ def _assign_escalate_and_multi_line(slots: list[Slot], esc_domain: str) -> None:
         s.multi_line = True
 
 
-def _resolve_all_silent_real_c(lesson: str, seed: int, slots: list[Slot], esc_domain: str) -> None:
+def _resolve_all_silent_real_c(
+    lesson: str, seed: int, slots: list[Slot], esc_domain: str, primary_side: str = ""
+) -> None:
     """Rare case (Argon round 3, F1): if all 4 real-source C slots drew cannot_tell, swap the first with the
     verdict of the first supported non-C verdict-bearing slot (D or verdict E) for which the floors still hold."""
 
@@ -114,15 +125,19 @@ def _resolve_all_silent_real_c(lesson: str, seed: int, slots: list[Slot], esc_do
     if not real_c or not all(s.verdict == "cannot_tell" for s in real_c):
         return
     bearing = _verdict_bearing(base)
+    p_side = primary_side or (base[0].side if base else "")
     for cand in bearing:
         if cand.kind != "C" and cand.verdict == "supported":
+            old_r_side, old_c_side = real_c[0].side, cand.side
             real_c[0].verdict, cand.verdict = cand.verdict, real_c[0].verdict
+            _align_verdict_sides(base, p_side)
             _assign_escalate_and_multi_line(base, esc_domain)
             try:
                 check_plan(base)
                 return
             except PlanError:
                 real_c[0].verdict, cand.verdict = cand.verdict, real_c[0].verdict
+                real_c[0].side, cand.side = old_r_side, old_c_side
     raise PlanError(
         f"REFUSED: {lesson} (seed {seed}): all 4 real-source C slots drew cannot_tell and no supported non-C "
         "verdict-bearing slot preserves the floors"
@@ -188,8 +203,9 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
         for s in real_c:
             s.real_source = True
 
+        _align_verdict_sides(slots, sides[0])
         _assign_escalate_and_multi_line(slots, esc_domain)
-        _resolve_all_silent_real_c(lesson, seed, slots, esc_domain)
+        _resolve_all_silent_real_c(lesson, seed, slots, esc_domain, sides[0])
 
         p3 = f"{lesson.lower()}-pair-3"
         slots.extend([
@@ -208,6 +224,7 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
             Slot(id=f"{lesson}-D-10", lesson=lesson, kind="D", side=sides[1], tier=3, content_kind="notice",
                  two_turn="changes", verdict="cannot_tell", escalate="no", multi_line=False, real_source=False, buffer=True),
         ])
+        _align_verdict_sides(slots, sides[0])
     else:
         # Verdicts: six each, so both floors (25%) hold with room, then shuffled by seed.
         verdicts = [v for v in VERDICTS for _ in range(len(bearing) // 3)]
@@ -234,6 +251,7 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
         d_items[0].two_turn = "stands"
         d_items[1].two_turn = "changes"
 
+        _align_verdict_sides(slots, sides[0])
         _assign_escalate_and_multi_line(slots, esc_domain)
 
     check_plan(slots)
@@ -272,6 +290,9 @@ def _check_apply_plan(apply_slots: list[Slot]) -> None:
         raise PlanError("apply: no ESCALATE yes item")
     if not any(s.verdict == "cannot_tell" and s.escalate == "no" for s in base):
         raise PlanError("apply: no everyday cannot_tell with ESCALATE no")
+    bad_sides = [s.id for s in apply_slots if s.verdict is not None and s.verdict != "supported" and s.side in MATCHING_ONLY_SIDES]
+    if bad_sides:
+        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
 
 
 def check_plan(slots: list[Slot]) -> dict:
@@ -341,6 +362,9 @@ def check_plan(slots: list[Slot]) -> dict:
     real = sum(1 for s in base if s.real_source)
     if real < 4:
         raise PlanError(f"real-source items {real} of 4")
+    bad_sides = [s.id for s in slots if s.verdict is not None and s.verdict != "supported" and s.side in MATCHING_ONLY_SIDES]
+    if bad_sides:
+        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
     return {
         "lesson": next(iter(lessons)),
         "items": len(base),
@@ -440,6 +464,7 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool 
         candidates = [s for s in decided if s.content_kind in MULTI_LINE_KINDS]
         for s in (candidates + [s for s in decided if s not in candidates])[:need]:
             s.multi_line = True
+    _align_verdict_sides(slots, sides[0])
     return slots
 
 

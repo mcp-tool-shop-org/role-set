@@ -350,3 +350,33 @@ def test_select_and_trim_on_mock_batch_and_refusals(tmp_path: Path):
     p2 = next(s.id for s in buffered_slots if s.pair == "t10-pair-2")
     with pytest.raises(PlanError, match="buffer pair is unavailable"):
         select_and_trim(rows, plan, {p1, p2}, gates=gates)
+
+
+def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side():
+    sides = VERIFIER_SIDES["T10"]
+    for buffers in (True, False):
+        for seed in range(5):
+            slots = plan_lesson("T10", sides, seed=seed, buffers=buffers) + plan_apply("T10", sides, seed=seed, buffers=buffers)
+            bad = [
+                (s.id, s.verdict, s.side)
+                for s in slots
+                if s.verdict is not None and s.verdict != "supported" and s.side == "an equivalent wording still matches"
+            ]
+            assert bad == [], f"seed={seed} buffers={buffers}: {bad}"
+            for s in slots:
+                if s.verdict in ("cannot_tell", "unsupported"):
+                    assert s.side == "judges the exact size"
+
+    # check_plan also refuses a non-supported verdict paired with "an equivalent wording still matches".
+    base_slots = plan_lesson("T10", sides, seed=0, buffers=True)
+    ct_slot = next(s for s in base_slots if s.verdict == "cannot_tell")
+    ct_slot.side = "an equivalent wording still matches"
+    with pytest.raises(PlanError, match="equivalent wording"):
+        check_plan(base_slots)
+
+    apply_slots = plan_apply("T10", sides, seed=0, buffers=True)
+    ap_ct = next(s for s in apply_slots if s.verdict == "cannot_tell")
+    ap_ct.side = "an equivalent wording still matches"
+    with pytest.raises(PlanError, match="equivalent wording"):
+        check_plan(apply_slots)
+
