@@ -1565,13 +1565,20 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
     if wave in ("write", "critique", "rewrite", "inline"):
-        cmd += [
-            "--side-pairing", side_pairing(arm),
-            "--domain-scope", domain_scope(arm),
-            "--cannot-tell-construction", cannot_tell_construction(arm),
-            "--post-refusal-span", "true" if post_refusal_span(arm) else "false",
-            "--verdict-prompt", verdict_prompt(arm),
-        ]
+        sp = side_pairing(arm)
+        if sp != "default":
+            cmd += ["--side-pairing", sp]
+        ds = domain_scope(arm)
+        if ds != "default":
+            cmd += ["--domain-scope", ds]
+        ctc = cannot_tell_construction(arm)
+        if ctc != "default":
+            cmd += ["--cannot-tell-construction", ctc]
+        if post_refusal_span(arm):
+            cmd += ["--post-refusal-span"]
+        vp = verdict_prompt(arm)
+        if vp != "old":
+            cmd += ["--verdict-prompt", vp]
     journal = out.parent / f"calls-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
     cmd += ["--call-journal", str(journal)]
     if reuse_calls is not None:
@@ -2302,6 +2309,35 @@ def verdict_prompt(arm: str | None = None, *, writer_names: list[str] | None = N
     return _resolve_pilot_setting(
         "PIN_VERDICT_PROMPT", PILOT_VERDICT_PROMPT_VALUES, "old", arm=arm, writer_names=writer_names
     )
+
+
+def _needed_write_setting_flags(writer_names: list[str]) -> list[str]:
+    flags: list[str] = []
+    if any(side_pairing(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--side-pairing")
+    if any(domain_scope(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--domain-scope")
+    if any(cannot_tell_construction(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--cannot-tell-construction")
+    if any(post_refusal_span(n, writer_names=writer_names) for n in writer_names):
+        flags.append("--post-refusal-span")
+    if any(verdict_prompt(n, writer_names=writer_names) != "old" for n in writer_names):
+        flags.append("--verdict-prompt")
+    return flags
+
+
+def _check_write_setting_flags(rs: dict, writer_names: list[str]) -> None:
+    needed = _needed_write_setting_flags(writer_names)
+    if not needed:
+        return
+    help_out = sh(f"{rs['role_set']} write --help", cwd=rs["src"])
+    if "--wave" in help_out:
+        missing = [f for f in needed if f not in help_out]
+        if missing:
+            raise RuntimeError(
+                f"REFUSED: pinned role-set at {rs.get('commit', rs['src'])} does not support "
+                f"{', '.join(missing)} in 'role-set write --help'"
+            )
 
 
 def check_pins(names: list, listed: dict, policies: dict) -> None:
@@ -4565,6 +4601,7 @@ def pilot_window(built: dict, result: dict) -> None:
     result["post_refusal_span"] = post_refusal_span(writer_names=writer_names)
     if any(k == "PIN_VERDICT_PROMPT" or k.startswith("PIN_VERDICT_PROMPT_") for k, v in os.environ.items() if v.strip()):
         result["verdict_prompt"] = verdict_prompt(writer_names=writer_names)
+    _check_write_setting_flags(rs, writer_names)
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
