@@ -114,17 +114,17 @@ def _plan(args: argparse.Namespace) -> int:
         lessons[name] = VERIFIER_SIDES[name]
     try:
         if args.pilot:
-            slots = plan_pilot(lessons, seed=args.seed, solve_first=solvefirst.SOLVE_FIRST)
+            slots = plan_pilot(lessons, seed=args.seed, solve_first=solvefirst.SOLVE_FIRST, side_pairing=args.side_pairing)
         elif args.pilot_twins:
-            slots = plan_pilot_twins(lessons, seed=args.seed)
+            slots = plan_pilot_twins(lessons, seed=args.seed, side_pairing=args.side_pairing)
         else:
             if args.apply:
-                slots = plan_apply_batch(lessons, seed=args.seed, buffers=args.buffers)
+                slots = plan_apply_batch(lessons, seed=args.seed, buffers=args.buffers, side_pairing=args.side_pairing)
             elif args.buffers:
-                slots = (plan_batch(lessons, seed=args.seed, buffers=True)
-                         + plan_apply_batch(lessons, seed=args.seed, buffers=True))
+                slots = (plan_batch(lessons, seed=args.seed, buffers=True, side_pairing=args.side_pairing)
+                         + plan_apply_batch(lessons, seed=args.seed, buffers=True, side_pairing=args.side_pairing))
             else:
-                slots = plan_batch(lessons, seed=args.seed)
+                slots = plan_batch(lessons, seed=args.seed, side_pairing=args.side_pairing)
         table = None
         domains_path = Path(args.domains) if args.domains else (DEFAULT_DOMAINS if args.buffers else None)
         if domains_path is not None:
@@ -143,12 +143,14 @@ def _plan(args: argparse.Namespace) -> int:
         return 2
     if args.pilot:
         # Reported, not enforced: twenty slots can't hold a forty-slot lesson's floors.
-        figures = [_pilot_figures([s for s in slots if s.lesson == PILOT_LESSON])]
+        figures = [_pilot_figures([s for s in slots if s.lesson == PILOT_LESSON], side_pairing=args.side_pairing)]
     elif args.pilot_twins:
         figures = []
     else:
-        figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name]) for name in lessons]
+        figures = [] if args.apply else [check_plan([s for s in slots if s.lesson == name], side_pairing=args.side_pairing) for name in lessons]
     out = {"role": args.role, "seed": args.seed, "figures": figures, "slots": [s.as_dict() for s in slots]}
+    if args.side_pairing != "default":
+        out["side_pairing"] = args.side_pairing
     if args.pilot or args.pilot_twins:
         out["pilot"] = True
     if table is not None:
@@ -167,9 +169,9 @@ def _plan(args: argparse.Namespace) -> int:
     return 0
 
 
-def _pilot_figures(slots: list) -> dict:
+def _pilot_figures(slots: list, *, side_pairing: str = "default") -> dict:
     try:
-        return {"lesson": PILOT_LESSON, "pilot": True, **check_plan(slots)}
+        return {"lesson": PILOT_LESSON, "pilot": True, **check_plan(slots, side_pairing=side_pairing)}
     except PlanError as e:
         return {"lesson": PILOT_LESSON, "pilot": True, "floors_not_met": str(e)}
 
@@ -216,6 +218,17 @@ def _closed_form_arg(text: str | None) -> dict | None:
     return value
 
 
+def _bool_flag_arg(text: str | bool) -> bool:
+    if isinstance(text, bool):
+        return text
+    v = str(text).strip().lower()
+    if v in ("1", "true", "yes", "on"):
+        return True
+    if v in ("0", "false", "no", "off"):
+        return False
+    raise argparse.ArgumentTypeError(f"must be true/false (or 1/0), got {text!r}")
+
+
 def _write(args: argparse.Namespace) -> int:
     cfg = WriteConfig(
         plan=Path(args.plan), pack=Path(args.pack), out=Path(args.out), endpoint=args.endpoint, model=args.model,
@@ -237,6 +250,11 @@ def _write(args: argparse.Namespace) -> int:
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
         critique_scope=args.critique_scope,
+        cannot_tell_construction=args.cannot_tell_construction,
+        domain_scope=args.domain_scope,
+        side_pairing=args.side_pairing,
+        post_refusal_span=args.post_refusal_span,
+        verdict_prompt=args.verdict_prompt,
     )
     try:
         result = run_write(cfg)
@@ -382,6 +400,8 @@ def build_parser() -> argparse.ArgumentParser:
     a.add_argument("--exclusion-state", default=None, help="earlier batches' exclusion-state.json: the skeleton floor counts them (BUILD-SPEC B4)")
     a.add_argument("--domains", default=None, help="the NAICS 2022 domain table (roles/domains/naics-2022.json): a domain per "
                                                     "slot with material and a frame per framing, by seed (BUILD-SPEC B2); a real write refuses a plan without them")
+    a.add_argument("--side-pairing", choices=("default", "verdict_safe"), default="default",
+                   help="side pairing for verdict-bearing slots: default or verdict_safe (item 20)")
     a.set_defaults(func=_plan)
 
     c = sub.add_parser("cost", help="pod hours and dollars for a plan; no model call")
@@ -500,6 +520,16 @@ def build_parser() -> argparse.ArgumentParser:
                         "defaults. Every receipt records the settings used")
     w.add_argument("--critique-scope", choices=("all", "verdict"), default="all",
                    help="all checks every slot; verdict skips A, B and written E in _critic_pass (design §11 F2)")
+    w.add_argument("--cannot-tell-construction", choices=("default", "coarse_vs_sharp"), default="default",
+                   help="writer-brief setting for cannot_tell construction: default or coarse_vs_sharp (item 22)")
+    w.add_argument("--domain-scope", choices=("default", "framing_only"), default="default",
+                   help="writer-brief setting for C/D domain scope: default or framing_only (item 23)")
+    w.add_argument("--side-pairing", choices=("default", "verdict_safe"), default=None,
+                   help="override the plan's side pairing for verdict-bearing slots: default or verdict_safe (item 20)")
+    w.add_argument("--post-refusal-span", nargs="?", const=True, default=False, type=_bool_flag_arg,
+                   help="ask the critic for the verbatim statement span and reason after a confirmed VERDICT_MISMATCH (item 24)")
+    w.add_argument("--verdict-prompt", choices=("old", "defined", "exclusive"), default="old",
+                   help="critic verdict-check prompt wording ('old', 'defined' or 'exclusive'; default 'old') (item 25)")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")
@@ -553,8 +583,8 @@ def build_parser() -> argparse.ArgumentParser:
     ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
     ce.add_argument("--flaw-prompt", choices=("old", "new", "trackb"), default="old",
                     help="critic flaw-check prompt wording ('old', 'new' or 'trackb'; default 'old')")
-    ce.add_argument("--verdict-prompt", choices=("old", "defined"), default=None,
-                    help="critic verdict-check prompt wording ('old' or 'defined'; default 'old')")
+    ce.add_argument("--verdict-prompt", choices=("old", "defined", "exclusive"), default=None,
+                    help="critic verdict-check prompt wording ('old', 'defined' or 'exclusive'; default 'old')")
     ce.add_argument("--checks", choices=("all", "verdict"), default=None,
                     help="which critic checks to run ('all' or 'verdict' only; default 'all')")
     ce.add_argument("--flaw-votes", type=int, choices=(1, 3), default=1,

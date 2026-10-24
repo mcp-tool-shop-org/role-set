@@ -20,6 +20,7 @@ from pathlib import Path
 
 from role_set import callcache, cards, domains, exclusion, proven, waves
 from role_set.assemble import trait_name
+from role_set.critic import VERDICT_PROMPT_SETTINGS
 from role_set.exemplars import ExemplarError, load_exclusions, load_exemplars
 from role_set.gates import Gates, GatesUnavailable, load_gates
 from role_set.guards import (
@@ -32,8 +33,8 @@ from role_set.guards import (
 from role_set.harvest import load_pool
 from role_set.mock import MockCritic, MockWriter, answers_from_drafts, mock_excerpts, mock_gates
 from role_set.pack import PackError, verify
-from role_set.plan import Slot
-from role_set.prompts import load_pack
+from role_set.plan import SIDE_PAIRING_SETTINGS, Slot, _align_verdict_sides
+from role_set.prompts import CANNOT_TELL_CONSTRUCTION_SETTINGS, DOMAIN_SCOPE_SETTINGS, load_pack
 from role_set.runner import RunHalted, Runner, interleave
 from role_set.stuckrule import StuckRuleError
 from role_set.stuckrule import load as load_stuck
@@ -95,6 +96,11 @@ class WriteConfig:
     call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
     reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
     critique_scope: str = "all"  # "all" or "verdict" (design §11 F2: skip A, B and written E when "verdict")
+    cannot_tell_construction: str = "default"  # "default" or "coarse_vs_sharp" (item 22)
+    domain_scope: str = "default"  # "default" or "framing_only" (item 23)
+    side_pairing: str | None = None  # None (use plan's), "default" or "verdict_safe" (item 20)
+    post_refusal_span: bool = False  # post-refusal span call on confirmed VERDICT_MISMATCH (item 24)
+    verdict_prompt: str = "old"  # "old", "defined" or "exclusive" (item 25)
 
 
 def _pool(cfg: WriteConfig, slots: list[Slot], pins: dict) -> dict[str, list] | None:
@@ -242,6 +248,25 @@ def build(cfg: WriteConfig, *, now=time.time):
     header, drafts_in = None, []
     if cfg.critique_scope not in ("all", "verdict"):
         raise WriteRefused(f"REFUSED: --critique-scope must be all or verdict, got {cfg.critique_scope!r}")
+    if cfg.cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
+        raise WriteRefused(
+            f"REFUSED: --cannot-tell-construction must be one of {CANNOT_TELL_CONSTRUCTION_SETTINGS}, "
+            f"got {cfg.cannot_tell_construction!r}"
+        )
+    if cfg.cannot_tell_construction != "default":
+        pins["cannot_tell_construction"] = cfg.cannot_tell_construction
+    if cfg.domain_scope not in DOMAIN_SCOPE_SETTINGS:
+        raise WriteRefused(
+            f"REFUSED: --domain-scope must be one of {DOMAIN_SCOPE_SETTINGS}, got {cfg.domain_scope!r}"
+        )
+    if cfg.domain_scope != "default":
+        pins["domain_scope"] = cfg.domain_scope
+    if cfg.verdict_prompt not in VERDICT_PROMPT_SETTINGS:
+        raise WriteRefused(
+            f"REFUSED: --verdict-prompt must be one of {VERDICT_PROMPT_SETTINGS}, got {cfg.verdict_prompt!r}"
+        )
+    if cfg.verdict_prompt != "old":
+        pins["verdict_prompt"] = cfg.verdict_prompt
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
@@ -254,6 +279,48 @@ def build(cfg: WriteConfig, *, now=time.time):
         pins["drafts_sha256"] = waves.file_sha256(cfg.drafts)
     elif cfg.drafts is not None:
         raise WriteRefused("REFUSED: --drafts is for a critique or rewrite wave")
+    effective_side_pairing = cfg.side_pairing
+    if effective_side_pairing is not None:
+        if effective_side_pairing not in SIDE_PAIRING_SETTINGS:
+            raise WriteRefused(
+                f"REFUSED: --side-pairing must be one of {SIDE_PAIRING_SETTINGS}, got {effective_side_pairing!r}"
+            )
+        from role_set.cli import VERIFIER_SIDES
+        from role_set.plan import APPLY_PER_KIND, KINDS, PER_KIND, PlanError, check_plan, check_side_pairing
+
+        is_pilot_plan = bool(json.loads(cfg.plan.read_text(encoding="utf-8")).get("pilot"))
+        for lesson_id in sorted({s.lesson for s in slots}):
+            lesson_slots = [s for s in slots if s.lesson == lesson_id]
+            lesson_sides = VERIFIER_SIDES.get(lesson_id) or sides.get(lesson_id)
+            if lesson_sides is not None:
+                primary_side = lesson_sides[0] if isinstance(lesson_sides, (tuple, list)) else str(lesson_sides)
+                _align_verdict_sides(lesson_slots, primary_side, side_pairing=effective_side_pairing)
+            try:
+                check_side_pairing(lesson_slots, side_pairing=effective_side_pairing)
+                if effective_side_pairing == "verdict_safe" and not is_pilot_plan:
+                    train_base = [s for s in lesson_slots if s.split != "apply" and not s.buffer]
+                    apply_base = [s for s in lesson_slots if s.split == "apply" and not s.buffer]
+                    full_train = len(train_base) == len(KINDS) * PER_KIND and all(
+                        sum(1 for s in train_base if s.kind == k) == PER_KIND for k in KINDS
+                    )
+                    full_apply = len(apply_base) == 2 * APPLY_PER_KIND and all(
+                        sum(1 for s in apply_base if s.kind == k) == APPLY_PER_KIND for k in ("C", "D")
+                    )
+                    if (train_base and full_train and (not apply_base or full_apply)) or (not train_base and full_apply):
+                        check_plan(lesson_slots, side_pairing=effective_side_pairing)
+            except PlanError as e:
+                raise WriteRefused(f"REFUSED: {e}") from e
+    active_side_pairing = effective_side_pairing or next((s.side_pairing for s in slots if s.side_pairing != "default"), "default")
+    if active_side_pairing != "default":
+        from role_set.plan import PlanError, check_side_pairing
+
+        try:
+            check_side_pairing(slots, side_pairing=active_side_pairing)
+        except PlanError as e:
+            raise WriteRefused(f"REFUSED: {e}") from e
+        pins["side_pairing"] = active_side_pairing
+    if cfg.post_refusal_span:
+        pins["post_refusal_span"] = True
     pins.setdefault("drafts_sha256", None)
     pins["wave"] = cfg.wave
     try:
@@ -391,8 +458,30 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     excerpts = _pool(cfg, slots, pins)
     out = output_dir(cfg.out, pins, mock=cfg.mock)
     # Every finished call is journaled as it returns; a resume replays an earlier journal (R&D, 2026-10-17).
-    journal = callcache.CallJournal(cfg.call_journal or out / callcache.JOURNAL_FILE,
-                                    callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
+    try:
+        reused = (
+            callcache.load(
+                cfg.reuse_calls,
+                expected_verdict_prompt=cfg.verdict_prompt,
+                expected_cannot_tell_construction=cfg.cannot_tell_construction,
+                expected_domain_scope=cfg.domain_scope,
+                expected_side_pairing=pins.get("side_pairing", "default"),
+                expected_post_refusal_span=cfg.post_refusal_span,
+            )
+            if cfg.reuse_calls
+            else None
+        )
+        journal = callcache.CallJournal(
+            cfg.call_journal or out / callcache.JOURNAL_FILE,
+            reused,
+            verdict_prompt=cfg.verdict_prompt if cfg.verdict_prompt != "old" else None,
+            cannot_tell_construction=cfg.cannot_tell_construction,
+            domain_scope=cfg.domain_scope,
+            side_pairing=pins.get("side_pairing", "default"),
+            post_refusal_span=cfg.post_refusal_span,
+        )
+    except GuardError as e:
+        raise WriteRefused(str(e)) from e
     writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
@@ -421,7 +510,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
-                    critique_scope=cfg.critique_scope)
+                    critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction,
+                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span, verdict_prompt=cfg.verdict_prompt)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -479,7 +569,8 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
                     excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
-                    critique_scope=cfg.critique_scope)
+                    critique_scope=cfg.critique_scope, cannot_tell_construction=cfg.cannot_tell_construction,
+                    domain_scope=cfg.domain_scope, post_refusal_span=cfg.post_refusal_span, verdict_prompt=cfg.verdict_prompt)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)

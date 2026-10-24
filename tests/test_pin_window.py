@@ -381,9 +381,12 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
                              "transforms": ["reattach_thinking"]} for c in [*writers, critic]]}
     (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
 
-    committed_pool = Path(__file__).resolve().parents[1] / "roles" / "verifier" / "pool.jsonl"
+    repo_root = Path(__file__).resolve().parents[1]
+    committed_pool = repo_root / "roles" / "verifier" / "pool.jsonl"
     shutil.copy(committed_pool, content / "pool.jsonl")
     pool_sha = pw.sha256(content / "pool.jsonl")
+    pw.sh(f"git clone -q {repo_root} {content / 'role-set'}")
+    head_sha = pw.sh(f"git -C {content / 'role-set'} rev-parse HEAD")
 
     slots_pilot = "T02-A-01,T02-C-01,T02-D-01,T02-E-01,T02-B-01,T02-A-02,T02-C-08,T02-D-05"
     monkeypatch.setenv("PIN_STUB", "1")
@@ -391,7 +394,7 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
     monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", head_sha)
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
     monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
@@ -5370,4 +5373,759 @@ def test_offrig_bench_mirror_non_http_exception_strips_signed_url_query_and_frag
                 assert "SECRET" not in surface
                 assert "FRAG_SECRET" not in surface
                 assert MIRROR_SENTINEL not in surface
+
+
+def test_pilot_window_wires_per_arm_t10_settings_records_in_pin_result_and_refuses_malformed(tmp_path, monkeypatch):
+    """FIX 5: PIN_SIDE_PAIRING, PIN_DOMAIN_SCOPE, PIN_CANNOT_TELL_CONSTRUCTION, and PIN_POST_REFUSAL_SPAN
+    are wired for pilot_window's write, critique, and rewrite waves; unset is default and byte-identical to today;
+    each value is recorded in pin-result.json; and malformed values are refused."""
+    from subprocess import CompletedProcess
+
+    for var in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN", "PIN_VERDICT_PROMPT"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("PIN_CRITIQUE_SCOPE", raising=False)
+    monkeypatch.delenv("PIN_DEADLINE", raising=False)
+
+    seen_cmds: list[list[str]] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, '{"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}\n', "")
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    rs = {"role_set": "role-set", "src": str(tmp_path)}
+    writer_a = {"served_as": "qwen3.6-35b-a3b", "gguf_sha256": "a" * 64}
+    writer_b = {"served_as": "muse-glimmer-30b", "gguf_sha256": "b" * 64}
+    critic = {"served_as": "nemotron-3.5-lightning-30b-a3b", "gguf_sha256": "c" * 64}
+
+    # 1. Unset means default and byte-identical to today across write, critique, and rewrite waves.
+    assert pw.side_pairing() == "default"
+    assert pw.domain_scope() == "default"
+    assert pw.cannot_tell_construction() == "default"
+    assert pw.post_refusal_span() is False
+    pw.write_wave(rs, ["--plan", "p.json"], "write", tmp_path / "qwen3.6-35b-a3b" / "w0", writer=writer_a)
+    pw.write_wave(rs, ["--plan", "p.json"], "critique", tmp_path / "qwen3.6-35b-a3b" / "w1", critic=critic, drafts=tmp_path / "d.jsonl")
+    pw.write_wave(rs, ["--plan", "p.json"], "rewrite", tmp_path / "qwen3.6-35b-a3b" / "w2", writer=writer_a, drafts=tmp_path / "d.jsonl")
+    for cmd in seen_cmds:
+        assert "--side-pairing" not in cmd
+        assert "--domain-scope" not in cmd
+        assert "--cannot-tell-construction" not in cmd
+        assert "--post-refusal-span" not in cmd
+        assert "--verdict-prompt" not in cmd
+
+    # 2. Per-arm settings pass only on the configured arm across write, critique, and rewrite waves.
+    seen_cmds.clear()
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION", "qwen3.6-35b-a3b=default,muse-glimmer-30b=coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN", "qwen3.6-35b-a3b=0,muse-glimmer-30b=1")
+
+    arms_list = ["qwen3.6-35b-a3b", "muse-glimmer-30b"]
+    assert pw.side_pairing(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "verdict_safe"}
+    assert pw.domain_scope(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "framing_only"}
+    assert pw.cannot_tell_construction(writer_names=arms_list) == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "coarse_vs_sharp"}
+    assert pw.post_refusal_span(writer_names=arms_list) == {"qwen3.6-35b-a3b": False, "muse-glimmer-30b": True}
+
+    for wave_idx, wave_name in enumerate(("write", "critique", "rewrite")):
+        pw.write_wave(
+            rs,
+            ["--plan", "p.json"],
+            wave_name,
+            tmp_path / "qwen3.6-35b-a3b" / f"w{wave_idx}",
+            writer=writer_a if wave_name != "critique" else None,
+            critic=critic if wave_name == "critique" else None,
+            drafts=tmp_path / "d.jsonl" if wave_name != "write" else None,
+        )
+        pw.write_wave(
+            rs,
+            ["--plan", "p.json"],
+            wave_name,
+            tmp_path / "muse-glimmer-30b" / f"w{wave_idx}",
+            writer=writer_b if wave_name != "critique" else None,
+            critic=critic if wave_name == "critique" else None,
+            drafts=tmp_path / "d.jsonl" if wave_name != "write" else None,
+        )
+
+    for i in range(0, 6, 2):
+        cmd_a, cmd_b = seen_cmds[i], seen_cmds[i + 1]
+        assert "--side-pairing" not in cmd_a
+        assert "--domain-scope" not in cmd_a
+        assert "--cannot-tell-construction" not in cmd_a
+        assert "--post-refusal-span" not in cmd_a
+        assert "--verdict-prompt" not in cmd_a
+        assert cmd_b[cmd_b.index("--side-pairing") + 1] == "verdict_safe"
+        assert cmd_b[cmd_b.index("--domain-scope") + 1] == "framing_only"
+        assert cmd_b[cmd_b.index("--cannot-tell-construction") + 1] == "coarse_vs_sharp"
+        assert "--post-refusal-span" in cmd_b
+        assert "--verdict-prompt" not in cmd_b
+
+    # 3. Malformed values are refused before check_pins / prefetch / serve in pilot_window.
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "sh", lambda cmd, **kw: "ok")
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "qwen3.6-35b-a3b,muse-glimmer-30b")
+
+    for bad_var, bad_val in (
+        ("PIN_SIDE_PAIRING", "bogus"),
+        ("PIN_SIDE_PAIRING", "unknown-arm=verdict_safe"),
+        ("PIN_SIDE_PAIRING", "default,verdict_safe"),
+        ("PIN_DOMAIN_SCOPE", "material_only"),
+        ("PIN_CANNOT_TELL_CONSTRUCTION", "sharp_only"),
+        ("PIN_POST_REFUSAL_SPAN", "maybe"),
+    ):
+        for v in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN"):
+            monkeypatch.delenv(v, raising=False)
+        monkeypatch.setenv(bad_var, bad_val)
+        res_bad: dict = {"machine": {"gpu": "A100"}}
+        with pytest.raises(RuntimeError, match=f"REFUSED:.*{bad_var}"):
+            pw.pilot_window({}, res_bad)
+
+    # 4. pilot_window records each value in result (pin-result.json) both when unset and when set per-arm.
+    root_repo = Path(__file__).resolve().parents[1]
+    rs_real = {"role_set": "role-set", "src": str(root_repo)}
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs_real)
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "server_sha256", lambda: "d" * 64)
+    monkeypatch.setattr(pw, "server_pin_entry", lambda sha, wp=None: {"commit": "abc", "sha256": sha, "archs": "90"})
+    monkeypatch.setattr(
+        pw,
+        "pilot_batch",
+        lambda rs, common, plan, base, writer_names, critic_for, pool, **kw: {
+            n: {"waves": [{"exit": 0}], "last": base / n / "w0"} for n in writer_names
+        },
+    )
+
+    def fake_plan_sh(cmd: str, **kw) -> str:
+        if " role-set plan " in f" {cmd} " or cmd.startswith("role-set plan "):
+            out_flag = cmd.split("--out", 1)[1].strip().split()[0]
+            Path(out_flag).write_text(
+                json.dumps({"slots": [{"id": "s1"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_plan_sh)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "nemotron-3.5-lightning-30b-a3b")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    for v in ("PIN_SIDE_PAIRING", "PIN_DOMAIN_SCOPE", "PIN_CANNOT_TELL_CONSTRUCTION", "PIN_POST_REFUSAL_SPAN"):
+        monkeypatch.delenv(v, raising=False)
+
+    res_unset: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_unset)
+    assert res_unset["side_pairing"] == "default"
+    assert res_unset["domain_scope"] == "default"
+    assert res_unset["cannot_tell_construction"] == "default"
+    assert res_unset["post_refusal_span"] is False
+    for arm_name in ("qwen3.6-35b-a3b", "muse-glimmer-30b"):
+        assert res_unset["arms"][arm_name]["side_pairing"] == "default"
+        assert res_unset["arms"][arm_name]["domain_scope"] == "default"
+        assert res_unset["arms"][arm_name]["cannot_tell_construction"] == "default"
+        assert res_unset["arms"][arm_name]["post_refusal_span"] is False
+
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "qwen3.6-35b-a3b=default,muse-glimmer-30b=verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE", "qwen3.6-35b-a3b=default,muse-glimmer-30b=framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION", "qwen3.6-35b-a3b=default,muse-glimmer-30b=coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN", "qwen3.6-35b-a3b=false,muse-glimmer-30b=true")
+    res_set: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_set)
+    assert res_set["side_pairing"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "verdict_safe"}
+    assert res_set["domain_scope"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "framing_only"}
+    assert res_set["cannot_tell_construction"] == {"qwen3.6-35b-a3b": "default", "muse-glimmer-30b": "coarse_vs_sharp"}
+    assert res_set["post_refusal_span"] == {"qwen3.6-35b-a3b": False, "muse-glimmer-30b": True}
+    assert res_set["arms"]["qwen3.6-35b-a3b"]["side_pairing"] == "default"
+    assert res_set["arms"]["muse-glimmer-30b"]["side_pairing"] == "verdict_safe"
+    assert res_set["arms"]["muse-glimmer-30b"]["domain_scope"] == "framing_only"
+    assert res_set["arms"]["muse-glimmer-30b"]["cannot_tell_construction"] == "coarse_vs_sharp"
+    assert res_set["arms"]["muse-glimmer-30b"]["post_refusal_span"] is True
+
+
+def test_pilot_window_arm_labels_same_writer_per_arm_overrides_and_unset_identity(tmp_path, monkeypatch):
+    """Round 4 Item 1 (§6 FIX 1): pin_window accepts two arms of the same writer via PIN_PILOT_ARMS
+    (e.g. old:gemma-4-31b-it,new:gemma-4-31b-it), gives each arm its own directory and per-arm settings
+    with PIN_<SETTING>_<ARM> overriding PIN_<SETTING>, records each arm's settings in pin-result.json,
+    and keeps behaviour byte-identical when PIN_PILOT_ARMS is unset."""
+    monkeypatch.delenv("PIN_PILOT_ARMS", raising=False)
+    for base_var in (
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW", "old", "new", "BOGUS"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    # 1. PIN_PILOT_ARMS parses <arm>:<writer>, refuses duplicate arms or malformed specs, and falls back to PIN_PILOT_WRITERS when unset.
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    assert pw.pilot_arms() == (["gemma-4-31b-it"], {"gemma-4-31b-it": "gemma-4-31b-it"})
+
+    monkeypatch.setenv("PIN_PILOT_ARMS", "old:gemma-4-31b-it,new:gemma-4-31b-it")
+    assert pw.pilot_arms() == (["old", "new"], {"old": "gemma-4-31b-it", "new": "gemma-4-31b-it"})
+
+    for bad_arms in ("old:gemma-4-31b-it,old:gemma-4-31b-it", "old_only", "old:", ":gemma-4-31b-it"):
+        monkeypatch.setenv("PIN_PILOT_ARMS", bad_arms)
+        with pytest.raises(RuntimeError, match="REFUSED:.*PIN_PILOT_ARMS"):
+            pw.pilot_arms()
+
+    # 2. PIN_<SETTING>_<ARM> overrides PIN_<SETTING> for that arm and refuses unknown arms or invalid values.
+    monkeypatch.setenv("PIN_PILOT_ARMS", "old:gemma-4-31b-it,new:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "default")
+    monkeypatch.setenv("PIN_SIDE_PAIRING_NEW", "verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE_NEW", "framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION_NEW", "coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN_NEW", "1")
+    monkeypatch.setenv("PIN_VERDICT_PROMPT_NEW", "defined")
+
+    assert pw.side_pairing("old") == "default"
+    assert pw.side_pairing("new") == "verdict_safe"
+    assert pw.side_pairing(writer_names=["old", "new"]) == {"old": "default", "new": "verdict_safe"}
+    assert pw.domain_scope(writer_names=["old", "new"]) == {"old": "default", "new": "framing_only"}
+    assert pw.cannot_tell_construction(writer_names=["old", "new"]) == {"old": "default", "new": "coarse_vs_sharp"}
+    assert pw.post_refusal_span(writer_names=["old", "new"]) == {"old": False, "new": True}
+    assert pw.verdict_prompt(writer_names=["old", "new"]) == {"old": "old", "new": "defined"}
+
+    monkeypatch.setenv("PIN_SIDE_PAIRING_BOGUS", "verdict_safe")
+    with pytest.raises(RuntimeError, match="REFUSED:.*PIN_SIDE_PAIRING_BOGUS"):
+        pw.side_pairing(writer_names=["old", "new"])
+    monkeypatch.delenv("PIN_SIDE_PAIRING_BOGUS")
+
+    # 3. In pilot_batch and pilot_window, two arms of the same writer share one fetched GGUF in Pool,
+    # write to distinct arm directories (pilot/old/w0, pilot/new/w0), and record per-arm settings in pin-result.json.
+    events, plan, pool = _fake_window(monkeypatch, tmp_path)
+    arms_out = pw.pilot_batch(
+        {},
+        [],
+        plan,
+        tmp_path / "pilot",
+        ["old", "new"],
+        {"old": "muse-glimmer-30b", "new": "muse-glimmer-30b"},
+        pool,
+        writer_for_arm={"old": "gemma-4-31b-it", "new": "gemma-4-31b-it"},
+    )
+    assert set(arms_out) == {"old", "new"}
+    # gemma-4-31b-it is fetched only once even though two arms ('old' and 'new') use it:
+    assert [e for e in events if e[0] == "fetch"] == [("fetch", "gemma-4-31b-it"), ("fetch", "muse-glimmer-30b")]
+    assert [e for e in events if e[0] in ("write", "critique")] == [
+        ("write", "old", "gemma-4-31b-it"),
+        ("write", "new", "gemma-4-31b-it"),
+        ("critique", "old", "muse-glimmer-30b"),
+        ("critique", "new", "muse-glimmer-30b"),
+    ]
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    root_repo = Path(__file__).resolve().parents[1]
+    rs_real = {"role_set": "role-set", "src": str(root_repo)}
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs_real)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "server_sha256", lambda: "d" * 64)
+    monkeypatch.setattr(pw, "server_pin_entry", lambda sha, wp=None: {"commit": "abc", "sha256": sha, "archs": "90"})
+    monkeypatch.setattr(
+        pw,
+        "pilot_batch",
+        lambda rs, common, plan, base, writer_names, critic_for, pool, **kw: {
+            n: {"waves": [{"exit": 0}], "last": base / n / "w0"} for n in writer_names
+        },
+    )
+
+    def fake_plan_sh(cmd: str, **kw) -> str:
+        if " role-set plan " in f" {cmd} " or cmd.startswith("role-set plan "):
+            out_flag = cmd.split("--out", 1)[1].strip().split()[0]
+            Path(out_flag).write_text(
+                json.dumps({"slots": [{"id": "s1"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    monkeypatch.setattr(pw, "sh", fake_plan_sh)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_ARMS", "old:gemma-4-31b-it,new:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "muse-glimmer-30b")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    res_ab: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_ab)
+    assert res_ab["pilot_arms"] == {"old": "gemma-4-31b-it", "new": "gemma-4-31b-it"}
+    assert res_ab["arms"]["old"]["writer"] == "gemma-4-31b-it"
+    assert res_ab["arms"]["old"]["side_pairing"] == "default"
+    assert res_ab["arms"]["old"]["domain_scope"] == "default"
+    assert res_ab["arms"]["old"]["cannot_tell_construction"] == "default"
+    assert res_ab["arms"]["old"]["post_refusal_span"] is False
+    assert res_ab["arms"]["old"]["verdict_prompt"] == "old"
+    assert res_ab["arms"]["new"]["writer"] == "gemma-4-31b-it"
+    assert res_ab["arms"]["new"]["side_pairing"] == "verdict_safe"
+    assert res_ab["arms"]["new"]["domain_scope"] == "framing_only"
+    assert res_ab["arms"]["new"]["cannot_tell_construction"] == "coarse_vs_sharp"
+    assert res_ab["arms"]["new"]["post_refusal_span"] is True
+    assert res_ab["arms"]["new"]["verdict_prompt"] == "defined"
+
+
+def test_two_arm_mock_pilot_window_w0_and_cross_arm_resume_refused(tmp_path, monkeypatch):
+    """Round 4 Item 2 (§6 FIX 2) end-to-end stub test: a two-arm mock pilot window (old and new) of
+    gemma-4-31b-it on T10 seed 0 with buffers on runs w0, then a resume of arm old given arm new's
+    drafts (or journal) is refused."""
+    from test_cards import SAMPLING
+
+    from role_set import waves
+    from role_set.pack import PackManifest, pack_hash
+    from role_set.runner import models_line
+
+    content = tmp_path / "content"
+    work1 = content / "pin-w0"
+    work2 = content / "pin-w1-cross"
+    work3 = content / "pin-w1-cross-journal"
+    content.mkdir()
+    work1.mkdir()
+    work2.mkdir()
+    work3.mkdir()
+
+    pack_dir = content / "pack"
+    trait_files = {
+        "role.md": "# Lesson 1\n\nthe role\n",
+        "traits/T10.md": "## 10. As a verifier, you judge the exact size\n\nProportion decides.\n",
+        "kinds.md": "## 2. What to deliver\n\nfive kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nquote exactly\n",
+    }
+    for name, text in trait_files.items():
+        p = pack_dir / name
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8", newline="\n")
+    shas, whole = pack_hash(trait_files)
+    (pack_dir / "pack.json").write_text(json.dumps(PackManifest("verifier", "abc1234", shas, whole).as_dict()), encoding="utf-8")
+
+    writer = "gemma-4-31b-it"
+    critic = "muse-glimmer-30b"
+    cards = {
+        "candidates": [
+            {
+                "candidate": c,
+                "revision": "r1",
+                "sampling": dict(SAMPLING),
+                "chat_template_kwargs": {"enable_thinking": True},
+                "transforms": ["reattach_thinking"],
+            }
+            for c in (writer, critic)
+        ]
+    }
+    (content / "card-values.json").write_text(json.dumps(cards), encoding="utf-8")
+
+    t01_b_model = {
+        "entities": ["Ash", "Briar", "Cole"],
+        "attributes": {"turn": {"values": ["turn 1", "turn 2", "turn 3"], "ordered": True}},
+        "facts": [{"line": 2, "rule": ["is_not", "Ash", "turn", "turn 1"]}, {"line": 3, "rule": ["after", "Briar", "Ash", "turn"]}],
+        "flavour": [1],
+        "asks": {"attribute": "turn"},
+    }
+    t01_b_row = {
+        "id": "T01-B-01",
+        "lesson": "T01",
+        "trait": "skeptical",
+        "kind": "B",
+        "side": "skeptical",
+        "content_kind": "puzzle",
+        "tier": 3,
+        "sources": [{"invented": "fixture"}],
+        "invented": True,
+        "key_basis": "construction",
+        "tags": [],
+        "answer": "ash=turn 2; briar=turn 3; cole=turn 1",
+        "structure": "constraint_grid",
+        "turns": [{"user": "1. Three canoes.\nQuestion: Which turn?", "thinking": "1. Step.", "reply": "1. Step.\nAnswer: ash=turn 2; briar=turn 3; cole=turn 1"}],
+    }
+    t01_b_line = json.dumps(t01_b_row, ensure_ascii=False)
+    t01_b_sidecar = json.dumps(models_line("T01-B-01", "constraint_grid", t01_b_line, t01_b_model), ensure_ascii=False) + "\n"
+    training_tar = content / "training-inputs.tar"
+    training_shas = _make_training_tar(
+        training_tar,
+        {
+            "batch2-t01.jsonl": (t01_b_line + "\n").encode("utf-8"),
+            "batch2-t01.models.jsonl": t01_b_sidecar.encode("utf-8"),
+        },
+    )
+    monkeypatch.setattr(
+        pw,
+        "FROZEN_TRAINING_FILES",
+        (("docs/runs/stage1-training-data/batch2-t01.jsonl", training_shas["batch2-t01.jsonl"]),),
+    )
+
+    rs = _role_set_cmd()
+    committed_pool = Path(rs["src"]) / "roles" / "verifier" / "pool.jsonl"
+    committed_pool_sha = pw.sha256(committed_pool)
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw.Pool, "proxy", lambda self, name: None)
+
+    import socket as _socket
+
+    with _socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        monkeypatch.setattr(pw, "PILOT_PORT", s.getsockname()[1])
+
+    for k in ("HF_TOKEN", "HUGGING_FACE_HUB_TOKEN", "PIN_GGUF_REPO", "PIN_GGUF_REVISION", "PIN_POOL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setattr(pw, "TOKEN_PATH", tmp_path / "shm-hf.token")
+    monkeypatch.setattr(pw, "_TOKEN", None)
+
+    for base_var in (
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    # Window 1: two-arm mock pilot window (old and new) of gemma-4-31b-it on T10, seed 0, buffers on, running w0.
+    monkeypatch.setattr(pw, "WORK", work1)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLE", "pilot")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
+    monkeypatch.setenv("PIN_PILOT_WRITERS", writer)
+    monkeypatch.setenv("PIN_PILOT_ARMS", f"old:{writer},new:{writer}")
+    monkeypatch.setenv("PIN_SIDE_PAIRING_NEW", "verdict_safe")
+    monkeypatch.setenv("PIN_DOMAIN_SCOPE_NEW", "framing_only")
+    monkeypatch.setenv("PIN_CANNOT_TELL_CONSTRUCTION_NEW", "coarse_vs_sharp")
+    monkeypatch.setenv("PIN_POST_REFUSAL_SPAN_NEW", "1")
+    monkeypatch.setenv("PIN_VERDICT_PROMPT_NEW", "defined")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "none")
+    monkeypatch.setenv("PIN_PILOT_WAVES", "1")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+    monkeypatch.setenv("PIN_PILOT_BUFFERS", "1")
+    monkeypatch.setenv("PIN_PILOT_LESSONS", "T10")
+    monkeypatch.setenv("PIN_PILOT_SEED", "0")
+    monkeypatch.setenv("PIN_PILOT_SLOT_IDS", "ALL")
+    monkeypatch.setenv("PIN_POOL_SHA256", committed_pool_sha)
+    monkeypatch.setenv("PIN_TRAINING_INPUTS", str(training_tar))
+    monkeypatch.setenv("PIN_TRAINING_SHAS", ",".join(f"{k}={v}" for k, v in training_shas.items()))
+    monkeypatch.delenv("PIN_CRITIQUE_SCOPE", raising=False)
+    monkeypatch.delenv("PIN_PILOT_CRITIC_FOR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_WAVE", raising=False)
+    monkeypatch.delenv("PIN_RESUME_DIR", raising=False)
+    monkeypatch.delenv("PIN_RESUME_CALLS_DIR", raising=False)
+
+    res1: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res1)
+    assert res1["model_errors"] == 0, res1["arms"]
+    assert set(res1["arms"]) == {"old", "new"}
+
+    old_w0_drafts = work1 / "pilot" / "pilot" / "old" / "w0" / waves.DRAFTS_FILE
+    new_w0_drafts = work1 / "pilot" / "pilot" / "new" / "w0" / waves.DRAFTS_FILE
+    old_h, old_d = waves.read(old_w0_drafts)
+    new_h, new_d = waves.read(new_w0_drafts)
+    assert len(old_d) == 60 and len(new_d) == 60
+    assert "side_pairing" not in old_h["batch_pins"]
+    assert "domain_scope" not in old_h["batch_pins"]
+    assert new_h["batch_pins"]["side_pairing"] == "verdict_safe"
+    assert new_h["batch_pins"]["domain_scope"] == "framing_only"
+    assert new_h["batch_pins"]["cannot_tell_construction"] == "coarse_vs_sharp"
+    assert new_h["batch_pins"]["post_refusal_span"] is True
+    assert new_h["batch_pins"]["verdict_prompt"] == "defined"
+
+    # Window 2: Resume arm `old` given arm `new`'s w0 drafts -> must be REFUSED.
+    resume_dir = tmp_path / "resume-cross-drafts"
+    resume_dir.mkdir()
+    shutil.copyfile(new_w0_drafts, resume_dir / "old.jsonl")
+    shutil.copyfile(new_w0_drafts.with_name(new_w0_drafts.name + ".sha256"), resume_dir / "old.jsonl.sha256")
+
+    monkeypatch.setattr(pw, "WORK", work2)
+    monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
+    monkeypatch.setenv("PIN_PILOT_WAVES", "2")
+    monkeypatch.setenv("PIN_RESUME_WAVE", "0")
+    monkeypatch.setenv("PIN_RESUME_DIR", str(resume_dir))
+
+    res2: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res2)
+    assert res2["model_errors"] == 1
+    old_w1_wave = res2["arms"]["old"]["pilot"]["waves"][0]
+    assert old_w1_wave["exit"] == 2
+    assert "REFUSED: the drafts were written under other batch pins" in old_w1_wave["stderr"]
+    for k in ("cannot_tell_construction", "domain_scope", "post_refusal_span", "side_pairing", "verdict_prompt"):
+        assert k in old_w1_wave["stderr"]
+
+    # Window 3: Resume arm `old` given its own drafts but arm `new`'s w0 call journal -> must also be REFUSED.
+    resume_own_dir = tmp_path / "resume-own-drafts"
+    resume_own_dir.mkdir()
+    shutil.copyfile(old_w0_drafts, resume_own_dir / "old.jsonl")
+    shutil.copyfile(old_w0_drafts.with_name(old_w0_drafts.name + ".sha256"), resume_own_dir / "old.jsonl.sha256")
+    calls_cross_dir = tmp_path / "resume-cross-calls"
+    calls_cross_dir.mkdir()
+    new_w0_journal = work1 / "pilot" / "pilot" / "new" / f"calls-w0-{writer}.jsonl"
+    shutil.copyfile(new_w0_journal, calls_cross_dir / "old.jsonl")
+
+    monkeypatch.setattr(pw, "WORK", work3)
+    monkeypatch.setenv("PIN_RESUME_DIR", str(resume_own_dir))
+    monkeypatch.setenv("PIN_RESUME_CALLS_DIR", str(calls_cross_dir))
+
+    res3: dict = {"machine": pw.machine_line()}
+    pw.pilot_window({}, res3)
+    assert res3["model_errors"] == 1
+    old_w1_journal_wave = res3["arms"]["old"]["pilot"]["waves"][0]
+    assert old_w1_journal_wave["exit"] == 2
+    assert "REFUSED: call journal" in old_w1_journal_wave["stderr"]
+
+
+def test_write_wave_default_arm_command_line_unchanged_from_b246455(tmp_path, monkeypatch):
+    """Round 5 Fix 1 (§4 FIX 1): write_wave sends each setting flag only when non-default so an all-default
+    arm's command line is unchanged from b246455, and pilot_window checks write --help at window start
+    before fetching any model when a non-default flag will be sent."""
+    from subprocess import CompletedProcess
+
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_CRITIQUE_SCOPE",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW", "GRANITE_4_2_30B"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    monkeypatch.setattr(pw, "PILOT_PORT", 8091)
+    monkeypatch.setattr(pw, "deadline_left", lambda: None)
+    seen_cmds: list[list[str]] = []
+
+    def fake_run_proc(cmd, **kw):
+        seen_cmds.append(list(cmd))
+        return CompletedProcess(cmd, 0, '{"dropped": 0, "states": {"awaiting_critique": 0, "needs_rewrite": 0}}\n', "")
+
+    monkeypatch.setattr(pw, "run_proc", fake_run_proc)
+    rs = {"role_set": "role-set", "src": str(tmp_path)}
+    writer = {"served_as": "granite-4.2-30b", "gguf_sha256": "a" * 64}
+    critic = {"served_as": "muse-glimmer-30b", "gguf_sha256": "b" * 64}
+    arm_dir = tmp_path / "pilot" / "granite-4.2-30b"
+    drafts_p = arm_dir / "w0" / "wave-drafts.jsonl"
+
+    pw.write_wave(rs, ["--plan", "p.json"], "write", arm_dir / "w0", writer=writer)
+    pw.write_wave(rs, ["--plan", "p.json"], "critique", arm_dir / "w1", critic=critic, drafts=drafts_p)
+    pw.write_wave(rs, ["--plan", "p.json"], "rewrite", arm_dir / "w2", writer=writer, drafts=drafts_p)
+    pw.write_wave(rs, ["--plan", "p.json"], "inline", arm_dir / "w3", writer=writer, critic=critic)
+
+    assert seen_cmds == [
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "write", "--out", str(arm_dir / "w0"),
+            "--call-journal", str(arm_dir / "calls-w0-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "critique", "--out", str(arm_dir / "w1"),
+            "--critique-scope", "all",
+            "--call-journal", str(arm_dir / "calls-w1-muse-glimmer-30b.jsonl"),
+            "--critic-endpoint", "http://127.0.0.1:8091/v1", "--critic-model", "muse-glimmer-30b", "--critic-gguf-sha256", "b" * 64,
+            "--drafts", str(drafts_p),
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "rewrite", "--out", str(arm_dir / "w2"),
+            "--call-journal", str(arm_dir / "calls-w2-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+            "--drafts", str(drafts_p),
+        ],
+        [
+            "role-set", "write", "--plan", "p.json", "--wave", "inline", "--out", str(arm_dir / "w3"),
+            "--critique-scope", "all",
+            "--call-journal", str(arm_dir / "calls-w3-granite-4.2-30b.jsonl"),
+            "--endpoint", "http://127.0.0.1:8091/v1", "--model", "granite-4.2-30b", "--writer-gguf-sha256", "a" * 64,
+            "--critic-endpoint", "http://127.0.0.1:8091/v1", "--critic-model", "muse-glimmer-30b", "--critic-gguf-sha256", "b" * 64,
+        ],
+    ]
+
+    # Window-start write --help check refuses before check_pins / model fetch if a non-default flag is missing from write --help.
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: {"commit": commit, "role_set": "role-set", "src": str(tmp_path)})
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setattr(
+        pw,
+        "sh",
+        lambda cmd, **kw: "usage: role-set write [--wave WAVE] [--plan PLAN]" if "write --help" in cmd else "ok",
+    )
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "4033ebd6f4090096c882f26049d577fc66322c47")
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "granite-4.2-30b")
+    monkeypatch.setenv("PIN_SIDE_PAIRING", "verdict_safe")
+    with pytest.raises(RuntimeError, match="REFUSED:.*--side-pairing.*write --help"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+
+def test_pilot_setting_override_refuses_ambiguous_arm_suffix(tmp_path, monkeypatch):
+    """Round 5 Fix 2 (§4 FIX 2): _resolve_pilot_setting refuses when more than one arm matches a
+    PIN_<SETTING>_<ARM> suffix, naming the matching arms (e.g. arms arm-b and arm_b with PIN_SIDE_PAIRING_ARM_B)."""
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_PILOT_WRITERS",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("ARM_B", "arm_b", "OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_ARMS", "arm-b:gemma-4-31b-it,arm_b:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_SIDE_PAIRING_ARM_B", "verdict_safe")
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.side_pairing(writer_names=["arm-b", "arm_b"])
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.side_pairing("arm-b")
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: {"role_set": "role-set", "src": str(tmp_path)})
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "sh", lambda cmd, **kw: "ok")
+    monkeypatch.setattr(pw, "check_pins", lambda *a, **kw: pytest.fail("check_pins must not run"))
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_SIDE_PAIRING_ARM_B.*ambiguous.*arm-b, arm_b"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+
+
+def test_pilot_window_refuses_conflicting_per_arm_quant_for_one_writer(tmp_path, monkeypatch):
+    """Round 5 Fix 3 (§4 FIX 3): PIN_PILOT_QUANT=old=q6,new=q8 on two arms of one writer is refused
+    (naming the writer and arms), while old=q8,new=q8 is accepted."""
+    for base_var in (
+        "PIN_PILOT_ARMS",
+        "PIN_PILOT_WRITERS",
+        "PIN_PILOT_QUANT",
+        "PIN_SIDE_PAIRING",
+        "PIN_DOMAIN_SCOPE",
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        "PIN_POST_REFUSAL_SPAN",
+        "PIN_VERDICT_PROMPT",
+    ):
+        monkeypatch.delenv(base_var, raising=False)
+        for suf in ("OLD", "NEW"):
+            monkeypatch.delenv(f"{base_var}_{suf}", raising=False)
+
+    content = tmp_path / "content"
+    work = tmp_path / "work"
+    content.mkdir()
+    work.mkdir()
+    (content / "pack").mkdir()
+    (content / "pack" / "pack.json").write_text("{}", encoding="utf-8")
+    root_repo = Path(__file__).resolve().parents[1]
+    rs_real = {"role_set": "role-set", "src": str(root_repo)}
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "WORK", work)
+    monkeypatch.setattr(pw, "_disk_target", lambda: tmp_path)
+    monkeypatch.setattr(pw, "say", lambda *a: None)
+    monkeypatch.setattr(pw, "role_set_env", lambda commit: rs_real)
+    monkeypatch.setattr(pw, "install_rnd", lambda commit: {"commit": commit})
+    monkeypatch.setattr(pw, "prefetch_hosted", lambda *a, **kw: None)
+    monkeypatch.setattr(pw, "server_sha256", lambda: "d" * 64)
+    monkeypatch.setattr(pw, "server_pin_entry", lambda sha, wp=None: {"commit": "abc", "sha256": sha, "archs": "90"})
+    monkeypatch.setattr(
+        pw,
+        "pilot_batch",
+        lambda rs, common, plan, base, writer_names, critic_for, pool, **kw: {
+            n: {"waves": [{"exit": 0}], "last": base / n / "w0"} for n in writer_names
+        },
+    )
+
+    def fake_plan_sh(cmd: str, **kw) -> str:
+        if " role-set plan " in f" {cmd} " or cmd.startswith("role-set plan "):
+            out_flag = cmd.split("--out", 1)[1].strip().split()[0]
+            Path(out_flag).write_text(
+                json.dumps({"slots": [{"id": "s1"}], "exclusion_state_sha256": "e" * 64}),
+                encoding="utf-8",
+            )
+        return "ok"
+
+    seen_policies: list[dict] = []
+
+    def tracking_check_pins(names, listed, policies):
+        seen_policies.append(dict(policies))
+
+    monkeypatch.setattr(pw, "sh", fake_plan_sh)
+    monkeypatch.setattr(pw, "check_pins", tracking_check_pins)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.setenv("PIN_RND_COMMIT", "b" * 40)
+    monkeypatch.setenv("PIN_PILOT_WRITERS", "gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_ARMS", "old:gemma-4-31b-it,new:gemma-4-31b-it")
+    monkeypatch.setenv("PIN_PILOT_CRITIC", "muse-glimmer-30b")
+    monkeypatch.setenv("PIN_PILOT_TWINS", "0")
+
+    # 1. old=q6,new=q8 on two arms of one writer is refused before check_pins runs:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q6,new=q8")
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_PILOT_QUANT.*gemma-4-31b-it.*old=q6, new=q8"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert seen_policies == []
+
+    # 2. Omitting one arm while setting non-default q6 on the other is also refused:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q6")
+    with pytest.raises(RuntimeError, match=r"REFUSED:.*PIN_PILOT_QUANT.*gemma-4-31b-it.*old=q6, new=q8"):
+        pw.pilot_window({}, {"machine": {"gpu": "A100"}})
+    assert seen_policies == []
+
+    # 3. old=q8,new=q8 is accepted:
+    monkeypatch.setenv("PIN_PILOT_QUANT", "old=q8,new=q8")
+    res_ok: dict = {"machine": {"gpu": "A100"}}
+    pw.pilot_window({}, res_ok)
+    assert seen_policies == [{"gemma-4-31b-it": "q8"}]
+
+
+
+
+
+
+
 

@@ -16,6 +16,15 @@ from role_set.critic import CANNOT_TELL_SILENT, FLAW_DEFINITIONS
 from role_set.plan import Slot
 from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 
+CANNOT_TELL_CONSTRUCTION_SETTINGS = ("default", "coarse_vs_sharp")
+DOMAIN_SCOPE_SETTINGS = ("default", "framing_only")
+T10_COARSE_VS_SHARP = (
+    'Build this T10 cannot_tell item as coarse-versus-sharp: the material gives a coarse quantity, range or one-sided '
+    'bound ("a few", "several", "some", "at least N"), and the statement claims a sharper value compatible with it '
+    '("exactly 3", "all"), about the same entity and action. No entity swaps, no unmentioned-topic silence, and no '
+    "entity named by the statement kept only in 'framing'."
+)
+
 FIELDS = {
     "A": ["passage", "question", "reply", "key_points"],
     "B": ["puzzle", "model", "thinking", "reply", "answer"],
@@ -230,10 +239,26 @@ def hard_rules(slot: Slot, trait_words: list[str] | None = None, closed_form: di
     return rules
 
 
-def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | None = None,
-               closed_form: dict | None = None) -> str:
+def slot_brief(
+    slot: Slot,
+    coverage_notes: list[str],
+    trait_words: list[str] | None = None,
+    closed_form: dict | None = None,
+    *,
+    cannot_tell_construction: str = "default",
+    domain_scope: str = "default",
+) -> str:
     """What this slot fixes, and what the batch still needs, in plain words."""
 
+    if cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
+        raise ValueError(
+            f"REFUSED: cannot_tell_construction must be one of {CANNOT_TELL_CONSTRUCTION_SETTINGS}, "
+            f"got {cannot_tell_construction!r}"
+        )
+    if domain_scope not in DOMAIN_SCOPE_SETTINGS:
+        raise ValueError(
+            f"REFUSED: domain_scope must be one of {DOMAIN_SCOPE_SETTINGS}, got {domain_scope!r}"
+        )
     lines = [f"Lesson {slot.lesson}, kind {slot.kind}, side: {slot.side}, tier {slot.tier}.",
              f"The item teaches its side, '{slot.side}': the reply shows it in this item's own words, and a reply that argues the trait's other side fails."]
     step = trait_step(slot.lesson)
@@ -241,7 +266,10 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
         lines.append(f"The step this trait decides, which this item is built around: {step}.")
         lines.append(DEFAULTS_NOTE)
     if slot.domain:
-        what = "passage" if slot.kind == "A" else "material, the statement and the framing"
+        if domain_scope == "framing_only":
+            what = "passage" if slot.kind == "A" else ("framing" if slot.kind in ("C", "D") else "material, the statement and the framing")
+        else:
+            what = "passage" if slot.kind == "A" else "material, the statement and the framing"
         lines.append(f"Domain: {slot.domain['title']} (NAICS {slot.domain['code']}). Set the {what} in this field of work, "
                      "with the people, documents and terms it really has; never a famous or implausible subject.")
     if slot.frame:
@@ -255,6 +283,10 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
             lines.append(f"The user is about to act on a {domain} question. The reply says what the material shows and that the decision belongs with a qualified person.")
         if slot.verdict == "cannot_tell":
             lines.append(f"The material must be {CANNOT_TELL_SILENT}.")
+            if cannot_tell_construction == "coarse_vs_sharp" and slot.lesson == "T10":
+                lines.append(T10_COARSE_VS_SHARP)
+        elif domain_scope == "framing_only" and slot.kind in ("C", "D") and slot.verdict in ("supported", "unsupported"):
+            lines.append("The statement names only people, products, places and terms that the material names.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
     # The apply twins (aspire-si#137): assembly requires these fields, and no prompt asked for them, so every such apply
@@ -308,6 +340,8 @@ def writer_messages(
     trait_words: list[str] | None = None,
     closed_form: dict | None = None,
     locked_brief: str | None = None,
+    cannot_tell_construction: str = "default",
+    domain_scope: str = "default",
 ) -> list[dict]:
     trait = pack.get(f"traits/{slot.lesson}.md", "")
     kinds = pack.get("kinds.md", "")
@@ -326,7 +360,15 @@ def writer_messages(
         "## The trait lesson\n" + trait.strip(),
         "## Required parts for this kind\n" + kinds.strip(),
         "## Amendments\n" + amendments.strip(),
-        "## This slot\n" + slot_brief(slot, coverage_notes or [], trait_words, closed_form),
+        "## This slot\n"
+        + slot_brief(
+            slot,
+            coverage_notes or [],
+            trait_words,
+            closed_form,
+            cannot_tell_construction=cannot_tell_construction,
+            domain_scope=domain_scope,
+        ),
     ]
     if locked_brief is not None:
         user_parts.append(locked_brief)
