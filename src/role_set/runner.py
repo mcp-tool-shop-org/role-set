@@ -24,8 +24,8 @@ from pathlib import Path
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
 from role_set.callcache import retry_seed
 from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw,
-                             compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages, teaching_text,
-                             trait_messages, verdict_messages)
+                             compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages,
+                             parse_refusal_span, span_messages, teaching_text, trait_messages, verdict_messages)
 from role_set import solvefirst
 from role_set.frames import check_frame
 from role_set.solvefirst import SolveFirstError
@@ -505,6 +505,7 @@ class Runner:
         prior=None,  # role_set.exclusion.State: every row earlier batches accepted (BUILD-SPEC B4)
         critique_scope: str = "all",  # "all" or "verdict" (design §11 F2: skip A, B, and written E when "verdict")
         cannot_tell_construction: str = "default",  # "default" or "coarse_vs_sharp" (item 22)
+        post_refusal_span: bool = False,  # post-refusal span call on confirmed VERDICT_MISMATCH (item 24)
     ) -> None:
         if cannot_tell_construction not in CANNOT_TELL_CONSTRUCTION_SETTINGS:
             raise ValueError(
@@ -524,6 +525,7 @@ class Runner:
         self._used_excerpts: dict[str, set[int]] = {}
         self.critique_scope = critique_scope
         self.cannot_tell_construction = cannot_tell_construction
+        self.post_refusal_span = bool(post_refusal_span)
         self.pins = pins or {}
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
@@ -601,6 +603,8 @@ class Runner:
         record = {"slot": slot.id, "attempt": attempt, "code": refusal["code"], "detail": refusal["detail"], "draft": draft}
         if refusal.get("critic_raw") is not None:
             record["critic_raw"] = refusal["critic_raw"]
+        if refusal.get("refusal_span") is not None:
+            record["refusal_span"] = refusal["refusal_span"]
         self._append("refusals.jsonl", record)
 
     def _record_call(
@@ -620,7 +624,8 @@ class Runner:
         record = {"slot": slot.id, "lesson": slot.lesson, "kind": slot.kind, "attempt": attempt, "outcome": outcome,
                   "prompt_tokens": getattr(c, "prompt_tokens", None), "completion_tokens": getattr(c, "completion_tokens", None),
                   "seconds": round(getattr(c, "seconds", 0.0) or 0.0, 2), "glyphs_normalized": glyphs,
-                  "cannot_tell_construction": self.cannot_tell_construction, "draft": text}
+                  "cannot_tell_construction": self.cannot_tell_construction,
+                  "post_refusal_span": self.post_refusal_span, "draft": text}
         # Every critic check this draft went through, agreeing or not (gating or advisory), so the critic's behaviour
         # on a paid run can be read per draft. Absent when the draft never reached the critic.
         with self.lock:
@@ -788,6 +793,7 @@ class Runner:
             self._critic_notes[slot.id] = []
         material = row.get("material") or ""
         verdicts = []
+        mismatch_ctx: tuple[str, str, str, str] | None = None
         if slot.kind in ("C", "D") or (slot.kind == "E" and slot.e_type == "verdict"):
             statement = fields["statement"]
             # Each verdict-giving turn is checked with the material available at that turn.
@@ -818,6 +824,8 @@ class Runner:
                 self._note(slot, "verdict", v, c.text)
                 verdicts.append((v, c.text))
                 if not v.ok:
+                    if v.code == "VERDICT_MISMATCH" and mismatch_ctx is None:
+                        mismatch_ctx = (seen_material, statement, v.critic_verdict or "", key_verdict)
                     break
             twin = row.get("r10_twin")
             if isinstance(twin, dict) and twin.get("statement") and twin.get("verdict"):
@@ -836,6 +844,8 @@ class Runner:
                     self._log("critic_void", slot=slot.id, detail=tv.detail)
                 self._note(slot, "twin_verdict", tv, c.text)
                 verdicts.append((tv, c.text))
+                if not tv.ok and tv.code == "VERDICT_MISMATCH" and mismatch_ctx is None:
+                    mismatch_ctx = (material, twin["statement"], tv.critic_verdict or "", twin["verdict"])
             if slot.kind == "C":
                 c = self._critic_call(
                     flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]),
@@ -883,8 +893,33 @@ class Runner:
             if v.ok:
                 self.status.critic_agree += 1
             else:
+                detail = v.detail
+                span_info = None
+                if v.code == "VERDICT_MISMATCH" and self.post_refusal_span and mismatch_ctx is not None:
+                    m_mat, m_stmt, m_cv, m_kv = mismatch_ctx
+                    sc = self._critic_call(
+                        span_messages(m_mat, m_stmt, m_cv, m_kv),
+                        check="refusal_span",
+                        slot=slot.id,
+                        attempt=0,
+                    )
+                    self._count_tokens(sc)
+                    parsed_span = parse_refusal_span(sc.text, m_stmt)
+                    if parsed_span is not None:
+                        sp, why = parsed_span
+                        detail = f"{v.detail} (span {sp!r}: {why})"
+                        span_info = {"span": sp, "why": why, "valid": True, "raw": sc.text[:2000]}
+                    else:
+                        span_info = {"span": None, "why": None, "valid": False, "raw": sc.text[:2000]}
+                    with self.lock:
+                        self._critic_notes.setdefault(slot.id, []).append(
+                            {"check": "refusal_span", "code": "OK" if parsed_span else "FALLBACK", **span_info}
+                        )
                 # The critic's own words are kept with the refusal, so a mismatch can be adjudicated afterwards.
-                return {**self._refusal(v.code, v.detail), "critic_raw": raw}
+                ref = {**self._refusal(v.code, detail), "critic_raw": raw}
+                if span_info is not None:
+                    ref["refusal_span"] = span_info
+                return ref
         return None
 
     def open_slot(self, slot: Slot, coverage_notes: list[str] | None = None) -> SlotState | Outcome:

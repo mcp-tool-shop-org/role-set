@@ -137,6 +137,10 @@ class MockCritic:
             return _done(flaw or "none")
         if "Solve the puzzle" in system:
             return _done("Worked through the facts.\nANSWER: " + self.answers.get(("answer", text.strip()[-40:]), "gold"))
+        if "exact verbatim substring of the Statement" in system:
+            stmt_line = _after(text, "Statement: ")
+            span = stmt_line.split()[0] if stmt_line.split() else stmt_line
+            return _done(f"SPAN: {span}\nWHY: ABSENT_FROM_MATERIAL")
         statement = _after(text, "Statement: ")
         first_line = _after(text, "Material:\n")
         if (statement, first_line) in self.answers:
