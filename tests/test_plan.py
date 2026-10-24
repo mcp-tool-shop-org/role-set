@@ -470,3 +470,18 @@ def test_plan_never_pairs_non_supported_verdict_with_equivalent_wording_side(tmp
     with pytest.raises(PlanError, match="side_pairing must be one of"):
         plan_apply("T10", sides, seed=0, side_pairing="unknown")
 
+    # FIX 4: _align_verdict_sides defaults side_pairing to "default", leaving non-supported equivalent-wording slots untouched.
+    from role_set.plan import _align_verdict_sides
+
+    probe_slot = Slot(
+        id="T10-C-02",
+        lesson="T10",
+        kind="C",
+        side="an equivalent wording still matches",
+        tier=1,
+        verdict="cannot_tell",
+    )
+    _align_verdict_sides([probe_slot], sides[0])
+    assert probe_slot.side_pairing == "default"
+    assert probe_slot.side == "an equivalent wording still matches"
+

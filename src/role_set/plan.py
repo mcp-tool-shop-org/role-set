@@ -89,7 +89,7 @@ def _verdict_bearing(slots: list[Slot]) -> list[Slot]:
     return [s for s in slots if s.kind in ("C", "D") or (s.kind == "E" and s.e_type == "verdict")]
 
 
-def _align_verdict_sides(slots: list[Slot], primary_side: str, *, side_pairing: str = "verdict_safe") -> None:
+def _align_verdict_sides(slots: list[Slot], primary_side: str, *, side_pairing: str = "default") -> None:
     """Under `verdict_safe`, never pair a non-supported verdict with a side that asserts the statement matches."""
     for s in slots:
         s.side_pairing = side_pairing
