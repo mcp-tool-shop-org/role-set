@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "colab"))
@@ -34,6 +35,17 @@ def test_the_funnel_still_stops_on_a_halt_or_a_dead_wave():
 import json  # noqa: E402
 
 import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _the_vm_python_is_cp313(monkeypatch):
+    """pin_window.py runs on the VM's system Python (Colab: 3.13), so its zstandard wheel pin is the cp313 one whatever
+    interpreter runs pytest. zstandard 0.25.0 has no cp315 wheel (PyPI, read 2026-10-25), so under 3.15 the lookup by the
+    running interpreter would refuse. An explicit py_tag still goes through the real table. This assumes the VM's
+    system Python is 3.13 (measured 3.13.16 on 2026-10-25); revisit it when Colab moves."""
+
+    real = pw.zstandard_wheel_sha256
+    monkeypatch.setattr(pw, "zstandard_wheel_sha256", lambda py_tag=None: real(py_tag or "cp313"))
 
 
 class _Reclaimed(BaseException):
@@ -391,7 +403,13 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
     monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    # The commit under test, not a pinned old one: an old commit requires Python <3.13 and the window refuses it.
+    # content/role-set is a local clone at HEAD, so setup needs no network clone of role-set.
+    here = Path(__file__).resolve().parents[1]
+    head = subprocess.run(["git", "-C", str(here), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    subprocess.run(["git", "clone", "-q", str(here), str(content / "role-set")], check=True)
+    subprocess.run(["git", "-C", str(content / "role-set"), "checkout", "-q", head], check=True)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", head)
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
     monkeypatch.setenv("PIN_PILOT_CRITIC", critic)
@@ -2940,7 +2958,7 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
         s.bind(("127.0.0.1", 0))
         free_port = s.getsockname()[1]
     monkeypatch.setattr(pw, "OLLAMA_PORT", free_port)
-    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.05)
+    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.005)
 
     _offrig_bin, bin_sha, _gold, gold_sha = _write_offrig_fixtures(content)
     monkeypatch.setenv("PIN_ROLE", "offrig-bench")
@@ -2984,7 +3002,16 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
         "2026/10/23 00:00:01.000, 21450 MiB, 82 %, 58, 265.10 W\n",
         "2026/10/23 00:00:03.000, 24120 MiB, 94 %, 61, 298.40 W\n",
     ])
-    monkeypatch.setattr(pw, "_query_smi_csv", lambda: next(smi_samples, "2026/10/23 00:00:05.000, 23800 MiB, 90 %, 60, 280.00 W\n"))
+    third_sample_requested = threading.Event()  # the third reading means the second was fully recorded
+
+    def fake_smi() -> str:
+        sample = next(smi_samples, None)
+        if sample is None:
+            third_sample_requested.set()
+            return "2026/10/23 00:00:05.000, 23800 MiB, 90 %, 60, 280.00 W\n"
+        return sample
+
+    monkeypatch.setattr(pw, "_query_smi_csv", fake_smi)
 
     def tar_sh(cmd: str, **kw) -> str:
         if cmd.startswith(f"tar -C {work} -cf {work}/offrig-bench-out.tar offrig-bench"):
@@ -3005,6 +3032,9 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
             return subprocess.CompletedProcess(cmd, 0, "pulling manifest\nsuccess\n", "")
         if os.name == "nt" and str(cmd[0]).endswith("offrig"):
             cmd = [sys.executable, str(cmd[0]), *cmd[1:]]
+        if cmd[1:2] == ["verify"]:
+            # Deterministic, not timing-based: the fake offrig can return before the sampler has taken both readings.
+            assert third_sample_requested.wait(30), "the sampler never took its third reading"
         return orig_run_proc(cmd, **kw)
 
     monkeypatch.setattr(pw, "run_proc", real_mode_run_proc)

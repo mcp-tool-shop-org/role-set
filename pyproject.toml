@@ -3,7 +3,7 @@ name = "role-set"
 version = "0.2.0"
 description = "Prototype. Plans role-shaping items, writes the parts a writer should write, records the gates each item passed, and builds kind B puzzles in code that are proven before a model words them. Nothing it writes is training data until a person checks it."
 readme = "README.md"
-requires-python = ">=3.12,<3.13"
+requires-python = ">=3.13"
 license = "MIT"
 dependencies = [
     "aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si-gates@8ed78f2fee388e81443953f8dd3753c73e1ff2bd",

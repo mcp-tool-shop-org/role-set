@@ -23,7 +23,7 @@
 
 ## इंस्टॉल करें
 
-Python 3.12, uv द्वारा प्रबंधित। एक रनटाइम निर्भरता: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, aspire-si कमिट `388a6bc` पर स्थिर। गेट्स आयात किए जाते हैं, कॉपी नहीं किए जाते।
+Python 3.13+ (3.15), uv द्वारा प्रबंधित। एक रनटाइम निर्भरता: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, aspire-si कमिट `388a6bc` पर स्थिर। गेट्स आयात किए जाते हैं, कॉपी नहीं किए जाते।
 
 ```text
 uv sync --frozen

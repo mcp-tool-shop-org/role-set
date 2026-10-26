@@ -11,7 +11,7 @@ export const config: SiteConfig = {
     'MIT Licensed — built by <a href="https://github.com/mcp-tool-shop-org" style="color:var(--color-muted);text-decoration:underline">mcp-tool-shop-org</a>',
 
   hero: {
-    badge: 'Prototype · Python 3.12 · MIT',
+    badge: 'Prototype · Python 3.13+ · MIT',
     headline: 'Plan every item,',
     headlineAccent: 'then write it on the loopback.',
     description:
@@ -86,7 +86,7 @@ export const config: SiteConfig = {
       cards: [
         {
           title: 'Install',
-          code: '# Python 3.12, uv\nuv sync --frozen\nuv run pytest\n\n# line coverage floor: 90, enforced in CI.',
+          code: '# Python 3.13+ (3.15 main), uv\nuv sync --frozen\nuv run pytest\n\n# line coverage floor: 90, enforced in CI.',
         },
         {
           title: 'A mock batch',

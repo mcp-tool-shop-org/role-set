@@ -23,7 +23,7 @@ Le specifiche sono disponibili qui: [docs/role-set-design.md](docs/role-set-desi
 
 ## Installazione
 
-Python 3.12, gestito da uv. Un'unica dipendenza di runtime: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fissata alla commit aspire-si `388a6bc`. Le porte vengono importate, non copiate.
+Python 3.13+ (3.15), gestito da uv. Un'unica dipendenza di runtime: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fissata alla commit aspire-si `388a6bc`. Le porte vengono importate, non copiate.
 
 ```text
 uv sync --frozen
