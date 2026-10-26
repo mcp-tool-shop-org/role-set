@@ -5,7 +5,7 @@
       --models qwen3.8-27b,muse-glimmer-30b [--work <dir>]
 
 It does what pin_window.py does before its first model download, the same way:
-- clones role-set at the sha and installs it with uv into a Python 3.12 venv (the VM's install path), then runs the
+- clones role-set at the sha and installs it with uv into a Python 3.15 venv (the VM's install path), then runs the
   installed `role-set`, not the source tree;
 - clones rnd at the sha and imports the logging proxy from that clone (the VM's import path);
 - unpacks and verifies the pack, makes the pilot and twins plans, and checks their exclusion-state sha;
@@ -27,6 +27,8 @@ import tempfile
 from pathlib import Path
 
 
+
+ROLE_SET_PYTHON = "3.15"  # the venv Python; the studio tests on current Python only (Director, 2026-10-25)
 
 def run(cmd: list[str], cwd: Path | None = None) -> str:
     out = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -53,7 +55,7 @@ def main(argv: list[str] | None = None) -> int:
             run(["git", "clone", "-q", "https://github.com/mcp-tool-shop-org/role-set", str(rs_src)])
         run(["git", "-C", str(rs_src), "checkout", "-q", a.roleset])
         if not venv.exists():
-            run(["uv", "venv", "-q", "-p", "3.12", str(venv)])
+            run(["uv", "venv", "-q", "-p", ROLE_SET_PYTHON, str(venv)])
         py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         role_set = venv / ("Scripts/role-set.exe" if sys.platform == "win32" else "bin/role-set")
         run(["uv", "pip", "install", "-q", "--python", str(py), "-e", str(rs_src)])

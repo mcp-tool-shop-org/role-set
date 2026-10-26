@@ -54,7 +54,7 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Install
         run: uv sync --frozen
@@ -83,6 +83,60 @@ jobs:
       - name: Puzzle check on a fixture
         run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
 
+  # Python 3.13. A job of its own so the required status check "test" keeps its name (it runs on 3.15).
+  # The suite and the two quick checks run here; the Atlas check and the Codecov upload run once, on the 3.15 job.
+  test-py313:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+          python-version: "3.13"
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Test
+        run: uv run pytest -m "not sweep" -n auto --durations=20 -o faulthandler_timeout=900
+
+      - name: Plan without a model
+        run: uv run role-set plan --lessons T02,T03 --seed 0 --out /tmp/plan.json
+
+      - name: Puzzle check on a fixture
+        run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
+
+  # Python 3.14. A job of its own so the required status check "test" keeps its name (it runs on 3.15).
+  # The suite and the two quick checks run here; the Atlas check and the Codecov upload run once, on the 3.15 job.
+  test-py314:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+        with:
+          enable-cache: true
+          python-version: "3.14"
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Test
+        run: uv run pytest -m "not sweep" -n auto --durations=20 -o faulthandler_timeout=900
+
+      - name: Plan without a model
+        run: uv run role-set plan --lessons T02,T03 --seed 0 --out /tmp/plan.json
+
+      - name: Puzzle check on a fixture
+        run: uv run role-set puzzle-check tests/fixtures/puzzle-check/sample.jsonl
+
   sweep:
     # The sweep: on a manual run, and on every push to main (R&D, 2026-10-18, the slow-test split).
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
@@ -96,7 +150,7 @@ jobs:
       - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           enable-cache: true
-          python-version: "3.12"
+          python-version: "3.15"
 
       - name: Install
         run: uv sync --frozen

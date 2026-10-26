@@ -8,6 +8,9 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Changed
 
+- **Python: `requires-python` is `>=3.13` (was `>=3.12,<3.13`); Python 3.12 is dropped.** 3.15 is the main target (`.python-version`); CI runs the suite on 3.15 (the required check `test`, with the Atlas check and the Codecov upload), 3.13 (`test-py313`) and 3.14 (`test-py314`). The sweep job runs on 3.15. The pinned dependency `aspire-si-gates` needs `>=3.10`, so it was never the limit; role-set's own pin was. The dev dependency `zstandard==0.25.0` has no cp315 wheel (PyPI, read 2026-10-25), so on 3.15 it builds from its source distribution (measured on Windows with uv: the C extension builds).
+- The window scripts (`scripts/colab/pin_window.py`, `preflight_window.py`) build role-set's venv on Python 3.15 (`ROLE_SET_PYTHON`) instead of 3.12, following the rule that the studio tests on current Python. A window that must reproduce an older run builds from that run's role-set commit, which still needs 3.12.
+
 - **The gates are pinned from their own repository:** `aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si-gates@8ed78f2`, in place of aspire-si's `packages/aspire-si-gates` at `6a603baa`. The package source is byte-identical, so `gates_identity()` is unchanged.
 
 ### Fixed

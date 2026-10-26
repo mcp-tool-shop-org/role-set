@@ -1201,7 +1201,7 @@ def reference(port: int, model: dict) -> dict:
 
 
 def role_set_env(commit: str) -> dict:
-    """role-set at a pinned commit, in its own Python 3.12 (role-set needs <3.13; Colab's python is 3.13)."""
+    """role-set at a pinned commit, in its own uv venv on current Python (ROLE_SET_PYTHON; Colab's system python is 3.13)."""
 
     src, venv = CONTENT / "role-set", CONTENT / "rs-venv"
     if not (src / ".git").exists():
@@ -1211,7 +1211,7 @@ def role_set_env(commit: str) -> dict:
         sh(f"{sys.executable} -m pip install -q uv==0.9.5", timeout=600)
         uv = f"{sys.executable} -m uv"
     if not (venv / "bin" / "python").exists():
-        sh(f"{uv} venv -q -p 3.12 {venv}", timeout=900)
+        sh(f"{uv} venv -q -p {ROLE_SET_PYTHON} {venv}", timeout=900)
         sh(f"{uv} pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
     head = sh(f"git -C {src} rev-parse HEAD")
     if head != commit:
@@ -2750,6 +2750,7 @@ OLLAMA_URL = f"https://github.com/ollama/ollama/releases/download/v{OLLAMA_VERSI
 OLLAMA_PORT = int(os.environ.get("PIN_OLLAMA_PORT") or 11434)
 # Colab's image (release-colab-external-images_20261020-060116_RC00) has no system `zstd` binary (windows 16t and 16u),
 # so `.tar.zst` archives are decompressed in Python with a pinned `zstandard` wheel (`--require-hashes`).
+ROLE_SET_PYTHON = "3.15"  # the studio tests on current Python only (Director, 2026-10-25)
 ZSTANDARD_VERSION = "0.25.0"
 ZSTANDARD_WHEEL_SHA256S: dict[str, str] = {
     "cp310": "4b6d83057e713ff235a12e73916b6d356e3084fd3d14ced499d84240f3eecee0",

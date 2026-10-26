@@ -23,7 +23,7 @@ The designs are [docs/role-set-design.md](docs/role-set-design.md) and [docs/gen
 
 ## Install
 
-Python 3.12, managed by uv. One runtime dependency: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, pinned to aspire-si commit `388a6bc`. The gates are imported, not copied.
+Python 3.13 or newer (3.15 is the main target; CI tests 3.13, 3.14 and 3.15), managed by uv. One runtime dependency: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, pinned to aspire-si commit `388a6bc`. The gates are imported, not copied.
 
 ```text
 uv sync --frozen

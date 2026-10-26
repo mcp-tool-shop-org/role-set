@@ -22,7 +22,7 @@ and role-set only sees the loopback tunnel.
 ## 2. Where it lives
 
 A repo of its own, `mcp-tool-shop-org/role-set`, public, created by the Publisher on the maintainer's word. Python
-3.12. It imports aspire-si's gates through a pinned dependency, never a copy, so there is one source of truth.
+3.13 or newer (3.15 main). It imports aspire-si's gates through a pinned dependency, never a copy, so there is one source of truth.
 ASPIRE makes the gates a small stdlib-only package inside aspire-si (no torch), installed by commit
 (`pip install git+…aspire-si@<sha>#subdirectory=…`); the trainer imports the same package; ASPIRE owns it. The
 sealed set, the held-out leakage leg, the tokenizer-side checks, `no_role.py` and the trainer stay in aspire-si
