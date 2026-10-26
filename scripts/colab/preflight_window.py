@@ -28,7 +28,8 @@ from pathlib import Path
 
 
 
-ROLE_SET_PYTHON = "3.15"  # the venv Python; the studio tests on current Python only (Director, 2026-10-25)
+ROLE_SET_PYTHON = "3.15.1"  # exact patch ("3.15" resolved to 3.15.0a1 under uv 0.9.5); current Python only (Director, 2026-10-25)
+UV_VERSION = "0.13.5"  # the same uv as pin_window.py and the C2 launcher
 
 def run(cmd: list[str], cwd: Path | None = None) -> str:
     out = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -55,6 +56,10 @@ def main(argv: list[str] | None = None) -> int:
             run(["git", "clone", "-q", "https://github.com/mcp-tool-shop-org/role-set", str(rs_src)])
         run(["git", "-C", str(rs_src), "checkout", "-q", a.roleset])
         if not venv.exists():
+            uv_version = run(["uv", "--version"]).split()[1]
+            if uv_version != UV_VERSION:
+                raise SystemExit(f"REFUSED: uv {uv_version} is on PATH, this preflight needs uv {UV_VERSION} (an older uv resolves 3.15 to a pre-release)")
+            run(["uv", "python", "install", ROLE_SET_PYTHON])
             run(["uv", "venv", "-q", "-p", ROLE_SET_PYTHON, str(venv)])
         py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         role_set = venv / ("Scripts/role-set.exe" if sys.platform == "win32" else "bin/role-set")

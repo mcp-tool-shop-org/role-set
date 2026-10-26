@@ -40,7 +40,8 @@ import pytest  # noqa: E402
 def _the_vm_python_is_cp313(monkeypatch):
     """pin_window.py runs on the VM's system Python (Colab: 3.13), so its zstandard wheel pin is the cp313 one whatever
     interpreter runs pytest. zstandard 0.25.0 has no cp315 wheel (PyPI, read 2026-10-25), so under 3.15 the lookup by the
-    running interpreter would refuse. An explicit py_tag still goes through the real table."""
+    running interpreter would refuse. An explicit py_tag still goes through the real table. This assumes the VM's
+    system Python is 3.13 (measured 3.13.16 on 2026-10-25); revisit it when Colab moves."""
 
     real = pw.zstandard_wheel_sha256
     monkeypatch.setattr(pw, "zstandard_wheel_sha256", lambda py_tag=None: real(py_tag or "cp313"))

@@ -173,7 +173,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "8f0f2d77fc72183fbd63ed889fa2e3a6bf1986c9efa12f36e89a6b712140a1b7",
+          "hash": "18662110fbb930d4cad6867b88c8657d85aa200b7838bc434db66574530ca10b",
           "path": "CHANGELOG.md"
         },
         {
@@ -412,6 +412,7 @@
             "pilot_batch",
             "pilot_window",
             "pin_libs",
+            "pinned_uv",
             "plan_has_apply_slots",
             "plan_pilot_lessons",
             "prefetch_hosted",
@@ -420,6 +421,7 @@
             "read_token_file",
             "rebuild_batch",
             "reference",
+            "requires_python_allows",
             "rescore_inputs",
             "rescore_window",
             "resolve_pilot_pool",
@@ -468,1285 +470,1300 @@
             {
               "in": "cuda_archs",
               "kind": "raise",
-              "line": 63
+              "line": 64
             },
             {
               "in": "server_sha256",
               "kind": "raise",
-              "line": 143
+              "line": 144
             },
             {
               "in": "server_pin_entry",
               "kind": "raise",
-              "line": 158
+              "line": 159
             },
             {
               "in": "check_deadline",
               "kind": "raise",
-              "line": 201
+              "line": 202
             },
             {
               "in": "_signal_group",
               "kind": "except",
-              "line": 212
+              "line": 213
             },
             {
               "in": "_tree_bytes",
               "kind": "except",
-              "line": 235
+              "line": 236
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 281
+              "line": 282
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 296
+              "line": 297
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 299
+              "line": 300
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 307
+              "line": 308
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 334
+              "line": 335
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 344
+              "line": 345
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 348
+              "line": 349
             },
             {
               "in": "run_proc",
               "kind": "raise",
-              "line": 350
+              "line": 351
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 361
+              "line": 362
             },
             {
               "in": "sh",
               "kind": "raise",
-              "line": 368
+              "line": 369
             },
             {
               "in": "write",
               "kind": "except",
-              "line": 396
+              "line": 397
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 450
+              "line": 451
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 454
+              "line": 455
             },
             {
               "in": "check_token_clean",
               "kind": "raise",
-              "line": 575
+              "line": 576
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 592
+              "line": 593
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 595
+              "line": 596
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 605
+              "line": 606
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 610
+              "line": 611
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 625
+              "line": 626
             },
             {
               "in": "upload_hosted",
               "kind": "raise",
-              "line": 744
+              "line": 745
             },
             {
               "in": "upload_hosted",
               "kind": "raise",
-              "line": 778
+              "line": 779
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 804
+              "line": 805
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 898
+              "line": 899
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 907
+              "line": 908
             },
             {
               "in": "smoke",
               "kind": "except",
-              "line": 913
+              "line": 914
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 916
+              "line": 917
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 1003
+              "line": 1004
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 1040
+              "line": 1041
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 1090
+              "line": 1091
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 1124
+              "line": 1125
             },
             {
               "in": "start_server",
               "kind": "except",
-              "line": 1129
+              "line": 1130
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 1133
+              "line": 1134
             },
             {
               "in": "stop_server",
               "kind": "except",
-              "line": 1140
+              "line": 1141
+            },
+            {
+              "in": "requires_python_allows",
+              "kind": "raise",
+              "line": 1222
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 1218
+              "line": 1249
+            },
+            {
+              "in": "role_set_env",
+              "kind": "raise",
+              "line": 1260
+            },
+            {
+              "in": "role_set_env",
+              "kind": "raise",
+              "line": 1263
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 1294
+              "line": 1340
             },
             {
               "in": "critic_window",
               "kind": "raise",
-              "line": 1295
+              "line": 1341
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 1296
+              "line": 1342
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 1344
+              "line": 1390
             },
             {
               "in": "q6k_window",
               "kind": "raise",
-              "line": 1345
+              "line": 1391
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 1346
+              "line": 1392
             },
             {
               "in": "_start_stub",
               "kind": "raise",
-              "line": 1423
+              "line": 1469
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 1477
+              "line": 1523
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 1486
+              "line": 1532
             },
             {
               "in": "install_rnd",
               "kind": "raise",
-              "line": 1507
+              "line": 1553
             },
             {
               "in": "write_wave",
               "kind": "except",
-              "line": 1587
+              "line": 1633
             },
             {
               "in": "write_wave",
               "kind": "raise",
-              "line": 1589
+              "line": 1635
             },
             {
               "in": "write_wave",
               "kind": "raise",
-              "line": 1594
+              "line": 1640
             },
             {
               "in": "write_wave",
               "kind": "except",
-              "line": 1605
+              "line": 1651
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1707
+              "line": 1753
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1711
+              "line": 1757
             },
             {
               "in": "resume_priors",
               "kind": "raise",
-              "line": 1729
+              "line": 1775
             },
             {
               "in": "rebuild_batch",
               "kind": "raise",
-              "line": 1820
+              "line": 1866
             },
             {
               "in": "get",
               "kind": "raise",
-              "line": 1842
+              "line": 1888
             },
             {
               "in": "get",
-              "kind": "raise",
-              "line": 1858
-            },
-            {
-              "in": "critics_for",
-              "kind": "raise",
-              "line": 1902
-            },
-            {
-              "in": "critics_for",
               "kind": "raise",
               "line": 1904
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1907
+              "line": 1948
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1911
+              "line": 1950
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1913
+              "line": 1953
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 1917
+              "line": 1957
+            },
+            {
+              "in": "critics_for",
+              "kind": "raise",
+              "line": 1959
+            },
+            {
+              "in": "critics_for",
+              "kind": "raise",
+              "line": 1963
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 2038
+              "line": 2084
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 2056
+              "line": 2102
             },
             {
               "in": "choose_quant",
               "kind": "except",
-              "line": 2076
+              "line": 2122
             },
             {
               "in": "buffers_enabled",
               "kind": "raise",
-              "line": 2092
+              "line": 2138
             },
             {
               "in": "critique_scope",
               "kind": "raise",
-              "line": 2101
+              "line": 2147
             },
             {
               "in": "check_pins",
               "kind": "raise",
-              "line": 2122
+              "line": 2168
             },
             {
               "in": "screen_plan",
               "kind": "raise",
-              "line": 2151
+              "line": 2197
             },
             {
               "in": "screen_plan",
               "kind": "raise",
-              "line": 2158
+              "line": 2204
             },
             {
               "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2170
+              "line": 2216
             },
             {
               "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2172
+              "line": 2218
             },
             {
               "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2175
+              "line": 2221
             },
             {
               "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2177
+              "line": 2223
             },
             {
               "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2193
+              "line": 2239
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2259
+              "line": 2305
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2263
+              "line": 2309
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2276
+              "line": 2322
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2279
+              "line": 2325
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2282
+              "line": 2328
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2297
+              "line": 2343
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2300
+              "line": 2346
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2307
+              "line": 2353
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2311
+              "line": 2357
             },
             {
               "in": "training_inputs",
               "kind": "raise",
-              "line": 2318
+              "line": 2364
             },
             {
               "in": "rescore_inputs",
               "kind": "raise",
-              "line": 2338
+              "line": 2384
             },
             {
               "in": "rescore_inputs",
               "kind": "raise",
-              "line": 2341
+              "line": 2387
             },
             {
               "in": "rescore_inputs",
               "kind": "raise",
-              "line": 2350
+              "line": 2396
             },
             {
               "in": "rescore_window",
               "kind": "raise",
-              "line": 2374
+              "line": 2420
             },
             {
               "in": "rescore_window",
               "kind": "except",
-              "line": 2415
+              "line": 2461
             },
             {
               "in": "rescore_window",
               "kind": "raise",
-              "line": 2417
+              "line": 2463
             },
             {
               "in": "rescore_window",
               "kind": "raise",
-              "line": 2422
+              "line": 2468
             },
             {
               "in": "rescore_window",
               "kind": "raise",
-              "line": 2429
+              "line": 2475
             },
             {
               "in": "rescore_window",
               "kind": "raise",
-              "line": 2433
+              "line": 2479
             },
             {
               "in": "rescore_window",
               "kind": "except",
-              "line": 2441
+              "line": 2487
             },
             {
               "in": "critic_eval_inputs",
               "kind": "raise",
-              "line": 2453
+              "line": 2499
             },
             {
               "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2456
-            },
-            {
-              "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2460
-            },
-            {
-              "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2464
-            },
-            {
-              "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2473
-            },
-            {
-              "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2477
-            },
-            {
-              "in": "critic_eval_resume",
               "kind": "raise",
               "line": 2502
             },
             {
-              "in": "critic_eval_window",
+              "in": "critic_eval_inputs",
               "kind": "raise",
-              "line": 2561
+              "line": 2506
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 2510
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 2519
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 2523
+            },
+            {
+              "in": "critic_eval_resume",
+              "kind": "raise",
+              "line": 2548
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2569
+              "line": 2607
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2578
+              "line": 2615
+            },
+            {
+              "in": "critic_eval_window",
+              "kind": "raise",
+              "line": 2624
             },
             {
               "in": "critic_eval_window",
               "kind": "except",
-              "line": 2586
+              "line": 2632
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2587
+              "line": 2633
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2589
+              "line": 2635
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2593
+              "line": 2639
             },
             {
               "in": "critic_eval_window",
               "kind": "except",
-              "line": 2692
+              "line": 2738
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2694
+              "line": 2740
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2707
+              "line": 2753
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2715
+              "line": 2761
             },
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 2719
+              "line": 2765
             },
             {
               "in": "critic_eval_window",
               "kind": "except",
-              "line": 2742
+              "line": 2788
             },
             {
               "in": "_require_sha256",
               "kind": "raise",
-              "line": 2822
+              "line": 2869
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2838
+              "line": 2885
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2849
+              "line": 2896
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2852
+              "line": 2899
             },
             {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 2855
+              "line": 2902
             },
             {
               "in": "zstandard_wheel_sha256",
               "kind": "raise",
-              "line": 2883
+              "line": 2930
             },
             {
               "in": "ensure_zstandard",
               "kind": "except",
-              "line": 2898
+              "line": 2945
             },
             {
               "in": "ensure_zstandard",
               "kind": "raise",
-              "line": 2909
+              "line": 2956
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2921
+              "line": 2968
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2924
+              "line": 2971
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2928
+              "line": 2975
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2932
+              "line": 2979
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2936
+              "line": 2983
             },
             {
               "in": "_safe_tar_filter",
               "kind": "except",
-              "line": 2939
+              "line": 2986
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 2940
+              "line": 2987
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2985
+              "line": 3032
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 2997
+              "line": 3044
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 3017
+              "line": 3064
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 3030
+              "line": 3077
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 3037
+              "line": 3084
             },
             {
               "in": "install_ollama",
               "kind": "raise",
-              "line": 3042
+              "line": 3089
             },
             {
               "in": "_parse_ollama_model",
               "kind": "raise",
-              "line": 3086
+              "line": 3133
             },
             {
               "in": "_parse_ollama_model",
               "kind": "raise",
-              "line": 3091
+              "line": 3138
             },
             {
               "in": "_resolve_ollama_registry_base",
               "kind": "raise",
-              "line": 3118
+              "line": 3165
             },
             {
               "in": "_resolve_ollama_registry_base",
               "kind": "raise",
-              "line": 3127
+              "line": 3174
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3148
+              "line": 3195
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3155
+              "line": 3202
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3160
+              "line": 3207
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "except",
-              "line": 3163
+              "line": 3210
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3164
+              "line": 3211
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3168
+              "line": 3215
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3172
+              "line": 3219
             },
             {
               "in": "_resolve_ollama_mirror_base",
               "kind": "raise",
-              "line": 3175
+              "line": 3222
             },
             {
               "in": "_resolve_ollama_mirror_base",
-              "kind": "raise",
-              "line": 3190
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3228
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3233
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "except",
-              "line": 3236
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
               "kind": "raise",
               "line": 3237
             },
             {
               "in": "_validate_ollama_mirror_redirect_target",
               "kind": "raise",
-              "line": 3239
+              "line": 3275
             },
             {
               "in": "_validate_ollama_mirror_redirect_target",
               "kind": "raise",
-              "line": 3243
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3245
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3251
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "except",
-              "line": 3272
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "raise",
-              "line": 3273
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "except",
-              "line": 3274
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "raise",
-              "line": 3276
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "raise",
-              "line": 3277
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "except",
-              "line": 3278
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "raise",
-              "line": 3279
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "except",
               "line": 3280
             },
             {
-              "in": "_open_ollama_mirror_blob",
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "except",
+              "line": 3283
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
               "kind": "raise",
-              "line": 3281
+              "line": 3284
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3286
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3290
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3292
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3298
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "except",
-              "line": 3282
+              "line": 3319
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3283
+              "line": 3320
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "except",
+              "line": 3321
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3291
+              "line": 3323
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3296
+              "line": 3324
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "except",
+              "line": 3325
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3315
+              "line": 3326
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "except",
+              "line": 3327
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3328
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "except",
+              "line": 3329
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3330
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3338
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3343
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3362
             },
             {
               "in": "_written_ollama_manifest_digest",
               "kind": "except",
-              "line": 3399
+              "line": 3446
             },
             {
               "in": "_resolve_manifest_path",
               "kind": "raise",
-              "line": 3478
+              "line": 3525
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3484
+              "line": 3531
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3488
+              "line": 3535
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3520
+              "line": 3567
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3523
+              "line": 3570
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3524
+              "line": 3571
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3528
+              "line": 3575
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3533
+              "line": 3580
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3539
+              "line": 3586
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3550
+              "line": 3597
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3579
+              "line": 3626
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3609
+              "line": 3656
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3623
+              "line": 3670
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3644
+              "line": 3691
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3650
+              "line": 3697
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3655
+              "line": 3702
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3659
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 3668
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "except",
-              "line": 3669
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 3693
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
               "line": 3706
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3714
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "except",
               "line": 3715
             },
             {
               "in": "install_ollama_manifest",
+              "kind": "except",
+              "line": 3716
+            },
+            {
+              "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3726
+              "line": 3740
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3753
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3761
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 3727
+              "line": 3762
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3738
+              "line": 3773
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "except",
+              "line": 3774
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 3785
             },
             {
               "in": "_start_stub_ollama",
               "kind": "except",
-              "line": 3768
+              "line": 3815
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 3909
+              "line": 3956
             },
             {
               "in": "__enter__",
-              "kind": "except",
-              "line": 3918
-            },
-            {
-              "in": "__enter__",
-              "kind": "raise",
-              "line": 3922
-            },
-            {
-              "in": "__enter__",
-              "kind": "raise",
-              "line": 3925
-            },
-            {
-              "in": "__enter__",
-              "kind": "raise",
-              "line": 3930
-            },
-            {
-              "in": "pull_ollama_model",
               "kind": "except",
               "line": 3965
             },
             {
-              "in": "pull_ollama_model",
+              "in": "__enter__",
               "kind": "raise",
-              "line": 3967
+              "line": 3969
+            },
+            {
+              "in": "__enter__",
+              "kind": "raise",
+              "line": 3972
+            },
+            {
+              "in": "__enter__",
+              "kind": "raise",
+              "line": 3977
             },
             {
               "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 3968
+              "kind": "except",
+              "line": 4012
             },
             {
               "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 3970
+              "line": 4014
             },
             {
               "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 3979
+              "line": 4015
             },
             {
               "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 3982
+              "line": 4017
             },
             {
-              "in": "warmup_ollama_model",
+              "in": "pull_ollama_model",
               "kind": "raise",
-              "line": 4025
+              "line": 4026
             },
             {
-              "in": "warmup_ollama_model",
+              "in": "pull_ollama_model",
               "kind": "raise",
               "line": 4029
             },
             {
               "in": "warmup_ollama_model",
               "kind": "raise",
-              "line": 4032
+              "line": 4072
             },
             {
               "in": "warmup_ollama_model",
               "kind": "raise",
-              "line": 4036
+              "line": 4076
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4079
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4083
             },
             {
               "in": "sample_smi_every_2s",
               "kind": "except",
-              "line": 4076
+              "line": 4123
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4101
+              "line": 4148
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4105
+              "line": 4152
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4111
+              "line": 4158
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4128
+              "line": 4175
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4130
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "except",
-              "line": 4187
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4189
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4198
+              "line": 4177
             },
             {
               "in": "offrig_bench_window",
               "kind": "except",
-              "line": 4220
+              "line": 4234
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4224
+              "line": 4236
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4230
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4237
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4243
+              "line": 4245
             },
             {
               "in": "offrig_bench_window",
               "kind": "except",
-              "line": 4285
+              "line": 4267
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4271
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4277
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4284
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4290
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "except",
+              "line": 4332
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4315
+              "line": 4362
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4317
+              "line": 4364
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4320
+              "line": 4367
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4323
+              "line": 4370
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 4375
+              "line": 4422
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 4405
+              "line": 4452
             },
             {
               "in": "pilot_window",
               "kind": "except",
-              "line": 4479
+              "line": 4526
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 4500
+              "line": 4547
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 4504
+              "line": 4551
             },
             {
               "in": "runtime",
               "kind": "raise",
-              "line": 4511
+              "line": 4558
             },
             {
               "in": "done_here",
               "kind": "except",
-              "line": 4536
+              "line": 4583
             },
             {
               "in": "take_job_lock",
               "kind": "except",
-              "line": 4549
+              "line": 4596
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 4640
+              "line": 4687
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 4644
+              "line": 4691
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 4650
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 4677
-            },
-            {
-              "in": "_main",
-              "kind": "raise",
-              "line": 4678
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 4679
-            },
-            {
-              "in": "_main",
-              "kind": "except",
               "line": 4697
             },
             {
               "in": "_main",
-              "kind": "raise",
-              "line": 4698
-            },
-            {
-              "in": "_main",
               "kind": "except",
-              "line": 4699
+              "line": 4724
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 4701
+              "line": 4725
             },
             {
               "in": "_main",
               "kind": "except",
-              "line": 4714
+              "line": 4726
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4744
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4745
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4746
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 4748
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 4761
             }
           ],
-          "hash": "531391378fcf3401f9ccb8d7719dfa366a0b42ee475b24332fc5f643dcab33de",
+          "hash": "3a7965529cce28ce2b3d98a9b54eae3f0d46433fc921a192f6fd70c2b4f14164",
           "importsFiles": [
             "src/role_set/mock.py"
           ],
@@ -1769,37 +1786,37 @@
             {
               "in": "run",
               "kind": "raise",
-              "line": 36
+              "line": 37
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 86
+              "line": 61
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 95
+              "line": 91
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 102
+              "line": 100
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 104
+              "line": 107
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 113
+              "line": 109
             },
             {
               "in": "main",
               "kind": "raise",
-              "line": 117
+              "line": 118
             },
             {
               "in": "main",
@@ -1808,11 +1825,16 @@
             },
             {
               "in": "main",
+              "kind": "raise",
+              "line": 127
+            },
+            {
+              "in": "main",
               "kind": "except",
-              "line": 124
+              "line": 129
             }
           ],
-          "hash": "9b3e87bae5bd9234da00b31b7b847183088f6e148022e6a035fb30608e8aa1a6",
+          "hash": "24ba7ab2f3f7c35572f5c2928417656752640580989da1169df8e051cd46818c",
           "importsFiles": [
             "scripts/colab/pin_window.py"
           ],
@@ -2518,7 +2540,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 9,
+      "testedBy": 10,
       "unresolvedNamed": [
         {
           "path": "scripts/colab/pin_window.py",
@@ -9675,7 +9697,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 51,
+      "testedBy": 52,
       "unresolvedSites": 0
     },
     {
@@ -10888,7 +10910,7 @@
             "test_without_a_deadline_nothing_changes",
             "test_write_only_critics_for_and_pilot_batch_no_critic"
           ],
-          "hash": "172509e9fd30e559e7f3964e04f8d7bdc7bee9006953f2a88ca310a314d34e7a",
+          "hash": "6038575a0faf57fd7d72cc1eeaebe6f156dde26dc1ccb843dc1bcd0368e7a9fa",
           "importOrder": [
             "scripts/colab/pin_window.py",
             "scripts/colab/checkpoints.py",
@@ -11099,6 +11121,25 @@
             "src/role_set/puzzle_check.py"
           ],
           "path": "tests/test_puzzle_check.py"
+        },
+        {
+          "exports": [
+            "test_a_window_refuses_a_role_set_commit_that_needs_an_older_python",
+            "test_an_older_uv_on_the_vm_is_replaced_by_the_pinned_one",
+            "test_ci_runs_the_suite_on_3_15_with_the_required_check_name_kept_and_on_3_13_and_3_14",
+            "test_requires_python_allows_reads_the_clauses_role_set_has_used",
+            "test_requires_python_is_current_python_and_the_lock_and_dev_pin_agree",
+            "test_the_python_and_uv_pins_are_exact_released_patch_versions_and_agree_between_the_scripts",
+            "test_the_venv_is_exactly_the_pinned_python_and_the_run_record_names_it",
+            "test_the_window_scripts_build_role_set_on_current_python_not_3_12"
+          ],
+          "hash": "c7dc9548256f7221b589965e951e0de63d356003ac5c716b2e14de6297fc9cab",
+          "importsFiles": [
+            "scripts/colab/pin_window.py",
+            "scripts/colab/preflight_window.py"
+          ],
+          "path": "tests/test_python_support.py",
+          "testFramework": "pytest"
         },
         {
           "exports": [
@@ -11860,7 +11901,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 53
+          "files": 54
         },
         {
           "boundary": "scripts",
@@ -11869,7 +11910,7 @@
             "file": "scripts/naics_table.py",
             "from": "tests/conftest.py"
           },
-          "files": 8
+          "files": 9
         },
         {
           "boundary": "src",
@@ -11940,7 +11981,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 53,
+          "files": 54,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -11948,7 +11989,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 53,
+          "files": 54,
           "job": "test-py313",
           "runner": "pytest",
           "step": "Test"
@@ -11956,7 +11997,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 53,
+          "files": 54,
           "job": "test-py314",
           "runner": "pytest",
           "step": "Test"
@@ -11964,7 +12005,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 53,
+          "files": 54,
           "job": "sweep",
           "runner": "pytest",
           "step": "Sweep"
@@ -12252,8 +12293,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "2b268401f89437df3aa5226ac8579d90598f851b",
-    "tracked": 208
+    "commit": "cf27f4a6364ba1ee6f07c95fb791d52c04b42e1d",
+    "tracked": 209
   },
   "landings": [
     {
@@ -12317,6 +12358,11 @@
     },
     {
       "readers": [
+        {
+          "by": "scripts/colab/pin_window.py",
+          "call": "read_text",
+          "confidence": "weak"
+        },
         {
           "by": "tests/test_harvest_exemplars.py",
           "call": "literal",
@@ -13109,6 +13155,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 73,
+  "testFiles": 74,
   "unassigned": []
 }

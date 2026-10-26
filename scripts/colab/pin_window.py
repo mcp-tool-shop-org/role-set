@@ -16,6 +16,7 @@ in `finally`; nothing is written outside /content.
 
 from __future__ import annotations
 
+import tomllib
 import hashlib
 import json
 import math
@@ -1200,24 +1201,69 @@ def reference(port: int, model: dict) -> dict:
             "top5_ok": bool(steps) and all(len(s.get("top_logprobs") or []) == 5 for s in steps)}
 
 
+def requires_python_allows(spec: str, version: str) -> bool:
+    """Whether a `requires-python` string (">=3.13", ">=3.12,<3.13", ...) admits an exact `X.Y.Z` version."""
+
+    def key(text: str) -> tuple[int, ...]:
+        return tuple(int(p) for p in text.strip().split("."))
+
+    have = key(version)
+    for clause in (c.strip() for c in spec.split(",") if c.strip()):
+        for op in (">=", "<=", "==", "!=", ">", "<"):
+            if clause.startswith(op):
+                want = key(clause[len(op):].replace(".*", ""))
+                pad = have[: len(want)]
+                ok = {">=": have >= want, "<=": pad <= want, ">": have > want, "<": pad < want,
+                      "==": pad == want, "!=": pad != want}[op]
+                if not ok:
+                    return False
+                break
+        else:
+            raise RuntimeError(f"REFUSED: cannot read the requires-python clause {clause!r}")
+    return True
+
+
+def pinned_uv() -> str:
+    """The uv at exactly UV_VERSION: the one on PATH if it matches, else pip-installed at that pin. A VM's own uv is
+    not trusted: an older uv resolves "3.15" to a pre-release (uv 0.9.5 offers only 3.15.0a1)."""
+
+    uv = shutil.which("uv")
+    if uv and sh(f"{uv} --version").split()[1] == UV_VERSION:
+        return uv
+    sh(f"{sys.executable} -m pip install -q uv=={UV_VERSION}", timeout=600)
+    return f"{sys.executable} -m uv"
+
+
 def role_set_env(commit: str) -> dict:
-    """role-set at a pinned commit, in its own uv venv on current Python (ROLE_SET_PYTHON; Colab's system python is 3.13)."""
+    """role-set at a pinned commit, in its own uv venv on the exact CPython ROLE_SET_PYTHON (Colab's system python is 3.13).
+
+    Refuses when the commit's `requires-python` excludes that Python (an older run's commit cannot be reproduced here:
+    the studio tests on current Python only), when the venv is not exactly that version, and records the interpreter
+    version and sha256 and the uv version for the window's run record."""
 
     src, venv = CONTENT / "role-set", CONTENT / "rs-venv"
     if not (src / ".git").exists():
         sh(f"git clone -q https://github.com/mcp-tool-shop-org/role-set {src} && git -C {src} checkout -q {commit}", timeout=600)
-    uv = shutil.which("uv")
-    if not uv:
-        sh(f"{sys.executable} -m pip install -q uv==0.9.5", timeout=600)
-        uv = f"{sys.executable} -m uv"
+    spec = tomllib.loads((src / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
+    if not requires_python_allows(spec, ROLE_SET_PYTHON):
+        raise RuntimeError(
+            f"REFUSED: role-set {commit[:12]} requires Python {spec}, but windows build role-set on CPython {ROLE_SET_PYTHON} "
+            "(current Python only), so a run on that older commit cannot be reproduced in this window"
+        )
+    uv = pinned_uv()
     if not (venv / "bin" / "python").exists():
+        sh(f"{uv} python install {ROLE_SET_PYTHON}", timeout=900)
         sh(f"{uv} venv -q -p {ROLE_SET_PYTHON} {venv}", timeout=900)
         sh(f"{uv} pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
     head = sh(f"git -C {src} rev-parse HEAD")
     if head != commit:
         raise RuntimeError(f"role-set is at {head[:12]}, not {commit[:12]}")
-    return {"commit": head, "src": str(src), "role_set": str(venv / "bin" / "role-set"),
-            "python": sh(f"{venv}/bin/python -c \"import sys; print(sys.version.split()[0])\"")}
+    python = sh(f"{venv}/bin/python -c \"import sys; print(sys.version.split()[0])\"")
+    if python != ROLE_SET_PYTHON:
+        raise RuntimeError(f"REFUSED: the role-set venv is CPython {python}, not {ROLE_SET_PYTHON}")
+    return {"commit": head, "src": str(src), "role_set": str(venv / "bin" / "role-set"), "python": python,
+            "python_sha256": sh(f"sha256sum \"$(readlink -f {venv}/bin/python)\" | cut -d' ' -f1"),
+            "uv": sh(f"{uv} --version")}
 
 
 def critic_control(rs: dict, model: dict, machine_file: Path, seed: int, earlier: Path | None) -> dict:
@@ -2750,7 +2796,8 @@ OLLAMA_URL = f"https://github.com/ollama/ollama/releases/download/v{OLLAMA_VERSI
 OLLAMA_PORT = int(os.environ.get("PIN_OLLAMA_PORT") or 11434)
 # Colab's image (release-colab-external-images_20261020-060116_RC00) has no system `zstd` binary (windows 16t and 16u),
 # so `.tar.zst` archives are decompressed in Python with a pinned `zstandard` wheel (`--require-hashes`).
-ROLE_SET_PYTHON = "3.15"  # the studio tests on current Python only (Director, 2026-10-25)
+ROLE_SET_PYTHON = "3.15.1"  # exact patch: "3.15" resolved to 3.15.0a1 under uv 0.9.5. Current Python only (Director, 2026-10-25)
+UV_VERSION = "0.13.5"  # the same uv as the C2 launcher
 ZSTANDARD_VERSION = "0.25.0"
 ZSTANDARD_WHEEL_SHA256S: dict[str, str] = {
     "cp310": "4b6d83057e713ff235a12e73916b6d356e3084fd3d14ced499d84240f3eecee0",
