@@ -211,8 +211,9 @@ def test_preflight_refuses_an_older_role_set_commit_and_a_venv_on_the_wrong_pyth
     assert pre.main(_preflight_args(tmp_path)) == 1
     assert "requires Python >=3.12,<3.13" in capsys.readouterr().out + capsys.readouterr().err
     (tmp_path / "role-set" / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.13"\n', encoding="utf-8")
-    (tmp_path / "rs-venv" / "bin").mkdir(parents=True)
-    (tmp_path / "rs-venv" / "bin" / "role-set").write_text("", encoding="utf-8")
+    scripts = tmp_path / "rs-venv" / ("Scripts" if sys.platform == "win32" else "bin")
+    scripts.mkdir(parents=True)
+    (scripts / ("role-set.exe" if sys.platform == "win32" else "role-set")).write_text("", encoding="utf-8")
 
     def fake(cmd, cwd=None):
         if cmd[:2] == ["uv", "--version"]:

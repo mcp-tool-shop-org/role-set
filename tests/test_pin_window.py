@@ -4,6 +4,7 @@ import os
 import shutil
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts" / "colab"))
@@ -2957,7 +2958,7 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
         s.bind(("127.0.0.1", 0))
         free_port = s.getsockname()[1]
     monkeypatch.setattr(pw, "OLLAMA_PORT", free_port)
-    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.05)
+    monkeypatch.setattr(pw, "SMI_INTERVAL_S", 0.005)
 
     _offrig_bin, bin_sha, _gold, gold_sha = _write_offrig_fixtures(content)
     monkeypatch.setenv("PIN_ROLE", "offrig-bench")
@@ -3001,7 +3002,16 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
         "2026/10/23 00:00:01.000, 21450 MiB, 82 %, 58, 265.10 W\n",
         "2026/10/23 00:00:03.000, 24120 MiB, 94 %, 61, 298.40 W\n",
     ])
-    monkeypatch.setattr(pw, "_query_smi_csv", lambda: next(smi_samples, "2026/10/23 00:00:05.000, 23800 MiB, 90 %, 60, 280.00 W\n"))
+    third_sample_requested = threading.Event()  # the third reading means the second was fully recorded
+
+    def fake_smi() -> str:
+        sample = next(smi_samples, None)
+        if sample is None:
+            third_sample_requested.set()
+            return "2026/10/23 00:00:05.000, 23800 MiB, 90 %, 60, 280.00 W\n"
+        return sample
+
+    monkeypatch.setattr(pw, "_query_smi_csv", fake_smi)
 
     def tar_sh(cmd: str, **kw) -> str:
         if cmd.startswith(f"tar -C {work} -cf {work}/offrig-bench-out.tar offrig-bench"):
@@ -3022,6 +3032,9 @@ def test_offrig_bench_real_mode_env_smi_sampling_and_deadline_cut(tmp_path, monk
             return subprocess.CompletedProcess(cmd, 0, "pulling manifest\nsuccess\n", "")
         if os.name == "nt" and str(cmd[0]).endswith("offrig"):
             cmd = [sys.executable, str(cmd[0]), *cmd[1:]]
+        if cmd[1:2] == ["verify"]:
+            # Deterministic, not timing-based: the fake offrig can return before the sampler has taken both readings.
+            assert third_sample_requested.wait(30), "the sampler never took its third reading"
         return orig_run_proc(cmd, **kw)
 
     monkeypatch.setattr(pw, "run_proc", real_mode_run_proc)
