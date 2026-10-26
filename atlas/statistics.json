@@ -99,7 +99,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 72,
+      "qualifyingSourceCommits": 73,
       "rebaseline": null
     },
     {
@@ -155,7 +155,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 133,
+      "qualifyingSourceCommits": 135,
       "rebaseline": null
     }
   ],
@@ -168,13 +168,13 @@
         "path": ".gitattributes"
       },
       {
-        "commits": 17,
-        "lines": 227,
+        "commits": 18,
+        "lines": 235,
         "path": ".github/workflows/ci.yml"
       },
       {
-        "commits": 1,
-        "lines": 50,
+        "commits": 2,
+        "lines": 58,
         "path": ".github/workflows/pages.yml"
       },
       {
@@ -193,8 +193,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 86,
-        "lines": 486,
+        "commits": 88,
+        "lines": 489,
         "path": "CHANGELOG.md"
       },
       {
@@ -268,8 +268,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 55,
-        "lines": 1051,
+        "commits": 56,
+        "lines": 1061,
         "path": "atlas/README.md"
       },
       {
@@ -278,18 +278,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 55,
-        "lines": 3431,
+        "commits": 56,
+        "lines": 3459,
         "path": "atlas/page.json"
       },
       {
-        "commits": 55,
-        "lines": 7997,
+        "commits": 56,
+        "lines": 8114,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 55,
-        "lines": 39148,
+        "commits": 56,
+        "lines": 39752,
         "path": "atlas/structure.json"
       },
       {
@@ -408,8 +408,8 @@
         "path": "scripts/colab/mock_job.py"
       },
       {
-        "commits": 69,
-        "lines": 9905,
+        "commits": 70,
+        "lines": 9968,
         "path": "scripts/colab/pin_window.py"
       },
       {
@@ -423,8 +423,8 @@
         "path": "scripts/colab/pin_window_split.sh"
       },
       {
-        "commits": 3,
-        "lines": 274,
+        "commits": 4,
+        "lines": 281,
         "path": "scripts/colab/preflight_window.py"
       },
       {
@@ -1118,8 +1118,8 @@
         "path": "tests/test_pilot_findings.py"
       },
       {
-        "commits": 44,
-        "lines": 7513,
+        "commits": 45,
+        "lines": 7516,
         "path": "tests/test_pin_window.py"
       },
       {
@@ -1148,8 +1148,8 @@
         "path": "tests/test_puzzle_check.py"
       },
       {
-        "commits": 1,
-        "lines": 50,
+        "commits": 3,
+        "lines": 144,
         "path": "tests/test_python_support.py"
       },
       {
@@ -1243,51 +1243,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-26T01:03:01.182Z",
+  "generatedAt": "2026-10-26T01:35:11.153Z",
   "generatedFrom": {
-    "commit": "cf27f4a6364ba1ee6f07c95fb791d52c04b42e1d"
+    "commit": "15834e01e60b27f16bc2ac53d528d60d682bff6d"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 50,
-      "shared": 50,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
@@ -1307,9 +1307,9 @@
     {
       "a": "scripts/colab/pin_window.py",
       "b": "tests/test_pin_window.py",
-      "either": 61,
-      "shared": 31,
-      "strength": 0.508197
+      "either": 62,
+      "shared": 32,
+      "strength": 0.516129
     },
     {
       "a": "src/role_set/assemble.py",
@@ -1385,16 +1385,16 @@
     "floor": "fallen",
     "floorHeld": true,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-25T20:58:22-04:00",
+    "headDate": "2026-10-25T21:15:11-04:00",
     "inScopeFiles": 214,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 176,
+    "qualifyingCommits": 178,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-29T00:58:22.000Z",
+    "since": "2026-04-29T01:15:11.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

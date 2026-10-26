@@ -402,7 +402,13 @@ def test_pin_window_stub_mode_end_to_end(tmp_path, monkeypatch):
     monkeypatch.setenv("PIN_CONTENT", str(content))
     monkeypatch.setenv("PIN_WORK", str(work))
     monkeypatch.setenv("PIN_POOL_SHA256", pool_sha)
-    monkeypatch.setenv("PIN_ROLESET_COMMIT", "e7abbcdff51defefccd99b5a68c0e8dec6fa6f09")
+    # The commit under test, not a pinned old one: an old commit requires Python <3.13 and the window refuses it.
+    # content/role-set is a local clone at HEAD, so setup needs no network clone of role-set.
+    here = Path(__file__).resolve().parents[1]
+    head = subprocess.run(["git", "-C", str(here), "rev-parse", "HEAD"], capture_output=True, text=True, check=True).stdout.strip()
+    subprocess.run(["git", "clone", "-q", str(here), str(content / "role-set")], check=True)
+    subprocess.run(["git", "-C", str(content / "role-set"), "checkout", "-q", head], check=True)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", head)
     monkeypatch.setenv("PIN_RND_COMMIT", "04dccfad9419cd79c4068703ac6cf1442850c9de")
     monkeypatch.setenv("PIN_PILOT_WRITERS", ",".join(writers))
     monkeypatch.setenv("PIN_PILOT_CRITIC", critic)

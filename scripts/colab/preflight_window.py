@@ -24,7 +24,11 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import tomllib
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from pin_window import requires_python_allows  # noqa: E402 - the same rule the window applies
 
 
 
@@ -55,16 +59,26 @@ def main(argv: list[str] | None = None) -> int:
         if not (rs_src / ".git").exists():
             run(["git", "clone", "-q", "https://github.com/mcp-tool-shop-org/role-set", str(rs_src)])
         run(["git", "-C", str(rs_src), "checkout", "-q", a.roleset])
-        if not venv.exists():
-            uv_version = run(["uv", "--version"]).split()[1]
-            if uv_version != UV_VERSION:
-                raise SystemExit(f"REFUSED: uv {uv_version} is on PATH, this preflight needs uv {UV_VERSION} (an older uv resolves 3.15 to a pre-release)")
-            run(["uv", "python", "install", ROLE_SET_PYTHON])
-            run(["uv", "venv", "-q", "-p", ROLE_SET_PYTHON, str(venv)])
+        uv_version = run(["uv", "--version"]).split()[1]  # before anything is built or reused
+        if uv_version != UV_VERSION:
+            raise RuntimeError(f"REFUSED: uv {uv_version} is on PATH, this preflight needs uv {UV_VERSION} (an older uv resolves 3.15 to a pre-release)")
+        requires = tomllib.loads((rs_src / "pyproject.toml").read_text(encoding="utf-8"))["project"]["requires-python"]
+        if not requires_python_allows(requires, ROLE_SET_PYTHON):
+            raise RuntimeError(
+                f"REFUSED: role-set {a.roleset[:12]} requires Python {requires}, but the window builds role-set on CPython "
+                f"{ROLE_SET_PYTHON} (current Python only), so that older commit cannot be reproduced"
+            )
         py = venv / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
         role_set = venv / ("Scripts/role-set.exe" if sys.platform == "win32" else "bin/role-set")
-        run(["uv", "pip", "install", "-q", "--python", str(py), "-e", str(rs_src)])
-        steps.append(f"role-set {a.roleset[:12]} installed in {run([str(py), '-c', 'import sys; print(sys.version.split()[0])']).strip()}")
+        if not role_set.exists():  # a venv whose install failed has a python but no role-set: rebuild it
+            shutil.rmtree(venv, ignore_errors=True)
+            run(["uv", "python", "install", ROLE_SET_PYTHON])
+            run(["uv", "venv", "-q", "-p", ROLE_SET_PYTHON, str(venv)])
+            run(["uv", "pip", "install", "-q", "--python", str(py), "-e", str(rs_src)])
+        have = run([str(py), "-c", "import sys; print(sys.version.split()[0])"]).strip()
+        if have != ROLE_SET_PYTHON:
+            raise RuntimeError(f"REFUSED: the role-set venv is CPython {have}, not {ROLE_SET_PYTHON}")
+        steps.append(f"role-set {a.roleset[:12]} installed in {have}")
 
         rnd_src = work / "rnd"
         if not (rnd_src / ".git").exists():

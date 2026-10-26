@@ -97,7 +97,7 @@ def _fake_role_set(tmp_path, monkeypatch, requires, python="3.15.1", uv_on_path=
     def fake_sh(cmd, **kwargs):
         calls.append(cmd)
         if cmd.endswith("--version"):
-            return uv_on_path
+            return f"uv {pw.UV_VERSION} (pinned)" if any(f"uv=={pw.UV_VERSION}" in c for c in calls) else uv_on_path
         if "rev-parse" in cmd:
             return "c" * 40
         if "sys.version" in cmd:
@@ -142,3 +142,90 @@ def test_every_action_in_the_workflows_is_pinned_by_commit_sha_with_a_version_co
             assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), f"{workflow.name}: {ref} is not pinned by commit sha"
             assert re.search(r"# v\d", rest), f"{workflow.name}: {ref} has no version comment"
     assert found
+
+
+def test_requires_python_allows_follows_pep_440_for_exact_versions_and_refuses_what_it_cannot_read():
+    assert not pw.requires_python_allows("<=3.15", "3.15.1")  # 3.15.1 > 3.15
+    assert pw.requires_python_allows("<=3.15.1", "3.15.1")
+    assert not pw.requires_python_allows("==3.15", "3.15.1")  # not a prefix without .*
+    assert pw.requires_python_allows("==3.15.1", "3.15.1") and pw.requires_python_allows("==3.15.*", "3.15.1")
+    assert not pw.requires_python_allows("!=3.15.*", "3.15.1") and pw.requires_python_allows("!=3.14.*", "3.15.1")
+    assert pw.requires_python_allows(">=3.15", "3.15.1") and pw.requires_python_allows("<3.16", "3.15.1")
+    assert not pw.requires_python_allows("<3.15", "3.15.1")
+    with pytest.raises(RuntimeError, match="REFUSED: cannot read the version"):
+        pw.requires_python_allows(">=3.x", "3.15.1")
+    with pytest.raises(RuntimeError, match="cannot read the requires-python clause"):
+        pw.requires_python_allows(">=3.13.*", "3.15.1")
+
+
+def test_a_pinned_uv_install_that_reports_another_version_is_refused(tmp_path, monkeypatch):
+    def fake_sh(cmd, **kwargs):
+        if cmd.endswith("--version"):
+            return "uv 0.9.5 (old)"
+        return ""
+
+    monkeypatch.setattr(pw, "sh", fake_sh)
+    monkeypatch.setattr(pw.shutil, "which", lambda name: None)
+    with pytest.raises(RuntimeError, match=r"uv 0\.9\.5 after the pinned install"):
+        pw.pinned_uv()
+
+
+def test_a_venv_with_a_python_but_no_role_set_is_rebuilt(tmp_path, monkeypatch):
+    calls = _fake_role_set(tmp_path, monkeypatch, ">=3.13")
+    (tmp_path / "rs-venv" / "bin").mkdir(parents=True)
+    (tmp_path / "rs-venv" / "bin" / "python").write_text("", encoding="utf-8")  # a failed install left only python
+    pw.role_set_env("c" * 40)
+    assert any("uv venv" in c for c in calls) and any("pip install" in c and "-e" in c for c in calls)
+
+
+def test_zstandard_in_stub_mode_on_a_host_without_a_pinned_wheel_uses_the_vm_tag(monkeypatch):
+    monkeypatch.setattr(pw, "_host_py_tag", lambda: "cp315")
+    monkeypatch.setattr(pw, "stub_mode", lambda: True)
+    assert pw.zstandard_wheel_sha256() == pw.zstandard_wheel_sha256("cp313")
+    monkeypatch.setattr(pw, "stub_mode", lambda: False)
+    with pytest.raises(RuntimeError, match="no pinned zstandard"):
+        pw.zstandard_wheel_sha256()  # outside stub mode a host with no pinned wheel is refused
+    with pytest.raises(RuntimeError, match="no pinned zstandard"):
+        pw.zstandard_wheel_sha256("cp315")
+
+
+def _preflight_args(tmp_path):
+    rs = tmp_path / "role-set"
+    (rs / ".git").mkdir(parents=True, exist_ok=True)
+    return ["--roleset", "c" * 40, "--rnd", "d" * 40, "--pack", str(tmp_path / "p.tar"), "--cards", str(tmp_path / "c.json"),
+            "--models", "m", "--work", str(tmp_path)]
+
+
+def test_preflight_refuses_the_wrong_uv_even_when_the_venv_already_exists(tmp_path, monkeypatch):
+    pre = _preflight()
+    (tmp_path / "rs-venv").mkdir()
+    monkeypatch.setattr(pre, "run", lambda cmd, cwd=None: "uv 0.9.5 (old)" if cmd[:2] == ["uv", "--version"] else "")
+    assert pre.main(_preflight_args(tmp_path)) == 1  # main() reports a failure as exit 1
+
+
+def test_preflight_refuses_an_older_role_set_commit_and_a_venv_on_the_wrong_python(tmp_path, monkeypatch, capsys):
+    pre = _preflight()
+    (tmp_path / "role-set" / ".git").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "role-set" / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.12,<3.13"\n', encoding="utf-8")
+    monkeypatch.setattr(pre, "run", lambda cmd, cwd=None: f"uv {pre.UV_VERSION}" if cmd[:2] == ["uv", "--version"] else "")
+    assert pre.main(_preflight_args(tmp_path)) == 1
+    assert "requires Python >=3.12,<3.13" in capsys.readouterr().out + capsys.readouterr().err
+    (tmp_path / "role-set" / "pyproject.toml").write_text('[project]\nrequires-python = ">=3.13"\n', encoding="utf-8")
+    (tmp_path / "rs-venv" / "bin").mkdir(parents=True)
+    (tmp_path / "rs-venv" / "bin" / "role-set").write_text("", encoding="utf-8")
+
+    def fake(cmd, cwd=None):
+        if cmd[:2] == ["uv", "--version"]:
+            return f"uv {pre.UV_VERSION}"
+        if "sys.version" in " ".join(cmd):
+            return "3.15.0a1"
+        return ""
+
+    monkeypatch.setattr(pre, "run", fake)
+    assert pre.main(_preflight_args(tmp_path)) == 1
+
+
+def test_ci_installs_exactly_the_pinned_uv_because_the_window_script_refuses_any_other():
+    ci = (ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    setups = ci.count("astral-sh/setup-uv@")
+    assert setups and ci.count(f'version: "{pw.UV_VERSION}"') == setups

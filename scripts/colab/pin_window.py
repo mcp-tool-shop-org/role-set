@@ -1202,19 +1202,36 @@ def reference(port: int, model: dict) -> dict:
 
 
 def requires_python_allows(spec: str, version: str) -> bool:
-    """Whether a `requires-python` string (">=3.13", ">=3.12,<3.13", ...) admits an exact `X.Y.Z` version."""
+    """Whether a `requires-python` string (">=3.13", ">=3.12,<3.13", ...) admits an exact `X.Y.Z` version.
 
-    def key(text: str) -> tuple[int, ...]:
-        return tuple(int(p) for p in text.strip().split("."))
+    Release segments compare zero-padded, as PEP 440 does: `<=3.15` and `==3.15` do NOT admit 3.15.1; only a `.*` clause
+    (`==3.15.*`, `!=3.15.*`) is a prefix match. Anything unreadable is a REFUSED, not a guess."""
 
-    have = key(version)
+    def nums(text: str) -> tuple[int, ...]:
+        try:
+            return tuple(int(p) for p in text.strip().split("."))
+        except ValueError:
+            raise RuntimeError(f"REFUSED: cannot read the version {text!r} in requires-python {spec!r}") from None
+
+    def cmp(x: tuple[int, ...], y: tuple[int, ...]) -> int:
+        n = max(len(x), len(y))
+        x, y = x + (0,) * (n - len(x)), y + (0,) * (n - len(y))
+        return (x > y) - (x < y)
+
+    have = nums(version)
     for clause in (c.strip() for c in spec.split(",") if c.strip()):
         for op in (">=", "<=", "==", "!=", ">", "<"):
             if clause.startswith(op):
-                want = key(clause[len(op):].replace(".*", ""))
-                pad = have[: len(want)]
-                ok = {">=": have >= want, "<=": pad <= want, ">": have > want, "<": pad < want,
-                      "==": pad == want, "!=": pad != want}[op]
+                rest = clause[len(op):].strip()
+                if rest.endswith(".*"):
+                    if op not in ("==", "!="):
+                        raise RuntimeError(f"REFUSED: cannot read the requires-python clause {clause!r}")
+                    prefix = nums(rest[:-2])
+                    hit = have[: len(prefix)] == prefix
+                    ok = hit if op == "==" else not hit
+                else:
+                    c = cmp(have, nums(rest))
+                    ok = {">=": c >= 0, "<=": c <= 0, ">": c > 0, "<": c < 0, "==": c == 0, "!=": c != 0}[op]
                 if not ok:
                     return False
                 break
@@ -1231,7 +1248,11 @@ def pinned_uv() -> str:
     if uv and sh(f"{uv} --version").split()[1] == UV_VERSION:
         return uv
     sh(f"{sys.executable} -m pip install -q uv=={UV_VERSION}", timeout=600)
-    return f"{sys.executable} -m uv"
+    installed = f"{sys.executable} -m uv"
+    got = sh(f"{installed} --version").split()[1]
+    if got != UV_VERSION:
+        raise RuntimeError(f"REFUSED: uv {got} after the pinned install, not {UV_VERSION}")
+    return installed
 
 
 def role_set_env(commit: str) -> dict:
@@ -1251,7 +1272,8 @@ def role_set_env(commit: str) -> dict:
             "(current Python only), so a run on that older commit cannot be reproduced in this window"
         )
     uv = pinned_uv()
-    if not (venv / "bin" / "python").exists():
+    if not (venv / "bin" / "role-set").exists():  # a venv whose install failed has a python but no role-set: rebuild it
+        sh(f"rm -rf {venv}", timeout=300)
         sh(f"{uv} python install {ROLE_SET_PYTHON}", timeout=900)
         sh(f"{uv} venv -q -p {ROLE_SET_PYTHON} {venv}", timeout=900)
         sh(f"{uv} pip install -q --python {venv}/bin/python -e {src}", timeout=1800)
@@ -2919,10 +2941,18 @@ def offrig_bench_inputs(result: dict) -> tuple[Path, Path, dict]:
     return bin_dst, gold_dst, meta
 
 
+def _host_py_tag() -> str:
+    return f"cp{sys.version_info.major}{sys.version_info.minor}"
+
+
 def zstandard_wheel_sha256(py_tag: str | None = None) -> str:
     """Return the pinned manylinux x86_64 wheel sha256 of zstandard==ZSTANDARD_VERSION for the VM's Python."""
 
-    tag = py_tag or f"cp{sys.version_info.major}{sys.version_info.minor}"
+    tag = py_tag or _host_py_tag()
+    if py_tag is None and tag not in ZSTANDARD_WHEEL_SHA256S and tag != "cp313" and stub_mode():
+        # A stub window on a host whose own Python has no pinned zstandard wheel (a dev machine on 3.15: zstandard 0.25.0
+        # has no cp315 wheel) uses the VM's tag. The real window runs on Colab's system Python (3.13) and is never here.
+        tag = "cp313"
     if tag == "cp313":
         return _require_sha256("ZSTANDARD_WHEEL_SHA256", ZSTANDARD_WHEEL_SHA256)
     sha = ZSTANDARD_WHEEL_SHA256S.get(tag)
@@ -4512,7 +4542,10 @@ def pilot_window(built: dict, result: dict) -> None:
                             jd = json.loads(js_p.read_text(encoding="utf-8"))
                             jd["stub"] = True
                             js_p.write_text(json.dumps(jd, indent=1), encoding="utf-8")
-                    result["arms"][n][part]["readout_tail"] = out_text[-2500:]
+                    tail = out_text[-2500:]
+                    if stub_mode() and "STUB" not in tail:  # a long readout cuts the marker prepended above off the tail
+                        tail = "# STUB RUN (PIN_STUB=1)" + chr(10) + tail
+                    result["arms"][n][part]["readout_tail"] = tail
                     if r.returncode != 0:
                         result["arms"][n][part]["readout_stderr"] = r.stderr[-2500:]
                 elif stub_mode():

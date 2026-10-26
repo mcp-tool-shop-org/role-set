@@ -23,7 +23,7 @@ Les conceptions sont disponibles à l’adresse [docs/role-set-design.md](docs/r
 
 ## Installation
 
-Python 3.12, géré par uv. Une seule dépendance d’exécution : [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fixé à la validation aspire-si `388a6bc`. Les étapes sont importées, et non copiées.
+Python 3.13+ (3.15), géré par uv. Une seule dépendance d’exécution : [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fixé à la validation aspire-si `388a6bc`. Les étapes sont importées, et non copiées.
 
 ```text
 uv sync --frozen
