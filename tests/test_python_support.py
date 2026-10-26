@@ -132,3 +132,13 @@ def test_an_older_uv_on_the_vm_is_replaced_by_the_pinned_one(tmp_path, monkeypat
     calls = _fake_role_set(tmp_path, monkeypatch, ">=3.13", uv_on_path="uv 0.9.5 (old)")
     pw.role_set_env("c" * 40)
     assert any(f"pip install -q uv=={pw.UV_VERSION}" in c for c in calls)
+
+
+def test_every_action_in_the_workflows_is_pinned_by_commit_sha_with_a_version_comment():
+    found = 0
+    for workflow in sorted((ROOT / ".github" / "workflows").glob("*.yml")):
+        for ref, rest in re.findall(r"uses: (\S+)(.*)", workflow.read_text(encoding="utf-8")):
+            found += 1
+            assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), f"{workflow.name}: {ref} is not pinned by commit sha"
+            assert re.search(r"# v\d", rest), f"{workflow.name}: {ref} has no version comment"
+    assert found
