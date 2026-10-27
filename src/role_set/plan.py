@@ -43,6 +43,9 @@ MIN_PAIRS = 2
 ESCALATE_DOMAINS = ("medical", "legal", "safety", "money")
 ESCALATE_KEY = re.compile(r"^(no|yes \((medical|legal|safety|money)[^)]*\))$")
 MIN_TWO_TURN = 2
+SIDE_PAIRING_SETTINGS = ("default", "verdict_safe")
+# Sides that assert the statement matches the material: never paired with a non-supported verdict under verdict_safe (R&D item 20).
+MATCHING_ONLY_SIDES = ("an equivalent wording still matches",)
 
 
 class PlanError(ValueError):
@@ -76,13 +79,25 @@ class Slot:
     b_skeleton: str | None = None  # kind B, solve-first: the locked model's fact skeleton (hashed), fixed at plan time
     b_reseeds: int = 0  # kind B, solve-first: how often the plan re-seeded the slot to avoid a repeated skeleton
     buffer: bool = False  # training or apply buffer slot (Argon round 2, F2)
+    side_pairing: str = "default"  # "default" or "verdict_safe" (item 20)
 
     def as_dict(self) -> dict:
-        return asdict(self)
+        d = asdict(self)
+        if self.side_pairing == "default":
+            d.pop("side_pairing", None)
+        return d
 
 
 def _verdict_bearing(slots: list[Slot]) -> list[Slot]:
     return [s for s in slots if s.kind in ("C", "D") or (s.kind == "E" and s.e_type == "verdict")]
+
+
+def _align_verdict_sides(slots: list[Slot], primary_side: str, *, side_pairing: str = "default") -> None:
+    """Under `verdict_safe`, never pair a non-supported verdict with a side that asserts the statement matches."""
+    for s in slots:
+        s.side_pairing = side_pairing
+        if side_pairing == "verdict_safe" and s.verdict is not None and s.verdict != "supported" and s.side in MATCHING_ONLY_SIDES:
+            s.side = primary_side
 
 
 def _assign_escalate_and_multi_line(slots: list[Slot], esc_domain: str) -> None:
@@ -105,7 +120,15 @@ def _assign_escalate_and_multi_line(slots: list[Slot], esc_domain: str) -> None:
         s.multi_line = True
 
 
-def _resolve_all_silent_real_c(lesson: str, seed: int, slots: list[Slot], esc_domain: str) -> None:
+def _resolve_all_silent_real_c(
+    lesson: str,
+    seed: int,
+    slots: list[Slot],
+    esc_domain: str,
+    primary_side: str = "",
+    *,
+    side_pairing: str = "default",
+) -> None:
     """Rare case (Argon round 3, F1): if all 4 real-source C slots drew cannot_tell, swap the first with the
     verdict of the first supported non-C verdict-bearing slot (D or verdict E) for which the floors still hold."""
 
@@ -114,25 +137,38 @@ def _resolve_all_silent_real_c(lesson: str, seed: int, slots: list[Slot], esc_do
     if not real_c or not all(s.verdict == "cannot_tell" for s in real_c):
         return
     bearing = _verdict_bearing(base)
+    p_side = primary_side or (base[0].side if base else "")
     for cand in bearing:
         if cand.kind != "C" and cand.verdict == "supported":
+            old_r_side, old_c_side = real_c[0].side, cand.side
             real_c[0].verdict, cand.verdict = cand.verdict, real_c[0].verdict
+            _align_verdict_sides(base, p_side, side_pairing=side_pairing)
             _assign_escalate_and_multi_line(base, esc_domain)
             try:
-                check_plan(base)
+                check_plan(base, side_pairing=side_pairing)
                 return
             except PlanError:
                 real_c[0].verdict, cand.verdict = cand.verdict, real_c[0].verdict
+                real_c[0].side, cand.side = old_r_side, old_c_side
     raise PlanError(
         f"REFUSED: {lesson} (seed {seed}): all 4 real-source C slots drew cannot_tell and no supported non-C "
         "verdict-bearing slot preserves the floors"
     )
 
 
-def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool = False) -> list[Slot]:
+def plan_lesson(
+    lesson: str,
+    sides: tuple[str, str],
+    *,
+    seed: int,
+    buffers: bool = False,
+    side_pairing: str = "default",
+) -> list[Slot]:
     """Forty slots for one lesson: eight per kind, both sides four and four. With `buffers=True`, adds the 8 training
     buffers and deals verdicts under the buffered rule (Argon round 2 F2, round 3 F1)."""
 
+    if side_pairing not in SIDE_PAIRING_SETTINGS:
+        raise PlanError(f"REFUSED: side_pairing must be one of {SIDE_PAIRING_SETTINGS}, got {side_pairing!r}")
     rng = random.Random(f"{lesson}:{seed}")
     slots: list[Slot] = []
     content = list(CONTENT_KINDS)
@@ -142,7 +178,14 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
     for kind in KINDS:
         for n in range(PER_KIND):
             side = sides[n % 2]
-            s = Slot(id=f"{lesson}-{kind}-{n + 1:02d}", lesson=lesson, kind=kind, side=side, tier=tiers[n])
+            s = Slot(
+                id=f"{lesson}-{kind}-{n + 1:02d}",
+                lesson=lesson,
+                kind=kind,
+                side=side,
+                tier=tiers[n],
+                side_pairing=side_pairing,
+            )
             if kind == "A":
                 s.tier = 1
             elif kind == "B":
@@ -188,26 +231,28 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
         for s in real_c:
             s.real_source = True
 
+        _align_verdict_sides(slots, sides[0], side_pairing=side_pairing)
         _assign_escalate_and_multi_line(slots, esc_domain)
-        _resolve_all_silent_real_c(lesson, seed, slots, esc_domain)
+        _resolve_all_silent_real_c(lesson, seed, slots, esc_domain, sides[0], side_pairing=side_pairing)
 
         p3 = f"{lesson.lower()}-pair-3"
         slots.extend([
-            Slot(id=f"{lesson}-A-09", lesson=lesson, kind="A", side=sides[0], tier=1, buffer=True),
-            Slot(id=f"{lesson}-E-09", lesson=lesson, kind="E", e_type="written", side=sides[0], tier=1, buffer=True),
+            Slot(id=f"{lesson}-A-09", lesson=lesson, kind="A", side=sides[0], tier=1, buffer=True, side_pairing=side_pairing),
+            Slot(id=f"{lesson}-E-09", lesson=lesson, kind="E", e_type="written", side=sides[0], tier=1, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-C-09", lesson=lesson, kind="C", side=sides[0], tier=3, content_kind="notice",
-                 verdict="cannot_tell", escalate="no", multi_line=False, pair=p3, real_source=False, buffer=True),
+                 verdict="cannot_tell", escalate="no", multi_line=False, pair=p3, real_source=False, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-C-10", lesson=lesson, kind="C", side=sides[1], tier=3, content_kind="label",
-                 verdict="unsupported", escalate="no", multi_line=True, pair=p3, real_source=False, buffer=True),
+                 verdict="unsupported", escalate="no", multi_line=True, pair=p3, real_source=False, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-C-11", lesson=lesson, kind="C", side=sides[0], tier=4, content_kind="changelog",
-                 verdict="supported", escalate="yes (safety)", multi_line=True, real_source=True, buffer=True),
+                 verdict="supported", escalate="yes (safety)", multi_line=True, real_source=True, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-C-12", lesson=lesson, kind="C", side=sides[1], tier=4, content_kind="code",
-                 verdict="supported", escalate="no", multi_line=True, real_source=True, buffer=True),
+                 verdict="supported", escalate="no", multi_line=True, real_source=True, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-D-09", lesson=lesson, kind="D", side=sides[0], tier=3, content_kind="label",
-                 two_turn="stands", verdict="supported", escalate="yes (medical)", multi_line=True, real_source=False, buffer=True),
+                 two_turn="stands", verdict="supported", escalate="yes (medical)", multi_line=True, real_source=False, buffer=True, side_pairing=side_pairing),
             Slot(id=f"{lesson}-D-10", lesson=lesson, kind="D", side=sides[1], tier=3, content_kind="notice",
-                 two_turn="changes", verdict="cannot_tell", escalate="no", multi_line=False, real_source=False, buffer=True),
+                 two_turn="changes", verdict="cannot_tell", escalate="no", multi_line=False, real_source=False, buffer=True, side_pairing=side_pairing),
         ])
+        _align_verdict_sides(slots, sides[0], side_pairing=side_pairing)
     else:
         # Verdicts: six each, so both floors (25%) hold with room, then shuffled by seed.
         verdicts = [v for v in VERDICTS for _ in range(len(bearing) // 3)]
@@ -234,9 +279,10 @@ def plan_lesson(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool
         d_items[0].two_turn = "stands"
         d_items[1].two_turn = "changes"
 
+        _align_verdict_sides(slots, sides[0], side_pairing=side_pairing)
         _assign_escalate_and_multi_line(slots, esc_domain)
 
-    check_plan(slots)
+    check_plan(slots, side_pairing=side_pairing)
     return slots
 
 
@@ -246,7 +292,23 @@ def _multi_line_need(decided: list[Slot], slots: list[Slot]) -> int:
     return max(1, math.ceil((len(decided) + changes) * FLOOR_SHARE))
 
 
-def _check_apply_plan(apply_slots: list[Slot]) -> None:
+def check_side_pairing(slots: list[Slot], *, side_pairing: str | None = None) -> None:
+    """Enforce the verdict_safe side-pairing invariant directly on the slots in play (screened, apply-only, or full)."""
+    if side_pairing is not None and side_pairing not in SIDE_PAIRING_SETTINGS:
+        raise PlanError(f"REFUSED: side_pairing must be one of {SIDE_PAIRING_SETTINGS}, got {side_pairing!r}")
+    bad_sides = [
+        s.id
+        for s in slots
+        if (side_pairing == "verdict_safe" or s.side_pairing == "verdict_safe")
+        and s.verdict is not None
+        and s.verdict != "supported"
+        and s.side in MATCHING_ONLY_SIDES
+    ]
+    if bad_sides:
+        raise PlanError(f"non-supported verdict paired with matching-only side {MATCHING_ONLY_SIDES}: {', '.join(bad_sides)}")
+
+
+def _check_apply_plan(apply_slots: list[Slot], *, side_pairing: str | None = None) -> None:
     base = [s for s in apply_slots if not s.buffer]
     buf = [s for s in apply_slots if s.buffer]
     if buf and any(s.kind not in ("C", "D") for s in buf):
@@ -272,19 +334,22 @@ def _check_apply_plan(apply_slots: list[Slot]) -> None:
         raise PlanError("apply: no ESCALATE yes item")
     if not any(s.verdict == "cannot_tell" and s.escalate == "no" for s in base):
         raise PlanError("apply: no everyday cannot_tell with ESCALATE no")
+    check_side_pairing(apply_slots, side_pairing=side_pairing)
 
 
-def check_plan(slots: list[Slot]) -> dict:
+def check_plan(slots: list[Slot], *, side_pairing: str | None = None) -> dict:
     """Refuse a plan that would not meet its floors. Accepts buffer slots only alongside the exact base counts.
     Returns the figures."""
 
+    if side_pairing is not None and side_pairing not in SIDE_PAIRING_SETTINGS:
+        raise PlanError(f"REFUSED: side_pairing must be one of {SIDE_PAIRING_SETTINGS}, got {side_pairing!r}")
     lessons = {s.lesson for s in slots}
     if len(lessons) != 1:
         raise PlanError("a plan is checked one lesson at a time")
     train = [s for s in slots if s.split != "apply"]
     apply_slots = [s for s in slots if s.split == "apply"]
     if apply_slots:
-        _check_apply_plan(apply_slots)
+        _check_apply_plan(apply_slots, side_pairing=side_pairing)
     if not train:
         return {"lesson": next(iter(lessons)), "items": len(apply_slots)}
     base = [s for s in train if not s.buffer]
@@ -341,6 +406,7 @@ def check_plan(slots: list[Slot]) -> dict:
     real = sum(1 for s in base if s.real_source)
     if real < 4:
         raise PlanError(f"real-source items {real} of 4")
+    check_side_pairing(slots, side_pairing=side_pairing)
     return {
         "lesson": next(iter(lessons)),
         "items": len(base),
@@ -354,12 +420,18 @@ def check_plan(slots: list[Slot]) -> dict:
     }
 
 
-def plan_batch(lessons: dict[str, tuple[str, str]], *, seed: int, buffers: bool = False) -> list[Slot]:
+def plan_batch(
+    lessons: dict[str, tuple[str, str]],
+    *,
+    seed: int,
+    buffers: bool = False,
+    side_pairing: str = "default",
+) -> list[Slot]:
     """Several lessons, then the batch-level rule: no puzzle structure more than twice."""
 
     slots: list[Slot] = []
     for lesson, sides in lessons.items():
-        slots.extend(plan_lesson(lesson, sides, seed=seed, buffers=buffers))
+        slots.extend(plan_lesson(lesson, sides, seed=seed, buffers=buffers, side_pairing=side_pairing))
     seen: dict[str, int] = {}
     for s in slots:
         if s.kind == "B":
@@ -389,7 +461,14 @@ APPLY_PER_KIND = 5
 APPLY_TIERS = (1, 3, 3, 4, 5)
 
 
-def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool = False) -> list[Slot]:
+def plan_apply(
+    lesson: str,
+    sides: tuple[str, str],
+    *,
+    seed: int,
+    buffers: bool = False,
+    side_pairing: str = "default",
+) -> list[Slot]:
     """Ten apply slots for one lesson: five C and five D, one turn each, ids <lesson>-<kind>-AP-NN, split "apply". The
     model answers them after each session and is never trained on them, so they carry no pairs and no two-turn items.
     Verdicts four supported, three unsupported, three cannot_tell; one ESCALATE-yes; multi-line keys on a quarter of
@@ -398,12 +477,15 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool 
     2 unsupported to C and 1 supported + 1 unsupported + 3 cannot_tell to D, sets multi_line on 2 decided C slots, and
     adds the 2 apply buffers."""
 
+    if side_pairing not in SIDE_PAIRING_SETTINGS:
+        raise PlanError(f"REFUSED: side_pairing must be one of {SIDE_PAIRING_SETTINGS}, got {side_pairing!r}")
     rng = random.Random(f"{lesson}:apply:{seed}")
     pool = CONTENT_KINDS if lesson != "T09" else tuple(k for k in CONTENT_KINDS if k not in ORDERED_KINDS)
     content = list(pool)
     rng.shuffle(content)
     slots = [Slot(id=f"{lesson}-{kind}-AP-{n + 1:02d}", lesson=lesson, kind=kind, side=sides[n % 2], tier=APPLY_TIERS[n],
-                  content_kind=content[(n + (0 if kind == "C" else APPLY_PER_KIND)) % len(content)], split="apply")
+                  content_kind=content[(n + (0 if kind == "C" else APPLY_PER_KIND)) % len(content)], split="apply",
+                  side_pairing=side_pairing)
              for kind in ("C", "D") for n in range(APPLY_PER_KIND)]
     esc_domain = random.Random(f"{lesson}:apply:{seed}:escalate").choice(ESCALATE_DOMAINS)
     if buffers:
@@ -425,9 +507,11 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool 
             s.multi_line = True
         slots.extend([
             Slot(id=f"{lesson}-C-AP-06", lesson=lesson, kind="C", side=sides[0], tier=3, content_kind="label",
-                 verdict="supported", escalate="yes (safety)", multi_line=True, split="apply", buffer=True),
+                 verdict="supported", escalate="yes (safety)", multi_line=True, split="apply", buffer=True,
+                 side_pairing=side_pairing),
             Slot(id=f"{lesson}-D-AP-06", lesson=lesson, kind="D", side=sides[1], tier=3, content_kind="notice",
-                 verdict="cannot_tell", escalate="no", multi_line=False, split="apply", buffer=True),
+                 verdict="cannot_tell", escalate="no", multi_line=False, split="apply", buffer=True,
+                 side_pairing=side_pairing),
         ])
     else:
         verdicts = ["supported"] * 4 + ["unsupported"] * 3 + ["cannot_tell"] * 3
@@ -440,11 +524,22 @@ def plan_apply(lesson: str, sides: tuple[str, str], *, seed: int, buffers: bool 
         candidates = [s for s in decided if s.content_kind in MULTI_LINE_KINDS]
         for s in (candidates + [s for s in decided if s not in candidates])[:need]:
             s.multi_line = True
+    _align_verdict_sides(slots, sides[0], side_pairing=side_pairing)
     return slots
 
 
-def plan_apply_batch(lessons: dict[str, tuple[str, str]], *, seed: int, buffers: bool = False) -> list[Slot]:
-    return [s for name, sides in lessons.items() for s in plan_apply(name, sides, seed=seed, buffers=buffers)]
+def plan_apply_batch(
+    lessons: dict[str, tuple[str, str]],
+    *,
+    seed: int,
+    buffers: bool = False,
+    side_pairing: str = "default",
+) -> list[Slot]:
+    return [
+        s
+        for name, sides in lessons.items()
+        for s in plan_apply(name, sides, seed=seed, buffers=buffers, side_pairing=side_pairing)
+    ]
 
 
 def select_and_trim(
@@ -605,13 +700,19 @@ PILOT_COUNTS = {"A": 4, "B": 5, "C": 4, "D": 4, "E": 3}
 PILOT_TWINS = {"C": 2, "D": 2}
 
 
-def plan_pilot(sides: dict[str, tuple[str, str]], *, seed: int, solve_first: tuple[str, ...]) -> list[Slot]:
+def plan_pilot(
+    sides: dict[str, tuple[str, str]],
+    *,
+    seed: int,
+    solve_first: tuple[str, ...],
+    side_pairing: str = "default",
+) -> list[Slot]:
     """The 20-slot wave pilot, from one full T02 lesson plan: A 4; B 5, one per solve-first structure; C 4 and D 4 (one
     two-turn D, no half of a contrast pair); E 3 (2 written, 1 verdict). A pilot's lesson floors are reported, not
     enforced: 20 slots can't hold a 40-slot lesson's shares. Its apply twins are a batch of their own
     (plan_pilot_twins), written after it with its accepted rows as --training (R&D, 2026-10-17)."""
 
-    full = plan_lesson(PILOT_LESSON, sides[PILOT_LESSON], seed=seed)
+    full = plan_lesson(PILOT_LESSON, sides[PILOT_LESSON], seed=seed, side_pairing=side_pairing)
     by_kind = {k: [s for s in full if s.kind == k] for k in KINDS}
     picked: list[Slot] = by_kind["A"][:PILOT_COUNTS["A"]]
     b = [s for s in by_kind["B"] if s.structure in solve_first[:PILOT_COUNTS["B"]]]
@@ -638,11 +739,20 @@ def plan_pilot(sides: dict[str, tuple[str, str]], *, seed: int, solve_first: tup
     return picked
 
 
-def plan_pilot_twins(sides: dict[str, tuple[str, str]], *, seed: int) -> list[Slot]:
+def plan_pilot_twins(
+    sides: dict[str, tuple[str, str]],
+    *,
+    seed: int,
+    side_pairing: str = "default",
+) -> list[Slot]:
     """The pilot's apply twins: 2 C and 2 D decided T04 apply items, whose twin drops the deciding lines. Written after
     the pilot, with the pilot's own accepted T02 rows as --training, so the leakage check runs for real."""
 
-    twins = [s for s in plan_apply(PILOT_TWIN_LESSON, sides[PILOT_TWIN_LESSON], seed=seed) if s.verdict != "cannot_tell"]
+    twins = [
+        s
+        for s in plan_apply(PILOT_TWIN_LESSON, sides[PILOT_TWIN_LESSON], seed=seed, side_pairing=side_pairing)
+        if s.verdict != "cannot_tell"
+    ]
     picked: list[Slot] = []
     for kind, n in PILOT_TWINS.items():
         got = [s for s in twins if s.kind == kind][:n]

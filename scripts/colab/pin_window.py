@@ -1632,6 +1632,21 @@ def write_wave(rs: dict, common: list, wave: str, out: Path, *, writer: dict | N
     # Every finished call is journaled as it returns and streamed to the rig log, so a cut-off wave resumes at the call
     # (R&D, 2026-10-17); a resume replays the cut wave's journal with --reuse-calls.
     arm, label = out.parent.name, f"{out.parent.parent.name}-{out.name}"
+    if wave in ("write", "critique", "rewrite", "inline"):
+        sp = side_pairing(arm)
+        if sp != "default":
+            cmd += ["--side-pairing", sp]
+        ds = domain_scope(arm)
+        if ds != "default":
+            cmd += ["--domain-scope", ds]
+        ctc = cannot_tell_construction(arm)
+        if ctc != "default":
+            cmd += ["--cannot-tell-construction", ctc]
+        if post_refusal_span(arm):
+            cmd += ["--post-refusal-span"]
+        vp = verdict_prompt(arm)
+        if vp != "old":
+            cmd += ["--verdict-prompt", vp]
     journal = out.parent / f"calls-{out.name}-{(writer or critic or {}).get('served_as', 'model')}.jsonl"
     cmd += ["--call-journal", str(journal)]
     if reuse_calls is not None:
@@ -1957,7 +1972,13 @@ class Pool:
                 self.drop(name)
 
 
-def critics_for(writer_names: list, families: dict | None = None, *, waves: int | None = None) -> dict:
+def critics_for(
+    writer_names: list,
+    families: dict | None = None,
+    *,
+    waves: int | None = None,
+    writer_for_arm: dict[str, str] | None = None,
+) -> dict:
     """Each arm's critic: PIN_PILOT_CRITIC for all, with PIN_PILOT_CRITIC_FOR=<writer>=<critic>,... per arm (W3:
     Lightning and Muse critique each other's arm, the design's own critic rule). role-set refuses a same-family pair.
     PIN_PILOT_CRITIC=none is allowed only when PIN_PILOT_WAVES=1 (write-only)."""
@@ -1973,30 +1994,37 @@ def critics_for(writer_names: list, families: dict | None = None, *, waves: int 
         return {}
     if any(c.strip().lower() == "none" for c in over.values()):
         raise RuntimeError("REFUSED: 'none' is only valid as PIN_PILOT_CRITIC=none with PIN_PILOT_WAVES=1")
-    out = {n: over.get(n, default) for n in writer_names}
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
+
+    out = {n: over.get(n, over.get(w_of(n), default)) for n in writer_names}
     missing = [n for n, c in out.items() if not c]
     if missing:
         raise RuntimeError(f"no critic for {', '.join(missing)}: set PIN_PILOT_CRITIC or PIN_PILOT_CRITIC_FOR")
-    if any(n == c for n, c in out.items()):
+    if any(w_of(n) == c for n, c in out.items()):
         raise RuntimeError(f"an arm can't critique itself: {out}")
     # The family rule role-set enforces, checked here too, so a same-family pair fails before any model loads.
-    same = [f"{n}<-{c}" for n, c in out.items() if families and families.get(n) and families.get(n) == families.get(c)]
+    same = [f"{n}<-{c}" for n, c in out.items() if families and families.get(w_of(n)) and families.get(w_of(n)) == families.get(c)]
     if same:
         raise RuntimeError(f"a critic reads another family's drafts; same family: {', '.join(same)}")
     return out
 
 
 def _needed_models(arms: dict, critic_for: dict, i: int, left_in_wave: list[str], kind: str,
-                   *, twins_after: bool, later_arms: list[str], finished_batch: bool = False) -> set[str]:
+                   *, twins_after: bool, later_arms: list[str], finished_batch: bool = False,
+                   writer_for_arm: dict[str, str] | None = None) -> set[str]:
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
+
     needed: set[str] = set()
     if not finished_batch:
         if kind == "critique":
             needed.update(critic_for[n] for n in left_in_wave if n in critic_for)
         else:
-            needed.update(left_in_wave)
+            needed.update(w_of(n) for n in left_in_wave)
         active = [n for n, a in arms.items() if not a["done"]]
         if any(j == 0 or j % 2 == 0 for j in range(i + 1, PILOT_WAVES)):
-            needed.update(active)
+            needed.update(w_of(n) for n in active)
         if any(j > 0 and j % 2 == 1 for j in range(i + 1, PILOT_WAVES)):
             needed.update(critic_for[n] for n in active if n in critic_for)
     twin_arms = list(later_arms)
@@ -2010,18 +2038,21 @@ def _needed_models(arms: dict, critic_for: dict, i: int, left_in_wave: list[str]
                     continue
             twin_arms.append(n)
     if PILOT_WAVES >= 1:
-        needed.update(twin_arms)
+        needed.update(w_of(n) for n in twin_arms)
     if PILOT_WAVES >= 2:
         needed.update(critic_for[n] for n in twin_arms if n in critic_for)
     return needed
 
 
 def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: dict, pool: Pool, extra=None,
-                *, twins_after: bool = False, later_arms: list[str] = ()) -> dict:
+                *, twins_after: bool = False, later_arms: list[str] = (),
+                writer_for_arm: dict[str, str] | None = None) -> dict:
     """One batch (the pilot, or its twins) for every writer arm, waves interleaved around the critics: all write
     waves, then each critic once for the arms it reads, then all rewrites, and so on. Every model is set up the first
     time it is needed (Pool). Returns each arm's waves and its last directory."""
 
+    def w_of(n: str) -> str:
+        return (writer_for_arm or {}).get(n, n)
     arms = {name: {"waves": [], "drafts": None, "done": False} for name in arms_in}
     start, resumed = resume_from() if extra is None else (0, {})  # the twins never resume from the pilot's drafts
     calls = resume_calls() if extra is None else {}
@@ -2062,14 +2093,16 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                         arms[n]["done"] = w["exit"] != 0 or not pending(w)
                         done_crit.add(n)
                 left = [n for n in todo if n not in done_crit]
-                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after, later_arms=list(later_arms)))
+                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after,
+                                                later_arms=list(later_arms), writer_for_arm=writer_for_arm))
         else:
             done_write: set[str] = set()
             for n in todo:
-                with pool.serve(n):
+                w_model = w_of(n)
+                with pool.serve(w_model):
                     chain = ["--prior-drafts", str(arms[n]["prior"])] if kind == "rewrite" and i == start and arms[n].get("prior") else []
-                    w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=pool.get(n),
-                                   drafts=arms[n]["drafts"], extra=[*(extra or []), *chain] or None, proxy=pool.proxy(n),
+                    w = write_wave(rs, common + ["--plan", str(plan)], kind, base / n / f"w{i}", writer=pool.get(w_model),
+                                   drafts=arms[n]["drafts"], extra=[*(extra or []), *chain] or None, proxy=pool.proxy(w_model),
                                    reuse_calls=calls.get(n) if i == start else None)
                 arms[n]["waves"].append(w)
                 arms[n]["last"] = run_dir(base / n / f"w{i}")
@@ -2084,9 +2117,10 @@ def pilot_batch(rs, common, plan: Path, base: Path, arms_in: list, critic_for: d
                         arms[n]["done"], arms[n]["funnel_stop"] = True, why
                 done_write.add(n)
                 left = [x for x in todo if x not in done_write]
-                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after, later_arms=list(later_arms)))
+                pool.drop_unused(_needed_models(arms, critic_for, i, left, kind, twins_after=twins_after,
+                                                later_arms=list(later_arms), writer_for_arm=writer_for_arm))
     pool.drop_unused(_needed_models(arms, critic_for, PILOT_WAVES, [], "done", twins_after=twins_after,
-                                    later_arms=list(later_arms), finished_batch=True))
+                                    later_arms=list(later_arms), finished_batch=True, writer_for_arm=writer_for_arm))
     return arms
 
 
@@ -2168,6 +2202,287 @@ def critique_scope() -> str:
     if scope not in ("all", "verdict"):
         raise RuntimeError(f"REFUSED: PIN_CRITIQUE_SCOPE must be 'all' or 'verdict', got {scope!r}")
     return scope
+
+
+PILOT_SIDE_PAIRING_VALUES = ("default", "verdict_safe")
+PILOT_DOMAIN_SCOPE_VALUES = ("default", "framing_only")
+PILOT_CANNOT_TELL_CONSTRUCTION_VALUES = ("default", "coarse_vs_sharp")
+PILOT_VERDICT_PROMPT_VALUES = ("old", "defined", "exclusive")
+
+
+def pilot_arms() -> tuple[list[str], dict[str, str]]:
+    """PIN_PILOT_ARMS=<arm>:<writer>,... (or PIN_PILOT_WRITERS when unset). Returns (arm_names, writer_for_arm)."""
+
+    raw_arms = (os.environ.get("PIN_PILOT_ARMS") or "").strip()
+    raw_writers = (os.environ.get("PIN_PILOT_WRITERS") or "").strip()
+    if raw_arms:
+        parts = [p.strip() for p in raw_arms.split(",")]
+        if any(not p for p in parts):
+            raise RuntimeError(f"REFUSED: malformed PIN_PILOT_ARMS={raw_arms!r}")
+        arm_names: list[str] = []
+        writer_for_arm: dict[str, str] = {}
+        for part in parts:
+            sep = ":" if ":" in part else ("=" if "=" in part else None)
+            if sep is None:
+                raise RuntimeError(f"REFUSED: PIN_PILOT_ARMS entry {part!r} must be '<arm>:<writer>'")
+            arm, writer = [x.strip() for x in part.split(sep, 1)]
+            if not arm or not writer or ":" in writer or "=" in writer:
+                raise RuntimeError(f"REFUSED: malformed PIN_PILOT_ARMS entry {part!r}")
+            if arm in writer_for_arm:
+                raise RuntimeError(f"REFUSED: duplicate arm {arm!r} in PIN_PILOT_ARMS={raw_arms!r}")
+            arm_names.append(arm)
+            writer_for_arm[arm] = writer
+        if raw_writers:
+            allowed = [x.strip() for x in raw_writers.split(",") if x.strip()]
+            if all(":" not in x and "=" not in x for x in allowed):
+                extra = [w for w in writer_for_arm.values() if w not in allowed]
+                if extra:
+                    raise RuntimeError(
+                        f"REFUSED: PIN_PILOT_ARMS writer(s) {', '.join(dict.fromkeys(extra))} "
+                        f"not in PIN_PILOT_WRITERS={raw_writers!r}"
+                    )
+        return arm_names, writer_for_arm
+    entries = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
+    arm_names = []
+    writer_for_arm = {}
+    for entry in entries:
+        if ":" in entry:
+            arm, writer = [x.strip() for x in entry.split(":", 1)]
+            if not arm or not writer or ":" in writer:
+                raise RuntimeError(f"REFUSED: malformed PIN_PILOT_WRITERS entry {entry!r}")
+        else:
+            arm = writer = entry
+        if arm in writer_for_arm:
+            raise RuntimeError(f"REFUSED: duplicate arm {arm!r} in PIN_PILOT_WRITERS")
+        arm_names.append(arm)
+        writer_for_arm[arm] = writer
+    return arm_names, writer_for_arm
+
+
+def _parse_pilot_setting_value(var: str, raw_val: str, valid: tuple[str, ...], *, is_bool: bool = False):
+    v = raw_val.strip()
+    if is_bool:
+        vl = v.lower()
+        if vl in ("0", "false"):
+            return False
+        if vl in ("1", "true"):
+            return True
+        raise RuntimeError(f"REFUSED: {var} must be '0', '1', 'false' or 'true', got {raw_val!r}")
+    if v not in valid:
+        raise RuntimeError(f"REFUSED: {var} must be one of {valid}, got {raw_val!r}")
+    return v
+
+
+def _resolve_pilot_setting(
+    var: str,
+    valid: tuple[str, ...],
+    default,
+    *,
+    arm: str | None = None,
+    writer_names: list[str] | None = None,
+    is_bool: bool = False,
+):
+    raw = (os.environ.get(var) or "").strip()
+    per_arm: dict = {}
+    fallback = default
+    if raw:
+        parts = [p.strip() for p in raw.split(",")]
+        if any(not p for p in parts):
+            raise RuntimeError(f"REFUSED: malformed {var}={raw!r}")
+        if len(parts) == 1 and "=" not in parts[0]:
+            fallback = _parse_pilot_setting_value(var, parts[0], valid, is_bool=is_bool)
+        else:
+            has_fallback = False
+            for part in parts:
+                if "=" not in part:
+                    if has_fallback:
+                        raise RuntimeError(f"REFUSED: malformed {var}={raw!r} (multiple unkeyed values)")
+                    fallback = _parse_pilot_setting_value(var, part, valid, is_bool=is_bool)
+                    has_fallback = True
+                    continue
+                k, v = part.split("=", 1)
+                k, v = k.strip(), v.strip()
+                if not k or not v or "=" in v:
+                    raise RuntimeError(f"REFUSED: malformed {var} entry {part!r}")
+                if k in per_arm:
+                    raise RuntimeError(f"REFUSED: duplicate arm {k!r} in {var}={raw!r}")
+                per_arm[k] = _parse_pilot_setting_value(var, v, valid, is_bool=is_bool)
+    def _norm(s: str) -> str:
+        return s.lower().replace("-", "_")
+
+    env_arms: list[str] | None = None
+    if writer_names is None and (
+        (os.environ.get("PIN_PILOT_ARMS") or "").strip()
+        or (os.environ.get("PIN_PILOT_WRITERS") or "").strip()
+    ):
+        env_arms = pilot_arms()[0]
+    for env_k, env_v in sorted(os.environ.items()):
+        if not env_k.startswith(f"{var}_") or not env_v.strip():
+            continue
+        suffix = env_k[len(var) + 1 :]
+        if not suffix:
+            raise RuntimeError(f"REFUSED: malformed {env_k}={env_v!r}")
+        parsed_v = _parse_pilot_setting_value(env_k, env_v, valid, is_bool=is_bool)
+        if writer_names is not None:
+            matches = [n for n in writer_names if n == suffix or _norm(n) == _norm(suffix)]
+            if not matches:
+                raise RuntimeError(f"REFUSED: {env_k} names unknown writer arm {suffix!r} (writers: {writer_names})")
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"REFUSED: {env_k} suffix {suffix!r} is ambiguous across writer arms {', '.join(matches)}"
+                )
+            per_arm[matches[0]] = parsed_v
+        elif env_arms is not None:
+            matches = [n for n in env_arms if n == suffix or _norm(n) == _norm(suffix)]
+            if len(matches) > 1:
+                raise RuntimeError(
+                    f"REFUSED: {env_k} suffix {suffix!r} is ambiguous across writer arms {', '.join(matches)}"
+                )
+            if matches:
+                per_arm[matches[0]] = parsed_v
+            elif arm is None or arm in env_arms:
+                raise RuntimeError(f"REFUSED: {env_k} names unknown writer arm {suffix!r} (writers: {env_arms})")
+            else:
+                per_arm[suffix] = parsed_v
+        elif arm is not None:
+            if arm == suffix or _norm(arm) == _norm(suffix):
+                per_arm[arm] = parsed_v
+            else:
+                per_arm[suffix] = parsed_v
+        else:
+            per_arm[suffix.lower()] = parsed_v
+    if writer_names is not None:
+        unknown = [k for k in per_arm if k not in writer_names]
+        if unknown:
+            raise RuntimeError(f"REFUSED: {var} names unknown writer arm(s) {', '.join(unknown)} (writers: {writer_names})")
+    if arm is not None:
+        return per_arm.get(arm, fallback)
+    if not per_arm:
+        return fallback
+    if writer_names is not None:
+        return {n: per_arm.get(n, fallback) for n in writer_names}
+    return per_arm
+
+
+def side_pairing(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_SIDE_PAIRING=default|verdict_safe (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_SIDE_PAIRING", PILOT_SIDE_PAIRING_VALUES, "default", arm=arm, writer_names=writer_names
+    )
+
+
+def domain_scope(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_DOMAIN_SCOPE=default|framing_only (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_DOMAIN_SCOPE", PILOT_DOMAIN_SCOPE_VALUES, "default", arm=arm, writer_names=writer_names
+    )
+
+
+def cannot_tell_construction(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_CANNOT_TELL_CONSTRUCTION=default|coarse_vs_sharp (or <arm>=<val>,... per arm; default 'default')."""
+
+    return _resolve_pilot_setting(
+        "PIN_CANNOT_TELL_CONSTRUCTION",
+        PILOT_CANNOT_TELL_CONSTRUCTION_VALUES,
+        "default",
+        arm=arm,
+        writer_names=writer_names,
+    )
+
+
+def post_refusal_span(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_POST_REFUSAL_SPAN=0|1|false|true (or <arm>=<val>,... per arm; default False)."""
+
+    return _resolve_pilot_setting(
+        "PIN_POST_REFUSAL_SPAN", (), False, arm=arm, writer_names=writer_names, is_bool=True
+    )
+
+
+def verdict_prompt(arm: str | None = None, *, writer_names: list[str] | None = None):
+    """PIN_VERDICT_PROMPT=old|defined|exclusive (or <arm>=<val>,... per arm; default 'old')."""
+
+    return _resolve_pilot_setting(
+        "PIN_VERDICT_PROMPT", PILOT_VERDICT_PROMPT_VALUES, "old", arm=arm, writer_names=writer_names
+    )
+
+
+def _needed_write_setting_flags(writer_names: list[str]) -> list[str]:
+    flags: list[str] = []
+    if any(side_pairing(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--side-pairing")
+    if any(domain_scope(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--domain-scope")
+    if any(cannot_tell_construction(n, writer_names=writer_names) != "default" for n in writer_names):
+        flags.append("--cannot-tell-construction")
+    if any(post_refusal_span(n, writer_names=writer_names) for n in writer_names):
+        flags.append("--post-refusal-span")
+    if any(verdict_prompt(n, writer_names=writer_names) != "old" for n in writer_names):
+        flags.append("--verdict-prompt")
+    return flags
+
+
+def _check_write_setting_flags(rs: dict, writer_names: list[str]) -> None:
+    needed = _needed_write_setting_flags(writer_names)
+    if not needed:
+        return
+    help_out = sh(f"{rs['role_set']} write --help", cwd=rs["src"])
+    if "--wave" in help_out:
+        missing = [f for f in needed if f not in help_out]
+        if missing:
+            raise RuntimeError(
+                f"REFUSED: pinned role-set at {rs.get('commit', rs['src'])} does not support "
+                f"{', '.join(missing)} in 'role-set write --help'"
+            )
+
+
+def pilot_quant_policies(writer_for_arm: dict[str, str] | None = None) -> dict[str, str]:
+    """Parse PIN_PILOT_QUANT (<arm_or_writer>=<policy>,...), refusing conflicting policies for arms that share a writer."""
+
+    w_map = dict(writer_for_arm or {})
+    raw_entries: list[tuple[str, str]] = []
+    for item in (os.environ.get("PIN_PILOT_QUANT") or "").split(","):
+        item = item.strip()
+        if not item or "=" not in item:
+            continue
+        k, v = [p.strip() for p in item.split("=", 1)]
+        if k and v:
+            raw_entries.append((k, v))
+    by_writer_sources: dict[str, list[tuple[str, str]]] = {}
+    explicit: dict[str, str] = {}
+    for k, v in raw_entries:
+        if k in explicit and explicit[k] != v:
+            raise RuntimeError(
+                f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for {k!r} ({k}={explicit[k]}, {k}={v})"
+            )
+        explicit[k] = v
+        w = w_map.get(k, k)
+        by_writer_sources.setdefault(w, []).append((k, v))
+    policies: dict[str, str] = {}
+    for w, pairs in by_writer_sources.items():
+        vals = list(dict.fromkeys(v for _, v in pairs))
+        if len(vals) > 1:
+            detail = ", ".join(f"{k}={v}" for k, v in pairs)
+            raise RuntimeError(
+                f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for writer {w!r} ({detail}); "
+                f"arms sharing a writer share one GGUF"
+            )
+        policies[w] = vals[0]
+    if w_map:
+        arms_by_writer: dict[str, list[str]] = {}
+        for arm, w in w_map.items():
+            arms_by_writer.setdefault(w, []).append(arm)
+        for w, arms_for_w in arms_by_writer.items():
+            if len(arms_for_w) > 1 and w in by_writer_sources and w not in explicit:
+                resolved = {a: explicit.get(a, "q8") for a in arms_for_w}
+                if len(set(resolved.values())) > 1:
+                    detail = ", ".join(f"{a}={resolved[a]}" for a in arms_for_w)
+                    raise RuntimeError(
+                        f"REFUSED: PIN_PILOT_QUANT sets conflicting policies for writer {w!r} ({detail}); "
+                        f"arms sharing a writer share one GGUF"
+                    )
+    return policies
 
 
 def check_pins(names: list, listed: dict, policies: dict) -> None:
@@ -2633,9 +2948,9 @@ def critic_eval_window(built: dict, result: dict) -> None:
             or "old"
         ).strip()
         verdict_prompts = [x.strip() for x in raw_verdict_prompt.split(",") if x.strip()]
-        if not verdict_prompts or any(vp not in ("old", "defined") for vp in verdict_prompts):
+        if not verdict_prompts or any(vp not in ("old", "defined", "exclusive") for vp in verdict_prompts):
             raise RuntimeError(
-                f"REFUSED: PIN_CRITIC_VERDICT_PROMPT must be 'old' or 'defined' (or 'old,defined'), got {raw_verdict_prompt!r}"
+                f"REFUSED: PIN_CRITIC_VERDICT_PROMPT must be 'old', 'defined' or 'exclusive' (or comma-separated), got {raw_verdict_prompt!r}"
             )
         checks = (
             os.environ.get("PIN_CRITIC_CHECKS")
@@ -4415,7 +4730,10 @@ def pilot_window(built: dict, result: dict) -> None:
         PILOT_WAVES = int(os.environ["PIN_PILOT_WAVES"])
     rs = result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
     result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
-    writer_names = [x.strip() for x in os.environ["PIN_PILOT_WRITERS"].split(",") if x.strip()]
+    writer_names, writer_for_arm = pilot_arms()
+    writer_models = list(dict.fromkeys(writer_for_arm[n] for n in writer_names))
+    if (os.environ.get("PIN_PILOT_ARMS") or "").strip() or any(writer_for_arm[n] != n for n in writer_names):
+        result["pilot_arms"] = dict(writer_for_arm)
     by_name = {m["served_as"]: m for m in MODELS}
     result["disk_free_gb_before"] = round(shutil.disk_usage(_disk_target()).free / 1e9, 1)
     machine_file = WORK / "machine.json"
@@ -4432,6 +4750,14 @@ def pilot_window(built: dict, result: dict) -> None:
     plan, twins_plan = base / "pilot-plan.json", base / "twins-plan.json"
     domains = f"{rs['src']}/roles/domains/naics-2022.json"
     result["critique_scope"] = critique_scope()
+    result["side_pairing"] = side_pairing(writer_names=writer_names)
+    result["domain_scope"] = domain_scope(writer_names=writer_names)
+    result["cannot_tell_construction"] = cannot_tell_construction(writer_names=writer_names)
+    result["post_refusal_span"] = post_refusal_span(writer_names=writer_names)
+    if any(k == "PIN_VERDICT_PROMPT" or k.startswith("PIN_VERDICT_PROMPT_") for k, v in os.environ.items() if v.strip()):
+        result["verdict_prompt"] = verdict_prompt(writer_names=writer_names)
+    _check_write_setting_flags(rs, writer_names)
+    policies = pilot_quant_policies(writer_for_arm)
     lessons = [x.strip() for x in os.environ.get("PIN_PILOT_LESSONS", "").split(",") if x.strip()]
     if lessons:
         lessons_meta = plan_pilot_lessons(rs, lessons, domains, plan, base)
@@ -4467,26 +4793,25 @@ def pilot_window(built: dict, result: dict) -> None:
     result["pool_sha256"] = pool_sha
     training_files = training_inputs(result) if plan_has_apply_slots(plan) else []
 
-    policies = dict(x.split("=", 1) for x in os.environ.get("PIN_PILOT_QUANT", "").split(",") if "=" in x)
     writers_path = Path(rs["src"]) / "writers.json"
     result["server_pin"] = server_pin_entry(server_sha256(), writers_path)
     if isinstance(result.get("llama_server"), dict):
         result["llama_server"].update(result["server_pin"])
     listed = json.loads(writers_path.read_text(encoding="utf-8"))
     families = {e["served_as"]: e.get("family") for e in listed["writers"] + listed["critics"]}
-    critic_for = critics_for(writer_names, families, waves=PILOT_WAVES)
+    critic_for = critics_for(writer_names, families, waves=PILOT_WAVES, writer_for_arm=writer_for_arm)
     result["critic_for"] = critic_for if critic_for else "none (write only)"
-    check_pins(list(dict.fromkeys([*writer_names, *critic_for.values()])), listed, policies)
-    for name in [*writer_names, *critic_for.values()]:
+    check_pins(list(dict.fromkeys([*writer_models, *critic_for.values()])), listed, policies)
+    for name in [*writer_models, *critic_for.values()]:
         if name not in by_name:
             raise RuntimeError(f"{name} isn't in pin_window.MODELS")
     # Critics run at Q8_0 (R&D, 2026-10-17); a writer's quant policy applies to it as a writer only.
-    for c in set(critic_for.values()) - set(writer_names):
+    for c in set(critic_for.values()) - set(writer_models):
         policies.pop(c, None)
     cards_file = CONTENT / "card-values.json"
     # Pre-built GGUFs (PIN_GGUF_REPO): all of them before any wave, so the token is gone before a wave runs. Q8_0 only;
     # a Q6_K policy still converts here.
-    prefetch_hosted([n for n in dict.fromkeys([*writer_names, *critic_for.values()]) if policies.get(n, "q8") == "q8"],
+    prefetch_hosted([n for n in dict.fromkeys([*writer_models, *critic_for.values()]) if policies.get(n, "q8") == "q8"],
                     by_name, result)
     pool = Pool(built, result, policies, cards_file, WORK / "cards-j1")
     common = ["--pack", str(pack), "--writers", f"{rs['src']}/writers.json", "--cards", str(cards_file),
@@ -4501,11 +4826,22 @@ def pilot_window(built: dict, result: dict) -> None:
     result["arms"] = {}
     try:
         t0 = time.time()
-        pilot = pilot_batch(rs, common, plan, base / "pilot", writer_names, critic_for, pool, twins_after=twins_enabled())
+        pilot = pilot_batch(rs, common, plan, base / "pilot", writer_names, critic_for, pool,
+                            twins_after=twins_enabled(), writer_for_arm=writer_for_arm)
         result["pilot_seconds"] = round(time.time() - t0)
         twins_writers = {}
         for n, a in pilot.items():
-            result["arms"][n] = {"pilot": {"waves": a["waves"], "last": str(a.get("last"))}}
+            arm_rec = {
+                "side_pairing": side_pairing(n, writer_names=writer_names),
+                "domain_scope": domain_scope(n, writer_names=writer_names),
+                "cannot_tell_construction": cannot_tell_construction(n, writer_names=writer_names),
+                "post_refusal_span": post_refusal_span(n, writer_names=writer_names),
+                "verdict_prompt": verdict_prompt(n, writer_names=writer_names),
+                "pilot": {"waves": a["waves"], "last": str(a.get("last"))},
+            }
+            if writer_for_arm.get(n, n) != n:
+                arm_rec["writer"] = writer_for_arm[n]
+            result["arms"][n] = arm_rec
             if a.get("funnel_stop"):
                 result["arms"][n]["funnel_stop"] = a["funnel_stop"]
             why = twins_skip_reason(a)
@@ -4518,7 +4854,8 @@ def pilot_window(built: dict, result: dict) -> None:
         for idx, n in enumerate(twins_list):  # each arm's twins train against its own accepted rows, so one arm at a time here
             accepted = Path(pilot[n]["last"]) / "accepted.jsonl"
             tw = pilot_batch(rs, common, twins_plan, base / "twins", [n], critic_for, pool,
-                             extra=["--training", str(accepted)], later_arms=twins_list[idx + 1:])
+                             extra=["--training", str(accepted)], later_arms=twins_list[idx + 1:],
+                             writer_for_arm=writer_for_arm)
             result["arms"][n]["twins"] = {"waves": tw[n]["waves"], "last": str(tw[n].get("last"))}
         result["twins_seconds"] = round(time.time() - t1)
         for n in writer_names:
