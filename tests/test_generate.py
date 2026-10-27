@@ -368,3 +368,83 @@ def test_round5_t10_b01_carries_a_deciding_size_reading():
     check_puzzle({"puzzle": f["puzzle"], "model": f["model"], "answer": f["answer"], "reply": f["reply"]}, f["structure"])
     proofs = prove(f["model"], f["structure"], list(REGISTRY))
     assert any(p["differs"] for p in proofs.values())
+
+
+@pytest.mark.parametrize("pack", ["lamps", "cups"])
+@pytest.mark.parametrize(
+    "shortcut,want_op",
+    [
+        ("T10.floor_read_as_exact", ">="),
+        ("T10.ceiling_read_as_exact", "<="),
+    ],
+)
+@pytest.mark.parametrize("ifs", [0, 1, 2], ids=["d2", "d3", "d4"])
+def test_floor_and_ceiling_cells_build_for_lamps_and_cups_at_d2_to_d4(pack, shortcut, want_op, ifs):
+    from role_set.generate.build import receipt
+    from role_set.generate.select import differing
+    from role_set.generate.t10_variety import load_cells
+    from role_set.puzzle import solve
+
+    matching = [c for c in load_cells()["cells"][pack]["set"] if c["op"] == want_op]
+    seed, cell = next((i + 1, c) for i, c in enumerate(matching) if c["ifs"] == ifs)
+    b = build_t10(pack, seed, question="set", cell=cell, target_shortcut=shortcut)
+    assert b.trait_clue[0] == "count" and b.trait_clue[3] == want_op
+    assert sum(1 for f in b.model["facts"] if f["rule"][0] == "if") == ifs
+    solved = solve(parse_model(b.model), "underdetermined_with_explicit_set", "Which")
+    assert solved.answer == b.answer and solved.solutions >= 2
+    text = _rendered(b, pack, seed)
+    checked = check_puzzle(
+        {"puzzle": text, "model": b.model, "answer": b.answer, "reply": "x\nAnswer: " + b.answer},
+        "underdetermined_with_explicit_set",
+    )
+    assert checked.answer == b.answer
+    rec = receipt(b, "T10", PACKS[pack], "underdetermined_with_explicit_set")
+    assert differing(rec) == [shortcut]
+    b_from_seed = build_t10(pack, seed, question="set", target_shortcut=shortcut)
+    assert b_from_seed.model == b.model and b_from_seed.answer == b.answer
+
+
+@pytest.mark.parametrize("shortcut", ["T10.exact_read_as_floor", "T10.exact_read_as_ceiling"])
+@pytest.mark.parametrize("question", ["set", "claim"])
+def test_target_shortcut_selects_requested_exact_reading(shortcut, question):
+    from role_set.generate.build import receipt
+    from role_set.generate.select import differing
+
+    structure = "falsifier_first" if question == "claim" else "underdetermined_with_explicit_set"
+    b = build_t10("lamps", 1, question=question, target_shortcut=shortcut)
+    rec = receipt(b, "T10", PACKS["lamps"], structure)
+    assert shortcut in differing(rec)
+
+
+def test_target_shortcut_refusals_and_default_identity():
+    from role_set.generate.build import receipt
+
+    with pytest.raises(BuildError, match="unknown shortcut"):
+        build_t10("lamps", 1, question="set", target_shortcut="T11.consistent_so_supported")
+    with pytest.raises(BuildError, match="does not match"):
+        build_t10(
+            "lamps",
+            1,
+            question="set",
+            cell={"n": 3, "op": "=", "k": 1, "ifs": 1},
+            target_shortcut="T10.floor_read_as_exact",
+        )
+    for shortcut, op in (("T10.floor_read_as_exact", ">="), ("T10.ceiling_read_as_exact", "<=")):
+        with pytest.raises(BuildError, match="a claim tests exactly"):
+            build_t10("lamps", 1, question="claim", target_shortcut=shortcut)
+        with pytest.raises(BuildError, match="a claim tests exactly"):
+            build_t10(
+                "lamps",
+                1,
+                question="claim",
+                cell={"n": 3, "op": op, "k": 1, "ifs": 1},
+                target_shortcut=shortcut,
+            )
+    with pytest.raises(ValueError, match="T10 seed is 1 or more"):
+        build_t10("lamps", 0, question="set", target_shortcut="T10.floor_read_as_exact")
+    a = build_t10("lamps", 2, question="set")
+    b = build_t10("lamps", 2, question="set", target_shortcut=None)
+    assert receipt(a, "T10", PACKS["lamps"], "underdetermined_with_explicit_set") == receipt(
+        b, "T10", PACKS["lamps"], "underdetermined_with_explicit_set"
+    )
+
