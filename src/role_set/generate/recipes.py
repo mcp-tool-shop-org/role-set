@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from role_set.generate.build import (MAX_TRIES, BuildError, Built, Shape, _key, _mask, assignments, candidates, check_model,
                                      deletion_order, metrics, reduce, truth)
 from role_set.generate.shortcuts import REGISTRY, answer, differs, prove
-from role_set.generate.t10_variety import cell_for, clues_if_shape
+from role_set.generate.t10_variety import cell_for, clues_if_shape, load_cells
 from role_set.puzzle import PuzzleError
 
 # Domain packs: plural, names, one attribute, values. Each name is a whole word no other name in the pack contains.
@@ -127,21 +127,46 @@ def _addition_order(others: list[list], rng: random.Random, if_target: int, if_s
 
 
 def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int = MAX_TRIES,
-              cell: dict | None = None) -> Built:
+              cell: dict | None = None, target_shortcut: str | None = None) -> Built:
     """One T10 puzzle from a seed: a count clue on the deciding path, every fact needed, no lookup, and the trait clue's
     own size reading answers differently. `question` is "set" (which could be ...?) or "claim".
 
     The cell fixes how many entities, the count word, k, and how many if clues (plus if_shape on claims) the reduced
     puzzle must keep. `n` stays in the signature for callers that pass it; the cell is what assigns the entity count.
-    Pass `cell` only to probe one cell. A claim cell is "exactly": "at least" and "at most" keep a claim's verdict. The
+    Pass `cell` only to probe one cell. When `target_shortcut` is given, it must be in `T10.shortcuts`, `cell` (if
+    passed) must match `REGISTRY[target_shortcut]["from"]` or the deterministic cell for `(pack_name, question, seed)`
+    among cells with that `op` is chosen, and `_finish` accepts only when `proofs[target_shortcut]["differs"]` is True.
+    A claim cell is "exactly": "at least" and "at most" keep a claim's verdict. The
     hidden solution is drawn from the assignments where that count clue is true, and not from the ones where the true
     count is exactly k: an at-least or at-most puzzle whose count is always exactly k would teach the misreading T10
     exists to train out."""
 
     if question not in T10_QUESTIONS:
         raise BuildError(T10_NO_VALUE if question == "value" else f"T10 question is one of {', '.join(T10_QUESTIONS)}")
+    if target_shortcut is not None and target_shortcut not in T10.shortcuts:
+        raise BuildError(
+            f"T10 ({pack_name}): unknown shortcut {target_shortcut!r}; expected one of {', '.join(T10.shortcuts)}"
+        )
     pack = PACKS[pack_name]
-    spec = cell if cell is not None else cell_for(pack_name, question, seed)
+    if target_shortcut is None:
+        spec = cell if cell is not None else cell_for(pack_name, question, seed)
+    else:
+        want_op = REGISTRY[target_shortcut]["from"]
+        if cell is not None:
+            if cell.get("op") != want_op:
+                raise BuildError(
+                    f"T10 ({pack_name}): cell op {cell.get('op')!r} does not match {target_shortcut} ({want_op!r})"
+                )
+            spec = cell
+        else:
+            if seed < 1:
+                raise ValueError(f"T10 seed is 1 or more, not {seed}")
+            if question == "claim" and want_op != "=":
+                raise BuildError(
+                    f"T10 ({pack_name}): a claim tests exactly; at least and at most do not change its verdict"
+                )
+            matching = [c for c in load_cells()["cells"][pack_name][question] if c["op"] == want_op]
+            spec = matching[(seed - 1) % len(matching)]
     _ = n
     rng = random.Random(f"T10:{pack_name}:{question}:{seed}")  # each pack and question its own stream
     last = "no attempt"
@@ -170,7 +195,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
             if kept is None:
                 last = "no clue set left a small open set that keeps the count and the if count"
                 continue
-            built = _finish(shape, kept, trait, hidden, seed, attempt)
+            built = _finish(shape, kept, trait, hidden, seed, attempt, target_shortcut=target_shortcut)
             if isinstance(built, str):
                 last = built
                 continue
@@ -207,7 +232,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
         if if_shape is not None and clues_if_shape(kept) != if_shape:
             last = "reduction did not keep the cell's if shape"
             continue
-        built = _finish(shape, kept, trait, hidden, seed, attempt)
+        built = _finish(shape, kept, trait, hidden, seed, attempt, target_shortcut=target_shortcut)
         if isinstance(built, str):
             last = built
             continue
@@ -215,7 +240,7 @@ def build_t10(pack_name: str, seed: int, question: str, n: int = 4, tries: int =
     raise BuildError(f"T10 ({pack_name}, seed {seed}): no puzzle in {tries} tries; last refusal: {last}")
 
 
-def _trait_reading_differs(model: dict, structure: str, trait: list) -> bool:
+def _trait_reading_differs(model: dict, structure: str, trait: list, target_shortcut: str | None = None) -> bool:
     """A registered reading whose operator is the trait's, rewritten on the trait clue alone, changes the answer.
 
     `prove` still rewrites every count clue of that operator and is what the receipt stores. This check is the one the
@@ -224,6 +249,8 @@ def _trait_reading_differs(model: dict, structure: str, trait: list) -> bool:
     op = trait[3]
     key = None
     for name, spec in REGISTRY.items():
+        if target_shortcut is not None and name != target_shortcut:
+            continue
         if spec.get("rewrite") != "count_op" or spec.get("from") != op:
             continue
         lazy_model = copy.deepcopy(model)
@@ -247,7 +274,8 @@ def _trait_reading_differs(model: dict, structure: str, trait: list) -> bool:
     return False
 
 
-def _finish(shape: Shape, kept: list[list], trait: list, hidden: int, seed: int, attempt: int) -> Built | str:
+def _finish(shape: Shape, kept: list[list], trait: list, hidden: int, seed: int, attempt: int,
+            target_shortcut: str | None = None) -> Built | str:
     """The solver's own checks on the reduced model, then the shortcut proof; a refusal comes back as its reason."""
 
     model = shape.model(kept)
@@ -256,9 +284,12 @@ def _finish(shape: Shape, kept: list[list], trait: list, hidden: int, seed: int,
     except PuzzleError as e:
         return str(e)
     proofs = prove(model, shape.structure, list(T10.shortcuts))
-    if not any(p["differs"] for p in proofs.values()):
+    if target_shortcut is not None:
+        if not proofs.get(target_shortcut, {}).get("differs"):
+            return f"{target_shortcut} did not change the answer"
+    elif not any(p["differs"] for p in proofs.values()):
         return "no size loosening changed the answer"
-    if not _trait_reading_differs(model, shape.structure, trait):
+    if not _trait_reading_differs(model, shape.structure, trait, target_shortcut=target_shortcut):
         return "the trait clue's own size word did not change the answer"
     return Built(model=model, answer=solved, hidden=hidden, trait_clue=trait, shortcuts=proofs, metrics=metrics(model),
                  seed=seed, tries=attempt)
