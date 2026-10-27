@@ -22,8 +22,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from role_set.assemble import AssemblyError, Material, assemble, slot_flaw
-from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw, compare_trait_votes, compare_verdict,
-                             flaw_messages, teaching_text, trait_messages, verdict_messages)
+from role_set.callcache import retry_seed
+from role_set.critic import (TRAIT_TEMPERATURE, TRAIT_VOTES, answer_messages, compare_answer, compare_flaw,
+                             compare_trait_votes, compare_twin_verdict, compare_verdict, flaw_messages, teaching_text,
+                             trait_messages, verdict_messages)
 from role_set import solvefirst
 from role_set.frames import check_frame
 from role_set.solvefirst import SolveFirstError
@@ -158,19 +160,21 @@ def cell_key(lesson: str, kind: str) -> str:
 
 
 def interleave(slots: list[Slot]) -> list[Slot]:
-    """The plan's slots in dispatch order: round by round, one slot from every (lesson, kind) cell, kinds in KIND_ORDER
-    and lessons in plan order. Each cell keeps its own order. A short budget then samples every lesson and kind."""
+    """The plan's slots in dispatch order: every training slot (split != "apply") before any apply slot, and within
+    each group round by round, one slot from every (lesson, kind) cell, kinds in KIND_ORDER and lessons in plan
+    order. Each cell keeps its own order. A short budget then samples every lesson and kind."""
 
     lessons: list[str] = []
-    position: dict[tuple[str, str], int] = {}
+    position: dict[tuple[bool, str, str], int] = {}
     keyed = []
     for s in slots:
         if s.lesson not in lessons:
             lessons.append(s.lesson)
-        cell = (s.lesson, s.kind)
+        is_apply = s.split == "apply"
+        cell = (is_apply, s.lesson, s.kind)
         position[cell] = position.get(cell, -1) + 1
         rank = KIND_ORDER.index(s.kind) if s.kind in KIND_ORDER else len(KIND_ORDER)
-        keyed.append(((position[cell], rank, lessons.index(s.lesson)), s))
+        keyed.append(((1 if is_apply else 0, position[cell], rank, lessons.index(s.lesson)), s))
     return [s for _, s in sorted(keyed, key=lambda x: x[0])]
 
 
@@ -280,6 +284,7 @@ class Candidate:
     row: dict
     glyphs: int
     lookup: bool
+    repairs: list[dict] = field(default_factory=list)
 
 
 @dataclass
@@ -490,6 +495,7 @@ class Runner:
         training: list[dict] | None = None,  # the whole training set, for apply items' exclusions (aspire-si#127)
         training_models: dict | None = None,  # its sidecar models, {id: model}
         prior=None,  # role_set.exclusion.State: every row earlier batches accepted (BUILD-SPEC B4)
+        critique_scope: str = "all",  # "all" or "verdict" (design §11 F2: skip A, B, and written E when "verdict")
     ) -> None:
         self.gates, self.pack, self.trait_names = gates, pack, trait_names
         self.writer, self.critic = writer, critic
@@ -498,7 +504,11 @@ class Runner:
         self.training = training or []
         self.training_models = training_models or {}
         self._spent: set[str] | None = None
+        self._extra_spent: set[str] = set()
         self.excerpts = {k: list(v) for k, v in (excerpts or {}).items()}
+        self._slot_excerpt: dict[str, int] = {}
+        self._used_excerpts: dict[str, set[int]] = {}
+        self.critique_scope = critique_scope
         self.pins = pins or {}
         self.clock = clock
         self.status = Status(started_at=clock(), concurrency=max(1, concurrency))
@@ -532,11 +542,22 @@ class Runner:
         self.lookups: dict[str, int] = {}  # lesson -> accepted B lookups
         self.finished: list[Outcome] = []  # every outcome as it lands, so a halted run still reports its slots
         self._critic_notes: dict[str, list] = {}  # slot id -> the critic checks of its current attempt, for drafts.jsonl
+        self._verbatim_repairs: dict[str, list[dict]] = {}  # slot id -> verbatim_lines repairs on the current attempt
+
+    def note_training_row(self, row: dict) -> None:
+        """Add a surviving training row's 8-word user-turn spans to the SPENT set for apply slots."""
+
+        if row.get("split") == "apply":
+            return
+        with self.lock:
+            self._extra_spent |= _user_spans(row)
 
     def _spent_spans(self) -> set[str]:
-        if self._spent is None:
-            self._spent = trained_spans(self.training)
-        return self._spent
+        with self.lock:
+            if self._spent is None:
+                self._spent = trained_spans(self.training)
+            surviving = [r for r in self.prior_rows + self.accepted if r.get("split") != "apply"]
+            return self._spent | self._extra_spent | trained_spans(surviving)
 
     def _lesson_spans(self, lesson: str) -> set[str]:
         if lesson not in self._spans_by_lesson:
@@ -567,7 +588,17 @@ class Runner:
             record["critic_raw"] = refusal["critic_raw"]
         self._append("refusals.jsonl", record)
 
-    def _record_call(self, slot: Slot, attempt: int, c, outcome: str, glyphs: int, material) -> None:
+    def _record_call(
+        self,
+        slot: Slot,
+        attempt: int,
+        c,
+        outcome: str,
+        glyphs: int,
+        material,
+        *,
+        repairs: list[dict] | None = None,
+    ) -> None:
         """One line per writer call, on both paths: the raw draft, tokens, latency, the outcome, glyphs normalised, and
         the frozen stuck rule's measures on the draft's thinking. Then the systemic check over the last SYSTEMIC_WINDOW calls."""
         text = c.text if c is not None else ""
@@ -578,6 +609,10 @@ class Runner:
         # on a paid run can be read per draft. Absent when the draft never reached the critic.
         with self.lock:
             checks = self._critic_notes.pop(slot.id, None)
+            recorded_repairs = self._verbatim_repairs.pop(slot.id, None)
+        effective_repairs = repairs if repairs is not None else recorded_repairs
+        if effective_repairs:
+            record["verbatim_repairs"] = list(effective_repairs)
         if checks is not None:
             record["critic"] = checks
         if self.stuck is not None and text:
@@ -618,7 +653,11 @@ class Runner:
         taught = lesson_terms(lesson_text, others)
         messages = warmup_messages(self.pack, lesson)
         for attempt in range(1, WARMUP_MISSES + 1):
-            c = self.writer(messages, seed=attempt)
+            c = self.writer(
+                messages,
+                seed=attempt,
+                **({"slot": lesson, "attempt": attempt} if getattr(self.writer, "takes_check", False) else {}),
+            )
             self._count_tokens(c)
             answer: dict = {}
             try:
@@ -650,8 +689,20 @@ class Runner:
         if slot.kind in ("A", "B") or (slot.kind == "E" and slot.e_type == "written"):
             return None
         kind = slot.content_kind or "notice"
-        if slot.real_source and self.excerpts.get(kind):
-            return self.excerpts[kind].pop(0)
+        if slot.real_source:
+            pool = self.excerpts.get(kind) or []
+            if not pool:
+                raise AssemblyError(f"real_source slot {slot.id} ({kind}) has no excerpt in the pool")
+            with self.lock:
+                if slot.id not in self._slot_excerpt:
+                    used = self._used_excerpts.setdefault(kind, set())
+                    start = int(hashlib.sha256(slot.id.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
+                    idx = next(((start + k) % len(pool) for k in range(len(pool)) if (start + k) % len(pool) not in used), None)
+                    if idx is None:
+                        raise AssemblyError(f"real_source pool for {kind!r} exhausted ({len(pool)} excerpts) at {slot.id}")
+                    self._slot_excerpt[slot.id] = idx
+                    used.add(idx)
+                return pool[self._slot_excerpt[slot.id]]
         needs = f"It must be the kind of text a verdict of '{slot.verdict}' can be reached about for one plain statement."
         c = self._writer_call(material_messages(slot, needs), 0, slot)
         self._count_tokens(c)
@@ -664,9 +715,31 @@ class Runner:
         """The writer, with the slot's id for a mock that asks for it (wave mode's keyed mock, so its drafts depend on
         the slot and attempt, not the order of calls). A real writer is never told: the prompt carries no id."""
 
+        kw: dict = {"seed": seed}
         if getattr(self.writer, "takes_slot_id", False):
-            return self.writer(messages, seed=seed, slot_id=slot.id)
-        return self.writer(messages, seed=seed)
+            kw["slot_id"] = slot.id
+        if getattr(self.writer, "takes_check", False):
+            kw["slot"] = slot.id
+            kw["attempt"] = seed
+        return self.writer(messages, **kw)
+
+    def _critic_call(
+        self,
+        messages: list[dict],
+        *,
+        check: str | None = None,
+        slot: str | None = None,
+        attempt: int | None = None,
+        **kwargs,
+    ):
+        if getattr(self.critic, "takes_check", False):
+            if check is not None:
+                kwargs["check"] = check
+            if slot is not None:
+                kwargs["slot"] = slot
+            if attempt is not None:
+                kwargs["attempt"] = attempt
+        return self.critic(messages, **kwargs)
 
     def _refusal(self, code: str, detail: str) -> dict:
         tmpl = SUGGESTIONS.get(code, "{detail}")
@@ -684,11 +757,16 @@ class Runner:
         self._log(action, slot=slot.id, code=v.code, detail=v.detail, critic_raw=raw[:2000])
 
     def _note(self, slot: Slot, check: str, v, raw: str) -> None:
+        entry = {"check": check, "code": v.code, "detail": v.detail, "raw": raw[:2000]}
+        if getattr(v, "repairs", None):
+            entry["repairs"] = list(v.repairs)
         with self.lock:
-            self._critic_notes.setdefault(slot.id, []).append({"check": check, "code": v.code, "detail": v.detail, "raw": raw[:2000]})
+            self._critic_notes.setdefault(slot.id, []).append(entry)
 
     def _critic_pass(self, slot: Slot, row: dict, fields: dict) -> dict | None:
         if self.critic is None:
+            return None
+        if self.critique_scope == "verdict" and (slot.kind in ("A", "B") or (slot.kind == "E" and slot.e_type == "written")):
             return None
         with self.lock:
             self._critic_notes[slot.id] = []
@@ -709,7 +787,13 @@ class Runner:
                 turns.append((material, row["verdict"], row["deciding"]))
             for seen_material, key_verdict, key_deciding in turns:
                 for ask in range(2):
-                    c = self.critic(verdict_messages(seen_material, statement))
+                    c = self._critic_call(
+                        verdict_messages(seen_material, statement),
+                        check="verdict",
+                        slot=slot.id,
+                        attempt=ask,
+                        **({"seed": retry_seed(0, ask)} if ask else {}),
+                    )
                     self._count_tokens(c)
                     v = compare_verdict(self.gates, c.text, key_verdict, key_deciding, seen_material)
                     if v.code != "VOID":
@@ -719,8 +803,30 @@ class Runner:
                 verdicts.append((v, c.text))
                 if not v.ok:
                     break
+            twin = row.get("r10_twin")
+            if isinstance(twin, dict) and twin.get("statement") and twin.get("verdict"):
+                for ask in range(2):
+                    c = self._critic_call(
+                        verdict_messages(material, twin["statement"]),
+                        check="twin_verdict",
+                        slot=slot.id,
+                        attempt=ask,
+                        **({"seed": retry_seed(0, ask)} if ask else {}),
+                    )
+                    self._count_tokens(c)
+                    tv = compare_twin_verdict(self.gates, c.text, twin["verdict"])
+                    if tv.code != "VOID":
+                        break
+                    self._log("critic_void", slot=slot.id, detail=tv.detail)
+                self._note(slot, "twin_verdict", tv, c.text)
+                verdicts.append((tv, c.text))
             if slot.kind == "C":
-                c = self.critic(flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]))
+                c = self._critic_call(
+                    flaw_messages(material, statement, fields["checker_trace"], row["checker_verdict"]),
+                    check="flaw",
+                    slot=slot.id,
+                    attempt=0,
+                )
                 self._count_tokens(c)
                 f = compare_flaw(c.text, row["planted_flaw"])
                 self._note(slot, "flaw", f, c.text)
@@ -732,7 +838,13 @@ class Runner:
                     self._log("flaw_advisory", slot=slot.id, detail=f.detail, critic_raw=c.text[:2000])
         elif slot.kind == "B":
             for ask in range(2):
-                c = self.critic(answer_messages(row["turns"][0]["user"], row["answer"]))
+                c = self._critic_call(
+                    answer_messages(row["turns"][0]["user"], row["answer"]),
+                    check="answer",
+                    slot=slot.id,
+                    attempt=ask,
+                    **({"seed": retry_seed(0, ask)} if ask else {}),
+                )
                 self._count_tokens(c)
                 v = compare_answer(c.text, row["answer"])
                 if v.code != "VOID":
@@ -743,7 +855,8 @@ class Runner:
         # The trait is a majority of three calls (R&D, 2026-10-11): one call was unstable on 5 of 20 items.
         votes = []
         for seed in range(TRAIT_VOTES):
-            c = self.critic(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS), temperature=TRAIT_TEMPERATURE, seed=seed)
+            c = self._critic_call(trait_messages(_teaching_text(row), self.trait_names, TRAIT_STEPS),
+                                  check="trait", slot=slot.id, attempt=seed, temperature=TRAIT_TEMPERATURE, seed=seed)
             self._count_tokens(c)
             votes.append(c.text)
         trait = compare_trait_votes(votes, slot.lesson)
@@ -829,13 +942,19 @@ class Runner:
                 measures = self.stuck(str(fields.get("thinking") or ""), "", slot.tier, getattr(c, "completion_tokens", 0) or 0)
                 if measures.get("stuck"):
                     refusal = self._refusal("STUCK", ", ".join(f"{k} {measures[k]}" for k in ("bursts", "hedges") if k in measures) or "stuck rule")
+        repairs: list[dict] = []
+        with self.lock:
+            self._verbatim_repairs.pop(slot.id, None)
         if refusal is None:
             if slot.kind == "C" and "planted_flaw" not in fields:
                 fields["planted_flaw"] = slot_flaw(slot)
             try:
-                row = assemble(slot, trait, fields, material)
+                row = assemble(slot, trait, fields, material, repairs=repairs)
             except AssemblyError as e:
                 refusal = self._refusal("ASSEMBLY", str(e))
+            if repairs:
+                with self.lock:
+                    self._verbatim_repairs[slot.id] = list(repairs)
         if refusal is None:
             t = truth_checks(row, facts)
             if t:
@@ -859,6 +978,8 @@ class Runner:
             try:
                 # An apply item is never trained, so check_item refuses it; it has its own check (gates 1.7.5).
                 (self.gates.check_apply_item if slot.split == "apply" else self.gates.check_item)(row)
+                if slot.kind == "C":
+                    self.gates.check_trace_leaks_label(row)
             except self.gates.error_type() as e:
                 refusal = self._refusal("GATE", str(e))
         if refusal is None:
@@ -867,7 +988,7 @@ class Runner:
                 refusal = self._refusal("ROLE_WORDS", ", ".join(words))
         if refusal is not None:
             return refusal, None, glyphs
-        return None, Candidate(completion=c, fields=fields, row=row, glyphs=glyphs, lookup=lookup), glyphs
+        return None, Candidate(completion=c, fields=fields, row=row, glyphs=glyphs, lookup=lookup, repairs=repairs), glyphs
 
     def write_step(self, st: SlotState) -> Candidate | None:
         """Writer calls until a draft passes the mechanical checks, inside the slot's attempt budget. A mechanical
@@ -922,11 +1043,11 @@ class Runner:
                 return self._refusal("PUZZLE", lookup_full(slot))
             if slot.kind == "B":
                 self.models[row["id"]] = fields["model"]
-            self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs)
+            self._accept(slot, row, c, st.attempt, glyphs=cand.glyphs, repairs=cand.repairs)
             self.accept_order[slot.id] = len(self.accepted) - 1
             if cand.lookup:
                 self.lookups[slot.lesson] = self.lookups.get(slot.lesson, 0) + 1
-            self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material)
+            self._record_call(slot, st.attempt, c, "accepted", cand.glyphs, st.material, repairs=cand.repairs)
             return None
 
     def refuse(self, st: SlotState, c, refusal: dict, glyphs: int) -> None:
@@ -970,12 +1091,22 @@ class Runner:
                 return self.outcome_of(st, cand.row)
             self.refuse(st, cand.completion, refusal, cand.glyphs)
 
-    def _accept(self, slot: Slot, row: dict, completion, attempt: int, glyphs: int = 0) -> None:
+    def _accept(
+        self,
+        slot: Slot,
+        row: dict,
+        completion,
+        attempt: int,
+        glyphs: int = 0,
+        *,
+        repairs: list[dict] | None = None,
+    ) -> None:
         self.accepted.append(row)
         self.status.accepted += 1
         framing = row["turns"][0]["user"].split("\n", 1)[0]
         if framing and slot.kind in ("C", "D", "E"):
             self.avoid.append(framing)
+        effective_repairs = repairs if repairs is not None else self._verbatim_repairs.get(slot.id)
         receipt = {
             "slot": slot.as_dict(),
             "writer_model": completion.model,
@@ -985,6 +1116,9 @@ class Runner:
             "glyphs_normalized": glyphs,
             **self.pins,
         }
+        if effective_repairs:
+            receipt["verbatim_repairs"] = list(effective_repairs)
+            self._log("verbatim_repair", slot=slot.id, attempt=attempt, repairs=list(effective_repairs))
         if slot.kind == "B":
             locked = self._locked.get(slot.id)
             receipt["b"] = locked.receipt() if locked is not None else {"b_path": slot.b_path or "freehand", "pack": slot.pack}
@@ -1099,12 +1233,17 @@ class Runner:
             return out
 
         try:
-            if self.status.concurrency == 1:
-                for s in slots:
-                    outcomes.append(one(s))
-            else:
-                with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
-                    outcomes = list(pool.map(one, slots))
+            train_slots = [s for s in slots if s.split != "apply"]
+            apply_slots = [s for s in slots if s.split == "apply"]
+            for group in (train_slots, apply_slots):
+                if not group:
+                    continue
+                if self.status.concurrency == 1:
+                    for s in group:
+                        outcomes.append(one(s))
+                else:
+                    with ThreadPoolExecutor(max_workers=self.status.concurrency) as pool:
+                        outcomes.extend(pool.map(one, group))
         finally:
             self._finish(outcomes or self.finished, lessons)
         return outcomes

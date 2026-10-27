@@ -237,3 +237,168 @@ def test_the_readout_reports_how_often_the_keyed_option_is_the_longest():
     rows = [row("T07", "B", ["short", "the much longer keyed option", "brief"]), row("T07", "A", ["equal one", "equal two", "equal six"]),
             row("T08", "C", ["a long distractor here", "x", "keyed"])]
     assert keyed_longest(rows) == {"T07": {"keyed_longest": 1, "items": 2}, "T08": {"keyed_longest": 0, "items": 1}}
+
+
+def test_readout_on_wave_batch_report_counts_every_state_and_keeps_inline_readout_json_byte_identical(tmp_path: Path, capsys):
+    from role_set.cli import main
+
+    # 1. Wave batch-report with every state: accepted, needs_rewrite, awaiting_critique, dropped, skipped.
+    wave_dir = tmp_path / "w1"
+    wave_dir.mkdir()
+    wave_report = {
+        "wave": "critique",
+        "pending": 3,
+        "states": {"accepted": 2, "awaiting_critique": 1, "dropped": 1, "needs_rewrite": 2, "skipped": 1},
+        "batch_check": None,
+        "status": {
+            "accepted": 2,
+            "dropped": 1,
+            "attempted": 5,
+            "refused_by_code": {"VERDICT_MISMATCH": 3},
+            "tokens": {"prompt": 1000, "completion": 500},
+            "elapsed_s": 120.5,
+            "critic_agreement": 0.75,
+            "halted": None,
+            "lesson_halts": {},
+            "cell_halts": {},
+            "kinds_off": {},
+            "skipped": {"T10/D halted": 1},
+            "actions": [
+                {"action": "accepted", "slot": "T10-A-01"},
+                {"action": "refused", "slot": "T10-C-01", "code": "VERDICT_MISMATCH"},
+                {"action": "accepted", "slot": "T10-C-01"},
+                {"action": "refused", "slot": "T10-C-06", "code": "VERDICT_MISMATCH"},
+                {"action": "refused", "slot": "T10-D-02", "code": "VERDICT_MISMATCH"},
+            ],
+        },
+        "outcomes": [
+            {"slot": "T10-A-01", "state": "accepted", "attempts": 1, "refusals": [], "skip_reason": None},
+            {"slot": "T10-C-01", "state": "accepted", "attempts": 2, "refusals": [{"code": "SPENT"}], "skip_reason": None},
+            {"slot": "T10-C-06", "state": "needs_rewrite", "attempts": 1, "refusals": [{"code": "VERDICT_MISMATCH"}], "skip_reason": None},
+            {"slot": "T10-D-02", "state": "needs_rewrite", "attempts": 2, "refusals": [{"code": "VERDICT_MISMATCH"}], "skip_reason": None},
+            {"slot": "T10-D-03", "state": "awaiting_critique", "attempts": 2, "refusals": [{"code": "SPENT"}], "skip_reason": None},
+            {"slot": "T10-D-10", "state": "dropped", "attempts": 3, "refusals": [{"code": "VERDICT_MISMATCH"}], "skip_reason": None},
+            {"slot": "T10-D-09", "state": "skipped", "attempts": 0, "refusals": [], "skip_reason": "T10/D halted"},
+        ],
+    }
+    (wave_dir / "batch-report.json").write_text(json.dumps(wave_report, indent=1), encoding="utf-8")
+    wave_ro = tmp_path / "wave-ro"
+    assert main(["readout", "--run", str(wave_dir), "--out", str(wave_ro)]) == 0
+    stdout = capsys.readouterr().out
+    assert stdout.strip()
+    assert "needs_rewrite: 2; awaiting_critique: 1;" in stdout
+    assert "| Lesson | Accepted | Dropped | Needs rewrite | Awaiting critique | Skipped | Accept rate | Skipped by reason |" in stdout
+    assert "| T10 | 2 | 1 | 2 | 1 | 1 | 0.667 | T10/D halted: 1 |" in stdout
+
+    ro_json = json.loads((wave_ro / "readout.json").read_text(encoding="utf-8"))["run"]
+    assert ro_json["accepted"] == 2
+    assert ro_json["dropped"] == 1
+    assert ro_json["needs_rewrite"] == 2
+    assert ro_json["awaiting_critique"] == 1
+    assert ro_json["per_lesson"]["T10"] == {
+        "accepted": 2,
+        "dropped": 1,
+        "needs_rewrite": 2,
+        "awaiting_critique": 1,
+        "skipped": 1,
+        "accept_rate": 0.667,
+        "skipped_by_reason": {"T10/D halted": 1},
+    }
+    assert ro_json["per_kind"]["C"] == {
+        "accepted": 1,
+        "dropped": 0,
+        "needs_rewrite": 1,
+        "awaiting_critique": 0,
+        "skipped": 0,
+        "accept_rate": 1.0,
+        "skipped_by_reason": {},
+    }
+    assert ro_json["per_kind"]["D"] == {
+        "accepted": 0,
+        "dropped": 1,
+        "needs_rewrite": 1,
+        "awaiting_critique": 1,
+        "skipped": 1,
+        "accept_rate": 0.0,
+        "skipped_by_reason": {"T10/D halted": 1},
+    }
+    # 4 slots had refusals (C-01 accepted, C-06 needs_rewrite, D-02 needs_rewrite, D-03 awaiting_critique, D-10 dropped -> 5 refused, only 1 accepted).
+    assert ro_json["retry_recovery"] == {"refused_slots": 5, "recovered": 1, "rate": 0.2}
+
+    # 2. Inline batch-report fixture produces byte-identical readout.json against main (727daa9).
+    inline_dir = tmp_path / "inline-fixture"
+    inline_dir.mkdir()
+    inline_report = {
+        "accepted": 1,
+        "dropped": 1,
+        "batch_check": "clean",
+        "status": {
+            "accepted": 1,
+            "attempted": 2,
+            "dropped": 1,
+            "tokens": {"prompt": 30, "completion": 6},
+            "refused_by_code": {"GATE": 2},
+            "critic_agreement": 1.0,
+            "elapsed_s": 4.2,
+            "halted": None,
+            "lesson_halts": {},
+            "cell_halts": {},
+            "kinds_off": {},
+            "skipped": {},
+            "actions": [
+                {"action": "accepted", "slot": "T18-A-02"},
+                {"action": "refused", "slot": "T18-A-01", "code": "GATE"},
+                {"action": "refused", "slot": "T18-A-01", "code": "GATE"},
+                {"action": "dropped", "slot": "T18-A-01"},
+            ],
+        },
+        "outcomes": [
+            {"slot": "T18-A-02", "accepted": True, "attempts": 1, "refusals": []},
+            {"slot": "T18-A-01", "accepted": False, "attempts": 3, "refusals": [{"code": "GATE"}, {"code": "GATE"}]},
+        ],
+    }
+    (inline_dir / "batch-report.json").write_text(json.dumps(inline_report, indent=1), encoding="utf-8")
+    inline_ro = tmp_path / "inline-ro"
+    assert main(["readout", "--run", str(inline_dir), "--out", str(inline_ro)]) == 0
+    capsys.readouterr()
+
+    expected_main_data = {
+        "run": {
+            "run": "inline-fixture",
+            "halted": None,
+            "lesson_halts": {},
+            "cell_halts": {},
+            "warmups": {},
+            "keyed_letters": {},
+            "keyed_longest": {},
+            "kinds_off": {},
+            "skipped": {},
+            "batch_check": "clean",
+            "accepted": 1,
+            "dropped": 1,
+            "attempted": 2,
+            "accept_rate": 0.5,
+            "per_lesson": {"T18": {"accepted": 1, "dropped": 1, "skipped": 0, "accept_rate": 0.5, "skipped_by_reason": {}}},
+            "per_kind": {"A": {"accepted": 1, "dropped": 1, "skipped": 0, "accept_rate": 0.5, "skipped_by_reason": {}}},
+            "refusals": {"GATE": 2},
+            "retry_recovery": {"refused_slots": 1, "recovered": 0, "rate": 0.0},
+            "glyphs_normalized": 0,
+            "calls": 3,
+            "tokens_per_call": {"prompt": 10, "completion": 2},
+            "seconds_per_call": {"mean": None, "p50": None, "p95": None},
+            "stuck": {"drafts_measured": 0, "stuck": 0, "with_burst": 0, "hedges_mean": None},
+            "critic_agreement": 1.0,
+            "elapsed_s": 4.2,
+            "inputs": {},
+        },
+        "compare": [],
+        "open_defects": [
+            "missing_stated_constraint",
+            "gate_false_positive",
+            "platform_line_endings",
+            "unenforced_rule",
+        ],
+    }
+    expected_bytes_file = tmp_path / "expected-readout.json"
+    expected_bytes_file.write_text(json.dumps(expected_main_data, indent=1), encoding="utf-8")
+    assert (inline_ro / "readout.json").read_bytes() == expected_bytes_file.read_bytes()

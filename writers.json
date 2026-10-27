@@ -16,6 +16,24 @@
     ],
     "note": "Built on Colab in window 1 (2026-10-17) at llama.cpp v0.7.0 with nvcc 13.4.92; CUDA toolkit 13.4.2 (redistrib 2026-09-16), whose own cuBLAS is 13.8.0.4. libcuda is the host driver's and is not pinned. Every later window and pod runs this exact file (receipts: Publisher receipts/colab/window1-20261016)."
   },
+  "llama_server_builds": [
+    {
+      "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+      "sha256": "39742d8a0354d4577da8dcc9cb3a5b9f03f02593d106eff41297e952d6ebfc95",
+      "cuda": "13.4",
+      "archs": "80;90;100;120 (sm_120a SASS)",
+      "libs": {
+        "libcudart.so.13": "7fb00519a24512bf677b59e87921e5c05aac8246ceb6a57435c0d9dfeef364f6",
+        "libcublas.so.13": "59dd485de6657bc8e1ff5f0f73de74c15f5a3e4648747e2288e342da1f60866c",
+        "libcublasLt.so.13": "a1821093b6b29ff871a07532071f3eaf6996d549d54f53235763abc12b8ad19f"
+      },
+      "runtime_wheels": [
+        "nvidia-cuda-runtime==13.4.92",
+        "nvidia-cublas==13.8.0.4"
+      ],
+      "note": "Built on Colab in window 16g (2026-10-23) at llama.cpp v0.7.0 with nvcc 13.4.92; adds sm_120a SASS for RTX PRO 6000 Blackwell (G4)."
+    }
+  ],
   "writers": [
     {
       "served_as": "nemotron-3-ultra-550b-a55b",
@@ -236,6 +254,23 @@
       "registry_id": "openmdw-1.1",
       "checked_by": "R&D, 2026-10-16 (rnd experiments/stage1-regeneration/PLAN.md section 1); critiques the Muse writer",
       "pin_note": "Converted at llama.cpp 620d2225; reproduced three times (windows 1-3). Fits the A100-40GB."
+    },
+    {
+      "served_as": "nemotron-3.5-super-vl-120b-a12b",
+      "family": "nemotron",
+      "repo": "nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "revision": "1f8953f7f0935358e3605150d22bc15df062061c",
+      "gguf_file": "nemotron-3.5-super-vl-120b-a12b-Q8_0.gguf",
+      "gguf_sha256": "6fa3c010ebd015d298d910a2ab6ad4d953155b1cc418b0f54581075aafbeeb02",
+      "quant": "Q8_0",
+      "licence": "OpenMDW-1.1",
+      "terms_url": "https://huggingface.co/nvidia/NVIDIA-Nemotron-3.5-Super-VL-120B-A12B-BF16",
+      "terms_note": "OpenMDW-1.1: \"does not impose any restrictions or obligations with respect to any use, modification, or sharing of any outputs\"; for hosting our conversion: \"If you distribute any portion of the Model Materials, you shall retain in your distribution (1) a copy of this agreement, and (2) all copyright notices and other notices of origin\"",
+      "terms_date": "2026-10-19",
+      "training": "allowed",
+      "registry_id": "openmdw-1.1",
+      "checked_by": "R&D, 2026-10-19 (rnd critic-signal DESIGN section 10); the larger critic, text-only",
+      "pin_note": "Text-only (the vision tower is left out). BF16 at llama.cpp 620d2225, then llama-quantize Q8_0 (route via_bf16); one conversion, so reproducibility isn't re-proven. The quantize ran twice from the same BF16, both 6fa3c010. 131.6 GB: needs a single 141 GB card (H200) or more."
     }
   ],
   "retired": [

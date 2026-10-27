@@ -26,6 +26,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from role_set.assemble import Material
+from role_set.cards import PIN_KEYS as CARD_KEYS
 from role_set.plan import Slot
 from role_set.runner import MAX_ATTEMPTS, Outcome, RunHalted, Runner, SlotState, interleave
 from role_set.transport import Completion
@@ -36,7 +37,7 @@ DRAFTS_FILE = "wave-drafts.jsonl"
 PENDING = ("awaiting_critique", "needs_rewrite")
 FINAL = ("accepted", "dropped", "skipped")
 # Pins that belong to one wave's host, not to the batch: they may differ from wave to wave.
-WAVE_LOCAL = ("grant", "machine", "wave", "drafts_sha256", "llama_server_commit", "llama_server_sha256", "writers_list_sha256")
+WAVE_LOCAL = ("grant", "machine", "wave", "drafts_sha256", "llama_server_commit", "llama_server_sha256", "llama_server_archs", "writers_list_sha256")
 
 
 class WaveError(RuntimeError):
@@ -47,12 +48,24 @@ def file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def _is_writer_pin(k: str) -> bool:
+    # The writer's card (cards.pins: card_*, cards_sha256) is the writer's, like its GGUF: a critique wave loads no
+    # writer, so it has no card pins to match. Window 12b's critique was refused when they were counted as batch pins.
+    return k.startswith(("writer_", "card_")) or k == "cards_sha256"
+
+
 def batch_pins(pins: dict) -> dict:
-    return {k: v for k, v in pins.items() if k not in WAVE_LOCAL and not k.startswith(("writer_", "critic_"))}
+    return {k: v for k, v in pins.items() if k not in WAVE_LOCAL and not _is_writer_pin(k) and not k.startswith("critic_")}
 
 
 def writer_pins(pins: dict) -> dict:
-    return {k: v for k, v in pins.items() if k.startswith("writer_")}
+    return {k: v for k, v in pins.items() if _is_writer_pin(k)}
+
+
+def header_writer_pins(header: dict) -> dict:
+    """The drafts' writer pins, including card pins that a header written before 2026-10-17 kept among its batch pins."""
+
+    return {**writer_pins(header.get("batch_pins") or {}), **(header.get("writer_pins") or {})}
 
 
 # ---- the drafts file ----------------------------------------------------------------------------------------
@@ -98,7 +111,7 @@ def write(path: Path, header: dict, drafts: list[dict]) -> str:
 def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
     """The batch pins must match in every wave; the writer pins too in a rewrite wave."""
 
-    have, want = header.get("batch_pins") or {}, batch_pins(pins)
+    have, want = batch_pins(header.get("batch_pins") or {}), batch_pins(pins)
     diff = sorted(k for k in set(have) | set(want) if have.get(k) != want.get(k))
     if diff:
         raise WaveError(f"REFUSED: the drafts were written under other batch pins ({', '.join(diff)}); a wave continues only its own batch")
@@ -106,10 +119,49 @@ def require_same_pins(header: dict, pins: dict, gates, wave: str) -> None:
     if (g.get("version"), g.get("sha256")) != (gates.version, gates.sha256):
         raise WaveError(f"REFUSED: the drafts were checked by gates {g.get('version')}; this wave has {gates.version}")
     if wave == "rewrite":
-        have_w, want_w = header.get("writer_pins") or {}, writer_pins(pins)
+        have_w, want_w = header_writer_pins(header), writer_pins(pins)
         diff = sorted(k for k in set(have_w) | set(want_w) if have_w.get(k) != want_w.get(k))
         if diff:
             raise WaveError(f"REFUSED: a rewrite continues the drafts' own writer; these pins differ: {', '.join(diff)}")
+
+
+def chain_card_pins(header: dict, prior: Path) -> tuple[dict, str]:
+    """The writer's card pins for drafts whose header lost them, taken whole from the write wave's drafts they came from
+    (stub rung 12s5a; R&D and Argon, 2026-10-18). A critique wave before the fix dropped an old header's card pins, which
+    sat among its batch pins; its input, the write wave's sealed drafts, still holds them. One hop only: these drafts are
+    one write wave and one critique, and `prior` is the exact file that critique read. Returns the seven pins and the
+    prior's sha256; any miss refuses, and pins are never taken partly from one file and partly from the other."""
+
+    def refuse(why: str):
+        raise WaveError(f"REFUSED: the card-pin chain to {prior.name}: {why}")
+
+    have = header_writer_pins(header)
+    if CARD_KEYS & (set(have) | set(header.get("batch_pins") or {})):  # (i)
+        refuse("these drafts record card pins of their own, and a prior never replaces them")
+    hops = header.get("waves") or []
+    if [w.get("wave") for w in hops] != ["write", "critique"] or hops[0].get("input_sha256"):
+        refuse(f"these drafts are waves {[w.get('wave') for w in hops]}; the chain takes one write wave and one critique")
+    p_header, _ = read(prior)  # (ii): the prior's seal, or this raises
+    p_hops = p_header.get("waves") or []
+    if [w.get("wave") for w in p_hops] != ["write"] or p_hops[0].get("input_sha256"):
+        refuse(f"the prior is waves {[w.get('wave') for w in p_hops]}, not one write wave's drafts")
+    sha = file_sha256(prior)
+    if sha != hops[-1].get("input_sha256"):  # (iii)
+        refuse(f"its sha256 {sha[:12]} is not the input {str(hops[-1].get('input_sha256'))[:12]} of the critique that wrote these drafts")
+    p_pins = header_writer_pins(p_header)
+    missing = sorted(CARD_KEYS - set(p_pins))
+    if missing:  # (iv)
+        refuse(f"the prior lacks card pins {', '.join(missing)}")
+    diff = sorted(k for k in set(p_pins) | set(have) if k not in CARD_KEYS and p_pins.get(k) != have.get(k))
+    diff += [k for k in sorted(set(batch_pins(p_header.get("batch_pins") or {})) | set(batch_pins(header.get("batch_pins") or {})))
+             if batch_pins(p_header.get("batch_pins") or {}).get(k) != batch_pins(header.get("batch_pins") or {}).get(k)]
+    p_gates, gates = p_header.get("gates") or {}, header.get("gates") or {}
+    if not p_gates.get("sha256"):
+        diff.append("gates (the prior records no gates sha256)")
+    diff += [f"gates {k}" for k in ("version", "sha256", "closed_form") if p_gates.get(k) != gates.get(k)]
+    if diff:  # (v)
+        refuse(f"the prior's pins differ from these drafts' ({', '.join(diff)})")
+    return {k: p_pins[k] for k in sorted(CARD_KEYS)}, sha
 
 
 def _completion_dict(c) -> dict:
@@ -171,9 +223,35 @@ def load_andon(runner: Runner, andon: dict) -> None:
     runner.halt_order = [(lesson, tuple(key)) for lesson, key in (andon.get("halt_order") or [])]
 
 
-def preload(runner: Runner, drafts: list[dict]) -> None:
+def _draft_row(runner: Runner, d: dict) -> dict | None:
+    """Assemble the candidate row of a surviving training draft (accepted or awaiting_critique) without mutating runner."""
+
+    if isinstance(d.get("row"), dict):
+        return d["row"]
+    if not isinstance(d.get("candidate"), dict):
+        return None
+    from role_set.assemble import AssemblyError, assemble, slot_flaw  # noqa: PLC0415
+    from role_set.prompts import parse_json_object  # noqa: PLC0415
+    from role_set.runner import normalize_glyphs  # noqa: PLC0415
+    from role_set.solvefirst import SolveFirstError  # noqa: PLC0415
+
+    st, c = state_of(d), completion_of(d)
+    try:
+        fields, _ = normalize_glyphs(parse_json_object(c.text))
+        locked = runner.locked_for(st.slot)
+        if locked is not None:
+            fields["model"], fields["answer"] = locked.model, locked.key
+        if st.slot.kind == "C" and "planted_flaw" not in fields:
+            fields["planted_flaw"] = slot_flaw(st.slot)
+        trait = runner.trait_names.get(st.slot.lesson, st.slot.lesson)
+        return assemble(st.slot, trait, fields, st.material)
+    except (ValueError, AssemblyError, SolveFirstError):
+        return None
+
+
+def preload(runner: Runner, drafts: list[dict], *, include_awaiting: bool = True) -> None:
     """The batch's accepted rows, in the order they were accepted: the acceptance checks of a later wave run
-    against them, as they would inline."""
+    against them, as they would inline. Surviving non-rewritten training drafts also seed the SPENT set."""
 
     done = sorted((d for d in drafts if d["state"] == "accepted"), key=lambda d: d["accepted_seq"])
     for d in done:
@@ -186,6 +264,12 @@ def preload(runner: Runner, drafts: list[dict]) -> None:
         framing = row["turns"][0]["user"].split("\n", 1)[0]
         if framing and slot.kind in ("C", "D", "E"):
             runner.avoid.append(framing)
+    if include_awaiting:
+        for d in drafts:
+            if d["state"] == "awaiting_critique" and d["slot"].get("split") != "apply":
+                row = _draft_row(runner, d)
+                if row is not None:
+                    runner.note_training_row(row)
     for d in drafts:
         runner.avoid.extend(x for x in d.get("spent") or [] if x not in runner.avoid)
     # The earlier waves' counts carry over, so the last wave's report is the batch's (Argon §9.4 #8).
@@ -219,8 +303,9 @@ def _write_one(runner: Runner, st: SlotState) -> dict:
     cand = runner.write_step(st)
     if cand is None:
         return _drop(runner, st)
+    runner.note_training_row(cand.row)
     # Every writer call is logged; this one waits for the critic.
-    runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material)
+    runner._record_call(st.slot, st.attempt, cand.completion, "awaiting_critique", cand.glyphs, st.material, repairs=cand.repairs)
     return record(st, "awaiting_critique", completion=cand.completion, lookup=cand.lookup)
 
 
@@ -325,7 +410,10 @@ def write_wave(runner: Runner, slots: list[Slot], *, stop_after_s: float | None 
             return bare(slot, "dropped", refusals=st.refusals)
         return _write_one(runner, st)
 
-    return _each(runner, ordered, fn, halted_state=lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot"))
+    train_slots = [s for s in ordered if s.split != "apply"]
+    apply_slots = [s for s in ordered if s.split == "apply"]
+    halted_fn = lambda slot: bare(slot, "skipped", skip_reason="run halted during the slot")  # noqa: E731
+    return _each(runner, train_slots, fn, halted_state=halted_fn) + _each(runner, apply_slots, fn, halted_state=halted_fn)
 
 
 def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | None, drafts_in: list[dict] | None,
@@ -348,15 +436,26 @@ def run_wave(runner: Runner, wave: str, *, slots: list[Slot], header_in: dict | 
                             f"{len(want_slots)} in order; a wave continues only its own batch, whole")
         load_andon(runner, header_in.get("andon") or {})
         runner.plan_kinds = {Slot(**d["slot"]).kind for d in drafts_in}
-        preload(runner, drafts_in)
+        preload(runner, drafts_in, include_awaiting=(wave != "critique"))
         want = "awaiting_critique" if wave == "critique" else "needs_rewrite"
         todo = [i for i, d in enumerate(drafts_in) if d["state"] == want]
         if not todo:
             raise WaveError(f"REFUSED: no draft is {want.replace('_', ' ')}; nothing for a {wave} wave")
+        if wave == "critique":
+            from role_set.mock import MockCritic, answers_from_drafts  # noqa: PLC0415
+
+            if isinstance(runner.critic, MockCritic):
+                for k, v in answers_from_drafts(drafts_in).items():
+                    runner.critic.answers.setdefault(k, v)
         fn = _critique_one if wave == "critique" else _rewrite_one
-        done = _each(runner, [drafts_in[i] for i in todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+        train_todo = [i for i in todo if drafts_in[i]["slot"].get("split") != "apply"]
+        apply_todo = [i for i in todo if drafts_in[i]["slot"].get("split") == "apply"]
+        done = (
+            _each(runner, [drafts_in[i] for i in train_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+            + _each(runner, [drafts_in[i] for i in apply_todo], lambda d: fn(runner, d), halted_state=lambda d: d)
+        )
         drafts = list(drafts_in)
-        for i, d in zip(todo, done):
+        for i, d in zip(train_todo + apply_todo, done):
             drafts[i] = d
     header = dict(header_in or {})
     header["andon"] = save_andon(runner)

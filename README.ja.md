@@ -23,7 +23,7 @@
 
 ## インストール
 
-Python 3.12、uvによって管理。1つの実行時依存関係：[aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0、aspire-siコミット`388a6bc`に固定。ゲートはコピーではなくインポートされる。
+Python 3.13+ (3.15)、uvによって管理。1つの実行時依存関係：[aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0、aspire-siコミット`388a6bc`に固定。ゲートはコピーではなくインポートされる。
 
 ```text
 uv sync --frozen

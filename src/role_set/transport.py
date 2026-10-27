@@ -10,6 +10,7 @@ anything else is raised to the runner, which stops.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import time
 import urllib.error
@@ -38,6 +39,8 @@ class Completion:
     # "length" when the reply hit max_tokens: the runner then reads a parse failure as a truncated draft, not a
     # broken endpoint (pilot 2's five parse failures were kind B drafts cut off at the cap).
     finish_reason: str | None = None
+    thinking_tokens: int | None = None
+    messages_sha256: str | None = None
 
 
 def _post(url: str, body: dict, timeout_s: float) -> dict:
@@ -67,6 +70,23 @@ def post_with_retries(url: str, body: dict, *, timeout_s: float = DEFAULT_TIMEOU
                 log({"action": "retry_transport", "attempt": attempt + 1, "wait_s": wait, "error": type(last).__name__})
             sleep(wait)
     raise TransportError(f"endpoint failed after {len(BACKOFF_S)} retries: {type(last).__name__}: {last}")
+
+
+def _extract_thinking_tokens(out: dict) -> int | None:
+    usage = out.get("usage") if isinstance(out.get("usage"), dict) else {}
+    details = usage.get("completion_tokens_details") if isinstance(usage.get("completion_tokens_details"), dict) else {}
+    if details.get("reasoning_tokens") is not None:
+        return int(details["reasoning_tokens"])
+    if usage.get("reasoning_tokens") is not None:
+        return int(usage["reasoning_tokens"])
+    if usage.get("thinking_tokens") is not None:
+        return int(usage["thinking_tokens"])
+    timings = out.get("timings") if isinstance(out.get("timings"), dict) else {}
+    if timings.get("reasoning_n") is not None:
+        return int(timings["reasoning_n"])
+    if out.get("thinking_tokens") is not None:
+        return int(out["thinking_tokens"])
+    return None
 
 
 def chat(
@@ -101,6 +121,8 @@ def chat(
     except (KeyError, IndexError, TypeError) as e:
         raise TransportError("endpoint returned no message content") from e
     usage = out.get("usage") or {}
+    msg_blob = json.dumps(messages, sort_keys=True, ensure_ascii=False, default=str)
+    msg_sha = hashlib.sha256(msg_blob.encode("utf-8")).hexdigest()
     return Completion(
         text=text or "",
         prompt_tokens=usage.get("prompt_tokens"),
@@ -108,4 +130,6 @@ def chat(
         model=str(out.get("model") or model),
         seconds=clock() - t0,
         finish_reason=(out.get("choices") or [{}])[0].get("finish_reason"),
+        thinking_tokens=_extract_thinking_tokens(out),
+        messages_sha256=msg_sha,
     )

@@ -183,3 +183,320 @@ def test_slot_flaw_alternates():
         s.id = f"T02-C-{n:02d}"
         seen.add(slot_flaw(s))
     assert "none" in seen and len(seen) >= 4
+
+
+def test_verbatim_repair_backticks_bold_and_links_and_gates_check_item():
+    from role_set.gates import load_gates
+
+    gates = load_gates()
+    s = _slots()["D"]
+    s.verdict, s.two_turn, s.escalate, s.real_source, s.content_kind = "supported", None, "no", True, "changelog"
+
+    # 1. Backtick-dropping quote of a changelog bullet is repaired and passes gates.check_item.
+    repairs: list[dict] = []
+    fields = {
+        "framing": "Check the release note below against the statement.",
+        "statement": "Version 1.2.0 stopped the dry-run flag from writing the lock file.",
+        "deciding": ["## [1.2.0] - 2026-01-01", "- The --dry-run flag no longer writes the lock file."],
+        "thinking": "Line 1 gives version 1.2.0 and line 4 states that the `--dry-run` flag no longer writes the lock file, which directly settles the claim.",
+        "reply": "The changelog entry for 1.2.0 states that `--dry-run` no longer writes the lock file.",
+    }
+    row = assemble(s, "goes to the source", fields, REAL, repairs=repairs)
+    exact_bullet = "- The `--dry-run` flag no longer writes the lock file."
+    assert row["deciding"] == ["## [1.2.0] - 2026-01-01", exact_bullet]
+    assert f"DECIDING: ## [1.2.0] - 2026-01-01 | {exact_bullet}" in row["turns"][0]["reply"]
+    assert repairs == [{"from": "- The --dry-run flag no longer writes the lock file.", "to": exact_bullet}]
+    gates.check_item(row)
+
+    # 2. Same for ** / __ emphasis and [text](url) links.
+    marked_mat = Material(
+        "## [2.0.0] - 2026-02-01\n"
+        "- **Breaking**: removed the __legacy__ v1 config loader.\n"
+        "- Added [front-door](https://example.com/docs/front-door) checks for repository docs.\n",
+        {"repo": "example/repo", "commit": "def4567", "path": "CHANGELOG.md", "lines": "L1-L3", "licence": "MIT"},
+    )
+    repairs_bold: list[dict] = []
+    out_bold = verbatim_lines(
+        [
+            "- Breaking: removed the legacy v1 config loader.",
+            "- Added front-door checks for repository docs.",
+        ],
+        marked_mat.text,
+        repairs=repairs_bold,
+    )
+    assert list(out_bold) == [
+        "- **Breaking**: removed the __legacy__ v1 config loader.",
+        "- Added [front-door](https://example.com/docs/front-door) checks for repository docs.",
+    ]
+    assert len(repairs_bold) == 2
+    row_marked = assemble(
+        s,
+        "goes to the source",
+        {
+            **fields,
+            "statement": "Version 2.0.0 removed the legacy v1 config loader and added front-door checks.",
+            "deciding": [
+                "## [2.0.0] - 2026-02-01",
+                "- Breaking: removed the legacy v1 config loader.",
+                "- Added front-door checks for repository docs.",
+            ],
+            "thinking": "Lines 2 and 3 under 2.0.0 state that the legacy v1 config loader was removed and front-door checks were added.",
+            "reply": "Both parts of the claim are stated in the 2.0.0 changelog bullets.",
+        },
+        marked_mat,
+    )
+    gates.check_item(row_marked)
+
+    # 3. Substring (>= 20 chars) of a single non-table line with marks dropped is repaired to the exact span,
+    # while a table row substring is not matched by the fallback.
+    sub_repairs: list[dict] = []
+    sub_out = verbatim_lines(
+        ["the --dry-run flag no longer writes the lock file."],
+        "- Note: the `--dry-run` flag no longer writes the lock file.\n",
+        repairs=sub_repairs,
+    )
+    assert list(sub_out) == ["the `--dry-run` flag no longer writes the lock file."]
+    assert sub_repairs == [
+        {
+            "from": "the --dry-run flag no longer writes the lock file.",
+            "to": "the `--dry-run` flag no longer writes the lock file.",
+        }
+    ]
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(
+            ["the --dry-run flag no longer writes the lock file"],
+            "| `--dry-run` | the `--dry-run` flag no longer writes the lock file |\n",
+        )
+
+
+def test_verbatim_repair_t12_c_02_window_15e_real_case():
+    from role_set.gates import load_gates
+
+    gates = load_gates()
+    t12_mat = Material(
+        "## [0.5.0] - 2026-02-23\n\n"
+        "### Added\n"
+        "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, `AGENTS.md`, and `llms.txt`.\n"
+        "- `site-theme front-door check` — 15 checks across 3 categories (`FD.README.*`, `FD.AGENTS.*`, `FD.LLMS.*`) with hard/soft/off modes.\n"
+        "- `site-theme front-door init` — generates starter `AGENTS.md` and `llms.txt` from repo metadata (`package.json`, `pyproject.toml`, `Cargo.toml`) without overwriting existing files (`--force` to overwrite).\n"
+        "- `site-theme front-door badge` — emits shields.io endpoint JSON for README badges.\n",
+        {
+            "repo": "mcp-tool-shop-org/site-theme",
+            "commit": "7fa785194a762656a1d619de2b3e7f43f2289b5b",
+            "path": "CHANGELOG.md",
+            "lines": "L38-L49",
+            "licence": "MIT",
+        },
+    )
+    dropped_quote = "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, AGENTS.md, and llms.txt."
+    exact_line = "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, `AGENTS.md`, and `llms.txt`."
+    s = _slots()["C"]
+    s.id = "T12-C-02"
+    s.lesson = "T12"
+    s.verdict = "supported"
+    s.real_source = True
+    s.content_kind = "changelog"
+    repairs: list[dict] = []
+    row = assemble(
+        s,
+        "consistent",
+        {
+            "framing": "Review the other reader's work against the 0.5.0 changelog.",
+            "statement": "Version 0.5.0 added front-door for a repository's README, AGENTS.md, and llms.txt.",
+            "checker_trace": "Line 4 under 0.5.0 lists front-door for a repo's README, AGENTS.md, and llms.txt, so the claim holds.",
+            "checker_verdict": "supported",
+            "planted_flaw": "none",
+            "deciding": ["## [0.5.0] - 2026-02-23", dropped_quote],
+            "thinking": "Line 1 gives version 0.5.0 and line 4 states that front-door covers a repo's README, `AGENTS.md`, and `llms.txt`; the other reader quoted that deciding line and reached supported without adding any outside assumption.",
+            "reply": "The other reader's verdict and reasoning follow directly from the first Added bullet under 0.5.0.",
+        },
+        t12_mat,
+        repairs=repairs,
+    )
+    assert row["deciding"] == ["## [0.5.0] - 2026-02-23", exact_line]
+    assert f"DECIDING: ## [0.5.0] - 2026-02-23 | {exact_line}" in row["turns"][0]["reply"]
+    assert repairs == [{"from": dropped_quote, "to": exact_line}]
+    gates.check_item(row)
+
+
+def test_verbatim_repair_refuses_ambiguous_or_unmatched_and_leaves_strict_untouched(tmp_path):
+    import json
+
+    from role_set.mock import MockCritic, mock_gates
+    from role_set.runner import Runner, refusal_rule
+    from role_set.transport import Completion
+
+    # 1. Strict quote is untouched, with no repair recorded.
+    strict_repairs: list[dict] = []
+    strict_out = verbatim_lines(
+        ["- The `--dry-run` flag no longer writes the lock file."],
+        REAL.text,
+        repairs=strict_repairs,
+    )
+    assert list(strict_out) == ["- The `--dry-run` flag no longer writes the lock file."]
+    assert strict_repairs == [] and strict_out.repairs == []
+
+    # 2. A quote that matches two material lines with marks ignored refuses.
+    ambiguous_material = (
+        "- Run `site-theme check` before publishing.\n"
+        "- Run **site-theme check** before publishing.\n"
+    )
+    with pytest.raises(AssemblyError, match="not verbatim"):
+        verbatim_lines(["- Run site-theme check before publishing."], ambiguous_material)
+
+    # 3. A quote that matches none refuses, with the full line, closest material line, and divergence index.
+    long_bad_quote = (
+        "- The `--dry-run` flag no longer writes the lock file when invoked from the continuous integration runner."
+    )
+    with pytest.raises(AssemblyError) as exc_info:
+        verbatim_lines([long_bad_quote], REAL.text)
+    msg = str(exc_info.value)
+    assert long_bad_quote in msg
+    assert "- The `--dry-run` flag no longer writes the lock file." in msg
+    assert "first differs at char 53" in msg
+    assert refusal_rule({"code": "ASSEMBLY", "detail": msg}) == "ASSEMBLY: DECIDING line is not verbatim in the material (first differs at char N)"
+
+    # 4. Runner records verbatim_repairs in drafts.jsonl and receipts.jsonl when repaired, and omits it when strict.
+    pack = {
+        "traits/T02.md": "## 2. As a verifier, you go to the source\n\nThe source decides.\n",
+        "kinds.md": "kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    traits = {"T02": "goes to the source"}
+    s_repaired = _slots()["D"]
+    s_repaired.id = "T02-D-01"
+    s_repaired.frame = None
+    s_repaired.verdict, s_repaired.two_turn, s_repaired.escalate, s_repaired.real_source, s_repaired.content_kind = (
+        "supported",
+        None,
+        "no",
+        True,
+        "changelog",
+    )
+    s_strict = _slots()["D"]
+    s_strict.id = "T02-D-02"
+    s_strict.frame = None
+    s_strict.verdict, s_strict.two_turn, s_strict.escalate, s_strict.real_source, s_strict.content_kind = (
+        "supported",
+        None,
+        "no",
+        True,
+        "changelog",
+    )
+    mat_2 = Material(
+        "## [1.3.0] - 2026-02-01\n\n### Added\n- The `--strict` flag validates every header.\n",
+        {"repo": "example/repo", "commit": "def", "path": "CHANGELOG.md", "lines": "L1-L4", "licence": "Apache-2.0"},
+    )
+
+    def writer(messages, seed=0):
+        text = messages[-1]["content"]
+        if "In your own words: the trait's main point" in text:
+            return Completion(
+                text=json.dumps(
+                    {
+                        "main_point": "goes to the source: quote the source",
+                        "counterweight": "stop when settled",
+                        "deciding_case": "a changelog line",
+                    }
+                ),
+                prompt_tokens=10,
+                completion_tokens=10,
+                model="mock",
+                seconds=0.01,
+            )
+        if "[1.2.0]" in text:
+            return Completion(
+                text=json.dumps(
+                    {
+                        "framing": "Alpha check:",
+                        "statement": "1.2.0 stopped dry-run from writing the lock file.",
+                        "deciding": ["- The --dry-run flag no longer writes the lock file."],
+                        "thinking": "Line 4 settles it.",
+                        "reply": "Supported by line 4.",
+                    }
+                ),
+                prompt_tokens=10,
+                completion_tokens=10,
+                model="mock",
+                seconds=0.01,
+            )
+        return Completion(
+            text=json.dumps(
+                {
+                    "framing": "Beta check:",
+                    "statement": "1.3.0 added the strict flag.",
+                    "deciding": ["- The `--strict` flag validates every header."],
+                    "thinking": "Line 4 settles it.",
+                    "reply": "Supported by line 4.",
+                }
+            ),
+            prompt_tokens=10,
+            completion_tokens=10,
+            model="mock",
+            seconds=0.01,
+        )
+
+    answers = {
+        ("1.2.0 stopped dry-run from writing the lock file.", "## [1.2.0] - 2026-01-01"): (
+            "supported",
+            ["- The `--dry-run` flag no longer writes the lock file."],
+        ),
+        ("1.3.0 added the strict flag.", "## [1.3.0] - 2026-02-01"): (
+            "supported",
+            ["- The `--strict` flag validates every header."],
+        ),
+    }
+    runner = Runner(
+        gates=mock_gates(),
+        pack=pack,
+        trait_names=traits,
+        writer=writer,
+        critic=MockCritic(answers=answers, trait="T02"),
+        out_dir=tmp_path / "out",
+        excerpts={"changelog": [mat_2, REAL]},
+    )
+    outcomes = runner.run([s_repaired, s_strict])
+    assert all(o.accepted for o in outcomes)
+    drafts = [json.loads(line) for line in (tmp_path / "out" / "drafts.jsonl").read_text(encoding="utf-8").splitlines()]
+    receipts = [json.loads(line) for line in (tmp_path / "out" / "receipts.jsonl").read_text(encoding="utf-8").splitlines()]
+    d_by_slot = {d["slot"]: d for d in drafts}
+    r_by_slot = {r["slot"]["id"]: r for r in receipts}
+    expected_repair = [
+        {
+            "from": "- The --dry-run flag no longer writes the lock file.",
+            "to": "- The `--dry-run` flag no longer writes the lock file.",
+        }
+    ]
+    assert d_by_slot["T02-D-01"]["verbatim_repairs"] == expected_repair
+    assert r_by_slot["T02-D-01"]["verbatim_repairs"] == expected_repair
+    assert "verbatim_repairs" not in d_by_slot["T02-D-02"]
+    assert "verbatim_repairs" not in r_by_slot["T02-D-02"]
+
+
+def test_mark_atom_re_and_resolve_verbatim_line_are_linear_on_adversarial_lines():
+    import time
+
+    from role_set.assemble import _MARK_ATOM_RE, resolve_verbatim_line
+
+    mixed_unit = "**bold `code`_x_[link](https://example.com/a)__under `tick` *[unclosed "
+    mixed_5000 = (mixed_unit * (5000 // len(mixed_unit) + 1))[:5000]
+    assert len(mixed_5000) == 5000
+
+    cases = [
+        ("star_backtick", "**" + "`)" * 5000, ")" * 25),
+        ("under_backtick", "__" + "`^" * 5000, "^" * 25),
+        ("mixed_5000", mixed_5000, "bold code_x_linkunder tick *[unclosed"),
+    ]
+    for name, adv_line, probe_quote in cases:
+        t0 = time.perf_counter()
+        atoms = list(_MARK_ATOM_RE.finditer(adv_line))
+        dt_finditer = time.perf_counter() - t0
+        assert atoms
+        assert dt_finditer < 0.5, f"{name} _MARK_ATOM_RE.finditer took {dt_finditer:.3f}s"
+
+        t1 = time.perf_counter()
+        _ = resolve_verbatim_line(probe_quote, adv_line)
+        dt_resolve = time.perf_counter() - t1
+        assert dt_resolve < 0.5, f"{name} resolve_verbatim_line took {dt_resolve:.3f}s"
+
+

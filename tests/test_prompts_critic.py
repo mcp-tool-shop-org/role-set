@@ -158,3 +158,63 @@ def test_the_writer_is_shown_the_lesson_sentences_it_may_not_reuse():
     slot = next(s for s in plan_lesson("T02", SIDES, seed=3) if s.kind == "A")
     msgs = writer_messages(slot, {"traits/T02.md": lesson.replace("18", "2")}, material_text=None, exemplars=[], avoid=[])
     assert "never reuse them, not even eight words in a row" in msgs[1]["content"] and got[0] in msgs[1]["content"]
+
+
+def test_compare_verdict_repairs_unique_mark_stripped_quote_and_refuses_ambiguous_or_unmatched():
+    from role_set.gates import load_gates
+
+    real_gates = load_gates()
+    material = (
+        "## [0.5.0] - 2026-02-23\n\n"
+        "### Added\n"
+        "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, `AGENTS.md`, and `llms.txt`.\n"
+        "- Added [badge endpoint](https://example.com/badge) output for README files.\n"
+    )
+    exact_line = "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, `AGENTS.md`, and `llms.txt`."
+    dropped_quote = "- **front-door** — a second pillar: the AI-native front-door verifier for a repo's README, AGENTS.md, and llms.txt."
+    reply = f"VERDICT: supported\nDECIDING: {dropped_quote}\nESCALATE: no"
+
+    # Unique mark-stripped match is repaired before VOID and critic_mismatch: neither VOID nor EVIDENCE_MISMATCH.
+    v = compare_verdict(real_gates, reply, "supported", [exact_line], material)
+    assert v.ok and v.code == "AGREE"
+    assert v.critic_deciding == [exact_line]
+    assert v.repairs == [{"from": dropped_quote, "to": exact_line}]
+
+    # Link-stripped critic quote also repairs uniquely and agrees with the exact material key.
+    link_exact = "- Added [badge endpoint](https://example.com/badge) output for README files."
+    link_dropped = "- Added badge endpoint output for README files."
+    v_link = compare_verdict(
+        real_gates,
+        f"VERDICT: supported\nDECIDING: {link_dropped}\nESCALATE: no",
+        "supported",
+        [link_exact],
+        material,
+    )
+    assert v_link.ok and v_link.code == "AGREE"
+    assert v_link.critic_deciding == [link_exact]
+    assert v_link.repairs == [{"from": link_dropped, "to": link_exact}]
+
+    # Ambiguous mark-stripped quote (two material lines match when marks are stripped) is not repaired and stays VOID.
+    ambiguous_material = (
+        "- Run `site-theme check` before publishing.\n"
+        "- Run [site-theme check](https://example.com/check) before publishing.\n"
+    )
+    v_amb = compare_verdict(
+        real_gates,
+        "VERDICT: supported\nDECIDING: - Run site-theme check before publishing.\nESCALATE: no",
+        "supported",
+        ["- Run `site-theme check` before publishing."],
+        ambiguous_material,
+    )
+    assert not v_amb.ok and v_amb.code == "VOID" and v_amb.repairs == []
+
+    # Unmatched quote stays VOID.
+    v_none = compare_verdict(
+        real_gates,
+        "VERDICT: supported\nDECIDING: - Completely unrelated line that is not in the changelog.\nESCALATE: no",
+        "supported",
+        [exact_line],
+        material,
+    )
+    assert not v_none.ok and v_none.code == "VOID" and v_none.repairs == []
+

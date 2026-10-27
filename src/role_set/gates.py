@@ -21,15 +21,20 @@ class GatesUnavailable(RuntimeError):
 
 
 class ModelsMissing(RuntimeError):
-    """A kind B row reached the gates with no sidecar model. The gates would sign it by the regex fallback instead of
-    its model, so the run stops rather than check it the weaker way (R&D, 2026-10-15)."""
+    """A kind B puzzle row (`_is_puzzle`) reached the gates with no sidecar model. The gates would sign it by the
+    regex fallback instead of its model, so the run stops rather than check it the weaker way (R&D, 2026-10-15)."""
 
 
-def _need_models(rows: list[dict], models: dict) -> None:
-    missing = sorted(str(r.get("id")) for r in rows if r.get("kind") == "B" and r.get("id") not in models)
+def _need_models(rows: list[dict], models: dict, is_puzzle=None) -> None:
+    need = (lambda r: r.get("kind") == "B" and bool(is_puzzle(r))) if callable(is_puzzle) else (lambda r: r.get("kind") == "B")
+    missing = sorted(str(r.get("id")) for r in rows if need(r) and r.get("id") not in models)
     if missing:
         raise ModelsMissing(f"no sidecar model for kind B row(s) {', '.join(missing)}; pass models={{id: model}} for every "
                             "B row so puzzles are signed by their model (gates.puzzle_sig)")
+
+
+def _is_puzzle_fn(module: object):
+    return getattr(module, "_is_puzzle", None) or getattr(getattr(module, "gates", None), "_is_puzzle", None)
 
 
 @dataclass(frozen=True)
@@ -59,12 +64,12 @@ class Gates:
 
     def check_against(self, row: dict, accepted: list[dict], *, models: dict) -> list:
         """The gates' one-at-a-time check. `models` is the {id: model} map of sidecar models for the row and the
-        accepted rows: every kind B row needs one (ModelsMissing otherwise)."""
-        _need_models([row, *accepted], models)
+        accepted rows: every kind B puzzle row (`_is_puzzle`) needs one (ModelsMissing otherwise)."""
+        _need_models([row, *accepted], models, _is_puzzle_fn(self.module))
         return list(self.module.check_against(row, accepted, models=models) or [])  # type: ignore[attr-defined]
 
     def check_batch(self, rows: list[dict], *, models: dict) -> None:
-        _need_models(rows, models)
+        _need_models(rows, models, _is_puzzle_fn(self.module))
         if self.closed_form is None:
             self.module.check_batch(rows, models=models)  # type: ignore[attr-defined]
         else:
@@ -81,6 +86,10 @@ class Gates:
     def role_words_in_prompt(self, row: dict) -> list[str]:
         return list(self.module.role_words_in_prompt(row))  # type: ignore[attr-defined]
 
+    def check_trace_leaks_label(self, row: dict) -> None:
+        """The gates' write-time trace-leak check on a kind C row (gates 1.7.6)."""
+        self.module.check_trace_leaks_label(row)  # type: ignore[attr-defined]
+
     def load_models(self, data_path) -> dict:
         """{id: model} from a data file's .models.jsonl sidecar, each line's row_sha256 checked (the gates' own loader)."""
         return dict(self.module.load_models(data_path))  # type: ignore[attr-defined]
@@ -89,7 +98,14 @@ class Gates:
         return self.module.DataError  # type: ignore[attr-defined]
 
 
-REQUIRED_RULES = ("norm", "critic_mismatch", "closed_form_settings", "key_point_share")
+RULE_VERSIONS = {
+    "norm": "1.1.0",
+    "critic_mismatch": "1.1.0",
+    "closed_form_settings": "1.4.0",
+    "key_point_share": "1.4.0",
+    "check_trace_leaks_label": "1.7.6",
+}
+REQUIRED_RULES = tuple(RULE_VERSIONS)
 
 
 def load_gates(importer=importlib.import_module, closed_form: dict | None = None) -> Gates:
@@ -104,13 +120,19 @@ def load_gates(importer=importlib.import_module, closed_form: dict | None = None
         ) from e
     ident = module.gates_identity()
     # The critic compares quotes with the scorer's `norm` and evidence with `critic_mismatch` (gates 1.1.0); the
-    # closed-form rule is the package's settings (gates 1.4.0). A package without them is refused here, before anything
-    # is sent, rather than falling back to a weaker rule.
+    # closed-form rule is the package's settings (gates 1.4.0); write-time trace-leak checking is `check_trace_leaks_label`
+    # (gates 1.7.6). A package without them is refused here, before anything is sent, rather than falling back.
     missing = [name for name in REQUIRED_RULES if not callable(getattr(module, name, None))]
     if missing:
-        raise GatesUnavailable(f"REFUSED: aspire-si-gates {ident['version']} has no {', '.join(missing)}; pin 1.4.0 or later")
+        needed = max((RULE_VERSIONS[name] for name in missing), key=lambda v: tuple(int(x) for x in v.split(".")))
+        detail = ", ".join(f"{name} ({RULE_VERSIONS[name]})" for name in missing)
+        raise GatesUnavailable(
+            f"REFUSED: aspire-si-gates {ident['version']} has no {', '.join(missing)} (added in {detail}); pin {needed} or later"
+        )
     try:
         settings = dict(module.closed_form_settings(closed_form))
     except ValueError as e:
         raise GatesUnavailable(f"REFUSED: closed-form settings the gates reject: {e}") from e
+    if not hasattr(module, "_is_puzzle") and hasattr(getattr(module, "gates", None), "_is_puzzle"):
+        module._is_puzzle = module.gates._is_puzzle
     return Gates(module=module, version=str(ident["version"]), sha256=str(ident["sha256"]), closed_form=settings)

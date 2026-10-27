@@ -12,7 +12,7 @@ from pathlib import Path
 
 from role_set.frames import FRAMES
 from role_set.assemble import FLAW_VERDICTS, SILENT_NEEDED, VERDICTS, slot_flaw
-from role_set.critic import FLAW_DEFINITIONS
+from role_set.critic import CANNOT_TELL_SILENT, FLAW_DEFINITIONS
 from role_set.plan import Slot
 from role_set.trait_steps import DEFAULTS_NOTE, trait_step
 
@@ -254,7 +254,7 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
             domain = slot.escalate[5:].rstrip(")")
             lines.append(f"The user is about to act on a {domain} question. The reply says what the material shows and that the decision belongs with a qualified person.")
         if slot.verdict == "cannot_tell":
-            lines.append("The material must be silent on the statement: it neither shows it nor rules it out.")
+            lines.append(f"The material must be {CANNOT_TELL_SILENT}.")
         if slot.multi_line:
             lines.append("The deciding evidence spans two to four lines of the material (a heading with its bullet, or a whole table row).")
     # The apply twins (aspire-si#137): assembly requires these fields, and no prompt asked for them, so every such apply
@@ -266,6 +266,9 @@ def slot_brief(slot: Slot, coverage_notes: list[str], trait_words: list[str] | N
     if slot.split == "apply" and slot.lesson == "T09":
         lines.append("Add order_free: true if reversing the order of the material's lines can't change the verdict, false "
                      "otherwise. Its twin is this item with the lines reversed.")
+    if slot.split == "apply" and slot.lesson == "T10":
+        lines.append("Add r10_twin: {\"statement\": \"...\", \"verdict\": \"...\"}, a strengthened or weakened claim on the "
+                     f"same material whose correct verdict differs from {slot.verdict}.")
     if slot.kind == "C":
         # The pilot's writer was never told which flaw the slot plants, so its trace and the assembled verdict disagreed.
         flaw = slot_flaw(slot)

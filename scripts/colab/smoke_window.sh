@@ -5,69 +5,325 @@
 # pin the libraries it loads, convert both Colab models to Q8_0 at pinned revisions (Lightning must reproduce window 1's
 # hash), smoke-serve each with logprobs, then fetch the results. Unit cap and wall clock enforced; the VM is stopped in
 # a trap and the sessions list checked empty.
-set -u
+set -uo pipefail
 BIN="${1:?usage: smoke_window.sh <llama-server> <out dir>}"
 OUT="${2:?usage: smoke_window.sh <llama-server> <out dir>}"
+case "${PIN_GPU:-A100}" in
+  A100|H100|G4|L4|T4|CPU) ;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU} must be A100, H100, G4, L4, T4 or CPU" >&2; exit 2;;
+esac
+if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+  echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
+  exit 2
+fi
+# PIN_STUB_CALL_S slows the stub's calls for a forced mid-wave deadline (R&D on #91): a test knob, never on a GPU window.
+if [ -n "${PIN_STUB_CALL_S:-}" ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+  echo "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on ${PIN_GPU:-A100}" >&2
+  exit 2
+fi
+if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
+  # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
+  # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
+  echo "REFUSED: a ${PIN_GPU:-A100} window with the VM gate on needs PIN_GATE_MIN_DISK_GB (its peak + 20 GB)" >&2
+  exit 2
+fi
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  # Scoped tokens only (R&D, 2026-10-18 / 2026-10-23): a pilot/critic-eval window reads with HF_TOKEN_GGUF_READ, a
+  # prebuild writes with HF_TOKEN_GGUF_WRITE, and an offrig-bench mirror window reads with HF_TOKEN_OLLAMA_PINS_READ,
+  # each fine-grained to the one private repo. The account-wide HF_TOKEN never goes to a VM. Checked before any VM is
+  # asked for; presence only, never the value.
+  case "${PIN_ROLE:-}:$PIN_HF_TOKEN_FROM" in
+    pilot:HF_TOKEN_GGUF_READ|critic-eval:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE|offrig-bench:HF_TOKEN_OLLAMA_PINS_READ) ;;
+    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot/critic-eval: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE; offrig-bench: HF_TOKEN_OLLAMA_PINS_READ)"; exit 2;;
+  esac
+  tokvar=$PIN_HF_TOKEN_FROM
+  [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
+fi
 CAP_UNITS="${PIN_CAP_UNITS:-8}"
 WALL_S="${PIN_WALL_S:-5400}"
 S=${PIN_SESSION:-pinw2}
+OPEN_LOCK="${PIN_OPEN_LOCK:-/tmp/colab-window-open.lock}"
 here="$(cd "$(dirname "$0")" && pwd)"
-mkdir -p "$OUT"; rm -f "$OUT/.exec.pid"
+mkdir -p "$OUT"; rm -f "$OUT/.exec.pid" "$OUT/.end" "$OUT/job.log" "$OUT/.retry" "$OUT/.retried"
+JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
+MARGIN="${PIN_CAP_MARGIN:-0.3}"  # units kept back at the cap to fetch the results (R&D, 2026-10-17)
+DL_S="${PIN_DL_TIMEOUT:-300}"
+# The margin's budget (R&D on #91): the job's deadline is cap - MARGIN; it gets GRACE_S past it to cut its wave, tar and
+# print its result, and the exit fetch needs FETCH_ALLOW_S after that, all before the ceiling at the cap. So
+# GRACE_S + FETCH_ALLOW_S must fit in MARGIN at this card's rate, or the window doesn't open. The rates are the measured
+# ones (G4 8.90, A100-80GB 6.77, A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and
+# the margin is set from them.
+# Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
+# deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
+# a 120 s fetch allowance: 180 s, 0.265 units at the A100's 5.3/hr, inside the default margin of 0.3.
+GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
+FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
+case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
+  G4:*) CARD_RATE=8.90;;
+  A100:1) CARD_RATE=6.77;;
+  A100:*) CARD_RATE=5.3;;
+  CPU:1) CARD_RATE=0.26;;
+  CPU:*) CARD_RATE=0.08;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
+esac
+BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
+if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
+  echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
+  exit 2
+fi
+DEFAULT_SERVER_SHA256="b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+if [ "${PIN_SERVER_SHA256+set}" = set ]; then
+  if ! printf '%s' "$PIN_SERVER_SHA256" | grep -qE '^[0-9a-f]{64}$'; then
+    echo "REFUSED: PIN_SERVER_SHA256=${PIN_SERVER_SHA256} must be 64 lowercase hex characters" >&2
+    exit 2
+  fi
+fi
+WANT_SERVER_SHA256="${PIN_SERVER_SHA256:-$DEFAULT_SERVER_SHA256}"
+if [ "${PIN_SKIP_BINARY:-0}" != 1 ] && [ "${PIN_ROLE:-}" != offrig-bench ]; then
+  if [ ! -f "$BIN" ]; then
+    echo "REFUSED: binary $BIN does not exist" >&2
+    exit 2
+  fi
+  GOT_SERVER_SHA256=$(sha256sum "$BIN" | awk '{print $1}')
+  if [ "$GOT_SERVER_SHA256" != "$WANT_SERVER_SHA256" ]; then
+    echo "REFUSED: llama-server $BIN sha256 $GOT_SERVER_SHA256 != expected $WANT_SERVER_SHA256" >&2
+    exit 2
+  fi
+fi
 export COLUMNS=150
-bal() { colab usage 2>&1 | grep -oP 'balance: \K[0-9.]+'; }
+# google-colab-cli 0.7.4 has no CLI flag or env var to disable its PyPI update banner (colab_cli/auto_update.py
+# announce_upgrade / run_background_check read SettingsStore at ~/.config/colab-cli/settings.json). Set
+# "enable_update_check": false in settings.json before any colab call, and strip any banner lines before cutting status.
+COLAB_SETTINGS="${COLAB_SETTINGS_FILE:-$HOME/.config/colab-cli/settings.json}"
+mkdir -p "$(dirname "$COLAB_SETTINGS")"
+python3 -c '
+import json, pathlib, sys
+p = pathlib.Path(sys.argv[1])
+try:
+    d = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {}
+    if not isinstance(d, dict): d = {}
+except Exception:
+    d = {}
+if d.get("enable_update_check") is not False:
+    d["enable_update_check"] = False
+    p.write_text(json.dumps(d, indent=2) + "\n", encoding="utf-8")
+' "$COLAB_SETTINGS"
+strip_colab_banner() {
+  grep -v -E '^\[colab\] (A new version|Run .* to update|You can run .*colab update|To silence this check)' || true
+}
+scrub_log() {
+  sed -u -E \
+    -e 's/(colab-runtime-proxy-token|access_token)=[^&"'\''[:space:])]+/\1=[REDACTED]/g' \
+    -e 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/[REDACTED]/g' \
+    -e 's/hf_[A-Za-z0-9]{20,}/[REDACTED]/g'
+}
+bal() { colab usage 2>&1 | strip_colab_banner | grep -oP 'balance: \K[0-9.]+' || true; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
+# Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
+TOKF=""  # the rig-side token file, if this window sends one: removed in the trap too, so a crash can't leave it
 stop_all() {
-  echo "stopping $S"; colab stop -s "$S" 2>&1 | tail -1
-  sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | tail -3
+  [ -n "$TOKF" ] && rm -f "$TOKF"
+  (
+    # Bounded: the EXIT trap can fire while this script still holds the open lock, and an unbounded wait would never
+    # stop the session (R&D on #89). After 60 s it stops the session anyway.
+    flock -w 60 9 || echo "open lock not free after 60 s; stopping $S anyway"
+    echo "stopping $S"; colab stop -s "$S" 2>&1 | strip_colab_banner | tail -1 | scrub_log || true
+    sleep 5; echo "sessions after stop:"; colab sessions 2>&1 | strip_colab_banner | tail -3 | scrub_log || true
+  ) 9>"$OPEN_LOCK"
 }
 trap stop_all EXIT
-rate() { colab usage 2>&1 | grep -oP 'rate: \K[0-9.]+'; }
-# Windows on this rig open one at a time: the rate read before, the open and the rate read after hold one lock, so a
-# neighbour opening in between can't land in this window's rate (windows 11a and 11b each counted both sessions).
-exec 9>/tmp/colab-window-open.lock; flock 9
-START=$(bal); RATE0=$(rate); echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
+rate() { colab usage 2>&1 | strip_colab_banner | grep -oP 'rate: \K[0-9.]+' || true; }
+START=$(bal)
 sha256sum "$BIN"
-timeout 300 colab new --gpu "${PIN_GPU:-A100}" -s "$S" 2>&1 | tail -2 || { echo "no A100 assigned"; exit 2; }
-sleep 15; colab usage 2>&1 | grep -E "rate|assign"
+GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
+# PIN_HIGH_MEM=1 asks for the high-memory shape (a CPU conversion needs it: 8 cores and 52 GB against the default's 2 and
+# 12 GB, measured 2026-10-18).
+[ "${PIN_HIGH_MEM:-0}" = 1 ] && GPU_ARGS+=(--high-mem)
+# The VM health gate (Mike and R&D, 2026-10-18): before anything is uploaded, vm_gate.py reads the card, disk, RAM and
+# the pipe to Hugging Face; a VM that fails, or whose first exec dies or times out (windows 11c and 12e lost 5.7 units
+# to first-exec deaths after the upload), is stopped and a fresh one asked for, up to PIN_GATE_TRIES. Each attempt is a
+# row in gate.jsonl (readings only, no identity data). It catches VMs that are bad at the start; drops and hangs later
+# in the run are the resume path's and checkpoints.py's. PIN_GATE=0 skips it.
+# The Hugging Face floor scales to the window (R&D, 2026-10-19): set PIN_GATE_HF_BYTES_WINDOW (the bytes the window will
+# download) and PIN_GATE_PROJECTED_S (its projected seconds); every PIN_GATE_* below reaches the gate. Without them the
+# floor stays 129 MB/s; PIN_GATE_MIN_HF_MBPS overrides either.
+GATE_TRIES="${PIN_GATE_TRIES:-3}"; GATE_S="${PIN_GATE_TIMEOUT_S:-180}"
+GATE_ENV=(--env "PIN_GATE_GPU=$([ "${PIN_GPU:-A100}" = CPU ] && echo 0 || echo 1)")
+for v in $(compgen -e | grep '^PIN_GATE_' | grep -v -E '^PIN_GATE_(TRIES|TIMEOUT_S|GPU)$' || true); do GATE_ENV+=(--env "$v=${!v}"); done
+GATE_REJECTED_S=0
+RATE0=""; RATE_AFTER=""
+for try in $(seq 1 "$GATE_TRIES"); do
+  t_try=$(date +%s)
+  # Windows on this rig open one at a time: the rate read before, colab new and the rate read after hold one lock, so a
+  # neighbour opening in between can't land in this window's rate (windows 11a and 11b each counted both sessions).
+  # Released before sleep 15 and vm_gate.py so vm_gate's HF download never blocks another window's open.
+  exec 9>"$OPEN_LOCK"; flock 9
+  RATE0=$(rate)
+  [ "$try" = 1 ] && echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
+  if new_out=$(timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1); then
+    printf '%s\n' "$new_out" | strip_colab_banner | tail -2 | scrub_log
+  else
+    printf '%s\n' "$new_out" | strip_colab_banner | tail -2 | scrub_log
+    flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2
+  fi
+  RATE_AFTER=$(rate)
+  flock -u 9; exec 9>&-
+  sess_out=$(colab sessions 2>&1 || true)
+  vm_name=$(printf '%s\n' "$sess_out" | strip_colab_banner | scrub_log | awk -v p="[$S]" '$1 == p {print $2; exit}')
+  vm_pool=""; vm_zone=""
+  if [[ "$vm_name" =~ ^(gpu-[a-z0-9]+|m)-(s|hm)-([a-z0-9]+)-([a-z]{2,}[0-9][a-z][0-9]+)- ]]; then
+    vm_pool="${BASH_REMATCH[3]}"; vm_zone="${BASH_REMATCH[4]}"
+  elif [[ "$vm_name" =~ ^(gpu-[a-z0-9]+|m)-(s|hm)-([a-z]{2,}[0-9][a-z][0-9]+)- ]]; then
+    vm_zone="${BASH_REMATCH[3]}"
+  fi
+  sleep 15
+  [ "${PIN_GATE:-1}" = 0 ] && break
+  if gate_out=$(timeout "$GATE_S" colab exec -s "$S" "${GATE_ENV[@]}" -f "$here/vm_gate.py" --timeout "$GATE_S" 2>&1); then
+    line=$(printf '%s\n' "$gate_out" | grep -m1 '^VM_GATE ' || true)
+  else
+    line=""
+  fi
+  row=${line#VM_GATE }; [ -n "$line" ] || row='{"ok": false, "why": ["the gate exec died or timed out before it printed"]}'
+  printf '{"try": %s, "gpu": "%s", "vm": "%s", "zone": "%s", "pool": "%s", "gate": %s}\n' \
+    "$try" "${PIN_GPU:-A100}" "$vm_name" "$vm_zone" "$vm_pool" "$row" | scrub_log >> "$OUT/gate.jsonl"
+  if printf '%s' "$row" | grep -q '"ok": true'; then echo "VM gate passed (try $try)"; break; fi
+  echo "VM gate rejected try $try: $(printf '%s' "$row" | grep -o '"why": \[[^]]*\]' || true)" | scrub_log
+  (
+    flock -w 60 9 || echo "open lock not free after 60 s; stopping rejected $S anyway"
+    colab stop -s "$S" 2>&1 | strip_colab_banner | tail -1 | scrub_log || true
+  ) 9>"$OPEN_LOCK"
+  sleep 5
+  GATE_REJECTED_S=$(( GATE_REJECTED_S + $(date +%s) - t_try ))
+  if [ "$try" = "$GATE_TRIES" ]; then echo "VM GATE: no healthy ${PIN_GPU:-A100} in $GATE_TRIES tries"; exit 4; fi
+done
+colab usage 2>&1 | strip_colab_banner | grep -E "rate|assign" | scrub_log || true
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
-# its own runtime. The account balance would count a neighbour's spend too (window 8 was cut off that way).
-OWN_RATE=$(awk -v a="$(rate)" -v b="$RATE0" 'BEGIN{r=a-b; if (r<=0) r=a; print r}'); T_OPEN=$(date +%s)
-echo "own rate $OWN_RATE/hr"
-flock -u 9
-# The watcher also ends the exec when Colab has dropped the session: window 10b's VM vanished mid-download and the exec
-# would have waited out its wall time on nothing.
-# It also watches the job make progress (R&D, 2026-10-17, after window 11c's exec hung on a lost connection with nothing
-# running on the VM): no line in the exec's log within 10 minutes of the exec starting, or none for 20 minutes after
-# that, closes the window's own session and records a stall. Every finished model call prints a line, and the slowest
-# silent step (a conversion) takes about 12 minutes.
-( seen=0; size0=-1; grew=0
+# its own runtime (including any VMs the gate rejected). The account balance would count a neighbour's spend too (window 8
+# was cut off that way).
+# A neighbour closing between the two reads can make the difference 0 or less: then take the runtime's own known rate,
+# not the whole account's (R&D, from Argon's review; the account rate would stop this window early).
+case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
+  G4:*) GPU_RATE=8.90;;
+  A100:1) GPU_RATE=6.77;;
+  A100:*) GPU_RATE=5.3;;
+  CPU:1) GPU_RATE=0.26;;
+  CPU:*) GPU_RATE=0.08;;
+esac
+OWN_RATE=$(awk -v a="$RATE_AFTER" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}')
+T_OPEN=$(( $(date +%s) - GATE_REJECTED_S ))
+echo "own rate $OWN_RATE/hr (rejected gate VMs: ${GATE_REJECTED_S}s)"
+# The job's deadline (R&D, 2026-10-18): own spend at the cap less MARGIN. Past it the job starts nothing new, cuts a wave
+# under way (SIGTERM, then SIGKILL) and writes pilot-out.tar and pin-result.json, so a cap stop returns results, not only
+# job.log. The watcher waits PIN_DEADLINE_GRACE_S past it for the PIN_RESULT line before it kills the exec.
+PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
+export PIN_DEADLINE
+echo "deadline $(date -u -d "@$PIN_DEADLINE" +%T) (cap $CAP_UNITS less $MARGIN at $OWN_RATE/hr); grace ${GRACE_S}s"
+# This window's token: the job writes it into pin-result.json, and a second exec stops only on this window's result.
+export PIN_JOB_TOKEN="$S-$T_OPEN"
+# The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
+# stream: that stream stopped reaching the rig in windows 10d and 12a while the job ran on (mistakes #31). It ends the
+# window, through the main script's exit sequence (fetch the results, then stop the session), when:
+# - job.log carries the PIN_RESULT line: the job is done, even if the exec never returns;
+# - job.log hasn't grown: nothing within 10 minutes of the exec starting, or nothing new for PIN_STALL_S (600 s) after
+#   that. Every long step writes a heartbeat at most 300 s apart: run_proc's, and the in-process downloads' (written only
+#   while their bytes grow, so a hung download goes silent). 1200 s until 2026-10-18 (R&D, after window 13q)
+#   (R&D, 2026-10-17; the slowest silent step, a conversion, takes about 12 minutes);
+# - own spend reaches the cap less MARGIN, the units kept back to fetch the results.
+# Colab dropping the session ends the exec at once, with nothing to fetch. At the cap itself the session stops whatever
+# is under way: the cap is the ceiling.
+# job.log comes down to job.log.part and replaces the local copy only when the fetch exited 0 and the new copy is no
+# smaller (R&D, 2026-10-17): a fetch that dies partway, a VM reclaimed mid-transfer or the timeout, can't truncate the
+# one local copy of the checkpoint lines, which is the case they are kept for.
+fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and the exit sequence's never collide
+  local part="$OUT/job.log.part.${1:-x}" new old dl_out dl_rc
+  rm -f "$part"
+  dl_out=$(timeout "$DL_S" colab download -s "$S" /content/pin/job.log "$part" 2>&1) && dl_rc=0 || dl_rc=$?
+  printf '%s\n' "$dl_out" | scrub_log > "$OUT/.fetch.out"
+  [ "$dl_rc" -eq 0 ] || { rm -f "$part"; return 1; }
+  grep -qi "fail\|error" "$OUT/.fetch.out" && { rm -f "$part"; return 1; }
+  [ -f "$part" ] || return 1
+  new=$(stat -c %s "$part"); old=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
+  if [ "$new" -ge "$old" ]; then mv -f "$part" "$OUT/job.log"; else rm -f "$part"; return 1; fi
+}
+( seen=0; size0=-1; grew=0; ended=""; noted=""
+  end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; }
   while sleep "${PIN_WATCH_S:-120}"; do
-    if ! colab sessions 2>&1 | grep -q "^\\[$S\\]"; then
-      echo "SESSION GONE ($S) $(date -u +%T)"; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; exit 0
+    now=$(date +%s)
+    spent=$(awk -v r="$OWN_RATE" -v t="$(( now - T_OPEN ))" 'BEGIN{printf "%.3f", r*t/3600}')
+    if awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>=c)}'; then
+      echo "CAP CEILING (own spend $spent of $CAP_UNITS): stopping now $(date -u +%T)"; end_window cap; stop_all; exit 0
+    fi
+    # The exit sequence is under way in the main script: only the ceiling is watched now.
+    [ -n "$ended" ] && continue
+    [ -f "$OUT/.end" ] && continue
+    sess_w=$(colab sessions 2>&1 || true)
+    if ! printf '%s\n' "$sess_w" | strip_colab_banner | grep -q "^\[$S\]"; then
+      echo "SESSION GONE ($S) $(date -u +%T)"; end_window gone; exit 0
     fi
     if [ -f "$OUT/.exec.pid" ]; then
-      now=$(date +%s); size=$(stat -c %s "$OUT/smoke-window.log" 2>/dev/null || echo 0)
+      fetch_log watcher || true
+      # The kernel's IDLE/BUSY beside each fetch: whether a busy session with regular file traffic still gets reclaimed.
+      raw_st=$(timeout 60 colab status -s "$S" 2>&1 || true)
+      st=$(printf '%s\n' "$raw_st" | strip_colab_banner | scrub_log | tr -s ' \n' ' ' | sed 's/^ //; s/ $//' | cut -c1-300)
+      echo "$(date -u +%T) $st" | scrub_log >> "$OUT/status.log"
+      size=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
+      # The exec never reached the kernel (windows 11c, 12e: "Connection was lost" at the first command): the kernel
+      # reads IDLE and job.log is absent or empty at the first look. Re-run the exec once on the same session, keeping
+      # its uploads (R&D, 2026-10-17). A second time stalls as before; the job's lock stops a late first exec.
+      if [ ! -f "$OUT/.retried" ] && [ "$size" = 0 ] && echo "$st" | grep -q "Status: IDLE"; then
+        echo "EXEC NEVER STARTED ($S): kernel IDLE, job.log empty; re-running the exec once $(date -u +%T)"
+        touch "$OUT/.retried" "$OUT/.retry"; kill "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; continue
+      fi
       if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
+      if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
+        echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
+      fi
+      # A job that dies with its kernel (an OOM kill) is caught only by the stall below. Window 13q (2026-10-18): the job
+      # killed its kernel, but `colab status` kept reading "BUSY (exec(...))" for 22 minutes and the exec never returned;
+      # status follows the CLI's exec, not the kernel. A rule on IDLE could never fire, so there is none (R&D). A child
+      # killed for memory (a server, a converter) raises in the job instead, and its finally writes the result.
       started=$(stat -c %Y "$OUT/.exec.pid")
       stalled=""
-      [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="no line in the 10 minutes after the exec started"
-      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-1200}" ] && stalled="no new line for 20 minutes"
+      [ "$seen" = 0 ] && [ $(( now - started )) -gt "${PIN_STALL_FIRST_S:-600}" ] && stalled="job.log empty 10 minutes after the exec started"
+      [ "$seen" = 1 ] && [ $(( now - grew )) -gt "${PIN_STALL_S:-600}" ] && stalled="job.log unchanged for ${PIN_STALL_S:-600}s"
       if [ -n "$stalled" ]; then
-        echo "STALL ($S): $stalled $(date -u +%T)" | tee "$OUT/stall.txt"
-        kill "$(cat "$OUT/.exec.pid")" 2>/dev/null; stop_all; exit 0
+        echo "STALL ($S): $stalled $(date -u +%T)" | scrub_log | tee "$OUT/stall.txt"; end_window stall; continue
       fi
     fi
-    spent=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
-    awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>c)}' && { echo "CAP REACHED (own spend $spent of $CAP_UNITS)"; stop_all; exit 0; }; done ) &
+    if awk -v s="$spent" -v c="$CAP_UNITS" -v m="$MARGIN" 'BEGIN{exit !(s>=c-m)}'; then
+      if [ "$now" -lt $(( PIN_DEADLINE + GRACE_S )) ]; then
+        # The job cuts its own wave at the deadline and writes its results; its PIN_RESULT line ends the window above.
+        [ -n "$noted" ] || echo "DEADLINE (own spend $spent of $CAP_UNITS): the job cuts its wave and writes its results; up to ${GRACE_S}s $(date -u +%T)"
+        noted=1
+      else
+        echo "CAP REACHED (own spend $spent of $CAP_UNITS; $MARGIN kept back to fetch the results) $(date -u +%T)"; end_window cap
+      fi
+    fi
+  done ) &
 WATCH=$!
 # The binary goes up gzipped in 40 MB parts, each retried; a part that never lands ends the window (the trap stops the VM).
+# PIN_SKIP_BINARY=1 (a test of this script with mock_job.py) sends none.
+UPLOAD_RETRY_SLEEP_S="${PIN_UPLOAD_RETRY_SLEEP_S:-10}"
+run_upload() {  # $1: timeout_s, $2: local path, $3: remote path, $4: quiet (1 = suppress error output)
+  local out rc
+  out=$(timeout "$1" colab upload -s "$S" "$2" "$3" 2>&1) && rc=0 || rc=$?
+  if [ "$rc" -ne 0 ] && [ "${4:-0}" != 1 ]; then
+    printf '%s\n' "$out" | strip_colab_banner | tail -1 | scrub_log
+  fi
+  return "$rc"
+}
 UP="$OUT/upload"; mkdir -p "$UP"; rm -f "$UP"/llama-server.gz*
-gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"
+if [ "${PIN_SKIP_BINARY:-0}" != 1 ] && [ "${PIN_ROLE:-}" = offrig-bench ]; then
+  PIN_UPLOADS="$BIN ${PIN_UPLOADS:-}"
+elif [ "${PIN_SKIP_BINARY:-0}" != 1 ]; then
+  gzip -9 -c "$BIN" > "$UP/llama-server.gz" && split -b 40M -d "$UP/llama-server.gz" "$UP/llama-server.gz.part"
+fi
 for part in "$UP"/llama-server.gz.part*; do
+  [ -e "$part" ] || continue
   ok=0
   for try in 1 2 3 4; do
-    if timeout 600 colab upload -s "$S" "$part" "/content/$(basename "$part")" 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
-    echo "upload of $(basename "$part") failed (try $try)"; sleep 10
+    if run_upload 600 "$part" "/content/$(basename "$part")"; then ok=1; break; fi
+    echo "upload of $(basename "$part") failed (try $try)"; sleep "$UPLOAD_RETRY_SLEEP_S"
   done
   [ "$ok" = 1 ] || { echo "UPLOAD FAILED: $(basename "$part")"; exit 3; }
   echo "uploaded $(basename "$part")"
@@ -76,29 +332,72 @@ done
 for f in ${PIN_UPLOADS:-}; do
   ok=0
   for try in 1 2 3 4; do
-    if timeout 600 colab upload -s "$S" "$f" "/content/$(basename "$f")" 2>&1 | tail -1 | grep -qv -i "fail\|error"; then ok=1; break; fi
-    echo "upload of $(basename "$f") failed (try $try)"; sleep 10
+    if run_upload 600 "$f" "/content/$(basename "$f")"; then ok=1; break; fi
+    echo "upload of $(basename "$f") failed (try $try)"; sleep "$UPLOAD_RETRY_SLEEP_S"
   done
   [ "$ok" = 1 ] || { echo "UPLOAD FAILED: $(basename "$f")"; exit 3; }
   echo "uploaded $(basename "$f") $(sha256sum "$f" | cut -c1-16)"
 done
+# The private GGUF repo's token (R&D, 2026-10-18), only for a window that names one: PIN_HF_TOKEN_FROM is the name of
+# the rig's environment variable Mike set (the read token for a pilot window, the write token for a prebuild). It goes
+# over as a file, written owner-only and deleted here at once: never on a command line, never through --env, never in a
+# log. The job reads it once, deletes it and drops it before any wave. It goes up only after the VM gate passed, so a
+# rejected VM never receives it. If the job dies before reading it, the file stays at /dev/shm/hf.token on a VM that
+# this script is stopping anyway (the EXIT trap); nothing fetches it back. On the VM it goes to RAM-backed /dev/shm,
+# outside /content and every tar.
+if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
+  tokvar=$PIN_HF_TOKEN_FROM
+  TOKF=$(mktemp); chmod 600 "$TOKF"; printf '%s' "${!tokvar}" > "$TOKF"; tf=$TOKF
+  ok=0
+  for try in 1 2 3; do
+    if run_upload 120 "$tf" /dev/shm/hf.token 1; then ok=1; break; fi
+    sleep 5
+  done
+  rm -f "$tf"; TOKF=""
+  [ "$ok" = 1 ] || { echo "UPLOAD FAILED: the token file"; exit 3; }
+  echo "uploaded the token file (owner-only, deleted on the rig)"
+fi
 t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S)$'); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S|UPLOAD_RETRY_SLEEP_S)$' || true); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
-timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$here/pin_window.py" --timeout "$WALL_S" \
-  > "$OUT/smoke-window.log" 2>&1 &
-EXEC=$!
-echo $EXEC > "$OUT/.exec.pid"
-wait $EXEC
-echo "exec exit=$? wall=$(( $(date +%s)-t0 ))s"
-kill "$WATCH" 2>/dev/null
-for f in ${PIN_DOWNLOADS:-pin-result.json lib.tar generations.jsonl}; do
-  timeout 900 colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1 | tail -1
-done
-grep -h "PIN_RESULT" "$OUT/smoke-window.log" | cut -c1-600
+run_exec() {
+  timeout --signal=SIGINT --kill-after=30s "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" \
+    > >(scrub_log >> "$OUT/smoke-window.log") 2>&1 &
+  EXEC=$!
+  echo $EXEC > "$OUT/.exec.pid"
+}
+run_exec
+wait $EXEC && rc=0 || rc=$?
+if [ -f "$OUT/.retry" ]; then  # the watcher saw the exec never start: once more, same session
+  rm -f "$OUT/.retry"; run_exec; wait $EXEC && rc=0 || rc=$?
+fi
+echo "exec exit=$rc wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/null || echo exec)"
+# The exit sequence: fetch, then the trap stops the session. The watcher stays up as the cap's ceiling meanwhile.
+[ -f "$OUT/.end" ] || echo exec > "$OUT/.end"
+if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
+  f0=$(date +%s)
+  fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
+  DEFAULT_DL="pin-result.json pilot-out.tar lib.tar generations.jsonl"
+  [ "${PIN_ROLE:-}" = offrig-bench ] && DEFAULT_DL="pin-result.json offrig-bench-out.tar ps.json"
+  for f in ${PIN_DOWNLOADS:-$DEFAULT_DL}; do
+    dl_out=$(timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1) && dl_rc=0 || dl_rc=$?
+    printf '%s\n' "$dl_out" | strip_colab_banner | tail -1 | scrub_log
+  done
+  # The exit sequence's fetch time, the measure for PIN_CAP_MARGIN.
+  echo "exit fetch took $(( $(date +%s) - f0 ))s"
+fi
+kill "$WATCH" 2>/dev/null || true
+rm -f "$OUT"/job.log.part.*
+grep -h "^PIN_RESULT" "$OUT/job.log" "$OUT/smoke-window.log" 2>/dev/null | head -1 | cut -c1-600 | scrub_log || true
 echo "end balance $(bal) (start $START)"
+# The window's outcome record (R&D, 2026-10-18: every outcome.json carries its date and commit). The rig writes what it
+# measured; the outcome class and its why are filled in by whoever reads the window, in outcome.json.
+spent_end=$(awk -v r="$OWN_RATE" -v t="$(( $(date +%s) - T_OPEN ))" 'BEGIN{printf "%.2f", r*t/3600}')
+printf '{"window": "%s", "date": "%s", "commit": "%s", "card": "%s", "cap": %s, "spent": %s, "basis": "rate_x_runtime", "end": "%s", "outcome": null, "why": null}\n' \
+  "$(basename "$OUT")" "$(date -u +%F)" "${PIN_ROLESET_COMMIT:-unset}" "${PIN_GPU:-A100}" "$CAP_UNITS" "$spent_end" \
+  "$(cat "$OUT/.end" 2>/dev/null || echo exec)" | scrub_log > "$OUT/outcome.draft.json"

@@ -23,7 +23,7 @@ Los diseños son [docs/role-set-design.md](docs/role-set-design.md) y [docs/gene
 
 ## Instalación
 
-Python 3.12, gestionado por uv. Una dependencia de tiempo de ejecución: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fijada a la confirmación de aspire-si `388a6bc`. Las etapas se importan, no se copian.
+Python 3.13+ (3.15), gestionado por uv. Una dependencia de tiempo de ejecución: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, fijada a la confirmación de aspire-si `388a6bc`. Las etapas se importan, no se copian.
 
 ```text
 uv sync --frozen

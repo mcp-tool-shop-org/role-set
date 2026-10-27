@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# A fake colab CLI for testing scripts/colab/smoke_window.sh without Colab: one "VM" directory under $FAKE_ST, uploads
+# and downloads that really copy files, `status` reading BUSY while a job runs, and `exec` that runs the real job file
+# (mock_job.py) with its --env settings. FAKE_MODE picks what goes wrong:
+#   normal          the exec runs the job and returns
+#   neighbourclose  a neighbour session closes between the two rate reads (15.90 -> 10.60), so OWN_RATE falls back to GPU_RATE
+#   lostfirst       the first exec loses its connection and hangs with nothing run; the second runs the job
+#   late            the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
+#                   remote kernel would); the second runs the job at once
+#   neverstarts     every exec hangs with nothing run
+# FAKE_GATE (any mode) sets what each VM health gate exec reports: good (default), bad or dead.
+ST=${FAKE_ST:?FAKE_ST}; VM=$ST/vm; mkdir -p "$VM/content/pin"
+cmd=$1; shift
+maybe_banner() {
+  local emit=0
+  if [ "${FAKE_BANNER:-}" = always ]; then
+    emit=1
+  elif [ "${FAKE_BANNER:-}" = from_settings ]; then
+    local sf="${COLAB_SETTINGS_FILE:-$HOME/.config/colab-cli/settings.json}"
+    if ! grep -q '"enable_update_check"[[:space:]]*:[[:space:]]*false' "$sf" 2>/dev/null; then
+      emit=1
+    fi
+  fi
+  if [ "$emit" = 1 ]; then
+    echo "[colab] A new version of google-colab-cli is available: 0.7.4 -> 0.8.0"
+    echo "[colab] Run \`uv tool upgrade google-colab-cli\` to update."
+    echo "[colab] To silence this check, set \"enable_update_check\": false in ~/.config/colab-cli/settings.json"
+  fi
+}
+maybe_banner
+case "$cmd" in
+  usage)
+    if [ "${FAKE_MODE:-normal}" = neighbourclose ]; then
+      if [ -f "$ST/open" ]; then r=10.60; else r=15.90; fi
+    elif [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi
+    echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
+  new)
+    if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
+      echo locked >> "$ST/new-lock.log"
+    else
+      echo unlocked >> "$ST/new-lock.log"
+    fi
+    if [ "${FAKE_NEW_FAIL:-0}" = 1 ]; then
+      echo "[colab] Requesting runtime..."
+      exit 1
+    fi
+    echo "$*" >> "$ST/new-args.log"; touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
+  sessions)
+    if [ -f "$ST/open" ]; then
+      n_vm=$(cat "$ST/news" 2>/dev/null || echo 1)
+      vm_id=$(echo "${FAKE_VM:-}" | cut -d, -f"$n_vm")
+      [ -n "$vm_id" ] || vm_id="gpu-a100-s-kkb-usc1b2-fake${n_vm}"
+      echo "[${PIN_SESSION:-fake}] $vm_id | Hardware: ${PIN_GPU:-A100}"
+    fi
+    true;;
+  stop)
+    if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
+      touch "$ST/stopped_under_lock"
+      echo locked >> "$ST/stop-lock.log"
+    else
+      echo unlocked >> "$ST/stop-lock.log"
+    fi
+    rm -f "$ST/open"; echo "[colab] Session terminated.";;
+  status)
+    [ -n "${FAKE_LEAK_URL:-}" ] && echo "$FAKE_LEAK_URL"
+    if [ -n "${FAKE_BANNER:-}" ]; then
+      echo "Session: [${PIN_SESSION:-fake}] gpu-a100-s-kkb-usc1b2-1a2b3c4d5e | Hardware: A100 | Runtime: Python 3 (GPU) | Kernel: python3"
+    fi
+    if ls "$ST"/busy.* >/dev/null 2>&1; then echo "[fake] Status: BUSY (exec(job))"; else echo "[fake] Status: IDLE"; fi;;
+  upload)
+    [ "$1" = -s ] && shift 2
+    u_try=$(( $(cat "$ST/upload-tries" 2>/dev/null || echo 0) + 1 )); echo "$u_try" > "$ST/upload-tries"
+    if [ "${FAKE_UPLOAD_MODE:-}" = timeout_silent ]; then
+      echo "Uploading chunk 1/1 ($(basename "$1"))..."
+      exit 124
+    fi
+    if [ "${FAKE_UPLOAD_FAIL_ONCE:-0}" = 1 ] && [ "$u_try" = 1 ]; then
+      echo "${FAKE_LEAK_URL:-upload failed}"
+      exit 1
+    fi
+    mkdir -p "$VM$(dirname "$2")"; cp "$1" "$VM$2"
+    echo "vm$(cat "$ST/news" 2>/dev/null || echo 0) $2" >> "$ST/uploads.log"; echo "[colab] Uploaded";;
+  download)
+    [ "$1" = -s ] && shift 2
+    d_try=$(( $(cat "$ST/download-tries" 2>/dev/null || echo 0) + 1 )); echo "$d_try" > "$ST/download-tries"
+    if [ "${FAKE_DOWNLOAD_LEAK_ONCE:-0}" = 1 ] && [ "$d_try" = 1 ]; then
+      echo "${FAKE_LEAK_URL:-download failed}"
+      exit 1
+    fi
+    if [ -f "$ST/open" ] && [ -f "$VM$1" ]; then cp "$VM$1" "$2"; echo "[colab] Downloaded"; else echo "[colab] Download failed: $1"; exit 1; fi;;
+  exec)
+    file=""; envs=()
+    while [ $# -gt 0 ]; do case "$1" in -f) file=$2; shift 2;; --env) envs+=("$2"); shift 2;; -s|--timeout) shift 2;; *) shift;; esac; done
+    # The VM health gate's exec (vm_gate.py): FAKE_GATE is a comma list, one entry per gate exec: good, bad, or dead (the
+    # exec dies with nothing printed, as windows 11c and 12e did). Gate execs don't count as job execs.
+    if [ "$(basename "$file")" = vm_gate.py ]; then
+      if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
+        echo locked >> "$ST/gate-lock.log"
+      else
+        echo unlocked >> "$ST/gate-lock.log"
+      fi
+      g=$(( $(cat "$ST/gates" 2>/dev/null || echo 0) + 1 )); echo $g > "$ST/gates"
+      printf '%s\n' "${envs[@]}" > "$ST/gate-env-$g"
+      what=$(echo "${FAKE_GATE:-good}" | cut -d, -f"$g"); what=${what:-good}
+      case "$what" in
+        good) echo 'VM_GATE {"ok": true, "why": [], "gpu_name": "NVIDIA A100-SXM4-40GB", "disk_free_gb": 204.2}';;
+        bad) echo 'VM_GATE {"ok": false, "why": ["card in use: 1200 MiB used, 1 processes"], "disk_free_gb": 204.2}';;
+        dead) echo "RuntimeError: Connection was lost."; exec sleep 3600;;  # exec: the timeout kills the sleep itself
+      esac
+      exit 0
+    fi
+    [ -n "${FAKE_LEAK_URL:-}" ] && echo "$FAKE_LEAK_URL"
+    n=$(( $(cat "$ST/execs" 2>/dev/null || echo 0) + 1 )); echo $n > "$ST/execs"
+    job="$ST/job-$n.sh"
+    { echo "#!/usr/bin/env bash"; echo "touch '$ST/busy.$n'"
+      for e in "${envs[@]}"; do printf 'export %q\n' "$e"; done
+      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file'"; echo "rm -f '$ST/busy.$n'"; } > "$job"
+    chmod +x "$job"
+    lost() { echo "RuntimeError: Connection was lost."; exec sleep 3600; }
+    case "$FAKE_MODE:$n" in
+      normal:*|neighbourclose:*) "$job";;
+      lostfirst:1|neverstarts:*) lost;;
+      lostfirst:*) "$job";;
+      late:1) setsid bash -c "sleep ${FAKE_LATE_S:-4}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
+      late:*) "$job";;
+      # latefirstwins: the first exec's job arrives just after the watcher's IDLE read and takes the lock; the retry's
+      # job arrives later, waits for it, and stops on this window's result.
+      latefirstwins:1) setsid bash -c "sleep ${FAKE_LATE_S:-1.5}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
+      latefirstwins:*) sleep "${FAKE_SECOND_DELAY_S:-2}"; "$job";;
+    esac;;
+esac

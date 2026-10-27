@@ -89,17 +89,17 @@
         "coChangesOnly": [],
         "collapsed": false,
         "confidence": "low",
-        "importsAndCoChanges": [],
-        "importsOnly": [
+        "importsAndCoChanges": [
           "tests"
-        ]
+        ],
+        "importsOnly": []
       },
-      "cohesion": null,
+      "cohesion": 0,
       "cohesionDropped": false,
-      "confidence": "low",
+      "confidence": "full",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 21,
+      "qualifyingSourceCommits": 73,
       "rebaseline": null
     },
     {
@@ -130,12 +130,12 @@
           "scripts"
         ]
       },
-      "cohesion": 0.200896,
+      "cohesion": 0.11489,
       "cohesionDropped": false,
       "confidence": "full",
       "highWater": null,
       "name": "src",
-      "qualifyingSourceCommits": 66,
+      "qualifyingSourceCommits": 91,
       "rebaseline": null
     },
     {
@@ -145,7 +145,9 @@
         ],
         "collapsed": false,
         "confidence": "low",
-        "importsAndCoChanges": [],
+        "importsAndCoChanges": [
+          "scripts"
+        ],
         "importsOnly": []
       },
       "cohesion": 0,
@@ -153,7 +155,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 69,
+      "qualifyingSourceCommits": 135,
       "rebaseline": null
     }
   ],
@@ -161,18 +163,18 @@
     "definition": "commits is how many commits in the window touch the file, including merges and commits dropped from coupling. lines is added plus deleted in those commits.",
     "files": [
       {
-        "commits": 1,
-        "lines": 3,
+        "commits": 5,
+        "lines": 7,
         "path": ".gitattributes"
       },
       {
-        "commits": 5,
-        "lines": 113,
+        "commits": 18,
+        "lines": 235,
         "path": ".github/workflows/ci.yml"
       },
       {
-        "commits": 1,
-        "lines": 50,
+        "commits": 2,
+        "lines": 58,
         "path": ".github/workflows/pages.yml"
       },
       {
@@ -181,8 +183,8 @@
         "path": ".gitignore"
       },
       {
-        "commits": 1,
-        "lines": 1,
+        "commits": 2,
+        "lines": 3,
         "path": ".python-version"
       },
       {
@@ -191,8 +193,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 52,
-        "lines": 257,
+        "commits": 88,
+        "lines": 489,
         "path": "CHANGELOG.md"
       },
       {
@@ -231,8 +233,8 @@
         "path": "README.ja.md"
       },
       {
-        "commits": 15,
-        "lines": 370,
+        "commits": 16,
+        "lines": 372,
         "path": "README.md"
       },
       {
@@ -266,8 +268,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 37,
-        "lines": 706,
+        "commits": 56,
+        "lines": 1061,
         "path": "atlas/README.md"
       },
       {
@@ -276,18 +278,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 37,
-        "lines": 2302,
+        "commits": 56,
+        "lines": 3459,
         "path": "atlas/page.json"
       },
       {
-        "commits": 37,
-        "lines": 5250,
+        "commits": 56,
+        "lines": 8114,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 37,
-        "lines": 14915,
+        "commits": 56,
+        "lines": 39752,
         "path": "atlas/structure.json"
       },
       {
@@ -316,8 +318,8 @@
         "path": "docs/generator-design.md"
       },
       {
-        "commits": 12,
-        "lines": 731,
+        "commits": 13,
+        "lines": 733,
         "path": "docs/role-set-design.md"
       },
       {
@@ -341,8 +343,8 @@
         "path": "docs/runs/2026-10-12-pilot-3.md"
       },
       {
-        "commits": 14,
-        "lines": 70,
+        "commits": 18,
+        "lines": 77,
         "path": "pyproject.toml"
       },
       {
@@ -367,17 +369,52 @@
       },
       {
         "commits": 1,
+        "lines": 218,
+        "path": "roles/verifier/pool.jsonl"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "roles/verifier/pool.jsonl.sha256"
+      },
+      {
+        "commits": 1,
         "lines": 11,
         "path": "roles/verifier/sources.json"
       },
       {
-        "commits": 13,
-        "lines": 1318,
-        "path": "scripts/colab/pin_window.py"
+        "commits": 2,
+        "lines": 118,
+        "path": "scripts/colab/check_drafts.py"
+      },
+      {
+        "commits": 6,
+        "lines": 235,
+        "path": "scripts/colab/checkpoints.py"
+      },
+      {
+        "commits": 4,
+        "lines": 808,
+        "path": "scripts/colab/licences/apache-2.0.txt"
       },
       {
         "commits": 1,
-        "lines": 36,
+        "lines": 1,
+        "path": "scripts/colab/licences/openmdw-1.1.txt"
+      },
+      {
+        "commits": 12,
+        "lines": 455,
+        "path": "scripts/colab/mock_job.py"
+      },
+      {
+        "commits": 70,
+        "lines": 9968,
+        "path": "scripts/colab/pin_window.py"
+      },
+      {
+        "commits": 2,
+        "lines": 46,
         "path": "scripts/colab/pin_window.sh"
       },
       {
@@ -386,9 +423,34 @@
         "path": "scripts/colab/pin_window_split.sh"
       },
       {
-        "commits": 7,
-        "lines": 105,
+        "commits": 4,
+        "lines": 281,
+        "path": "scripts/colab/preflight_window.py"
+      },
+      {
+        "commits": 41,
+        "lines": 1137,
         "path": "scripts/colab/smoke_window.sh"
+      },
+      {
+        "commits": 5,
+        "lines": 501,
+        "path": "scripts/colab/vm_gate.py"
+      },
+      {
+        "commits": 3,
+        "lines": 1842,
+        "path": "scripts/critic_signal/perturb.py"
+      },
+      {
+        "commits": 1,
+        "lines": 420,
+        "path": "scripts/critic_signal/track_a_slots.py"
+      },
+      {
+        "commits": 1,
+        "lines": 734,
+        "path": "scripts/critic_signal/track_b_slots.py"
       },
       {
         "commits": 1,
@@ -404,6 +466,11 @@
         "commits": 2,
         "lines": 120,
         "path": "scripts/t10_cell_capacity.py"
+      },
+      {
+        "commits": 1,
+        "lines": 87,
+        "path": "scripts/t10_replan_check.py"
       },
       {
         "commits": 4,
@@ -481,8 +548,8 @@
         "path": "site/src/content/docs/handbook/generator.md"
       },
       {
-        "commits": 4,
-        "lines": 97,
+        "commits": 5,
+        "lines": 99,
         "path": "site/src/content/docs/handbook/getting-started.md"
       },
       {
@@ -546,8 +613,8 @@
         "path": "src/role_set/__init__.py"
       },
       {
-        "commits": 11,
-        "lines": 686,
+        "commits": 12,
+        "lines": 839,
         "path": "src/role_set/assemble.py"
       },
       {
@@ -561,13 +628,18 @@
         "path": "src/role_set/b_packs.json"
       },
       {
-        "commits": 1,
-        "lines": 93,
+        "commits": 9,
+        "lines": 480,
+        "path": "src/role_set/callcache.py"
+      },
+      {
+        "commits": 5,
+        "lines": 105,
         "path": "src/role_set/cards.py"
       },
       {
-        "commits": 26,
-        "lines": 697,
+        "commits": 40,
+        "lines": 1012,
         "path": "src/role_set/cli.py"
       },
       {
@@ -576,14 +648,19 @@
         "path": "src/role_set/cost.py"
       },
       {
-        "commits": 7,
-        "lines": 344,
+        "commits": 12,
+        "lines": 499,
         "path": "src/role_set/critic.py"
       },
       {
-        "commits": 4,
-        "lines": 411,
+        "commits": 5,
+        "lines": 460,
         "path": "src/role_set/critic_control.py"
+      },
+      {
+        "commits": 11,
+        "lines": 3686,
+        "path": "src/role_set/critic_eval.py"
       },
       {
         "commits": 1,
@@ -611,8 +688,8 @@
         "path": "src/role_set/frames.py"
       },
       {
-        "commits": 8,
-        "lines": 146,
+        "commits": 11,
+        "lines": 192,
         "path": "src/role_set/gates.py"
       },
       {
@@ -656,8 +733,8 @@
         "path": "src/role_set/generate/t10_cells.json"
       },
       {
-        "commits": 11,
-        "lines": 27473,
+        "commits": 19,
+        "lines": 27489,
         "path": "src/role_set/generate/t10_record.json"
       },
       {
@@ -681,8 +758,8 @@
         "path": "src/role_set/guards.py"
       },
       {
-        "commits": 1,
-        "lines": 217,
+        "commits": 2,
+        "lines": 341,
         "path": "src/role_set/harvest.py"
       },
       {
@@ -691,8 +768,8 @@
         "path": "src/role_set/ingest.py"
       },
       {
-        "commits": 17,
-        "lines": 460,
+        "commits": 21,
+        "lines": 571,
         "path": "src/role_set/mock.py"
       },
       {
@@ -701,18 +778,18 @@
         "path": "src/role_set/pack.py"
       },
       {
-        "commits": 7,
-        "lines": 354,
+        "commits": 9,
+        "lines": 801,
         "path": "src/role_set/plan.py"
       },
       {
-        "commits": 20,
-        "lines": 493,
+        "commits": 22,
+        "lines": 500,
         "path": "src/role_set/prompts.py"
       },
       {
-        "commits": 2,
-        "lines": 201,
+        "commits": 3,
+        "lines": 233,
         "path": "src/role_set/proven.py"
       },
       {
@@ -726,18 +803,23 @@
         "path": "src/role_set/puzzle_check.py"
       },
       {
-        "commits": 8,
-        "lines": 238,
+        "commits": 13,
+        "lines": 303,
         "path": "src/role_set/readout.py"
       },
       {
-        "commits": 24,
-        "lines": 1676,
+        "commits": 3,
+        "lines": 1678,
+        "path": "src/role_set/rescore.py"
+      },
+      {
+        "commits": 29,
+        "lines": 1897,
         "path": "src/role_set/runner.py"
       },
       {
-        "commits": 4,
-        "lines": 605,
+        "commits": 5,
+        "lines": 859,
         "path": "src/role_set/solvefirst.py"
       },
       {
@@ -761,24 +843,64 @@
         "path": "src/role_set/trait_steps.py"
       },
       {
-        "commits": 5,
-        "lines": 225,
+        "commits": 9,
+        "lines": 272,
         "path": "src/role_set/transport.py"
       },
       {
-        "commits": 4,
-        "lines": 440,
+        "commits": 13,
+        "lines": 669,
         "path": "src/role_set/waves.py"
       },
       {
-        "commits": 19,
-        "lines": 725,
+        "commits": 32,
+        "lines": 909,
         "path": "src/role_set/write.py"
       },
       {
-        "commits": 3,
-        "lines": 63,
+        "commits": 5,
+        "lines": 79,
         "path": "tests/conftest.py"
+      },
+      {
+        "commits": 12,
+        "lines": 319,
+        "path": "tests/fake_colab/colab"
+      },
+      {
+        "commits": 3,
+        "lines": 428,
+        "path": "tests/fixtures/card-values.json"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "tests/fixtures/ollama-manifest/gemma4-31b-manifest-6316f062.json"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "tests/fixtures/ollama-manifest/manifest.json"
+      },
+      {
+        "commits": 1,
+        "lines": 0,
+        "path": "tests/fixtures/ollama-manifest/sha256-359ca17dcd875c3348e7804457abc3e0c0fd4dd24bd505f58c2e0dc281741f24"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "tests/fixtures/ollama-manifest/sha256-627db21306f1506a405bb2061f5b6871f176dbcecec3427d9a12cf2c6f3c985c"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "tests/fixtures/ollama-manifest/sha256-7520ff3c3f1b52d60bbc2bc1bedaa4e56f8d2ff5476656ee4a32c7e15a328e02"
+      },
+      {
+        "commits": 1,
+        "lines": 1,
+        "path": "tests/fixtures/ollama-manifest/sha256-7be3c44c11217c7bf23199c77eb56f0dac90cc4dd638479176b2c88096f2d08e"
       },
       {
         "commits": 1,
@@ -794,6 +916,11 @@
         "commits": 1,
         "lines": 621,
         "path": "tests/fixtures/span_t12_must_pass.json"
+      },
+      {
+        "commits": 1,
+        "lines": 0,
+        "path": "tests/fixtures/stub-ollama.tar.zst"
       },
       {
         "commits": 1,
@@ -821,13 +948,33 @@
         "path": "tests/fixtures/t12_round3_must_refuse.json"
       },
       {
-        "commits": 4,
-        "lines": 172,
-        "path": "tests/test_apply.py"
+        "commits": 2,
+        "lines": 2,
+        "path": "tests/fixtures/window12b-granite-w0-header.json"
+      },
+      {
+        "commits": 3,
+        "lines": 0,
+        "path": "tests/fixtures/window12f-w1.tar.gz"
+      },
+      {
+        "commits": 3,
+        "lines": 0,
+        "path": "tests/fixtures/window12g12h-chain.tar.gz"
+      },
+      {
+        "commits": 6,
+        "lines": 513,
+        "path": "tests/stub_llama.py"
       },
       {
         "commits": 5,
-        "lines": 259,
+        "lines": 174,
+        "path": "tests/test_apply.py"
+      },
+      {
+        "commits": 6,
+        "lines": 576,
         "path": "tests/test_assemble.py"
       },
       {
@@ -836,13 +983,23 @@
         "path": "tests/test_autostart.py"
       },
       {
+        "commits": 3,
+        "lines": 749,
+        "path": "tests/test_callcache.py"
+      },
+      {
+        "commits": 4,
+        "lines": 384,
+        "path": "tests/test_card_chain.py"
+      },
+      {
         "commits": 1,
         "lines": 63,
         "path": "tests/test_cards.py"
       },
       {
-        "commits": 10,
-        "lines": 193,
+        "commits": 11,
+        "lines": 220,
         "path": "tests/test_cli.py"
       },
       {
@@ -861,8 +1018,13 @@
         "path": "tests/test_critic_control.py"
       },
       {
-        "commits": 2,
-        "lines": 244,
+        "commits": 12,
+        "lines": 6824,
+        "path": "tests/test_critic_eval.py"
+      },
+      {
+        "commits": 3,
+        "lines": 248,
         "path": "tests/test_critic_side.py"
       },
       {
@@ -876,23 +1038,23 @@
         "path": "tests/test_domains.py"
       },
       {
-        "commits": 3,
-        "lines": 212,
+        "commits": 4,
+        "lines": 214,
         "path": "tests/test_exclusion.py"
       },
       {
-        "commits": 6,
-        "lines": 147,
+        "commits": 9,
+        "lines": 331,
         "path": "tests/test_gates.py"
       },
       {
-        "commits": 5,
-        "lines": 396,
+        "commits": 8,
+        "lines": 462,
         "path": "tests/test_generate.py"
       },
       {
-        "commits": 2,
-        "lines": 207,
+        "commits": 5,
+        "lines": 225,
         "path": "tests/test_generate_t11.py"
       },
       {
@@ -911,9 +1073,14 @@
         "path": "tests/test_guards.py"
       },
       {
-        "commits": 2,
-        "lines": 151,
+        "commits": 3,
+        "lines": 424,
         "path": "tests/test_harvest_exemplars.py"
+      },
+      {
+        "commits": 12,
+        "lines": 2091,
+        "path": "tests/test_hosted_gguf.py"
       },
       {
         "commits": 2,
@@ -926,13 +1093,18 @@
         "path": "tests/test_pack.py"
       },
       {
-        "commits": 8,
-        "lines": 259,
+        "commits": 9,
+        "lines": 424,
         "path": "tests/test_paid_run_data.py"
       },
       {
-        "commits": 1,
-        "lines": 155,
+        "commits": 3,
+        "lines": 936,
+        "path": "tests/test_perturb.py"
+      },
+      {
+        "commits": 2,
+        "lines": 157,
         "path": "tests/test_pilot.py"
       },
       {
@@ -946,18 +1118,23 @@
         "path": "tests/test_pilot_findings.py"
       },
       {
-        "commits": 2,
-        "lines": 130,
+        "commits": 45,
+        "lines": 7516,
+        "path": "tests/test_pin_window.py"
+      },
+      {
+        "commits": 3,
+        "lines": 354,
         "path": "tests/test_plan.py"
       },
       {
-        "commits": 9,
-        "lines": 180,
+        "commits": 10,
+        "lines": 240,
         "path": "tests/test_prompts_critic.py"
       },
       {
-        "commits": 4,
-        "lines": 201,
+        "commits": 7,
+        "lines": 264,
         "path": "tests/test_proven.py"
       },
       {
@@ -971,8 +1148,28 @@
         "path": "tests/test_puzzle_check.py"
       },
       {
-        "commits": 15,
-        "lines": 499,
+        "commits": 3,
+        "lines": 144,
+        "path": "tests/test_python_support.py"
+      },
+      {
+        "commits": 6,
+        "lines": 582,
+        "path": "tests/test_real_chain.py"
+      },
+      {
+        "commits": 3,
+        "lines": 1706,
+        "path": "tests/test_rescore.py"
+      },
+      {
+        "commits": 3,
+        "lines": 396,
+        "path": "tests/test_rescore_window.py"
+      },
+      {
+        "commits": 19,
+        "lines": 925,
         "path": "tests/test_runner.py"
       },
       {
@@ -981,8 +1178,8 @@
         "path": "tests/test_select.py"
       },
       {
-        "commits": 3,
-        "lines": 296,
+        "commits": 4,
+        "lines": 664,
         "path": "tests/test_solvefirst.py"
       },
       {
@@ -1001,9 +1198,19 @@
         "path": "tests/test_transport.py"
       },
       {
+        "commits": 5,
+        "lines": 349,
+        "path": "tests/test_vm_gate.py"
+      },
+      {
         "commits": 1,
         "lines": 121,
         "path": "tests/test_warmup_and_critic_record.py"
+      },
+      {
+        "commits": 2,
+        "lines": 108,
+        "path": "tests/test_wave_pins.py"
       },
       {
         "commits": 5,
@@ -1011,18 +1218,23 @@
         "path": "tests/test_waves.py"
       },
       {
-        "commits": 18,
-        "lines": 574,
+        "commits": 21,
+        "lines": 1481,
+        "path": "tests/test_window_script.py"
+      },
+      {
+        "commits": 21,
+        "lines": 830,
         "path": "tests/test_write.py"
       },
       {
-        "commits": 12,
-        "lines": 206,
+        "commits": 16,
+        "lines": 386,
         "path": "uv.lock"
       },
       {
-        "commits": 8,
-        "lines": 460,
+        "commits": 12,
+        "lines": 648,
         "path": "writers.json"
       }
     ]
@@ -1031,51 +1243,51 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-17T15:25:37.067Z",
+  "generatedAt": "2026-10-26T01:35:11.153Z",
   "generatedFrom": {
-    "commit": "3aa03240d4f0b506889935c433d65402da675835"
+    "commit": "15834e01e60b27f16bc2ac53d528d60d682bff6d"
   },
   "pairs": [
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 37,
-      "shared": 37,
+      "either": 51,
+      "shared": 51,
       "strength": 1
     },
     {
@@ -1086,32 +1298,39 @@
       "strength": 0.818182
     },
     {
-      "a": "docs/generator-design.md",
-      "b": "tests/test_generate.py",
-      "either": 10,
-      "shared": 5,
-      "strength": 0.5
-    },
-    {
       "a": "pyproject.toml",
       "b": "uv.lock",
-      "either": 14,
-      "shared": 12,
-      "strength": 0.857143
+      "either": 18,
+      "shared": 16,
+      "strength": 0.888889
     },
     {
-      "a": "src/role_set/cli.py",
-      "b": "src/role_set/write.py",
-      "either": 30,
-      "shared": 15,
+      "a": "scripts/colab/pin_window.py",
+      "b": "tests/test_pin_window.py",
+      "either": 62,
+      "shared": 32,
+      "strength": 0.516129
+    },
+    {
+      "a": "src/role_set/assemble.py",
+      "b": "tests/test_assemble.py",
+      "either": 12,
+      "shared": 6,
       "strength": 0.5
+    },
+    {
+      "a": "src/role_set/critic_eval.py",
+      "b": "tests/test_critic_eval.py",
+      "either": 11,
+      "shared": 8,
+      "strength": 0.727273
     },
     {
       "a": "src/role_set/gates.py",
       "b": "tests/test_gates.py",
-      "either": 8,
-      "shared": 6,
-      "strength": 0.75
+      "either": 11,
+      "shared": 9,
+      "strength": 0.818182
     },
     {
       "a": "src/role_set/generate/build.py",
@@ -1121,18 +1340,11 @@
       "strength": 0.6
     },
     {
-      "a": "src/role_set/generate/recipes.py",
-      "b": "tests/test_generate.py",
-      "either": 10,
-      "shared": 5,
-      "strength": 0.5
-    },
-    {
       "a": "src/role_set/mock.py",
       "b": "tests/test_runner.py",
-      "either": 21,
-      "shared": 11,
-      "strength": 0.52381
+      "either": 26,
+      "shared": 14,
+      "strength": 0.538462
     },
     {
       "a": "src/role_set/puzzle.py",
@@ -1144,45 +1356,45 @@
     {
       "a": "src/role_set/readout.py",
       "b": "tests/test_paid_run_data.py",
-      "either": 10,
-      "shared": 6,
-      "strength": 0.6
+      "either": 13,
+      "shared": 7,
+      "strength": 0.538462
     },
     {
       "a": "src/role_set/runner.py",
       "b": "tests/test_runner.py",
-      "either": 25,
-      "shared": 14,
-      "strength": 0.56
+      "either": 30,
+      "shared": 18,
+      "strength": 0.6
     },
     {
-      "a": "src/role_set/write.py",
-      "b": "tests/test_write.py",
-      "either": 24,
-      "shared": 13,
-      "strength": 0.541667
+      "a": "tests/fake_colab/colab",
+      "b": "tests/test_window_script.py",
+      "either": 17,
+      "shared": 9,
+      "strength": 0.529412
     }
   ],
   "parameters": {
-    "appliedChangesetLimit": 43,
+    "appliedChangesetLimit": 50,
     "changeset": 50,
     "changesetFraction": 0.25,
     "cohesionDrop": 0.2,
     "couplingPopulation": "source",
     "fallenShared": 3,
     "floor": "fallen",
-    "floorHeld": false,
+    "floorHeld": true,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-17T11:17:24-04:00",
-    "inScopeFiles": 172,
+    "headDate": "2026-10-25T21:15:11-04:00",
+    "inScopeFiles": 214,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 100,
+    "qualifyingCommits": 178,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-04-20T15:17:24.000Z",
+    "since": "2026-04-29T01:15:11.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
@@ -1198,7 +1410,7 @@
     ],
     "sourceFileReach": 20,
     "sourceFileRise": 25,
-    "sourceFilesReachingStrongFloor": 12,
+    "sourceFilesReachingStrongFloor": 20,
     "strength": 0.5,
     "windowDays": 180
   },

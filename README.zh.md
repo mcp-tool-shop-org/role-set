@@ -23,7 +23,7 @@
 
 ## 安装
 
-Python 3.12，由 uv 管理。一个运行时依赖项：[aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0，固定到 aspire-si 提交 `388a6bc`。这些关卡是导入的，而不是复制的。
+Python 3.13+ (3.15)，由 uv 管理。一个运行时依赖项：[aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0，固定到 aspire-si 提交 `388a6bc`。这些关卡是导入的，而不是复制的。
 
 ```text
 uv sync --frozen

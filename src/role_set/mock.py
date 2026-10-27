@@ -12,7 +12,7 @@ Neither is ever used for a real batch: `write` refuses `--mock` output as data.
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from role_set.assemble import FLAWS
 from role_set.plan import Slot
@@ -90,7 +90,7 @@ class MockWriter:
             body = "The desk is open on Sundays from 10:00 to 14:00.\nThe side door is locked after 18:00."
             if _is_apply(slot_id):
                 n += APPLY_N
-                body = _salt(body, n)
+            body = _salt(body, n)
             return _done(f"Desk hours at {_tag(n, 0).title()}\n{body}")
         if "## The locked puzzle" in text:
             return _done(_locked_fields(text))
@@ -104,20 +104,23 @@ class MockWriter:
             n, b = self._keyed(slot_id, seed, puzzle=slot["kind"] == "B")
         else:
             n, b = self._next(puzzle=slot["kind"] == "B")
-        if _is_apply(slot_id):
+        if _is_apply(slot_id) or slot.get("apply"):
             n, slot["apply"] = n + APPLY_N, True
         return _done(_fields(slot, material, self.answers, n, b))
 
 
 @dataclass
 class MockCritic:
-    answers: dict
+    answers: dict = field(default_factory=dict)
     disagree: set | None = None  # statements the critic disagrees on
     # Statements the critic disagrees on once, the first time it reads them; each is removed as it is used, so a
     # set shared by every critic of a batch refuses each first draft once, inline or across waves.
     disagree_once: set | None = None
     disagree_all: bool = False
     trait: str = ""
+
+    def __post_init__(self):
+        self._seen_lines: dict[str, str] = {}
 
     def __call__(self, messages: list[dict], **sampling) -> Completion:
         text = messages[-1]["content"]
@@ -136,7 +139,16 @@ class MockCritic:
             return _done("Worked through the facts.\nANSWER: " + self.answers.get(("answer", text.strip()[-40:]), "gold"))
         statement = _after(text, "Statement: ")
         first_line = _after(text, "Material:\n")
-        verdict, deciding = self.answers.get((statement, first_line), ("cannot_tell", []))
+        if (statement, first_line) in self.answers:
+            verdict, deciding = self.answers[(statement, first_line)]
+        elif first_line and self._seen_lines.get(first_line, statement) != statement:
+            # A second unknown statement on the same material is an apply item's r10_twin after a cannot_tell main
+            # claim passed: its key must differ from cannot_tell (assemble._apply_fields), so answer supported.
+            verdict, deciding = "supported", [first_line]
+        else:
+            if first_line:
+                self._seen_lines[first_line] = statement
+            verdict, deciding = "cannot_tell", []
         if "The desk sells stamps on Mondays." in text:  # turn 2 of a 'changes' item: the new line decides
             verdict, deciding = self.answers.get(("turn2", statement, first_line), (verdict, deciding))
         once = self.disagree_once is not None and statement in self.disagree_once
@@ -216,11 +228,14 @@ def _slot_from_brief(text: str) -> dict:
     written = "Write a quiz item" in text
     struct = re.search(r"The thinking pattern is: ([^.]+)\.", text)
     frame = re.search(r"^Frame: (\w+)\.", text, re.M)
+    trait_word = re.search(r"in one of these exact words: '([^']+)'", text)
     return {
         "id": f"{lesson}-{kind}", "lesson": lesson, "kind": kind, "verdict": verdict.group(1) if verdict else None,
         "two_turn": "changes" if changes else ("stands" if two else None), "written": written, "structure": struct.group(1) if struct else "",
         "pair": "contrast pair" in text, "multi_line": "spans two to four lines" in text, "frame": frame.group(1) if frame else None,
-        "silent_flag": "Add silent_without_deciding" in text,
+        "silent_flag": "Add silent_without_deciding" in text, "r10_twin": "Add r10_twin" in text,
+        "apply": any(x in text for x in ("Add silent_without_deciding", "Add r10_twin", "Add order_free")),
+        "trait_word": trait_word.group(1) if trait_word else "goes to the source",
     }
 
 
@@ -269,11 +284,13 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     import json
 
     kind, verdict = slot["kind"], slot["verdict"]
-    first_line = material.splitlines()[0] if material else ""
-    second_line = material.splitlines()[1] if material and len(material.splitlines()) > 1 else first_line
+    non_empty = [ln.strip() for ln in material.splitlines() if ln.strip()]
+    first_line = non_empty[0] if non_empty else ""
+    second_line = non_empty[1] if len(non_empty) > 1 else first_line
     t = lambda j: _tag(n, 200 + j)  # noqa: E731
     if kind == "A":
-        return json.dumps({"passage": "It goes to the source.\n" + _salt("A reader holds the page, not a memory of it. The people relying on the check need the page's own words.", n),
+        tw = slot.get("trait_word") or "goes to the source"
+        return json.dumps({"passage": f"It {tw} in {t(0)}.\n" + _salt("A reader holds the page, not a memory of it. The people relying on the check need the page's own words.", n),
                            "question": _salt("What do you reach for first, and why?", n), "reply": _salt(f"I reach for the {t(9)} record. A recollection is not a line I can point at.", n),
                            "key_points": ["reach for the page first", "a recollection is not a line"]})
     if kind == "B":
@@ -328,6 +345,12 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     if slot.get("silent_flag") and deciding:
         # The brief asks for the twin flag (T01, T04, T14 apply items); the mock's material is silent without its line.
         base["silent_without_deciding"] = True
+    if slot.get("r10_twin"):
+        twin_v = "unsupported" if verdict == "supported" else "supported"
+        twin_stmt = (f"{t(12).title()} reads: The desk is closed on Sundays."
+                     if twin_v == "unsupported" else f"{t(12).title()} reads: {second_line}")
+        answers[(twin_stmt, first_line)] = (twin_v, [second_line])
+        base["r10_twin"] = {"statement": twin_stmt, "verdict": twin_v}
     if kind == "C":
         flaw = "guess" if verdict != "cannot_tell" else "none"
         trace = _salt(f"The other checker skimmed and answered from memory on {statement}", n)
@@ -346,6 +369,69 @@ def _fields(slot: dict, material: str, answers: dict, n: int = 0, b: int = 0) ->
     return json.dumps(base)
 
 
+def mock_excerpts(count: int = 16) -> dict[str, list]:
+    """Mock real-source excerpts for `write --mock` and tests when no pool is supplied for a kind."""
+    from role_set.assemble import Material
+    from role_set.plan import CONTENT_KINDS
+
+    out: dict[str, list] = {}
+    for k_idx, kind in enumerate(dict.fromkeys(CONTENT_KINDS)):
+        items = []
+        for i in range(count):
+            n = 3000 + k_idx * 64 + i
+            text = (
+                f"Desk hours at {_tag(n, 0).title()}\n"
+                + _salt("The desk is open on Sundays from 10:00 to 14:00.", n)
+                + f" ({_tag(n, 1)}).\n"
+            )
+            src = {"repo": "x/y", "commit": "0123456", "path": f"{kind}-{i}.txt", "lines": "L1-L2", "licence": "MIT"}
+            items.append(Material(text, src))
+        out[kind] = items
+    return out
+
+
+def answers_from_drafts(drafts: list[dict]) -> dict:
+    """Seed a mock critic's answer lookup from `awaiting_critique` drafts when the write wave ran without populating
+    the critic's answers dict (mock runs only; never data)."""
+    import json
+
+    out: dict = {}
+    for d in drafts:
+        if d.get("state") != "awaiting_critique" or not isinstance(d.get("candidate"), dict):
+            continue
+        try:
+            fields = json.loads(d["candidate"].get("text") or "")
+        except ValueError:
+            continue
+        if not isinstance(fields, dict):
+            continue
+        slot = d.get("slot") or {}
+        mat = (d.get("material") or {}).get("text") or ""
+        non_empty = [ln.strip() for ln in mat.splitlines() if ln.strip()]
+        first_line = non_empty[0] if non_empty else ""
+        stmt = fields.get("statement")
+        verdict = slot.get("verdict")
+        deciding = fields.get("deciding") if isinstance(fields.get("deciding"), list) else []
+        if isinstance(stmt, str) and isinstance(verdict, str):
+            out.setdefault((stmt, first_line), (verdict, [] if verdict == "cannot_tell" else deciding))
+            if slot.get("two_turn") == "changes" and isinstance(fields.get("turn2_verdict"), str):
+                d2 = fields.get("turn2_deciding") if isinstance(fields.get("turn2_deciding"), list) else []
+                out.setdefault(("turn2", stmt, first_line), (fields["turn2_verdict"], d2))
+        twin = fields.get("r10_twin")
+        if isinstance(twin, dict) and isinstance(twin.get("statement"), str) and isinstance(twin.get("verdict"), str):
+            tv = twin["verdict"]
+            td = [] if tv == "cannot_tell" else (deciding or ([first_line] if first_line else []))
+            out.setdefault((twin["statement"], first_line), (tv, td))
+        if slot.get("kind") == "C" and isinstance(fields.get("checker_trace"), str):
+            trace_line = fields["checker_trace"].splitlines()[0].strip() if fields["checker_trace"].strip() else ""
+            flaw = fields.get("planted_flaw")
+            if trace_line and isinstance(flaw, str):
+                out.setdefault(("flaw", trace_line), flaw)
+        if slot.get("kind") == "B" and isinstance(fields.get("puzzle"), str) and isinstance(fields.get("answer"), str):
+            out.setdefault(("answer", fields["puzzle"].strip()[-40:]), fields["answer"].lower())
+    return out
+
+
 def mock_gates(closed_form=None):
     """A permissive stand-in for aspire-si-gates, for `write --mock` in CI when the package isn't installed.
     It refuses nothing, so it takes no closed-form settings (`closed_form` is accepted and ignored, and the stand-in's
@@ -359,9 +445,14 @@ def mock_gates(closed_form=None):
     m.DataError = ValueError
     m.check_item = lambda row: None
     m.check_apply_item = lambda row: None
+    m.check_trace_leaks_label = lambda row: None
     m.check_against = lambda row, accepted, models=None: []
     m.load_models = lambda data_path: {}
     m.check_batch = lambda rows, models=None, **kw: None
+    m._is_puzzle = lambda r: r.get("kind") == "B" and (
+        "non-verification" in (r.get("tags") or [])
+        or not any(ln.lstrip().startswith("VERDICT:") for ln in ((r.get("turns") or [{}])[-1].get("reply") or "").splitlines())
+    )
     m.role_words_in_prompt = lambda row: []
     m.norm = lambda x: " ".join(x.replace("**", "").replace("__", "").split())
     m.critic_mismatch = lambda key, critic, material: not ({" ".join(x.split()) for x in key} & {" ".join(x.split()) for x in critic})

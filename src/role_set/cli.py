@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -32,6 +33,14 @@ from role_set.plan import (PILOT_LESSON, PILOT_TWIN_LESSON, PlanError, check_pla
                             plan_pilot_twins)
 from role_set.prompts import load_pack
 from role_set.readout import readout
+from role_set.rescore import RescoreConfig, RescoreError, run_rescore
+from role_set.critic_eval import (
+    CriticEvalConfig,
+    CriticEvalError,
+    CriticRescoreOfflineConfig,
+    run_critic_eval,
+    run_critic_rescore_offline,
+)
 from role_set.store import counts, open_store, void_round
 from role_set.trait_steps import TRAIT_STEPS
 from role_set.write import (
@@ -66,6 +75,24 @@ VERIFIER_SIDES = {
 }
 
 
+def _check_slot_list_fields(slots: list) -> None:
+    from role_set import frames
+
+    for s in slots:
+        if domains.bears_domain(s) and not s.domain:
+            raise PlanError(f"REFUSED: {s.id} is missing domain")
+        if frames.framed(s.kind, s.e_type) and not s.frame:
+            raise PlanError(f"REFUSED: {s.id} is missing frame")
+        if s.kind == "B":
+            if not s.pack or s.b_seed is None or not s.b_path:
+                raise PlanError(f"REFUSED: {s.id} is missing pack, b_seed or b_path")
+            if s.b_path == "solve_first" and not s.b_skeleton:
+                raise PlanError(f"REFUSED: {s.id} is missing b_skeleton")
+
+
+DEFAULT_DOMAINS = Path(__file__).resolve().parents[2] / "roles" / "domains" / "naics-2022.json"
+
+
 def _plan(args: argparse.Namespace) -> int:
     lessons = {}
     if args.pilot or args.pilot_twins:
@@ -91,10 +118,17 @@ def _plan(args: argparse.Namespace) -> int:
         elif args.pilot_twins:
             slots = plan_pilot_twins(lessons, seed=args.seed)
         else:
-            slots = plan_apply_batch(lessons, seed=args.seed) if args.apply else plan_batch(lessons, seed=args.seed)
+            if args.apply:
+                slots = plan_apply_batch(lessons, seed=args.seed, buffers=args.buffers)
+            elif args.buffers:
+                slots = (plan_batch(lessons, seed=args.seed, buffers=True)
+                         + plan_apply_batch(lessons, seed=args.seed, buffers=True))
+            else:
+                slots = plan_batch(lessons, seed=args.seed)
         table = None
-        if args.domains:
-            table = domains.load(Path(args.domains))
+        domains_path = Path(args.domains) if args.domains else (DEFAULT_DOMAINS if args.buffers else None)
+        if domains_path is not None:
+            table = domains.load(domains_path)
             domains.assign(slots, table, seed=args.seed)
             # Kind B: a pack and a seed per slot, and the solve-first path for the structures with a generator (B3).
             packs = solvefirst.load_packs()
@@ -102,6 +136,7 @@ def _plan(args: argparse.Namespace) -> int:
             solvefirst.assign(slots, packs, seed=args.seed, table=table, prior=prior.packs)
             solvefirst.lock_skeletons(slots, packs, prior=prior.skeletons)
             domains.check(slots)
+            _check_slot_list_fields(slots)
     except (PlanError, domains.DomainTableError, solvefirst.SolveFirstError, exclusion.ExclusionError) as e:
         msg = str(e)
         print(msg if msg.startswith("REFUSED") else f"REFUSED: {msg}", file=sys.stderr)
@@ -119,7 +154,13 @@ def _plan(args: argparse.Namespace) -> int:
     if table is not None:
         out["domain_table"] = table.pin()
         out["exclusion_state_sha256"] = prior.sha256
-    Path(args.out).write_text(json.dumps(out, indent=1), encoding="utf-8")
+    out_path = Path(args.out)
+    out_path.write_text(json.dumps(out, indent=1), encoding="utf-8")
+    if args.buffers:
+        sha = hashlib.sha256(out_path.read_bytes()).hexdigest()
+        out_path.with_name(out_path.name + ".sha256").write_text(
+            f"{sha}  {out_path.name}\n", encoding="utf-8", newline="\n"
+        )
     for f in figures:
         print(json.dumps(f))
     print(f"wrote {len(slots)} slots to {args.out}")
@@ -191,9 +232,11 @@ def _write(args: argparse.Namespace) -> int:
         partition=args.partition, machine=Path(args.machine) if args.machine else None,
         writer_gguf_sha256=args.writer_gguf_sha256, critic_gguf_sha256=args.critic_gguf_sha256,
         server_sha256=args.llama_server_sha256, wave=args.wave, drafts=Path(args.drafts) if args.drafts else None,
+        prior_drafts=Path(args.prior_drafts) if args.prior_drafts else None,
         call_journal=Path(args.call_journal) if args.call_journal else None,
         reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
         exclusion_state=Path(args.exclusion_state) if args.exclusion_state else None,
+        critique_scope=args.critique_scope,
     )
     try:
         result = run_write(cfg)
@@ -255,7 +298,7 @@ def _critic_control(args: argparse.Namespace) -> int:
         gates = load_gates()
         listed = proven.load(Path(args.writers))
         machine = proven.load_machine(Path(args.machine) if args.machine else None)
-        server = proven.require_server(listed.server, args.llama_server_sha256)
+        server = proven.require_server(listed, args.llama_server_sha256)
         if proven.needs_grant(machine):
             require_grant(args.grant, uses_card=True)
             if not args.heartbeat:
@@ -327,7 +370,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     a = sub.add_parser("plan", help="fix every slot for a batch; no model call")
     a.add_argument("--role", default="verifier")
-    a.add_argument("--lessons", default=None, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--lessons", "--lesson", dest="lessons", default=None, help="comma-separated lesson ids, e.g. T02,T03,T06")
+    a.add_argument("--buffers", action="store_true", help="add buffer slots and deal verdicts under the buffered rule")
     a.add_argument("--pilot", action="store_true", help="the 20-slot wave pilot (T02: A4 B5 C4 D4 E3); its T04 apply twins are "
                                                         "--pilot-twins; floors reported, not enforced; write needs a trial: partition")
     a.add_argument("--pilot-twins", action="store_true", help="the pilot's 2 C and 2 D T04 apply twins, a batch of their own, "
@@ -431,13 +475,15 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--exclusion-state", default=None, help="earlier batches' exclusion-state.json; the run checks against their rows and "
                                                            "writes the state it leaves beside its own (BUILD-SPEC B4)")
     w.add_argument("--drafts", default=None, help="a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl")
+    w.add_argument("--prior-drafts", default=None, help="a rewrite only: the write wave's wave-drafts.jsonl that the critique read, "
+                                                         "for drafts whose header lost the writer's card pins (one hop, checked)")
     w.add_argument("--grant", default=None, help="the Publisher's grant id, required unless the machine line names a Colab VM or a pod")
     w.add_argument("--heartbeat", default=None, help="the watchdog heartbeat file (mtime only)")
     w.add_argument("--concurrency", type=int, default=1)
     w.add_argument("--mock", action="store_true", help="no model, no money; output is marked and never data")
     w.add_argument("--no-critic", action="store_true", help="dry runs only; items pass without the second reader")
     w.add_argument("--pool", default=None, help="the harvested excerpt pool (jsonl)")
-    w.add_argument("--training", nargs="*", default=(), help="for an apply plan: the whole training set's data files, each with its .models.jsonl sidecar")
+    w.add_argument("--training", nargs="*", action="extend", default=[], help="for an apply plan: the whole training set's data files, each with its .models.jsonl sidecar")
     w.add_argument("--exemplar-repo", default=None, help="aspire-si clone, for approved items read at a pinned commit")
     w.add_argument("--exemplar-commit", default=None)
     w.add_argument("--exemplar-files", nargs="*", default=None, help="merged data files, e.g. pilot-t04.jsonl batch2-t01.jsonl")
@@ -452,6 +498,8 @@ def build_parser() -> argparse.ArgumentParser:
     w.add_argument("--closed-form", type=_closed_form_arg, default=None,
                    help="the gates' closed-form settings as JSON, e.g. '{\"carry\": \"either\"}'; unset takes the pinned gates' "
                         "defaults. Every receipt records the settings used")
+    w.add_argument("--critique-scope", choices=("all", "verdict"), default="all",
+                   help="all checks every slot; verdict skips A, B and written E in _critic_pass (design §11 F2)")
     w.set_defaults(func=_write)
 
     ro = sub.add_parser("readout", help="one run's results per lesson and kind, beside earlier runs; passing or failing")
@@ -477,7 +525,127 @@ def build_parser() -> argparse.ArgumentParser:
     pc.add_argument("--json", action="store_true", help="print the full report as JSON")
     pc.add_argument("--stamp", action="store_true", help="first write each sidecar line's row_sha256 from the rows as they stand")
     pc.set_defaults(func=_puzzle_check)
+
+    rs = sub.add_parser("rescore", help="blind second-critic rescore of a sample of each writer arm's w0 drafts")
+    rs.add_argument("--runs", nargs="+", action="extend", default=[], help="pilot-out.tar files holding arm w0 and w1 wave dirs")
+    rs.add_argument("--drafts", nargs="+", action="extend", default=[], help="<arm>=<w0 wave-drafts.jsonl>,<w1 wave-drafts.jsonl>, repeatable")
+    rs.add_argument("--pack", default="roles/verifier")
+    rs.add_argument("--writers", default="writers.json")
+    rs.add_argument("--cards", default=None, help="rnd's card-values.json: the second critic runs at its card's settings")
+    rs.add_argument("--critic-endpoint", default=None, help="the second critic's llama-server, http://127.0.0.1:<port>/v1")
+    rs.add_argument("--critic-model", default=None, help="a served name from writers.json's critics")
+    rs.add_argument("--critic-gguf-sha256", default=None, help="the second critic GGUF's sha256")
+    rs.add_argument("--seed", type=int, default=0, help="seed for the within-group sample draw and the blind queue shuffle")
+    rs.add_argument("--out", default="rescore", help="directory for sample-manifest.json, rescore.json and rescore-report.json")
+    rs.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
+    rs.set_defaults(func=_rescore)
+
+    ce = sub.add_parser("critic-eval", help="score every item of a sealed set with the critic's verdict and flaw checks only")
+    ce.add_argument("--items", required=True, help="sealed items file (waves.read checks its .sha256 seal)")
+    ce.add_argument("--pack", default=None, help="the synced role pack (optional)")
+    ce.add_argument("--writers", default="writers.json")
+    ce.add_argument("--cards", default=None, help="rnd's card-values.json: the critic runs at its card's settings")
+    ce.add_argument("--critic-endpoint", default=None, help="the critic's llama-server, http://127.0.0.1:<port>/v1")
+    ce.add_argument("--critic-model", default=None, help="a served name from writers.json's critics")
+    ce.add_argument("--critic-gguf-sha256", default=None, help="the critic GGUF's sha256")
+    ce.add_argument("--critic-seed", type=int, default=0, help="the critic's sampling seed")
+    ce.add_argument("--call-journal", default=None, help="where each finished critic call is journaled")
+    ce.add_argument("--reuse-calls", default=None, help="an earlier run's call journal to replay finished calls from")
+    ce.add_argument("--flaw-prompt", choices=("old", "new", "trackb"), default="old",
+                    help="critic flaw-check prompt wording ('old', 'new' or 'trackb'; default 'old')")
+    ce.add_argument("--verdict-prompt", choices=("old", "defined"), default=None,
+                    help="critic verdict-check prompt wording ('old' or 'defined'; default 'old')")
+    ce.add_argument("--checks", choices=("all", "verdict"), default=None,
+                    help="which critic checks to run ('all' or 'verdict' only; default 'all')")
+    ce.add_argument("--flaw-votes", type=int, choices=(1, 3), default=1,
+                    help="flaw check votes per kind-C item at seeds base_seed..base_seed+N-1 (1 or 3; default 1)")
+    ce.add_argument("--verdict-from", default=None,
+                    help="an earlier critic-eval.jsonl to reuse verdict replies from (0 verdict calls)")
+    ce.add_argument("--out", default="critic-eval", help="directory for critic-eval.jsonl and critic-eval-report.json")
+    ce.add_argument("--mock", action="store_true", help="run with MockCritic instead of a served critic")
+    ce.set_defaults(func=_critic_eval)
+
+    cro = sub.add_parser("critic-rescore-offline", help="re-score recorded critic-eval replies against any key under P0, Pc, P2 and P3")
+    cro.add_argument("--eval", nargs="+", action="extend", default=[], required=True, help="one or two critic-eval.jsonl files")
+    cro.add_argument("--items", default=None, help="the sealed items file")
+    cro.add_argument("--keys", nargs="+", action="extend", default=[], help="alternate key file(s)")
+    cro.add_argument("--out", default="critic-rescore-offline", help="directory (or .jsonl path) for offline rescore outputs")
+    cro.add_argument("--mock", action="store_true", help="allow mock gates fallback when aspire-si-gates is unavailable")
+    cro.set_defaults(func=_critic_rescore_offline)
     return p
+
+
+def _critic_eval(args: argparse.Namespace) -> int:
+    extra: dict[str, str] = {}
+    if args.verdict_prompt is not None:
+        extra["verdict_prompt"] = args.verdict_prompt
+    if args.checks is not None:
+        extra["checks"] = args.checks
+    cfg = CriticEvalConfig(
+        items=Path(args.items),
+        pack=Path(args.pack) if args.pack else None,
+        writers_file=Path(args.writers),
+        cards=Path(args.cards) if args.cards else None,
+        critic_endpoint=args.critic_endpoint,
+        critic_model=args.critic_model,
+        critic_gguf_sha256=args.critic_gguf_sha256,
+        critic_seed=args.critic_seed,
+        call_journal=Path(args.call_journal) if args.call_journal else None,
+        reuse_calls=Path(args.reuse_calls) if args.reuse_calls else None,
+        out=Path(args.out),
+        mock=args.mock,
+        flaw_prompt=args.flaw_prompt,
+        flaw_votes=args.flaw_votes,
+        verdict_from=Path(args.verdict_from) if args.verdict_from else None,
+        **extra,
+    )
+    try:
+        report = run_critic_eval(cfg)
+    except CriticEvalError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(json.dumps(report))
+    return 0
+
+
+def _critic_rescore_offline(args: argparse.Namespace) -> int:
+    cfg = CriticRescoreOfflineConfig(
+        eval_files=tuple(Path(p) for p in (args.eval or ())),
+        items=Path(args.items) if args.items else None,
+        keys=tuple(Path(p) for p in (args.keys or ())),
+        out=Path(args.out),
+        mock=args.mock,
+    )
+    try:
+        report = run_critic_rescore_offline(cfg)
+    except CriticEvalError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(report["table"])
+    return 0
+
+
+def _rescore(args: argparse.Namespace) -> int:
+    cfg = RescoreConfig(
+        runs=tuple(Path(r) for r in (args.runs or ())),
+        drafts=tuple(args.drafts or ()),
+        pack=Path(args.pack),
+        writers_file=Path(args.writers),
+        cards=Path(args.cards) if args.cards else None,
+        critic_endpoint=args.critic_endpoint,
+        critic_model=args.critic_model,
+        critic_gguf_sha256=args.critic_gguf_sha256,
+        seed=args.seed,
+        out=Path(args.out),
+        mock=args.mock,
+    )
+    try:
+        report = run_rescore(cfg)
+    except RescoreError as e:
+        print(e, file=sys.stderr)
+        return 2
+    print(report["table"])
+    return 0
 
 
 def _puzzle_check(args) -> int:

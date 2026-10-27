@@ -9,6 +9,8 @@ from role_set.guards import GuardError
 SHA_W = "a" * 64
 SHA_C = "c" * 64
 SHA_S = "5" * 64
+DEFAULT_SERVER_SHA = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
+G4_SERVER_SHA = "39742d8a0354d4577da8dcc9cb3a5b9f03f02593d106eff41297e952d6ebfc95"
 
 
 def entry(name: str, family: str, sha: str | None = None, **extra) -> dict:
@@ -18,14 +20,17 @@ def entry(name: str, family: str, sha: str | None = None, **extra) -> dict:
             "registry_id": "openmdw-1.1", "training": "allowed", **extra}
 
 
-def proven_file(tmp_path: Path, *, writers=None, critics=None, server=None) -> Path:
+def proven_file(tmp_path: Path, *, writers=None, critics=None, server=None, server_builds=None) -> Path:
     path = tmp_path / "writers.json"
-    path.write_text(json.dumps({
-        "llama_server": server if server is not None else {"commit": "b6000", "sha256": SHA_S},
+    body = {
+        "llama_server": server if server is not None else {"commit": "b6000", "sha256": SHA_S, "cuda": "13.4", "archs": "80;90;100 (SASS only, no PTX)"},
         "writers": writers if writers is not None else [entry("big-writer", "nemotron", SHA_W)],
         "critics": critics if critics is not None else [entry("other-critic", "muse", SHA_C), entry("same-critic", "nemotron", SHA_C),
                                                          entry("compare-critic", "granite", SHA_C, role="critic-comparison")],
-    }), encoding="utf-8")
+    }
+    if server_builds is not None:
+        body["llama_server_builds"] = server_builds
+    path.write_text(json.dumps(body), encoding="utf-8")
     return path
 
 
@@ -91,11 +96,28 @@ def test_only_a_barring_clause_refuses_a_model(tmp_path: Path):
 def test_the_llama_server_binary_is_pinned():
     with pytest.raises(GuardError, match="not pinned yet"):
         proven.require_server({"commit": None, "sha256": None}, SHA_S)
+    with pytest.raises(GuardError, match="llama_server_builds\\[0\\] is not pinned yet"):
+        proven.require_server({"commit": "b1", "sha256": SHA_S}, SHA_S, [{"commit": "b1", "sha256": ""}])
     with pytest.raises(GuardError, match="measured sha256"):
         proven.require_server({"commit": "b1", "sha256": SHA_S}, "")
     with pytest.raises(GuardError, match="rebuild or re-pin"):
         proven.require_server({"commit": "b1", "sha256": SHA_S}, "6" * 64)
     assert proven.require_server({"commit": "b1", "sha256": SHA_S}, SHA_S) == {"commit": "b1", "sha256": SHA_S}
+    g4_build = {
+        "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+        "sha256": G4_SERVER_SHA,
+        "cuda": "13.4",
+        "archs": "80;90;100;120 (sm_120a SASS)",
+    }
+    matched_g4 = proven.require_server({"commit": "b1", "sha256": SHA_S, "archs": "80;90;100 (SASS only, no PTX)"}, G4_SERVER_SHA, [g4_build])
+    assert matched_g4 == {
+        "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+        "sha256": G4_SERVER_SHA,
+        "cuda": "13.4",
+        "archs": "80;90;100;120 (sm_120a SASS)",
+    }
+    with pytest.raises(GuardError, match="rebuild or re-pin"):
+        proven.require_server({"commit": "b1", "sha256": SHA_S}, "7" * 64, [g4_build])
 
 
 def test_a_critic_of_the_writers_family_is_refused():
@@ -158,9 +180,22 @@ def test_the_committed_list_records_its_terms_and_its_pins():
     assert {e["served_as"] for e in raw["retired"]} == {"qwen3.6-35b-a3b-q6k", "gemma-4-31b-it-q6k", "deepseek-r1-distill-qwen-32b-q6k"}
     assert not {e["served_as"] for e in raw["retired"]} & set(listed.writers)
     assert listed.server["cuda"] == "13.4" and listed.server["commit"].startswith("620d2225")
-    assert proven.require_server(listed.server, listed.server["sha256"])["sha256"] == listed.server["sha256"]
+    default_entry = proven.require_server(listed, listed.server["sha256"])
+    assert default_entry == {
+        "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+        "sha256": DEFAULT_SERVER_SHA,
+        "cuda": "13.4",
+        "archs": "80;90;100 (SASS only, no PTX)",
+    }
+    g4_entry = proven.require_server(listed, G4_SERVER_SHA)
+    assert g4_entry == {
+        "commit": "620d2225cc436ab0b001e3200e590e3b286ef9ab",
+        "sha256": G4_SERVER_SHA,
+        "cuda": "13.4",
+        "archs": "80;90;100;120 (sm_120a SASS)",
+    }
     with pytest.raises(GuardError, match="rebuild or re-pin"):
-        proven.require_server(listed.server, SHA_S)
+        proven.require_server(listed, SHA_S)
     lightning = listed.critics["nemotron-3.5-lightning-30b-a3b"]
     assert proven.require_pinned(lightning, lightning["gguf_sha256"])["revision"].startswith("a9904d24")
     with pytest.raises(GuardError, match="not pinned yet"):

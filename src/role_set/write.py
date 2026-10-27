@@ -30,7 +30,7 @@ from role_set.guards import (
     require_model_allowed,
 )
 from role_set.harvest import load_pool
-from role_set.mock import MockCritic, MockWriter, mock_gates
+from role_set.mock import MockCritic, MockWriter, answers_from_drafts, mock_excerpts, mock_gates
 from role_set.pack import PackError, verify
 from role_set.plan import Slot
 from role_set.prompts import load_pack
@@ -91,8 +91,46 @@ class WriteConfig:
     wave: str = "inline"  # inline, or one of write, critique, rewrite (BUILD-SPEC B1)
     exclusion_state: Path | None = None  # earlier batches' exclusion-state.json (BUILD-SPEC B4); None for the first batch
     drafts: Path | None = None  # a critique or rewrite wave's input: the previous wave's wave-drafts.jsonl
+    prior_drafts: Path | None = None  # a rewrite only: the write wave's drafts the critique read, for card pins it lost
     call_journal: Path | None = None  # where every finished call is journaled; default <run dir>/calls-journal.jsonl
     reuse_calls: Path | None = None  # an earlier run's call journal: its finished calls are replayed, not re-asked
+    critique_scope: str = "all"  # "all" or "verdict" (design §11 F2: skip A, B and written E when "verdict")
+
+
+def _pool(cfg: WriteConfig, slots: list[Slot], pins: dict) -> dict[str, list] | None:
+    """Load --pool when given (recording pool_sha256 in pins) and, before warmup on a non-mock wave that writes
+    material (inline, write, rewrite), refuse if the plan has real_source slots and the pool is missing or short."""
+
+    excerpts = None
+    if cfg.pool is not None:
+        try:
+            raw = cfg.pool.read_bytes()
+            excerpts = load_pool(cfg.pool)
+        except (OSError, ValueError, KeyError) as e:
+            raise WriteRefused(f"REFUSED: cannot read --pool {cfg.pool}: {e}") from e
+        pins["pool_sha256"] = hashlib.sha256(raw).hexdigest()
+    if not cfg.mock and cfg.wave in ("inline", "write", "rewrite"):
+        need: dict[str, int] = {}
+        for s in slots:
+            if s.real_source:
+                k = s.content_kind or "notice"
+                need[k] = need.get(k, 0) + 1
+        if need:
+            if excerpts is None:
+                kind, req = sorted(need.items())[0]
+                raise WriteRefused(
+                    f"REFUSED: --pool is required when the plan has real_source slots (kind {kind!r}: need {req}, have 0)"
+                )
+            for kind, req in sorted(need.items()):
+                have = len(excerpts.get(kind) or ())
+                if have < req:
+                    raise WriteRefused(
+                        f"REFUSED: real_source pool for kind {kind!r} has {have} excerpt(s), need {req}"
+                    )
+    if cfg.mock:
+        base_mock = mock_excerpts()
+        excerpts = {k: list((excerpts or {}).get(k, [])) + base_mock[k] for k in base_mock}
+    return excerpts
 
 
 def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[list[dict], dict]:
@@ -113,6 +151,8 @@ def _training(cfg: WriteConfig, slots: list[Slot], gates, pins: dict) -> tuple[l
         rows += [json.loads(x) for x in text.splitlines() if x.strip()]
         models.update(gates.load_models(path))
         pins["training"].append({"file": path.name, "sha256": hashlib.sha256(text.encode("utf-8")).hexdigest()})
+    if not rows:
+        raise WriteRefused("REFUSED: --training loaded 0 training rows; an apply plan needs a non-empty training set")
     return rows, models
 
 
@@ -171,6 +211,7 @@ def critic_caller(endpoint: str, model: str, card: dict | None = None):
         return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
                     chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=CRITIC_MAX_TOKENS, seed=seed)
 
+    critic.card = card
     return critic
 
 
@@ -195,15 +236,19 @@ def build(cfg: WriteConfig, *, now=time.time):
     pack = load_pack(cfg.pack)
     trait_names = trait_names_from_pack(pack)
     pins: dict = {"plan_sha256": plan_sha, "pack_sha256": manifest.pack_sha256, "pack_commit": manifest.commit}
+    if cfg.pool is not None and cfg.pool.is_file():
+        pins["pool_sha256"] = hashlib.sha256(cfg.pool.read_bytes()).hexdigest()
 
-    header = None
+    header, drafts_in = None, []
+    if cfg.critique_scope not in ("all", "verdict"):
+        raise WriteRefused(f"REFUSED: --critique-scope must be all or verdict, got {cfg.critique_scope!r}")
     if cfg.wave not in ("inline", *waves.WAVES):
         raise WriteRefused(f"REFUSED: --wave must be inline, write, critique or rewrite, got {cfg.wave!r}")
     if cfg.wave in ("critique", "rewrite"):
         if cfg.drafts is None:
             raise WriteRefused(f"REFUSED: a {cfg.wave} wave needs --drafts, the previous wave's {waves.DRAFTS_FILE}")
         try:
-            header, _ = waves.read(cfg.drafts)
+            header, drafts_in = waves.read(cfg.drafts)
         except waves.WaveError as e:
             raise WriteRefused(str(e)) from e
         pins["drafts_sha256"] = waves.file_sha256(cfg.drafts)
@@ -241,7 +286,7 @@ def build(cfg: WriteConfig, *, now=time.time):
     if cfg.mock:
         # The mock's drafts come from their slot and attempt, so the waves write what one inline run writes.
         order = {s.id: i for i, s in enumerate(interleave(slots))}
-        answers = waves.load_answers(header) if header else {}
+        answers = {**answers_from_drafts(drafts_in), **waves.load_answers(header)} if header else {}
         writer = MockWriter(keyed_order=order, answers=answers) if uses_writer else None
         critic = MockCritic(answers=answers) if uses_critic else None
         try:
@@ -249,6 +294,15 @@ def build(cfg: WriteConfig, *, now=time.time):
         except GatesUnavailable:
             gates = mock_gates()
         pins.update({"writer_model": "mock", "critic_model": "mock" if uses_critic else None, "mock": True, "partition": cfg.partition})
+        if cfg.server_sha256 is not None:
+            try:
+                listed = proven.load(cfg.writers_file)
+                server = proven.require_server(listed, cfg.server_sha256)
+            except GuardError as e:
+                raise WriteRefused(str(e)) from e
+            pins.update({"llama_server_commit": server["commit"], "llama_server_sha256": server["sha256"]})
+            if "archs" in server:
+                pins["llama_server_archs"] = server["archs"]
         pins["_mock_answers"] = answers  # carried into the drafts header by run(), never onto a receipt
         return slots, sides, pack, trait_names, gates, writer, critic, pins, None
 
@@ -259,7 +313,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         partition = proven.require_partition(cfg.partition)
         _require_critic_policy(cfg, partition)
         machine = proven.load_machine(cfg.machine)
-        server = proven.require_server(listed.server, cfg.server_sha256)
+        server = proven.require_server(listed, cfg.server_sha256)
         if cfg.cards is None:
             raise GuardError("REFUSED: the writer and the critic run at their card values; pass --cards <card-values.json>")
         card_set, card_sha = cards.load(cfg.cards)
@@ -271,7 +325,7 @@ def build(cfg: WriteConfig, *, now=time.time):
         else:
             # A critique wave loads no writer, but the drafts' writer must still be on the list with the same pins
             # (Argon §9.4 #2): the family that bars a same-family critic comes from writers.json, never the header.
-            drafted = (header or {}).get("writer_pins") or {}
+            drafted = waves.header_writer_pins(header or {})
             model = drafted.get("writer_model")
             if model not in listed.writers:
                 raise GuardError(f"REFUSED: the drafts name writer {model!r}, which is not on the proven writer list")
@@ -300,6 +354,8 @@ def build(cfg: WriteConfig, *, now=time.time):
     rehearsal = bool(entry.get("rehearsal_only")) if uses_writer else bool((header or {}).get("batch_pins", {}).get("rehearsal"))
     pins.update({"partition": partition, "llama_server_commit": server["commit"], "llama_server_sha256": server["sha256"],
                  "machine": machine, "writers_list_sha256": listed.sha256, "rehearsal": rehearsal})
+    if "archs" in server:
+        pins["llama_server_archs"] = server["archs"]
     writer = None
     if uses_writer:
         pins.update({"writer_model": model, **{f"writer_{k}": v for k, v in w_pins.items()}, **cards.pins(card, card_sha),
@@ -308,6 +364,8 @@ def build(cfg: WriteConfig, *, now=time.time):
         def writer(messages, seed=0):
             return chat(endpoint, model, cards.apply(card, messages), sampling=card["sampling"],
                         chat_template_kwargs=card.get("chat_template_kwargs") or None, max_tokens=WRITER_MAX_TOKENS, seed=seed)
+
+        writer.card = card
 
     # llama-server has no unload: the wave script that launched it stops it, so the run leaves nothing to clean up.
     cleanup = None
@@ -330,12 +388,12 @@ def require_rehearsal_dir(out: Path, pins: dict) -> None:
 
 def run(cfg: WriteConfig, *, now=time.time) -> dict:
     slots, sides, pack, trait_names, gates, writer, critic, pins, cleanup = build(cfg, now=now)
+    excerpts = _pool(cfg, slots, pins)
     out = output_dir(cfg.out, pins, mock=cfg.mock)
     # Every finished call is journaled as it returns; a resume replays an earlier journal (R&D, 2026-10-17).
     journal = callcache.CallJournal(cfg.call_journal or out / callcache.JOURNAL_FILE,
                                     callcache.load(cfg.reuse_calls) if cfg.reuse_calls else None)
     writer, critic = journal.wrap("writer", writer), journal.wrap("critic", critic)
-    excerpts = load_pool(cfg.pool) if cfg.pool else None
     exemplars = None
     if cfg.exemplar_repo and cfg.exemplar_commit and cfg.exemplar_files:
         try:
@@ -362,7 +420,8 @@ def run(cfg: WriteConfig, *, now=time.time) -> dict:
     pins.pop("_mock_answers", None)
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
+                    critique_scope=cfg.critique_scope)
     halted = None
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
@@ -398,19 +457,29 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
 
     answers = pins.pop("_mock_answers", None)
     header_in = drafts_in = None
+    chained: dict = {}
     if cfg.wave in ("critique", "rewrite"):
         try:
             header_in, drafts_in = waves.read(cfg.drafts)
+            if cfg.prior_drafts is not None:
+                if cfg.wave != "rewrite":
+                    raise waves.WaveError("REFUSED: --prior-drafts is for a rewrite wave only")
+                card_pins, prior_sha = waves.chain_card_pins(header_in, cfg.prior_drafts)
+                header_in = {**header_in, "writer_pins": {**waves.header_writer_pins(header_in), **card_pins}}
+                chained = {"card_pins_via": "chain", "card_pins_prior_sha256": prior_sha}
+            if cfg.wave == "critique" and "pool_sha256" not in pins and "pool_sha256" in (header_in.get("batch_pins") or {}):
+                pins["pool_sha256"] = header_in["batch_pins"]["pool_sha256"]
             waves.require_same_pins(header_in, pins, gates, cfg.wave)
         except waves.WaveError as e:
             raise WriteRefused(str(e)) from e
-    run_pins = dict(pins)
+    run_pins = {**pins, **chained}  # a chained rewrite's receipts name the prior its card pins came from
     if cfg.wave == "critique":
         # A receipt names the writer that wrote the draft and the host it ran on, beside this wave's critic.
-        run_pins.update({**(header_in.get("writer_pins") or {}), "writer_host": header_in.get("writer_host")})
+        run_pins.update({**waves.header_writer_pins(header_in), "writer_host": header_in.get("writer_host")})
     prior = exclusion.load(cfg.exclusion_state)
     runner = Runner(gates=gates, pack=pack, trait_names=trait_names, writer=writer, critic=critic, out_dir=out, concurrency=cfg.concurrency, pins=run_pins,
-                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior)
+                    excerpts=excerpts, exemplars=exemplars, stuck=stuck, training=training, training_models=training_models, prior=prior,
+                    critique_scope=cfg.critique_scope)
     budget = cfg.stop_after_minutes * 60 if cfg.stop_after_minutes else None
     try:
         header, drafts = waves.run_wave(runner, cfg.wave, slots=slots, header_in=header_in, drafts_in=drafts_in, stop_after_s=budget)
@@ -418,14 +487,25 @@ def _run_wave(cfg: WriteConfig, slots, pack, trait_names, gates, writer, critic,
         raise WriteRefused(str(e)) from e
     header.update({"type": "header", "format": waves.FORMAT, "batch_pins": waves.batch_pins(pins),
                    "gates": {"version": gates.version, "sha256": gates.sha256, "closed_form": gates.closed_form}})
+    if cfg.mock or (pins.get("machine") or {}).get("stub"):
+        header["stub"] = True
     if cfg.wave in ("write", "rewrite"):
         header["writer_pins"] = waves.writer_pins(pins)
-        header["writer_host"] = {k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")}
+        header["writer_host"] = {
+            **{k: pins.get(k) for k in ("machine", "llama_server_commit", "llama_server_sha256")},
+            **({"llama_server_archs": pins["llama_server_archs"]} if "llama_server_archs" in pins else {}),
+        }
+    else:
+        # A critique loads no writer, so it carries the drafts' writer pins forward, card pins included wherever an
+        # older header kept them. Window 12s5a: an old header's card pins sat in batch_pins, the critique's batch pins
+        # dropped them, and the rewrite after it was refused.
+        header["writer_pins"] = waves.header_writer_pins(header_in)
     if answers is not None:
         header["mock_answers"] = waves.dump_answers(answers)
     header["waves"] = [*(header.get("waves") or []),
                        {"wave": cfg.wave, "input_sha256": pins.get("drafts_sha256"),
-                        "pins": {k: v for k, v in pins.items() if k in waves.WAVE_LOCAL or k.startswith(("writer_", "critic_"))}}]
+                        "pins": {k: v for k, v in pins.items() if k in waves.WAVE_LOCAL or k.startswith(("writer_", "critic_"))},
+                        **chained}]
     out_sha = waves.write(out / waves.DRAFTS_FILE, header, drafts)
     batch_check = waves.finish(runner, cfg.wave, drafts, out)
     states = {st: sum(1 for d in drafts if d["state"] == st) for st in (*waves.PENDING, *waves.FINAL)}
