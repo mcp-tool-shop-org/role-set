@@ -54,6 +54,7 @@ class Case:
     flaw: str | None = None
     checker_trace: str | None = None
     checker_verdict: str | None = None
+    content_kind: str | None = None
 
 
 @dataclass
@@ -123,15 +124,19 @@ def cases_from_rows(rows: list[dict]) -> list[Case]:
         statement = _statement(user)
         if not statement:
             continue
+        content_kind = r.get("content_kind")
         if kind == "C":
             out.append(Case(r["id"], "C", material, statement, r["verdict"], list(r.get("deciding") or []),
-                            flaw=r.get("planted_flaw"), checker_trace=_trace(user), checker_verdict=r.get("checker_verdict")))
+                            flaw=r.get("planted_flaw"), checker_trace=_trace(user), checker_verdict=r.get("checker_verdict"),
+                            content_kind=content_kind))
         elif kind == "D":
             keys = (r.get("turn_keys") or {}).get("1") or {"verdict": r["verdict"], "deciding": r.get("deciding") or []}
-            out.append(Case(r["id"], "D", material, statement, keys["verdict"], list(keys["deciding"])))
+            out.append(Case(r["id"], "D", material, statement, keys["verdict"], list(keys["deciding"]),
+                            content_kind=content_kind))
         elif kind == "E" and (r.get("quiz") or {}).get("type") == "verdict":
             q = r["quiz"]
-            out.append(Case(r["id"], "E", material, statement, q["verdict"], list(q.get("deciding") or [])))
+            out.append(Case(r["id"], "E", material, statement, q["verdict"], list(q.get("deciding") or []),
+                            content_kind=content_kind))
     return out
 
 
@@ -145,9 +150,11 @@ def plant_errors(cases: list[Case], n: int, *, seed: int) -> list[Case]:
     for c in chosen:
         if c.verdict == "cannot_tell":
             first = next((line for line in c.material.splitlines() if line.strip()), c.material.strip())
-            planted.append(Case(c.item_id + "+planted", c.kind, c.material, c.statement, "supported", [first], planted=True))
+            planted.append(Case(c.item_id + "+planted", c.kind, c.material, c.statement, "supported", [first],
+                                planted=True, content_kind=c.content_kind))
         else:
-            planted.append(Case(c.item_id + "+planted", c.kind, c.material, c.statement, "cannot_tell", [], planted=True))
+            planted.append(Case(c.item_id + "+planted", c.kind, c.material, c.statement, "cannot_tell", [],
+                                planted=True, content_kind=c.content_kind))
     return planted
 
 
@@ -166,7 +173,7 @@ def _ask(gates: Gates, critic, case: Case, seed: int) -> dict:
             attempt=ask,
             seed=seed * 1000 + ask,
         )
-        v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material)
+        v = compare_verdict(gates, c.text, case.verdict, case.deciding, case.material, content_kind=case.content_kind)
         if v.code != "VOID":
             break
         out["voids"] += 1

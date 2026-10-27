@@ -124,3 +124,79 @@ def test_runs_record_each_item_at_their_seed_and_agreement_compares_them():
     assert agree["planted"]["items"] == 2 and agree["planted"]["differing"] == planted_differ and agree["seeds"] == [0, 1]
     # Spaced seeds: run 0 asks at 0..1 (and 500 for a flaw), run 1 at 1000..1001 (and 1500).
     assert set(seen) <= {0, 1, 500, 1000, 1001, 1500} and {0, 1000} <= set(seen)
+
+
+def test_control_forwards_content_kind_and_preserves_dunders_in_code_cases():
+    code_mat = (
+        "class Loader:\n"
+        "    def __init__(self, config_path: str):\n"
+        "        self.ready = True\n"
+        "    def init(self, config_path: str):\n"
+        "        self.ready = False\n"
+    )
+    stmt = "Loader defines __init__(self, config_path: str)."
+    user_c = (
+        f"Check it.\nMaterial:\n{code_mat}Statement: {stmt}\n"
+        "Checker verdict: unsupported\nThe other checker misread the method name."
+    )
+    rows = [
+        {
+            "id": "T02-C-12",
+            "kind": "C",
+            "content_kind": "code",
+            "material": code_mat,
+            "verdict": "supported",
+            "deciding": ["    def __init__(self, config_path: str):"],
+            "planted_flaw": "guess",
+            "checker_verdict": "unsupported",
+            "turns": [{"user": user_c, "thinking": "", "reply": ""}],
+        },
+        {
+            "id": "T02-D-12",
+            "kind": "D",
+            "content_kind": "code",
+            "material": code_mat,
+            "verdict": "supported",
+            "deciding": ["    def __init__(self, config_path: str):"],
+            "turns": [{"user": f"Material:\n{code_mat}Statement: {stmt}", "thinking": "", "reply": ""}],
+        },
+        {
+            "id": "T02-E-12",
+            "kind": "E",
+            "content_kind": "code",
+            "material": code_mat,
+            "quiz": {
+                "type": "verdict",
+                "verdict": "cannot_tell",
+                "deciding": [],
+                "escalate": "no",
+            },
+            "turns": [{"user": f"Material:\n{code_mat}Statement: Loader caches files on disk.", "thinking": "", "reply": ""}],
+        },
+    ]
+    cases = cases_from_rows(rows)
+    assert [c.content_kind for c in cases] == ["code", "code", "code"]
+    planted = plant_errors(cases, 3, seed=7)
+    assert [p.content_kind for p in planted] == ["code", "code", "code"]
+
+    def _code_critic(messages, **_):
+        system = messages[0]["content"]
+        text = messages[-1]["content"]
+        if "Name the single flaw" in system:
+            return types.SimpleNamespace(text="guess")
+        if "caches files on disk" in text:
+            return types.SimpleNamespace(text="VERDICT: cannot_tell\nDECIDING: NONE\nESCALATE: no")
+        # Backtick-wrapped `__init__` line: only resolves uniquely when `content_kind="code"` is passed
+        # (stripping `__` makes both `def __init__` and `def init` collide and voids the reply).
+        return types.SimpleNamespace(
+            text="VERDICT: supported\nDECIDING: `def __init__(self, config_path: str):`\nESCALATE: no"
+        )
+
+    rep = run_control(_gates(), _code_critic, cases, planted=planted, seed=0).as_dict()
+    assert rep["items"] == 3
+    assert rep["agree"] == 3
+    assert rep["false_refusals"] == 0
+    assert rep["voids"] == 0
+    assert rep["planted"] == 3
+    assert rep["catches"] == 3
+

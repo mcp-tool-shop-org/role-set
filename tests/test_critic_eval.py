@@ -5149,6 +5149,197 @@ def test_verdict_prompt_exclusive_and_three_value_journal_and_resume(
     )
 
 
+def test_critic_eval_and_rescore_offline_forward_content_kind_for_code_dunders(
+    pack_dir: Path, tmp_path: Path, monkeypatch  # noqa: F811
+):
+    import role_set.critic_eval as ce_mod
+    from role_set.critic_eval import (
+        CriticEvalConfig,
+        CriticRescoreOfflineConfig,
+        _merge_key_into_base,
+        extract_item_parts,
+        run_critic_eval,
+        run_critic_rescore_offline,
+        score_single_item,
+    )
+    from role_set.transport import Completion
+
+    gates = ce_mod.mock_gates()
+    monkeypatch.setattr(ce_mod, "load_gates", lambda closed_form=None: gates)
+
+    code_mat = (
+        "class Loader:\n"
+        "    def __init__(self, config_path: str):\n"
+        "        self.ready = True\n"
+        "    def init(self, config_path: str):\n"
+        "        self.ready = False\n"
+    )
+    stmt = "Loader defines __init__(self, config_path: str)."
+    deciding_line = "def __init__(self, config_path: str):"
+
+    code_item = {
+        "type": "draft",
+        "item_id": "T02-C-12:d",
+        "id": "T02-C-12:d",
+        "source_row_id": "T02-C-12",
+        "control_item_id": "T02-C-12:d",
+        "perturbation_type": "d",
+        "kind": "C",
+        "slot": {
+            "id": "T02-C-12",
+            "lesson": "T02",
+            "kind": "C",
+            "side": "goes to the source",
+            "tier": 4,
+            "verdict": "supported",
+            "content_kind": "code",
+            "planted_flaw": "guess",
+        },
+        "material": {"text": code_mat, "content_kind": "code", "source": {"invented": "code"}},
+        "statement": stmt,
+        "checker_trace": "Line 4 sets ready = False, so unsupported.",
+        "checker_verdict": "unsupported",
+        "key": {
+            "verdict": "supported",
+            "deciding": [deciding_line],
+            "planted_flaw": "guess",
+        },
+        "row": {
+            "id": "T02-C-12",
+            "lesson": "T02",
+            "kind": "C",
+            "content_kind": "code",
+            "material": code_mat,
+            "verdict": "supported",
+            "deciding": [deciding_line],
+            "planted_flaw": "guess",
+            "checker_verdict": "unsupported",
+            "turns": [{"user": f"Material:\n{code_mat}Statement: {stmt}", "thinking": "t", "reply": "r"}],
+        },
+    }
+
+    parts = extract_item_parts(code_item)
+    assert parts["content_kind"] == "code"
+    merged = _merge_key_into_base(
+        parts,
+        {
+            "item_id": "T02-C-12:a",
+            "source_row_id": "T02-C-12",
+            "control_item_id": "T02-C-12:d",
+            "perturbation_type": "a",
+            "kind": "C",
+            "content_kind": None,
+            "material": "",
+            "new_material": [],
+            "seen_material": "",
+            "key_verdict": "supported",
+            "key_deciding": [deciding_line],
+            "has_key_deciding": True,
+            "key_flaw": "guess",
+            "turn_keys": None,
+            "verdict_turns": [],
+        },
+    )
+    assert merged["content_kind"] == "code"
+
+    items_path = tmp_path / "code-items.jsonl"
+    waves.write(items_path, {"type": "header", "format": waves.FORMAT, "gates": {"version": gates.version, "sha256": gates.sha256, "closed_form": None}}, [code_item])
+
+    def _code_critic(messages: list[dict], **kw):
+        sys_txt = messages[0]["content"]
+        if "Name the single flaw" in sys_txt:
+            return Completion(text="guess", prompt_tokens=10, completion_tokens=2, model="c", seconds=0.01)
+        # Backtick-wrapped `__init__` line: only resolves uniquely when `content_kind="code"` is forwarded
+        # (stripping `__` makes both `def __init__` and `def init` match and voids the reply).
+        return Completion(
+            text="VERDICT: supported\nDECIDING: `def __init__(self, config_path: str):`\nESCALATE: no",
+            prompt_tokens=20,
+            completion_tokens=10,
+            model="c",
+            seconds=0.01,
+        )
+
+    # 1. Online run_critic_eval (critic_eval.py:800) + online score_single_item (critic_eval.py:1248).
+    eval1_dir = tmp_path / "eval1"
+    rep1 = run_critic_eval(
+        CriticEvalConfig(
+            items=items_path,
+            pack=pack_dir,
+            out=eval1_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            flaw_votes=3,
+            mock=True,
+        ),
+        critic=_code_critic,
+    )
+    rec1 = json.loads((eval1_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec1["content_kind"] == "code"
+    assert rec1["verdict_check"]["code"] == "AGREE"
+    assert rec1["verdict_check"]["ok"] is True
+    assert rec1["verdict_check"]["critic_deciding"] == [deciding_line]
+    assert rec1["verdict_check"]["repairs"] == [
+        {"from": "`def __init__(self, config_path: str):`", "to": deciding_line}
+    ]
+    assert rep1["by_item"]["T02-C-12:d"]["P2"]["accepted"] is True
+
+    # 2. Online run_critic_eval with verdict_from (critic_eval.py:742).
+    eval2_dir = tmp_path / "eval2"
+    run_critic_eval(
+        CriticEvalConfig(
+            items=items_path,
+            pack=pack_dir,
+            out=eval2_dir,
+            writers_file=ROOT / "writers.json",
+            critic_model=LIGHTNING,
+            critic_seed=0,
+            flaw_votes=3,
+            verdict_from=eval1_dir / "critic-eval.jsonl",
+            mock=True,
+        ),
+        critic=_code_critic,
+    )
+    rec2 = json.loads((eval2_dir / "critic-eval.jsonl").read_text(encoding="utf-8").splitlines()[0])
+    assert rec2["content_kind"] == "code"
+    assert rec2["verdict_check"]["code"] == "AGREE"
+    assert rec2["verdict_check"]["ok"] is True
+    assert rec2["verdict_check"]["critic_deciding"] == [deciding_line]
+
+    # 3. Direct score_single_item (from key_item["content_kind"] and fallback eval_rec["content_kind"])
+    # and run_critic_rescore_offline with an alternate key record that omits material/content_kind.
+    sc_direct = score_single_item(gates, rec1, {**parts, "content_kind": None}, "P2")
+    assert sc_direct["accepted"] is True and sc_direct["rule"] == "AGREE"
+
+    alt_key_path = tmp_path / "alt-key.jsonl"
+    alt_key_item = {
+        "item_id": "T02-C-12:a",
+        "source_row_id": "T02-C-12",
+        "control_item_id": "T02-C-12:d",
+        "perturbation_type": "a",
+        "kind": "C",
+        "statement": stmt,
+        "key": {
+            "verdict": "supported",
+            "deciding": [deciding_line],
+            "planted_flaw": "guess",
+        },
+    }
+    alt_key_path.write_text(json.dumps(alt_key_item) + "\n", encoding="utf-8", newline="\n")
+    off_rep = run_critic_rescore_offline(
+        CriticRescoreOfflineConfig(
+            eval_files=(eval1_dir / "critic-eval.jsonl",),
+            items=items_path,
+            keys=(alt_key_path,),
+            out=tmp_path / "offline",
+            mock=True,
+        )
+    )
+    assert off_rep["by_item"]["T02-C-12:d"]["P2"]["accepted"] is True
+    assert off_rep["by_item"]["T02-C-12:a"]["P2"]["accepted"] is True
+
+
+
 
 
 

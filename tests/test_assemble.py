@@ -500,7 +500,7 @@ def test_mark_atom_re_and_resolve_verbatim_line_are_linear_on_adversarial_lines(
         assert dt_resolve < 0.5, f"{name} resolve_verbatim_line took {dt_resolve:.3f}s"
 
 
-def test_verbatim_repair_preserves_dunders_and_globs_in_code_record_and_fences():
+def test_verbatim_repair_preserves_dunders_and_globs_in_code_record_and_fences(tmp_path):
     from role_set.assemble import _strip_inline_marks, resolve_verbatim_line
     from role_set.critic import compare_verdict
 
@@ -590,6 +590,75 @@ def test_verbatim_repair_preserves_dunders_and_globs_in_code_record_and_fences()
     )
     assert cv.repairs == []
     assert cv.critic_deciding == ["def init(self):"]
+
+    # 4. End-to-end through `Runner._critic_pass` on a `content_kind="code"` slot (runner.py:837-844).
+    from role_set.runner import Runner
+    from role_set.transport import Completion
+
+    ambig_code_material = (
+        "class Loader:\n"
+        "    def __init__(self, config_path: str):\n"
+        "        self.ready = True\n"
+        "    def init(self, config_path: str):\n"
+        "        self.ready = False\n"
+    )
+    code_row = assemble(
+        s_code,
+        "goes to the source",
+        {
+            "framing": "Check loader init:",
+            "statement": "Loader defines __init__(self, config_path: str).",
+            "deciding": ["    def __init__(self, config_path: str):"],
+            "thinking": "Line 2 defines __init__(self, config_path: str).",
+            "reply": "Defined on line 2.",
+        },
+        Material(ambig_code_material, {"invented": "code"}),
+    )
+
+    def _code_critic(messages, **kw):
+        check = kw.get("check", "")
+        if check == "verdict":
+            return Completion(
+                text="VERDICT: supported\nDECIDING: `def __init__(self, config_path: str):`\nESCALATE: no",
+                prompt_tokens=10,
+                completion_tokens=6,
+                model="c",
+                seconds=0.01,
+            )
+        if check == "trait":
+            return Completion(
+                text=f"TRAIT: {s_code.lesson}\nCONTRASTED: none",
+                prompt_tokens=10,
+                completion_tokens=4,
+                model="c",
+                seconds=0.01,
+            )
+        raise AssertionError(f"unexpected check {check!r}")
+
+    _code_critic.takes_check = True
+    runner_code = Runner(
+        gates=mock_gates(),
+        pack={f"traits/{s_code.lesson}.md": f"# {s_code.lesson}\n\ngoes to the source\n"},
+        trait_names={s_code.lesson: "goes to the source"},
+        writer=None,
+        critic=_code_critic,
+        out_dir=tmp_path / "code-runner",
+    )
+    assert runner_code._critic_pass(
+        s_code,
+        code_row,
+        {"statement": "Loader defines __init__(self, config_path: str)."},
+    ) is None
+    verdict_notes = [n for n in runner_code._critic_notes[s_code.id] if n.get("check") == "verdict"]
+    assert len(verdict_notes) == 1
+    assert verdict_notes[0]["code"] == "AGREE"
+    assert verdict_notes[0]["repairs"] == [
+        {
+            "from": "`def __init__(self, config_path: str):`",
+            "to": "def __init__(self, config_path: str):",
+        }
+    ]
+
 
 
 
