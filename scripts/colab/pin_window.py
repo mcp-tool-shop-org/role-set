@@ -1268,6 +1268,22 @@ def pinned_uv() -> str:
     return installed
 
 
+def import_batchdrift_replay(result: dict):
+    """The batching-drift window's code lives in role-set's scripts/batchdrift, which a fresh VM has only after
+    role_set_env checks role-set out: clone first, then import (window BL1, 2026-10-28, failed `No module named
+    'replay'` because the import ran before the clone). role_set_env is idempotent, so batching_drift_window's own call
+    afterwards finds the checkout and venv in place."""
+
+    if os.environ.get("PIN_ROLESET_COMMIT"):
+        result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    for p in (CONTENT / "role-set" / "scripts" / "batchdrift", _repo_root() / "scripts" / "batchdrift"):
+        if p.exists() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    import replay  # noqa: PLC0415
+
+    return replay
+
+
 def role_set_env(commit: str) -> dict:
     """role-set at a pinned commit, in its own uv venv on the exact CPython ROLE_SET_PYTHON (Colab's system python is 3.13).
 
@@ -5156,11 +5172,7 @@ def _main() -> int:
             offrig_bench_window(result)
             specs = []
         elif role == "batching-drift":
-            for p in (CONTENT / "role-set" / "scripts" / "batchdrift", _repo_root() / "scripts" / "batchdrift"):
-                if p.exists() and str(p) not in sys.path:
-                    sys.path.insert(0, str(p))
-            import replay as _bd_replay  # noqa: PLC0415
-
+            _bd_replay = import_batchdrift_replay(result)
             _bd_replay.batching_drift_window(built, result, sys.modules[__name__])
             specs = []
         else:
