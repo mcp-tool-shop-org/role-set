@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import socket
 import subprocess
 import sys
@@ -1066,3 +1067,35 @@ def test_replay_and_compare_edge_case_refusals(tmp_path):
         cb.evaluate_group1({"request_index": 0, "check": "unknown"}, "txt", gates.load_gates())
     with pytest.raises(ValueError, match="unsupported check"):
         cb.group1_differs({"check": "unknown"}, {}, {}, gates.load_gates())
+
+
+@pytest.mark.skipif(
+    os.name == "nt" or not shutil.which("bash") or not shutil.which("setsid"),
+    reason="needs bash, flock and setsid (Linux)",
+)
+def test_smoke_window_accepts_batching_drift_read_token_and_refuses_write_token():
+    # Window BL1 was refused at start: the token allowlist had no batching-drift entry, though the critic GGUF
+    # (muse-glimmer-30b) is read from the private role-set-gguf repo.
+    from test_window_script import SENTINEL, _window
+
+    rig_ok, job_ok, _ = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "batching-drift",
+            "PIN_HF_TOKEN_FROM": "HF_TOKEN_GGUF_READ",
+            "HF_TOKEN_GGUF_READ": SENTINEL,
+            "PIN_MOCK_S": "1",
+        },
+    )
+    assert "uploaded the token file" in rig_ok and job_ok.count("PIN_RESULT") == 1, rig_ok
+
+    rig_bad, job_bad, out_bad = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "batching-drift",
+            "PIN_HF_TOKEN_FROM": "HF_TOKEN_GGUF_WRITE",
+            "HF_TOKEN_GGUF_WRITE": SENTINEL,
+        },
+    )
+    assert "PIN_ROLE=batching-drift may not send HF_TOKEN_GGUF_WRITE" in rig_bad and not job_bad, rig_bad
+    assert not (out_bad.parent / "st" / "news").exists()
