@@ -5157,15 +5157,20 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     assertion (thinking_tokens == 0, output_tokens < 80), executes the 3 arms (full, compass, length-control),
     checkpoints per call, and scores the window."""
 
-    roleset_commit = (os.environ.get("PIN_ROLESET_COMMIT") or "").strip()
-    if roleset_commit and roleset_commit != "to pin":
-        rs = result["role_set"] = role_set_env(roleset_commit)
-        rs_src = rs.get("src") if isinstance(rs, dict) else None
-        if rs_src and str(rs_src) not in sys.path:
-            sys.path.insert(0, str(rs_src))
-    rnd_commit = (os.environ.get("PIN_RND_COMMIT") or "").strip()
-    if rnd_commit and rnd_commit != "to pin":
-        result["rnd"] = install_rnd(rnd_commit)
+    global _TOKEN
+    held, _TOKEN = _TOKEN, None  # the clone and installs run with no token in memory, as import_batchdrift_replay's do
+    try:
+        roleset_commit = (os.environ.get("PIN_ROLESET_COMMIT") or "").strip()
+        if roleset_commit and roleset_commit != "to pin":
+            rs = result["role_set"] = role_set_env(roleset_commit)
+            rs_src = rs.get("src") if isinstance(rs, dict) else None
+            if rs_src and str(rs_src) not in sys.path:
+                sys.path.insert(0, str(rs_src))
+        rnd_commit = (os.environ.get("PIN_RND_COMMIT") or "").strip()
+        if rnd_commit and rnd_commit != "to pin":
+            result["rnd"] = install_rnd(rnd_commit)
+    finally:
+        _TOKEN = held
 
     root = _repo_root()
     if str(root) not in sys.path:

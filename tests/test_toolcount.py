@@ -1490,6 +1490,59 @@ def test_fix8_pyproject_coverage_includes_scripts_toolcount() -> None:
     assert "scripts/toolcount" in cov_source, f"Expected 'scripts/toolcount' in [tool.coverage.run].source, got: {cov_source}"
 
 
+def test_kv_fix1_token_held_aside_during_setup(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Card kv Fix 1: In toolcount_window, _TOKEN is held aside (None) while role_set_env and install_rnd run,
+    and is restored for prefetch_hosted.
+    """
+    repo_root_str = str(Path(__file__).resolve().parents[1])
+    seen_tokens: dict[str, str | None] = {}
+
+    def fake_role_set_env(commit: str) -> dict[str, Any]:
+        seen_tokens["role_set_env"] = pw._TOKEN
+        return {"commit": commit, "src": repo_root_str, "role_set": "role-set", "python": "3.15.0"}
+
+    def fake_install_rnd(commit: str) -> str:
+        seen_tokens["install_rnd"] = pw._TOKEN
+        return commit
+
+    def fake_prefetch_hosted(names: list[str], by_name: dict[str, Any], result: dict[str, Any]) -> None:
+        seen_tokens["prefetch_hosted"] = pw._TOKEN
+
+    work_dir = tmp_path / "work_kv1"
+    content_dir = tmp_path / "content_kv1"
+    r0_dest = work_dir / "toolcount" / "r0"
+    r0_dest.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest / fn).write_text((r0_bundle["r0_dir"] / fn).read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(pw, "WORK", work_dir)
+    monkeypatch.setattr(pw, "CONTENT", content_dir)
+    monkeypatch.setattr(pw, "_TOKEN", "hf_fake_token_for_kv_fix1")
+    monkeypatch.setattr(pw, "role_set_env", fake_role_set_env)
+    monkeypatch.setattr(pw, "install_rnd", fake_install_rnd)
+    monkeypatch.setattr(pw, "prefetch_hosted", fake_prefetch_hosted)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "deadbeef12345678")
+    monkeypatch.setenv("PIN_RND_COMMIT", "8400846")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+    monkeypatch.setenv("PIN_GGUF_REPO", "mcp-tool-shop-org/private-ggufs")
+
+    res: dict[str, Any] = {}
+    pw.toolcount_window({"commit": LLAMA_CPP_COMMIT, "sha256": LLAMA_SERVER_SHA256}, [], res)
+
+    assert seen_tokens.get("role_set_env") is None, (
+        f"Expected _TOKEN to be None inside role_set_env, got {seen_tokens.get('role_set_env')!r}"
+    )
+    assert seen_tokens.get("install_rnd") is None, (
+        f"Expected _TOKEN to be None inside install_rnd, got {seen_tokens.get('install_rnd')!r}"
+    )
+    assert seen_tokens.get("prefetch_hosted") == "hf_fake_token_for_kv_fix1", (
+        f"Expected _TOKEN to be restored at prefetch_hosted, got {seen_tokens.get('prefetch_hosted')!r}"
+    )
+
+
 
 
 
