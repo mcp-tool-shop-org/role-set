@@ -1096,4 +1096,63 @@ def test_fix2_calibrate_length_control_padding_both_directions(r0_bundle: dict[s
     )
 
 
+def test_fix3_toolcount_window_clones_roleset_before_import_even_in_stub(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix 3: toolcount_window runs role_set_env and install_rnd BEFORE importing scripts.toolcount
+    and does NOT skip them when stub_mode() is True.
+    """
+    repo_root_str = str(Path(__file__).resolve().parents[1])
+    events: list[str] = []
+
+    def fake_role_set_env(commit: str) -> dict[str, Any]:
+        events.append(f"role_set_env:{commit}")
+        return {"commit": commit, "src": repo_root_str, "role_set": "role-set", "python": "3.15.0"}
+
+    def fake_install_rnd(commit: str) -> str:
+        events.append(f"install_rnd:{commit}")
+        return commit
+
+    work_dir = tmp_path / "work"
+    content_dir = tmp_path / "content"
+    r0_dest = work_dir / "toolcount" / "r0"
+    r0_dest.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest / fn).write_text((r0_bundle["r0_dir"] / fn).read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(pw, "WORK", work_dir)
+    monkeypatch.setattr(pw, "CONTENT", content_dir)
+    monkeypatch.setattr(pw, "_repo_root", lambda: content_dir / "role-set")
+    monkeypatch.setattr(pw, "role_set_env", fake_role_set_env)
+    monkeypatch.setattr(pw, "install_rnd", fake_install_rnd)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "deadbeef12345678")
+    monkeypatch.setenv("PIN_RND_COMMIT", "6a8f1b5")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+
+    # Simulate fresh Colab VM: remove repo_root_str from sys.path and unload scripts.toolcount*
+    saved_sys_path = list(sys.path)
+    saved_modules = {k: v for k, v in sys.modules.items() if k == "scripts" or k.startswith("scripts.")}
+    try:
+        sys.path[:] = [p for p in sys.path if Path(p or ".").resolve() != Path(repo_root_str).resolve()]
+        for k in list(saved_modules):
+            sys.modules.pop(k, None)
+
+        res: dict[str, Any] = {}
+        pw.toolcount_window({"commit": "c0", "binary_sha256": "s0"}, [], res)
+    finally:
+        sys.path[:] = saved_sys_path
+        sys.modules.update(saved_modules)
+
+    assert "role_set_env:deadbeef12345678" in events, (
+        f"Expected role_set_env to run in stub mode before imports, got events={events}"
+    )
+    assert "install_rnd:6a8f1b5" in events, (
+        f"Expected install_rnd to run in stub mode before imports, got events={events}"
+    )
+    assert res.get("role_set", {}).get("commit") == "deadbeef12345678"
+    assert res.get("rnd") == "6a8f1b5"
+
+
+
 

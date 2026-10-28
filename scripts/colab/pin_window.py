@@ -4994,6 +4994,16 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     assertion (thinking_tokens == 0, output_tokens < 80), executes the 3 arms (full, compass, length-control),
     checkpoints per call, and scores the window."""
 
+    roleset_commit = (os.environ.get("PIN_ROLESET_COMMIT") or "").strip()
+    if roleset_commit and roleset_commit != "to pin":
+        rs = result["role_set"] = role_set_env(roleset_commit)
+        rs_src = rs.get("src") if isinstance(rs, dict) else None
+        if rs_src and str(rs_src) not in sys.path:
+            sys.path.insert(0, str(rs_src))
+    rnd_commit = (os.environ.get("PIN_RND_COMMIT") or "").strip()
+    if rnd_commit and rnd_commit != "to pin":
+        result["rnd"] = install_rnd(rnd_commit)
+
     root = _repo_root()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))
@@ -5006,11 +5016,6 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
         run_model_window,
     )
     from scripts.toolcount.scorer import score_calls_file  # noqa: PLC0415
-
-    if os.environ.get("PIN_ROLESET_COMMIT") and not stub_mode():
-        result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
-    if os.environ.get("PIN_RND_COMMIT") and not stub_mode():
-        result["rnd"] = install_rnd(os.environ["PIN_RND_COMMIT"])
 
     base = WORK / "toolcount"
     base.mkdir(parents=True, exist_ok=True)
