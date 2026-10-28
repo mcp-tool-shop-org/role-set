@@ -1274,11 +1274,21 @@ def import_batchdrift_replay(result: dict):
     'replay'` because the import ran before the clone). role_set_env is idempotent, so batching_drift_window's own call
     afterwards finds the checkout and venv in place."""
 
-    if os.environ.get("PIN_ROLESET_COMMIT"):
-        result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    global _TOKEN
+    held, _TOKEN = _TOKEN, None  # the clone and installs run with no token in memory, as batching_drift_window's do
+    try:
+        if os.environ.get("PIN_ROLESET_COMMIT"):
+            result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    finally:
+        _TOKEN = held
     for p in (CONTENT / "role-set" / "scripts" / "batchdrift", _repo_root() / "scripts" / "batchdrift"):
         if p.exists() and str(p) not in sys.path:
             sys.path.insert(0, str(p))
+    # role_set's gates import aspire_si_gates (a pyproject pin, pure Python) by name, and only the role-set venv has it.
+    # Appended last, so the venv never shadows this interpreter's own packages (review ko, 2026-10-28).
+    for sp in sorted((CONTENT / "rs-venv").glob("lib/python*/site-packages")):
+        if str(sp) not in sys.path:
+            sys.path.append(str(sp))
     import replay  # noqa: PLC0415
 
     return replay
