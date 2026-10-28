@@ -491,6 +491,79 @@ def estimate_intracluster_rho(scored_calls: list[dict[str, Any]]) -> float:
     return max(-1.0, min(1.0, cov / denom))
 
 
+def estimate_paired_diff_rho_and_discordance(
+    calls_a: list[dict[str, Any]],
+    calls_b: list[dict[str, Any]],
+) -> dict[str, float]:
+    """Estimate phrasing-level discordance rate and intracluster correlation rho on paired drops (A - B).
+
+    Design §2 & §4 Rule 4: the unclustered floor 10.2 pts is calibrated at 15% discordance
+    (scaling by sqrt(discordance / 0.15)), and the cluster floor scales by sqrt(1 + max(0, rho_diff))
+    where rho_diff is the correlation between phrasing 0 and phrasing 1 paired differences
+    d_{c,p} = y_{c,p}(A) - y_{c,p}(B).
+    """
+    by_cluster_a: dict[str, dict[int, int]] = {}
+    for row in calls_a:
+        if row["is_abstention"] or row["exact_tool_correct"] is None:
+            continue
+        cid = row["cluster_id"]
+        p_idx = int(row.get("phrasing_index", 0))
+        by_cluster_a.setdefault(cid, {})[p_idx] = int(row["exact_tool_correct"])
+
+    by_cluster_b: dict[str, dict[int, int]] = {}
+    for row in calls_b:
+        if row["is_abstention"] or row["exact_tool_correct"] is None:
+            continue
+        cid = row["cluster_id"]
+        p_idx = int(row.get("phrasing_index", 0))
+        by_cluster_b.setdefault(cid, {})[p_idx] = int(row["exact_tool_correct"])
+
+    common_cids = sorted(set(by_cluster_a.keys()) & set(by_cluster_b.keys()))
+    diff_pairs: list[tuple[int, int]] = []
+    discordant_items = 0
+    total_paired_items = 0
+
+    for cid in common_cids:
+        da = by_cluster_a[cid]
+        db = by_cluster_b[cid]
+        for p_idx in sorted(set(da.keys()) & set(db.keys())):
+            total_paired_items += 1
+            if da[p_idx] != db[p_idx]:
+                discordant_items += 1
+        if 0 in da and 1 in da and 0 in db and 1 in db:
+            diff_pairs.append((da[0] - db[0], da[1] - db[1]))
+
+    discordance_rate = (
+        discordant_items / total_paired_items if total_paired_items > 0 else 0.15
+    )
+
+    if len(diff_pairs) < 2:
+        rho_diff = 0.0
+    else:
+        xs = [p[0] for p in diff_pairs]
+        ys = [p[1] for p in diff_pairs]
+        mean_x = sum(xs) / len(xs)
+        mean_y = sum(ys) / len(ys)
+        cov = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys))
+        var_x = sum((x - mean_x) ** 2 for x in xs)
+        var_y = sum((y - mean_y) ** 2 for y in ys)
+        denom = math.sqrt(var_x * var_y)
+        rho_diff = max(-1.0, min(1.0, cov / denom)) if denom > 1e-12 else 0.0
+
+    deff = 1.0 + max(0.0, rho_diff)
+    unclustered_floor_pts = (
+        10.2 * math.sqrt(discordance_rate / 0.15) if discordance_rate > 0.0 else 0.0
+    )
+    cluster_floor_pts = round(unclustered_floor_pts * math.sqrt(deff), 2)
+    return {
+        "discordance_rate": discordance_rate,
+        "paired_diff_rho": rho_diff,
+        "deff": deff,
+        "unclustered_floor_pts": round(unclustered_floor_pts, 2),
+        "measured_cluster_floor_pts": cluster_floor_pts,
+    }
+
+
 def paired_sign_flip_test(
     cluster_means_a: dict[str, float],
     cluster_means_b: dict[str, float],
@@ -762,19 +835,20 @@ def evaluate_model_decisions(
         k: summarize_cell(v) for k, v in cells_by_key.items() if v
     }
 
-    # Measured rho and floor across full-arm cells (Rule 4)
+    # Measured within-cell rho across full-arm cells
     rho_values = [
         summaries[f"full_{n}"]["intracluster_rho"]
         for n in TOOL_COUNTS
         if f"full_{n}" in summaries
     ]
-    mean_rho = sum(rho_values) / len(rho_values) if rho_values else 0.0
-    measured_floor_pts = round(10.2 * math.sqrt(1.0 + max(0.0, mean_rho)), 2)
+    mean_within_rho = sum(rho_values) / len(rho_values) if rho_values else 0.0
 
     # 1. Full arm comparisons: N in {10, 20, 40, 70, 100} vs N=5
     full_5_means = summaries["full_5"]["cluster_means"] if "full_5" in summaries else {}
+    full_5_calls = cells_by_key.get("full_5", [])
     full_comparisons: dict[str, dict[str, Any]] = {}
     raw_p_full: dict[str, float] = {}
+    paired_stats_list: list[dict[str, float]] = []
 
     for n in COMPASS_COUNTS:
         cell_key = f"full_{n}"
@@ -796,6 +870,11 @@ def evaluate_model_decisions(
             n_boot=n_boot,
             seed=seed + 500 + n,
         )
+        paired_stats = estimate_paired_diff_rho_and_discordance(
+            calls_a=full_5_calls,
+            calls_b=cells_by_key.get(cell_key, []),
+        )
+        paired_stats_list.append(paired_stats)
         raw_p_full[cell_key] = perm["p_value"]
         full_comparisons[cell_key] = {
             "N": n,
@@ -804,7 +883,25 @@ def evaluate_model_decisions(
             "drop_pts": perm["mean_diff_pts"],
             "permutation": perm,
             "bootstrap_ci_drop": boot,
+            "discordance_rate": round(paired_stats["discordance_rate"], 4),
+            "paired_diff_rho": round(paired_stats["paired_diff_rho"], 4),
+            "measured_cluster_floor_pts": paired_stats["measured_cluster_floor_pts"],
         }
+
+    if paired_stats_list:
+        mean_discordance = sum(ps["discordance_rate"] for ps in paired_stats_list) / len(paired_stats_list)
+        mean_paired_rho = sum(ps["paired_diff_rho"] for ps in paired_stats_list) / len(paired_stats_list)
+        mean_unclustered_floor_pts = (
+            10.2 * math.sqrt(mean_discordance / 0.15) if mean_discordance > 0.0 else 0.0
+        )
+        measured_floor_pts = round(
+            mean_unclustered_floor_pts * math.sqrt(1.0 + max(0.0, mean_paired_rho)), 2
+        )
+    else:
+        mean_discordance = 0.15
+        mean_paired_rho = mean_within_rho
+        mean_unclustered_floor_pts = 10.2
+        measured_floor_pts = round(10.2 * math.sqrt(1.0 + max(0.0, mean_within_rho)), 2)
 
     holm_full = holm_adjust(raw_p_full, alpha=0.05) if raw_p_full else {}
     cliff_n: int | None = None
@@ -838,6 +935,8 @@ def evaluate_model_decisions(
         prev_n = n
 
     # 2. Compass vs Full at each N in {10, 20, 40, 70, 100} and specifically at cliff_n (or 100 if no cliff)
+    # Design §4 Rule 2: the confirmatory Holm family tests compass vs full at each model's cliff N (or 100 if none)
+    # across the evaluated models (family size = 1 for a single-model evaluation, M across M models).
     eval_n_for_rule2 = cliff_n if cliff_n is not None else 100
     compass_comparisons: dict[str, dict[str, Any]] = {}
     raw_p_compass: dict[str, float] = {}
@@ -874,21 +973,27 @@ def evaluate_model_decisions(
             ),
         }
 
-    holm_compass = holm_adjust(raw_p_compass, alpha=0.05) if raw_p_compass else {}
+    exploratory_holm_compass = holm_adjust(raw_p_compass, alpha=0.05) if raw_p_compass else {}
     for c_key, comp in compass_comparisons.items():
-        comp["holm"] = holm_compass[c_key]
+        comp["exploratory_within_model_holm"] = exploratory_holm_compass[c_key]
 
     rule2_key = f"compass_{eval_n_for_rule2}"
     rule2_eval: dict[str, Any] = {"evaluated_at_N": eval_n_for_rule2}
     if rule2_key in compass_comparisons:
+        rule2_single_holm = holm_adjust(
+            {rule2_key: raw_p_compass[rule2_key]}, alpha=0.05
+        )[rule2_key]
+        compass_comparisons[rule2_key]["holm"] = rule2_single_holm
         c_eval = compass_comparisons[rule2_key]
         gain = c_eval["gain_pts"]
-        sig = c_eval["holm"]["significant"]
+        sig = rule2_single_holm["significant"]
         recall_100 = compass_recall_by_n.get("100") if compass_recall_by_n else None
         rule2_eval.update(
             {
                 "gain_pts": gain,
-                "holm_p": c_eval["holm"]["holm_p"],
+                "raw_p": rule2_single_holm["raw_p"],
+                "holm_p": rule2_single_holm["holm_p"],
+                "holm_family_size": rule2_single_holm["family_size"],
                 "significant": sig,
                 "helps_by_at_least_10pts_significant": bool(sig and gain >= 10.0),
                 "within_3pts_or_below": bool(gain <= 3.0),
@@ -992,7 +1097,11 @@ def evaluate_model_decisions(
                 f"cliff at N={cliff_n}" if cliff_n is not None else "no cliff observed to 100"
             ),
             "ceiling_N": ceiling_n,
-            "measured_intracluster_rho": round(mean_rho, 4),
+            "measured_discordance_rate": round(mean_discordance, 4),
+            "measured_paired_diff_rho": round(mean_paired_rho, 4),
+            "measured_intracluster_rho": round(mean_paired_rho, 4),
+            "within_cell_intracluster_rho": round(mean_within_rho, 4),
+            "measured_unclustered_floor_pts": round(mean_unclustered_floor_pts, 2),
             "measured_cluster_floor_pts": measured_floor_pts,
             "comparisons_vs_n5": full_comparisons,
         },
@@ -1002,7 +1111,11 @@ def evaluate_model_decisions(
         },
         "rule3_length_confound": rule3_eval,
         "rule4_floor": {
-            "measured_intracluster_rho": round(mean_rho, 4),
+            "measured_discordance_rate": round(mean_discordance, 4),
+            "measured_paired_diff_rho": round(mean_paired_rho, 4),
+            "measured_intracluster_rho": round(mean_paired_rho, 4),
+            "within_cell_intracluster_rho": round(mean_within_rho, 4),
+            "measured_unclustered_floor_pts": round(mean_unclustered_floor_pts, 2),
             "measured_cluster_floor_pts": measured_floor_pts,
             "design_floor_range_pts": [11.4, 12.5],
         },
@@ -1041,6 +1154,36 @@ def evaluate_cross_model_decisions(
             gains_models[m_name] = c_comp["gain_pts"]
 
     holm_models = holm_adjust(raw_p_models, alpha=0.05) if raw_p_models else {}
+
+    # Synchronize each model's summary_at_cliff_or_100 with the cross-model Rule 2 Holm family
+    models_out: dict[str, dict[str, Any]] = {}
+    for m_name, rep in per_model_reports.items():
+        rep_copy = dict(rep)
+        r2_section = dict(rep_copy["rule2_compass_narrowing"])
+        r2_summary = dict(r2_section["summary_at_cliff_or_100"])
+        comps_by_n = {k: dict(v) for k, v in r2_section["comparisons_by_n"].items()}
+        if m_name in holm_models:
+            h_entry = holm_models[m_name]
+            eval_n = r2_summary["evaluated_at_N"]
+            c_key = f"compass_{eval_n}"
+            gain = gains_models[m_name]
+            sig = h_entry["significant"]
+            r2_summary.update(
+                {
+                    "raw_p": h_entry["raw_p"],
+                    "holm_p": h_entry["holm_p"],
+                    "holm_family_size": h_entry["family_size"],
+                    "significant": sig,
+                    "helps_by_at_least_10pts_significant": bool(sig and gain >= 10.0),
+                }
+            )
+            if c_key in comps_by_n:
+                comps_by_n[c_key]["holm"] = h_entry
+        r2_section["summary_at_cliff_or_100"] = r2_summary
+        r2_section["comparisons_by_n"] = comps_by_n
+        rep_copy["rule2_compass_narrowing"] = r2_section
+        models_out[m_name] = rep_copy
+
     models_helping_10pts = sum(
         1
         for m_name in raw_p_models
@@ -1064,11 +1207,11 @@ def evaluate_cross_model_decisions(
             "any_model_has_cliff": any_cliff,
             "per_model_ceilings": {
                 m: rep["rule1_cliff_and_ceiling"]["ceiling_N"]
-                for m, rep in per_model_reports.items()
+                for m, rep in models_out.items()
             },
             "per_model_cliffs": {
                 m: rep["rule1_cliff_and_ceiling"]["cliff_N"]
-                for m, rep in per_model_reports.items()
+                for m, rep in models_out.items()
             },
         },
         "rule2_studio_narrowing": {
@@ -1077,7 +1220,7 @@ def evaluate_cross_model_decisions(
             "per_model_gains_pts": gains_models,
             "per_model_holm": holm_models,
         },
-        "models": per_model_reports,
+        "models": models_out,
     }
 
 

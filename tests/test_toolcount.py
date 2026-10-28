@@ -1312,6 +1312,118 @@ def test_fix5_granite_isolation_prefetch_hosted_and_hosted_tokenizer_check(
         assert tok_rec is not None and tok_rec["match"] is True
 
 
+def test_fix6_rule2_holm_unification_and_rule4_discordance_paired_rho() -> None:
+    """Fix 6:
+    1) Unify the Holm family for Decision Rule 2 (test compass vs full at each model's cliff N or 100 across the
+       evaluated models, rather than 5-count within-model Holm in evaluate_model_decisions vs cross-model Holm in
+       evaluate_cross_model_decisions).
+    2) Compute Rule 4's measured_cluster_floor_pts from the measured discordance and phrasing-level paired-difference rho.
+    """
+    def _build_cell(
+        cell_name: str,
+        arm: str,
+        n_val: int,
+        phrasing_pairs: list[tuple[int, int]],
+    ) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]] = []
+        for c_idx, (p0, p1) in enumerate(phrasing_pairs):
+            for p_idx, hit in ((0, p0), (1, p1)):
+                rows.append(
+                    {
+                        "item_id": f"ans_{c_idx:02d}_p{p_idx}",
+                        "cluster_id": f"cluster_{c_idx:02d}",
+                        "phrasing_index": p_idx,
+                        "is_abstention": False,
+                        "half": "A" if c_idx < 43 else "B",
+                        "arm": arm,
+                        "cell": cell_name,
+                        "N": n_val,
+                        "classification": "correct" if hit else "wrong_tool",
+                        "exact_tool_correct": hit,
+                        "abstention_correct": None,
+                        "refused_on_answerable": 0,
+                        "format_failure": 0,
+                        "schema_valid": bool(hit),
+                        "value_correct": bool(hit),
+                        "position_bin": (c_idx + p_idx) % 6,
+                        "prompt_tokens": n_val * 120 + 400,
+                        "output_tokens": 30,
+                        "wall_time_s": 0.3,
+                    }
+                )
+        return rows
+
+    # Construct full_5 and full_N where within-cell correlation is negative (alternating (1,0)/(0,1) on last 50 clusters),
+    # while between full_5 and full_N 26 clusters drop from (1,1) to (0,0) together:
+    # paired-difference rho_diff = +1.0 and discordance rate = 26 / 85 (~0.3059).
+    pairs_n5 = [(1, 1) if i < 35 else ((1, 0) if i % 2 == 0 else (0, 1)) for i in range(85)]
+    pairs_n_drop = [(0, 0) if i < 26 else pairs_n5[i] for i in range(85)]
+
+    # At cliff N=10, compass_10 recovers 11 of those 26 dropped clusters (+1, +1) and loses 2 clusters (0,0 where full_10 had 1,1),
+    # giving net gain = 9/85 = +10.59 pts and two-sided sign-flip p ~ 0.0225 (significant at alpha=0.05 for family_size=1 or 2,
+    # but NOT significant if erroneously multiplied by 5 across all 5 compass counts).
+    pairs_compass_10 = list(pairs_n_drop)
+    for i in range(11):
+        pairs_compass_10[i] = (1, 1)
+    for i in range(26, 28):
+        pairs_compass_10[i] = (0, 0)
+
+    cells_map = {
+        "full_5": _build_cell("full_5", "full", 5, pairs_n5),
+        "full_10": _build_cell("full_10", "full", 10, pairs_n_drop),
+        "full_20": _build_cell("full_20", "full", 20, pairs_n_drop),
+        "full_40": _build_cell("full_40", "full", 40, pairs_n_drop),
+        "full_70": _build_cell("full_70", "full", 70, pairs_n_drop),
+        "full_100": _build_cell("full_100", "full", 100, pairs_n_drop),
+        "compass_10": _build_cell("compass_10", "compass", 10, pairs_compass_10),
+        "compass_20": _build_cell("compass_20", "compass", 20, pairs_n_drop),
+        "compass_40": _build_cell("compass_40", "compass", 40, pairs_n_drop),
+        "compass_70": _build_cell("compass_70", "compass", 70, pairs_n_drop),
+        "compass_100": _build_cell("compass_100", "compass", 100, pairs_n_drop),
+    }
+
+    rep_single = evaluate_model_decisions(
+        cells_by_key=cells_map,
+        compass_recall_by_n={"10": 0.96, "20": 0.95, "40": 0.94, "70": 0.92, "100": 0.91},
+        n_flips=10_000,
+        n_boot=500,
+        seed=DEFAULT_SEED,
+    )
+
+    # 1. Rule 2 Holm unification:
+    r2_single = rep_single["rule2_compass_narrowing"]["summary_at_cliff_or_100"]
+    assert r2_single["evaluated_at_N"] == 10
+    assert 0.01 < r2_single["holm_p"] < 0.04, f"Expected single-model Rule 2 holm_p ~ 0.0225 (not 5x inflated), got {r2_single['holm_p']}"
+    assert r2_single["significant"] is True
+    assert r2_single["helps_by_at_least_10pts_significant"] is True
+
+    # Cross-model evaluation across 2 models must synchronize per-model summary_at_cliff_or_100 with per_model_holm
+    rep_other = evaluate_model_decisions(
+        cells_by_key={**cells_map, "compass_10": _build_cell("compass_10", "compass", 10, pairs_n_drop)},
+        compass_recall_by_n={"10": 0.96, "20": 0.95, "40": 0.94, "70": 0.92, "100": 0.91},
+        n_flips=10_000,
+        n_boot=500,
+        seed=DEFAULT_SEED,
+    )
+    cross = evaluate_cross_model_decisions({"granite-4.2-8b": rep_single, "qwen3.8-27b": rep_other})
+    for m_name in ("granite-4.2-8b", "qwen3.8-27b"):
+        m_r2 = cross["models"][m_name]["rule2_compass_narrowing"]["summary_at_cliff_or_100"]
+        studio_h = cross["rule2_studio_narrowing"]["per_model_holm"][m_name]
+        assert m_r2["holm_p"] == studio_h["holm_p"]
+        assert m_r2["significant"] == studio_h["significant"]
+        assert m_r2["holm_family_size"] == 2
+
+    # 2. Rule 4 floor computed from measured discordance (~26/85 = 0.3059) and paired-difference rho (+1.0):
+    import math
+
+    r4 = rep_single["rule4_floor"]
+    assert abs(r4["measured_discordance_rate"] - (26.0 / 85.0)) < 1e-3
+    assert abs(r4["measured_paired_diff_rho"] - 1.0) < 1e-3
+    expected_floor = round(10.2 * math.sqrt((26.0 / 85.0) / 0.15) * math.sqrt(2.0), 2)
+    assert r4["measured_cluster_floor_pts"] == expected_floor
+
+
+
 
 
 
