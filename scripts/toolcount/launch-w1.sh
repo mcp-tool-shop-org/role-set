@@ -80,6 +80,9 @@ case "$MODE" in
     export PIN_FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
     export PIN_SESSION="${PIN_SESSION:-tc-r1-stub}"
     CARD_RATE="0.08"
+    if [ "$PIN_ROLESET_COMMIT" = "to pin" ] || [ -z "$PIN_ROLESET_COMMIT" ]; then
+      export PIN_ROLESET_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+    fi
     if [ ! -f "$R0_TAR" ] && [ -d "$REPO_ROOT/artifacts/toolcount/r0" ]; then
       tar -C "$REPO_ROOT/artifacts/toolcount/r0" -cf "$R0_TAR" .
     fi

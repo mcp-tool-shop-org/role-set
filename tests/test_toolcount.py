@@ -1543,6 +1543,82 @@ def test_kv_fix1_token_held_aside_during_setup(
     )
 
 
+def test_kv_fix2_launch_w1_stub_resolves_roleset_commit(tmp_path: Path) -> None:
+    """Card kv Fix 2: In scripts/toolcount/launch-w1.sh's stub) branch, when PIN_ROLESET_COMMIT is empty
+    or 'to pin', it resolves PIN_ROLESET_COMMIT from `git -C "$REPO_ROOT" rev-parse HEAD`, while keeping
+    local-stub unchanged.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    launch_sh = repo_root / "scripts" / "toolcount" / "launch-w1.sh"
+    expected_head = subprocess.run(
+        ["git", "-C", str(repo_root), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    git_bin = shutil.which("git")
+    git_bash = Path(git_bin).resolve().parents[1] / "bin" / "bash.exe" if (os.name == "nt" and git_bin) else None
+    bash_bin = str(git_bash) if (git_bash and git_bash.is_file()) else shutil.which("bash")
+    assert bash_bin is not None, "bash is required to test launch-w1.sh"
+
+    def _run_stub_mode(pin_val: str | None, name: str) -> str:
+        out_dir = tmp_path / name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "toolcount-r0.tar").write_bytes(b"stub_tar")
+        env = dict(os.environ)
+        env["TOOLCOUNT_MODE"] = "stub"
+        env["R0_TAR_SHA256"] = "deadbeef"
+        env["PIN_C2_WATCH_S"] = "60"
+        if pin_val is None:
+            env.pop("PIN_ROLESET_COMMIT", None)
+        else:
+            env["PIN_ROLESET_COMMIT"] = pin_val
+
+        wrapper = (
+            'kill() { return 1; }; '
+            'bash() { if [ "$1" = "$SMOKE_SH" ]; then '
+            'printf "%s" "$PIN_ROLESET_COMMIT" > "$3/resolved_roleset_commit.txt"; return 0; '
+            'fi; command bash "$@"; }; '
+            'source "$0" "$@"'
+        )
+        proc = subprocess.run(
+            [bash_bin, "-c", wrapper, launch_sh.as_posix(), "/dev/null", out_dir.as_posix()],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert proc.returncode == 0, f"launch-w1.sh stub failed: {proc.stderr}"
+        return (out_dir / "resolved_roleset_commit.txt").read_text(encoding="utf-8").strip()
+
+    # 1. When unset (defaults to "to pin") or explicitly "to pin", resolves to HEAD
+    assert _run_stub_mode(None, "unset") == expected_head
+    assert _run_stub_mode("to pin", "to_pin") == expected_head
+    # 2. When empty "", resolves to HEAD
+    assert _run_stub_mode("", "empty") == expected_head
+    # 3. When already set to a commit, preserves it
+    assert _run_stub_mode("0123456789abcdef", "explicit") == "0123456789abcdef"
+
+    # 4. Verify local-stub block in launch-w1.sh remains unchanged
+    text = launch_sh.read_text(encoding="utf-8")
+    local_stub_block = (
+        'if [ "$MODE" = "local-stub" ]; then\n'
+        "  export PIN_STUB=1\n"
+        "  export PIN_GPU=CPU\n"
+        "  export PIN_SKIP_BINARY=1\n"
+        '  python3 -m scripts.toolcount.runner --mode r1-stub --out-dir "$OUT" --seed "$PIN_TOOLCOUNT_SEED"\n'
+        "  exit 0\n"
+        "fi"
+    )
+    assert local_stub_block in text
+
+
+
 
 
 
