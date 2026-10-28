@@ -18,8 +18,10 @@ import dataclasses
 import hashlib
 import json
 import math
+import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -31,6 +33,12 @@ from scripts.toolcount import (
     TOOL_COMPASS_COMMIT,
 )
 from scripts.toolcount.gen_registry import write_with_sha256
+
+OLLAMA_BASE_URL = "http://localhost:11434"
+EMBEDDING_MODEL = "nomic-embed-text"
+NOMIC_QUERY_PREFIX = "search_query: "
+NOMIC_DOCUMENT_PREFIX = "search_document: "
+OLLAMA_EMBED_PATH = "/api/embed"
 
 
 @dataclasses.dataclass
@@ -110,11 +118,16 @@ class FakeEmbedder:
     phrases with the prompt have high cosine similarity, without touching any external service.
     """
 
+    kind: str = "fake"
+    model: str = "fake-hash-96d"
+    endpoint: str = "none"
+
     def __init__(self, dim: int = 96, seed: int = DEFAULT_SEED) -> None:
         if dim <= 0:
             raise ValueError("dim must be positive")
         self.dim = dim
         self.seed = seed
+        self.model = f"fake-hash-{dim}d"
 
     def embed_text(self, text: str) -> list[float]:
         tokens = _WORD_RE.findall(text.lower())
@@ -140,6 +153,94 @@ class FakeEmbedder:
             return vec
         return [v / norm for v in vec]
 
+    def embed_document(self, text: str) -> list[float]:
+        return self.embed_text(text)
+
+    def embed_query(self, query: str) -> list[float]:
+        return self.embed_text(query)
+
+
+def _l2_normalize(raw: list[float]) -> list[float]:
+    if not raw:
+        raise RuntimeError("Empty embedding vector returned by provider")
+    norm = math.sqrt(sum(float(v) * float(v) for v in raw))
+    if norm == 0.0:
+        raise RuntimeError("Zero-norm embedding vector returned by provider")
+    return [float(v) / norm for v in raw]
+
+
+class OllamaEmbedder:
+    """Real Ollama `nomic-embed-text` embedder (`tool-compass/embedder.py:45`, `/api/embed`).
+
+    Applies nomic task prefixes (`search_document: ` for tool definitions, `search_query: ` for
+    user prompts) and L2-normalizes returned vectors. Delegates to `tool-compass`'s `SyncEmbedder`
+    when `tool_compass_dir` is provided and its dependencies are installed, or POSTs directly to
+    `{base_url}/api/embed`.
+    """
+
+    kind: str = "ollama"
+
+    def __init__(
+        self,
+        base_url: str | None = None,
+        model: str = EMBEDDING_MODEL,
+        tool_compass_dir: Path | None = None,
+        timeout_s: float = 30.0,
+    ) -> None:
+        resolved_base = (base_url or os.environ.get("OLLAMA_BASE_URL") or OLLAMA_BASE_URL).rstrip("/")
+        self.base_url = resolved_base
+        self.model = model
+        self.endpoint = f"{resolved_base}{OLLAMA_EMBED_PATH}"
+        self.timeout_s = timeout_s
+        self._sync_embedder: Any = None
+        if tool_compass_dir is not None and (tool_compass_dir / "embedder.py").is_file():
+            tc_str = str(tool_compass_dir.resolve())
+            if tc_str not in sys.path:
+                sys.path.insert(0, tc_str)
+            try:
+                import embedder as tc_embedder  # type: ignore[import-not-found]
+
+                self._sync_embedder = tc_embedder.SyncEmbedder(
+                    base_url=self.base_url,
+                    model=self.model,
+                    provider="ollama",
+                )
+            except Exception:
+                self._sync_embedder = None
+
+    def _post_embed(self, prefixed_text: str) -> list[float]:
+        payload = json.dumps({"model": self.model, "input": prefixed_text}).encode("utf-8")
+        req = urllib.request.Request(
+            self.endpoint,
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=self.timeout_s) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        if "embeddings" in data and data["embeddings"]:
+            raw = [float(x) for x in data["embeddings"][0]]
+        elif "embedding" in data and data["embedding"]:
+            raw = [float(x) for x in data["embedding"]]
+        else:
+            raise RuntimeError(f"Unexpected Ollama /api/embed response keys: {sorted(data.keys())}")
+        return _l2_normalize(raw)
+
+    def embed_document(self, text: str) -> list[float]:
+        if self._sync_embedder is not None:
+            vec = self._sync_embedder.embed(text)
+            return _l2_normalize([float(x) for x in vec])
+        return self._post_embed(f"{NOMIC_DOCUMENT_PREFIX}{text}")
+
+    def embed_query(self, query: str) -> list[float]:
+        if self._sync_embedder is not None:
+            vec = self._sync_embedder.embed_query(query)
+            return _l2_normalize([float(x) for x in vec])
+        return self._post_embed(f"{NOMIC_QUERY_PREFIX}{query}")
+
+    def embed_text(self, text: str) -> list[float]:
+        return self.embed_document(text)
+
 
 def cosine_similarity(vec_a: list[float], vec_b: list[float]) -> float:
     """Compute cosine similarity between two L2-normalized vectors."""
@@ -162,7 +263,8 @@ def retrieve_top5_for_item_list(
     top_k: int = 5,
 ) -> list[tuple[str, float]]:
     """Retrieve top-k tools from `candidate_tool_names` by cosine similarity with `min_confidence=0.0`."""
-    q_vec = embedder.embed_text(query)
+    embed_q = getattr(embedder, "embed_query", None)
+    q_vec = embed_q(query) if callable(embed_q) else embedder.embed_text(query)
     scored: list[tuple[str, float]] = []
     for name in candidate_tool_names:
         t_vec = tool_vectors[name]
@@ -195,6 +297,7 @@ def build_compass_lists(
     tool_defs: dict[str, Any] = {}
     embedding_texts: dict[str, str] = {}
     tool_vectors: dict[str, list[float]] = {}
+    embed_doc = getattr(active_embedder, "embed_document", None)
 
     for t in registry:
         t_def = build_tool_definition(t, cls=td_cls)
@@ -208,7 +311,9 @@ def build_compass_lists(
         assert "additionalProperties" not in emb_text
         tool_defs[t["name"]] = t_def
         embedding_texts[t["name"]] = emb_text
-        tool_vectors[t["name"]] = active_embedder.embed_text(emb_text)
+        tool_vectors[t["name"]] = (
+            embed_doc(emb_text) if callable(embed_doc) else active_embedder.embed_text(emb_text)
+        )
 
     by_item: dict[str, dict[str, Any]] = {}
     recall_counts_by_n: dict[str, dict[str, int]] = {
@@ -284,12 +389,37 @@ def build_compass_lists(
             "below_90pct_bound_flag": rate < 0.90 if n == 100 else False,
         }
 
+    embedder_kind = str(
+        getattr(
+            active_embedder,
+            "kind",
+            "fake" if embedder_label == "fake_embedder_cpu" else embedder_label,
+        )
+    )
+    embedder_model = str(
+        getattr(
+            active_embedder,
+            "model",
+            "fake-hash-96d" if embedder_kind == "fake" else EMBEDDING_MODEL,
+        )
+    )
+    embedder_endpoint = str(
+        getattr(
+            active_embedder,
+            "endpoint",
+            "none" if embedder_kind == "fake" else f"{OLLAMA_BASE_URL}{OLLAMA_EMBED_PATH}",
+        )
+    )
+
     return {
         "study_id": STUDY_ID,
         "seed": seed,
         "tool_compass_commit": TOOL_COMPASS_COMMIT,
         "entry_point": "gateway.compass(min_confidence=0.0) / CompassIndex.search(top_k=5, min_score=0.0)",
         "embedder": embedder_label,
+        "embedder_kind": embedder_kind,
+        "embedder_model": embedder_model,
+        "embedder_endpoint": embedder_endpoint,
         "min_confidence": min_confidence,
         "tool_category_constant": TOOL_CATEGORY_CONSTANT,
         "tool_examples_constant": [],
@@ -306,6 +436,8 @@ def write_compass_artifacts(
     embedder_mode: str = "fake",
     allow_gpu: bool = False,
     tool_compass_dir: Path | None = None,
+    ollama_base_url: str | None = None,
+    ollama_model: str = EMBEDDING_MODEL,
 ) -> dict[str, Any]:
     """Load R0 files, build compass top-5 lists, and write pinned JSON + sha256 sidecars."""
     if embedder_mode != "fake" and not allow_gpu:
@@ -317,7 +449,17 @@ def write_compass_artifacts(
     items = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
     lists_by_anchor = json.loads((r0_dir / "nested_lists.json").read_text(encoding="utf-8"))
 
-    embedder = FakeEmbedder(seed=seed)
+    if embedder_mode == "fake":
+        embedder: EmbedderProtocol = FakeEmbedder(seed=seed)
+    elif embedder_mode == "ollama":
+        embedder = OllamaEmbedder(
+            base_url=ollama_base_url,
+            model=ollama_model,
+            tool_compass_dir=tool_compass_dir,
+        )
+    else:
+        raise ValueError(f"Unsupported embedder_mode: {embedder_mode!r}")
+
     data = build_compass_lists(
         registry=registry,
         items=items,
@@ -340,6 +482,9 @@ def write_compass_artifacts(
         "seed": seed,
         "tool_compass_commit": TOOL_COMPASS_COMMIT,
         "embedder": data["embedder"],
+        "embedder_kind": data["embedder_kind"],
+        "embedder_model": data["embedder_model"],
+        "embedder_endpoint": data["embedder_endpoint"],
         "min_confidence": data["min_confidence"],
         "tool_category_constant": data["tool_category_constant"],
         "tool_examples_constant": data["tool_examples_constant"],
@@ -362,6 +507,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--embedder", choices=("fake", "ollama"), default="fake")
     parser.add_argument("--allow-gpu", action="store_true", help="Explicit grant flag for real Ollama embedding.")
     parser.add_argument("--tool-compass-dir", type=Path, default=None)
+    parser.add_argument("--ollama-url", type=str, default=None)
+    parser.add_argument("--ollama-model", type=str, default=EMBEDDING_MODEL)
     args = parser.parse_args(argv)
 
     manifest = write_compass_artifacts(
@@ -371,6 +518,8 @@ def main(argv: list[str] | None = None) -> int:
         embedder_mode=args.embedder,
         allow_gpu=args.allow_gpu,
         tool_compass_dir=args.tool_compass_dir,
+        ollama_base_url=args.ollama_url,
+        ollama_model=args.ollama_model,
     )
     print(json.dumps(manifest, indent=2, sort_keys=True))
     return 0

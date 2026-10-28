@@ -896,3 +896,126 @@ def test_edge_cases_across_all_modules(tmp_path: Path, r0_bundle: dict[str, Any]
 
     assert runner_main(["--mode", "r1-stub", "--out-dir", str(tmp_path / "cli_r1")]) == 0
 
+
+def test_fix1_compass_ollama_embedder_prefixes_and_metadata(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix 1: Ollama nomic-embed-text embedder uses /api/embed with search_document:/search_query: prefixes
+    and records embedder_kind, embedder_model, and embedder_endpoint in compass_lists.json.
+    Tested against a local fake HTTP endpoint (never the rig's Ollama).
+    """
+    import http.server
+    import threading
+    from scripts.toolcount.compass_lists import FakeEmbedder, write_compass_artifacts
+
+    recorded_requests: list[dict[str, Any]] = []
+    cpu_fake = FakeEmbedder(dim=16, seed=DEFAULT_SEED)
+
+    class FakeOllamaEmbedHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            recorded_requests.append({"path": self.path, "body": body})
+            raw_input = body.get("input", "")
+            texts = [raw_input] if isinstance(raw_input, str) else list(raw_input)
+            embeddings = [cpu_fake.embed_text(t) for t in texts]
+            resp = json.dumps({"model": body.get("model", ""), "embeddings": embeddings}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
+
+    r0_mini = tmp_path / "r0_mini"
+    r0_mini.mkdir(parents=True, exist_ok=True)
+    registry = r0_bundle["registry"][:10]
+    item0 = dict(r0_bundle["items"][0])
+    item0["key"] = dict(item0["key"])
+    item0["key"]["tool"] = registry[0]["name"]
+    tool_names_10 = [t["name"] for t in registry]
+    nested = {
+        item0["anchor_id"]: {
+            "anchor_id": item0["anchor_id"],
+            "lists": {
+                str(n): {"N": n, "tools": (tool_names_10 * ((n // 10) + 1))[:n]}
+                for n in COMPASS_COUNTS
+            },
+        }
+    }
+    (r0_mini / "registry.json").write_text(json.dumps(registry), encoding="utf-8")
+    (r0_mini / "items.json").write_text(json.dumps([item0]), encoding="utf-8")
+    (r0_mini / "nested_lists.json").write_text(json.dumps(nested), encoding="utf-8")
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), FakeOllamaEmbedHandler)
+    port = server.server_address[1]
+    base_url = f"http://127.0.0.1:{port}"
+    monkeypatch.setenv("OLLAMA_BASE_URL", base_url)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        out_ollama = tmp_path / "out_ollama"
+        write_compass_artifacts(
+            r0_dir=r0_mini,
+            out_dir=out_ollama,
+            seed=DEFAULT_SEED,
+            embedder_mode="ollama",
+            allow_gpu=True,
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert len(recorded_requests) > 0, "Expected OllamaEmbedder to call /api/embed on the fake HTTP server"
+    assert all(req["path"] == "/api/embed" for req in recorded_requests)
+    assert all(req["body"]["model"] == "nomic-embed-text" for req in recorded_requests)
+
+    inputs: list[str] = []
+    for req in recorded_requests:
+        inp = req["body"]["input"]
+        if isinstance(inp, str):
+            inputs.append(inp)
+        else:
+            inputs.extend(inp)
+
+    doc_inputs = [s for s in inputs if s.startswith("search_document: ")]
+    query_inputs = [s for s in inputs if s.startswith("search_query: ")]
+    assert len(doc_inputs) == 10, f"Expected 10 tool document embeddings with 'search_document: ', got {len(doc_inputs)}"
+    assert len(query_inputs) >= 1, f"Expected query embeddings with 'search_query: ', got {len(query_inputs)}"
+
+    compass_payload = json.loads((out_ollama / "compass_lists.json").read_text(encoding="utf-8"))
+    assert compass_payload["embedder_kind"] == "ollama"
+    assert compass_payload["embedder_model"] == "nomic-embed-text"
+    assert compass_payload["embedder_endpoint"] == f"{base_url}/api/embed"
+
+    # Also verify default fake embedder records kind, model, and endpoint
+    out_fake = tmp_path / "out_fake"
+    write_compass_artifacts(r0_dir=r0_mini, out_dir=out_fake, seed=DEFAULT_SEED)
+    fake_payload = json.loads((out_fake / "compass_lists.json").read_text(encoding="utf-8"))
+    assert fake_payload["embedder_kind"] == "fake"
+    assert fake_payload["embedder_model"] == "fake-hash-96d"
+    assert fake_payload["embedder_endpoint"] == "none"
+
+    # Also verify tool_compass_dir SyncEmbedder delegation when embedder.py is present
+    fake_tc = tmp_path / "fake_tc"
+    fake_tc.mkdir(parents=True, exist_ok=True)
+    (fake_tc / "embedder.py").write_text(
+        "class SyncEmbedder:\n"
+        "    def __init__(self, **kw):\n"
+        "        self.kw = kw\n"
+        "    def embed(self, text):\n"
+        "        return [1.0, 0.0, 0.0, 0.0]\n"
+        "    def embed_query(self, query):\n"
+        "        return [0.8, 0.6, 0.0, 0.0]\n",
+        encoding="utf-8",
+    )
+    from scripts.toolcount.compass_lists import OllamaEmbedder
+
+    tc_emb = OllamaEmbedder(base_url=base_url, tool_compass_dir=fake_tc)
+    assert tc_emb.embed_document("doc") == [1.0, 0.0, 0.0, 0.0]
+    assert tc_emb.embed_query("q") == [0.8, 0.6, 0.0, 0.0]
+    assert tc_emb.embed_text("doc") == [1.0, 0.0, 0.0, 0.0]
+
+
