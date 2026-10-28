@@ -5149,6 +5149,61 @@ def runtime() -> dict:
 
 TOOLCOUNT_CTX = 16384
 TOOLCOUNT_PORT = 8094
+TOOLCOUNT_PKG_FILES = (
+    "scripts/toolcount/__init__.py",
+    "scripts/toolcount/compass_lists.py",
+    "scripts/toolcount/gen_registry.py",
+    "scripts/toolcount/oracle.py",
+    "scripts/toolcount/runner.py",
+    "scripts/toolcount/scorer.py",
+)
+
+
+def build_toolcount_pkg_tar(repo_root: Path, out_tar: Path) -> str:
+    """Pack scripts/toolcount/*.py into out_tar and return its sha256 hex digest."""
+    import tarfile  # noqa: PLC0415
+
+    out_tar.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(out_tar, "w") as tf:
+        for rel in TOOLCOUNT_PKG_FILES:
+            tf.add(repo_root / rel, arcname=rel)
+    return sha256(out_tar)
+
+
+def unpack_toolcount_pkg(result: dict) -> Path | None:
+    """Verify toolcount-pkg.tar against PIN_TOOLCOUNT_PKG_SHA256, unpack it next to the job, and put it on sys.path."""
+    import tarfile  # noqa: PLC0415
+
+    f = globals().get("__file__")
+    job_dir = Path(f).resolve().parent if f else None
+    candidates = [CONTENT / "toolcount-pkg.tar", WORK / "toolcount-pkg.tar"]
+    if job_dir is not None and job_dir / "toolcount-pkg.tar" not in candidates:
+        candidates.append(job_dir / "toolcount-pkg.tar")
+    pkg_tar = next((p for p in candidates if p.is_file()), None)
+    if pkg_tar is None:
+        return None
+    got_sha = sha256(pkg_tar)
+    result["toolcount_pkg_sha256"] = got_sha
+    want_sha = (os.environ.get("PIN_TOOLCOUNT_PKG_SHA256") or "").strip()
+    sidecar = pkg_tar.with_name("toolcount-pkg.tar.sha256")
+    if (not want_sha or want_sha == "to pin") and sidecar.is_file():
+        want_sha = sidecar.read_text(encoding="utf-8").strip().split()[0]
+    if not want_sha or want_sha == "to pin":
+        raise RuntimeError("toolcount-pkg.tar uploaded without PIN_TOOLCOUNT_PKG_SHA256")
+    if got_sha != want_sha:
+        raise RuntimeError(f"toolcount-pkg.tar {got_sha[:12]} isn't pinned {want_sha[:12]}")
+    pkg_dir = WORK / "toolcount-pkg"
+    pkg_dir.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(pkg_tar) as tf:
+        tf.extractall(pkg_dir, filter="data")
+    if str(pkg_dir) not in sys.path:
+        sys.path.insert(0, str(pkg_dir))
+    scripts_mod = sys.modules.get("scripts")
+    if scripts_mod is not None and hasattr(scripts_mod, "__path__"):
+        scripts_sub = str(pkg_dir / "scripts")
+        if scripts_sub not in scripts_mod.__path__:
+            scripts_mod.__path__.insert(0, scripts_sub)
+    return pkg_dir
 
 
 def toolcount_window(built: dict, specs: list, result: dict) -> None:
@@ -5172,6 +5227,7 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     finally:
         _TOKEN = held
 
+    unpack_toolcount_pkg(result)
     root = _repo_root()
     if str(root) not in sys.path:
         sys.path.insert(0, str(root))

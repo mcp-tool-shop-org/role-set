@@ -22,7 +22,7 @@ SMOKE_SH="$REPO_ROOT/scripts/colab/smoke_window.sh"
 
 # ---- Pinned study constants (copied from read files; unpinned items marked "to pin") ----
 export PIN_ROLESET_COMMIT="${PIN_ROLESET_COMMIT:-to pin}"
-export PIN_RND_COMMIT="${PIN_RND_COMMIT:-8400846}"
+export PIN_RND_COMMIT="${PIN_RND_COMMIT:-84008467b2cb21b4f648262bf242495c49eed828}"
 export PIN_TOOL_COMPASS_COMMIT="6f5a233"
 export PIN_SERVER_SHA256="${PIN_SERVER_SHA256:-b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3}"
 export PIN_LLAMA_CPP_COMMIT="620d2225cc436ab0b001e3200e590e3b286ef9ab"
@@ -37,6 +37,7 @@ export GEMMA_31B_GGUF_SHA256="e357a45071c2cbbc44b97506dfadc34bac0d5f6592f1d500ed
 # Input artifact pins (filled after R0 and real compass embedding run)
 export R0_TAR="${R0_TAR:-$OUT/toolcount-r0.tar}"
 export R0_TAR_SHA256="${R0_TAR_SHA256:-to pin}"
+export TOOLCOUNT_PKG_TAR="${TOOLCOUNT_PKG_TAR:-$OUT/toolcount-pkg.tar}"
 
 # Per-request HTTP timeout guard (C2-era standard)
 export REQUEST_TIMEOUT="${REQUEST_TIMEOUT:-60}"
@@ -78,11 +79,20 @@ case "$MODE" in
     export PIN_WALL_S="${PIN_WALL_S:-3000}"
     export PIN_DEADLINE_GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
     export PIN_FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
+    export PIN_GATE_MIN_RAM_GB="${PIN_GATE_MIN_RAM_GB:-8}"
+    export PIN_GATE_MIN_HF_MBPS="${PIN_GATE_MIN_HF_MBPS:-20}"
     export PIN_SESSION="${PIN_SESSION:-tc-r1-stub}"
     CARD_RATE="0.08"
     if [ "$PIN_ROLESET_COMMIT" = "to pin" ] || [ -z "$PIN_ROLESET_COMMIT" ]; then
-      export PIN_ROLESET_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+      PIN_ROLESET_COMMIT="$(git -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null || git.exe -C "$REPO_ROOT" rev-parse HEAD 2>/dev/null | tr -d '\r' || true)"
+      export PIN_ROLESET_COMMIT
     fi
+    for commit_var in PIN_RND_COMMIT PIN_ROLESET_COMMIT; do
+      if ! printf '%s' "${!commit_var}" | grep -qE '^[0-9a-f]{40}$'; then
+        echo "REFUSED: $commit_var='${!commit_var}' must be 40 hex characters" >&2
+        exit 2
+      fi
+    done
     if [ ! -f "$R0_TAR" ] && [ -d "$REPO_ROOT/artifacts/toolcount/r0" ]; then
       tar -C "$REPO_ROOT/artifacts/toolcount/r0" -cf "$R0_TAR" .
     fi
@@ -104,9 +114,17 @@ case "$MODE" in
     export PIN_DEADLINE_GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
     export PIN_FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
     export PIN_GATE_MIN_DISK_GB="${PIN_GATE_MIN_DISK_GB:-60}"
+    export PIN_GATE_MIN_RAM_GB="${PIN_GATE_MIN_RAM_GB:-50}"
+    export PIN_GATE_MIN_HF_MBPS="${PIN_GATE_MIN_HF_MBPS:-60}"
     export PIN_SESSION="${PIN_SESSION:-tc-w1-granite8b}"
     CARD_RATE="5.30"
 
+    for commit_var in PIN_RND_COMMIT PIN_ROLESET_COMMIT; do
+      if ! printf '%s' "${!commit_var}" | grep -qE '^[0-9a-f]{40}$'; then
+        echo "REFUSED: $commit_var='${!commit_var}' must be 40 hex characters" >&2
+        exit 2
+      fi
+    done
     # Refuse paid run if any required pin is still "to pin"
     for req_var in PIN_ROLESET_COMMIT R0_TAR_SHA256; do
       if [ "${!req_var}" = "to pin" ] || [ -z "${!req_var}" ]; then
@@ -138,6 +156,19 @@ case "$MODE" in
     echo "REFUSED: unknown TOOLCOUNT_MODE='$MODE' (expected local-stub, stub, or run)" >&2
     exit 2
     ;;
+esac
+
+tar -C "$REPO_ROOT" -c \
+  scripts/toolcount/__init__.py \
+  scripts/toolcount/compass_lists.py \
+  scripts/toolcount/gen_registry.py \
+  scripts/toolcount/oracle.py \
+  scripts/toolcount/runner.py \
+  scripts/toolcount/scorer.py > "$TOOLCOUNT_PKG_TAR"
+export PIN_TOOLCOUNT_PKG_SHA256="${PIN_TOOLCOUNT_PKG_SHA256:-$(sha256sum "$TOOLCOUNT_PKG_TAR" | awk '{print $1}')}"
+case " ${PIN_UPLOADS:-} " in
+  *" $TOOLCOUNT_PKG_TAR "*) ;;
+  *) export PIN_UPLOADS="${PIN_UPLOADS:+$PIN_UPLOADS }$TOOLCOUNT_PKG_TAR" ;;
 esac
 
 export PIN_DOWNLOADS="${PIN_DOWNLOADS:-pin-result.json toolcount-out.tar lib.tar generations.jsonl}"

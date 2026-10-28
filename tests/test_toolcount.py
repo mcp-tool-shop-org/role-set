@@ -1601,8 +1601,9 @@ def test_kv_fix2_launch_w1_stub_resolves_roleset_commit(tmp_path: Path) -> None:
     assert _run_stub_mode("to pin", "to_pin") == expected_head
     # 2. When empty "", resolves to HEAD
     assert _run_stub_mode("", "empty") == expected_head
-    # 3. When already set to a commit, preserves it
-    assert _run_stub_mode("0123456789abcdef", "explicit") == "0123456789abcdef"
+    # 3. When already set to a 40-hex commit, preserves it
+    explicit_40 = "0123456789abcdef0123456789abcdef01234567"
+    assert _run_stub_mode(explicit_40, "explicit") == explicit_40
 
     # 4. Verify local-stub block in launch-w1.sh remains unchanged
     text = launch_sh.read_text(encoding="utf-8")
@@ -1616,6 +1617,316 @@ def test_kv_fix2_launch_w1_stub_resolves_roleset_commit(tmp_path: Path) -> None:
         "fi"
     )
     assert local_stub_block in text
+
+
+def test_mg_a_vm_shaped_toolcount_window_from_uploads_only(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Card mg Test (a): Copy only what the window uploads into an empty temp dir, run pin_window.py
+    from there in stub mode with PIN_ROLE=toolcount, and require that the toolcount imports resolve
+    and the R1 stub path starts. Also covers sha256 verification and refusal branches on toolcount-pkg.tar.
+    """
+    import os
+    import shutil
+    import subprocess
+    import tarfile
+
+    repo_root = Path(__file__).resolve().parents[1]
+    vm_dir = tmp_path / "vm"
+    vm_dir.mkdir(parents=True, exist_ok=True)
+
+    # Copy ONLY what the window uploads: the job script (pin_window.py) and PIN_UPLOADS (toolcount-pkg.tar + toolcount-r0.tar)
+    shutil.copyfile(repo_root / "scripts" / "colab" / "pin_window.py", vm_dir / "pin_window.py")
+    pkg_sha = pw.build_toolcount_pkg_tar(repo_root, vm_dir / "toolcount-pkg.tar")
+    r0_tar = vm_dir / "toolcount-r0.tar"
+    with tarfile.open(r0_tar, "w") as tf:
+        for p in sorted(r0_bundle["r0_dir"].iterdir()):
+            if p.is_file():
+                tf.add(p, arcname=p.name)
+    r0_sha = hashlib.sha256(r0_tar.read_bytes()).hexdigest()
+
+    env = {
+        "PATH": os.environ.get("PATH", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+        "PIN_STUB": "1",
+        "PIN_GPU": "CPU",
+        "PIN_SKIP_BINARY": "1",
+        "PIN_ROLE": "toolcount",
+        "PIN_MODELS": "granite-4.2-8b",
+        "PIN_CONTENT": str(vm_dir),
+        "PIN_WORK": str(vm_dir / "pin"),
+        "PIN_TOOLCOUNT_PKG_SHA256": pkg_sha,
+        "R0_TAR_SHA256": r0_sha,
+        "PIN_TOOLCOUNT_MAX_CALLS": "2",
+    }
+    proc = subprocess.run(
+        [sys.executable, str(vm_dir / "pin_window.py")],
+        cwd=str(vm_dir),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert proc.returncode == 0, f"VM-shaped pin_window.py failed:\nSTDOUT:\n{proc.stdout}\nSTDERR:\n{proc.stderr}"
+    pin_res = json.loads((vm_dir / "pin" / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res["ok"] is True, pin_res
+    assert pin_res["toolcount_pkg_sha256"] == pkg_sha
+    assert pin_res["r0_tar_sha256"] == r0_sha
+    assert pin_res["models"][0]["window_summary"]["total_calls"] == 2
+    assert pin_res["models"][0]["window_summary"]["fresh_calls"] == 2
+    assert (vm_dir / "pin" / "calls.jsonl").is_file()
+    assert (vm_dir / "pin" / "toolcount-out.tar").is_file()
+
+    # In-process verification of unpack_toolcount_pkg (sidecar fallback, missing sha refusal, mismatched sha refusal)
+    inproc_content = tmp_path / "inproc_content"
+    inproc_work = tmp_path / "inproc_work"
+    inproc_content.mkdir(parents=True, exist_ok=True)
+    inproc_work.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(vm_dir / "toolcount-pkg.tar", inproc_content / "toolcount-pkg.tar")
+    monkeypatch.setattr(pw, "CONTENT", inproc_content)
+    monkeypatch.setattr(pw, "WORK", inproc_work)
+
+    # Missing PIN_TOOLCOUNT_PKG_SHA256 and no sidecar -> refuses
+    monkeypatch.delenv("PIN_TOOLCOUNT_PKG_SHA256", raising=False)
+    with pytest.raises(RuntimeError, match="without PIN_TOOLCOUNT_PKG_SHA256"):
+        pw.unpack_toolcount_pkg({})
+
+    # Sidecar fallback -> succeeds and unpacks next to the job
+    (inproc_content / "toolcount-pkg.tar.sha256").write_text(f"{pkg_sha}  toolcount-pkg.tar\n", encoding="utf-8")
+    res_unpack: dict[str, Any] = {}
+    unpacked_dir = pw.unpack_toolcount_pkg(res_unpack)
+    assert unpacked_dir == inproc_work / "toolcount-pkg"
+    assert res_unpack["toolcount_pkg_sha256"] == pkg_sha
+    for rel in pw.TOOLCOUNT_PKG_FILES:
+        assert (unpacked_dir / rel).is_file()
+
+    # Mismatched PIN_TOOLCOUNT_PKG_SHA256 -> refuses
+    monkeypatch.setenv("PIN_TOOLCOUNT_PKG_SHA256", "0" * 64)
+    with pytest.raises(RuntimeError, match="isn't pinned"):
+        pw.unpack_toolcount_pkg({})
+
+
+def test_mg_b_guard_every_first_party_import_in_pin_window_is_in_upload_set(tmp_path: Path) -> None:
+    """Card mg Test (b): Every first-party module pin_window.py imports (and transitively imports in scripts/toolcount)
+    must be in the upload set.
+    """
+    import ast
+    import tarfile
+
+    repo_root = Path(__file__).resolve().parents[1]
+    pin_window_path = repo_root / "scripts" / "colab" / "pin_window.py"
+    launch_sh_text = (repo_root / "scripts" / "toolcount" / "launch-w1.sh").read_text(encoding="utf-8")
+    smoke_sh_text = (repo_root / "scripts" / "colab" / "smoke_window.sh").read_text(encoding="utf-8")
+
+    stdlib_names = set(sys.stdlib_module_names) | {"__future__"}
+    third_party_allowed = {"huggingface_hub", "nvidia", "zstandard", "mcptoolshop_rnd"}
+    roleset_clone_only = {"role_set", "stub_llama", "replay"}
+
+    def _collect_imports(py_path: Path) -> set[str]:
+        tree = ast.parse(py_path.read_text(encoding="utf-8"))
+        mods: set[str] = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    mods.add(alias.name)
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                mods.add(node.module)
+                for alias in node.names:
+                    candidate = f"{node.module}.{alias.name}"
+                    rel_py = Path(*candidate.split(".")).with_suffix(".py")
+                    if (repo_root / rel_py).is_file():
+                        mods.add(candidate)
+        return mods
+
+    pw_imports = _collect_imports(pin_window_path)
+    first_party_scripts: set[str] = set()
+    for mod in sorted(pw_imports):
+        top = mod.split(".")[0]
+        if top in stdlib_names or top in third_party_allowed or top in roleset_clone_only:
+            continue
+        assert top == "scripts", f"Unclassified import {mod!r} in pin_window.py; add to upload set or guard allowlist"
+        first_party_scripts.add(mod)
+
+    # Transitively walk every scripts.* module imported by pin_window.py
+    queue = list(first_party_scripts)
+    seen_mods: set[str] = set()
+    required_rel_files: set[str] = set()
+    while queue:
+        mod = queue.pop(0)
+        if mod in seen_mods or mod == "scripts.colab.pin_window":
+            continue
+        seen_mods.add(mod)
+        parts = mod.split(".")
+        # Package __init__.py if present
+        for i in range(1, len(parts) + 1):
+            init_rel = "/".join(parts[:i]) + "/__init__.py"
+            if (repo_root / init_rel).is_file():
+                required_rel_files.add(init_rel)
+                init_imports = _collect_imports(repo_root / init_rel)
+                for sub in init_imports:
+                    if sub.startswith("scripts.") and sub not in seen_mods:
+                        queue.append(sub)
+        mod_rel = "/".join(parts) + ".py"
+        if (repo_root / mod_rel).is_file():
+            required_rel_files.add(mod_rel)
+            for sub in _collect_imports(repo_root / mod_rel):
+                if sub.startswith("scripts.") and sub not in seen_mods:
+                    queue.append(sub)
+
+    upload_set = set(pw.TOOLCOUNT_PKG_FILES)
+    missing_from_const = required_rel_files - upload_set
+    assert not missing_from_const, f"First-party modules missing from TOOLCOUNT_PKG_FILES: {sorted(missing_from_const)}"
+
+    tar_path = tmp_path / "guard-toolcount-pkg.tar"
+    pw.build_toolcount_pkg_tar(repo_root, tar_path)
+    with tarfile.open(tar_path) as tf:
+        tar_members = set(tf.getnames())
+    assert required_rel_files.issubset(tar_members), (
+        f"First-party modules missing from toolcount-pkg.tar: {sorted(required_rel_files - tar_members)}"
+    )
+    for rel_file in sorted(required_rel_files):
+        assert rel_file in launch_sh_text, f"{rel_file} missing from launch-w1.sh tar upload list"
+        assert rel_file in smoke_sh_text, f"{rel_file} missing from smoke_window.sh tar upload list"
+
+
+def test_mg_c_launch_w1_gate_floors_rnd_default_and_40_hex_refusal(tmp_path: Path) -> None:
+    """Card mg Test (c):
+    1) launch-w1.sh stub) defaults PIN_GATE_MIN_RAM_GB=8 and PIN_GATE_MIN_HF_MBPS=20 (overridable via ${VAR:-default}).
+    2) launch-w1.sh run) defaults PIN_GATE_MIN_RAM_GB=50 and PIN_GATE_MIN_HF_MBPS=60 (overridable via ${VAR:-default}).
+    3) launch-w1.sh defaults PIN_RND_COMMIT to full 40-char sha 84008467b2cb21b4f648262bf242495c49eed828.
+    4) Both stub) and run) refuse any PIN_RND_COMMIT or PIN_ROLESET_COMMIT that isn't 40 hex characters before anything opens.
+    """
+    import os
+    import shutil
+    import subprocess
+
+    repo_root = Path(__file__).resolve().parents[1]
+    launch_sh = repo_root / "scripts" / "toolcount" / "launch-w1.sh"
+    full_rnd_sha = "84008467b2cb21b4f648262bf242495c49eed828"
+    assert RND_PROXY_COMMIT == full_rnd_sha
+
+    git_bin = shutil.which("git")
+    git_bash = Path(git_bin).resolve().parents[1] / "bin" / "bash.exe" if (os.name == "nt" and git_bin) else None
+    bash_bin = str(git_bash) if (git_bash and git_bash.is_file()) else shutil.which("bash")
+    assert bash_bin is not None, "bash is required to test launch-w1.sh"
+
+    wrapper = (
+        'kill() { return 1; }; '
+        'bash() { if [ "$1" = "$SMOKE_SH" ]; then '
+        'printf "RAM=%s\\nHF=%s\\nRND=%s\\nROLESET=%s\\nPKG_SHA=%s\\nUPLOADS=%s\\n" '
+        '"$PIN_GATE_MIN_RAM_GB" "$PIN_GATE_MIN_HF_MBPS" "$PIN_RND_COMMIT" "$PIN_ROLESET_COMMIT" '
+        '"$PIN_TOOLCOUNT_PKG_SHA256" "$PIN_UPLOADS" > "$3/captured_env.txt"; return 0; '
+        'fi; command bash "$@"; }; '
+        'source "$0" "$@"'
+    )
+
+    def _invoke(mode: str, overrides: dict[str, str | None], name: str, bin_arg: str = "/dev/null") -> subprocess.CompletedProcess[str]:
+        out_dir = tmp_path / name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        r0_tar = out_dir / "toolcount-r0.tar"
+        r0_tar.write_bytes(b"stub_r0_tar")
+        r0_sha = hashlib.sha256(r0_tar.read_bytes()).hexdigest()
+        env = dict(os.environ)
+        for k in (
+            "PIN_GATE_MIN_RAM_GB",
+            "PIN_GATE_MIN_HF_MBPS",
+            "PIN_RND_COMMIT",
+            "PIN_ROLESET_COMMIT",
+            "PIN_TOOLCOUNT_PKG_SHA256",
+            "PIN_UPLOADS",
+        ):
+            env.pop(k, None)
+        env["TOOLCOUNT_MODE"] = mode
+        env["R0_TAR"] = r0_tar.as_posix()
+        env["R0_TAR_SHA256"] = r0_sha
+        for k, v in overrides.items():
+            if v is None:
+                env.pop(k, None)
+            else:
+                env[k] = v
+        return subprocess.run(
+            [bash_bin, "-c", wrapper, launch_sh.as_posix(), bin_arg, out_dir.as_posix()],
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+    def _parse_captured(name: str) -> dict[str, str]:
+        lines = (tmp_path / name / "captured_env.txt").read_text(encoding="utf-8").splitlines()
+        return dict(line.split("=", 1) for line in lines if "=" in line)
+
+    # 1. stub) defaults: RAM=8, HF=20, RND=40-char sha, toolcount-pkg.tar in UPLOADS
+    p_stub_def = _invoke("stub", {}, "stub_defaults")
+    assert p_stub_def.returncode == 0, p_stub_def.stderr
+    cap_stub = _parse_captured("stub_defaults")
+    assert cap_stub["RAM"] == "8"
+    assert cap_stub["HF"] == "20"
+    assert cap_stub["RND"] == full_rnd_sha
+    assert len(cap_stub["ROLESET"]) == 40
+    assert len(cap_stub["PKG_SHA"]) == 64
+    assert "toolcount-pkg.tar" in cap_stub["UPLOADS"]
+
+    # 2. stub) overrides respected via ${VAR:-default}
+    p_stub_ovr = _invoke("stub", {"PIN_GATE_MIN_RAM_GB": "16", "PIN_GATE_MIN_HF_MBPS": "35"}, "stub_overrides")
+    assert p_stub_ovr.returncode == 0, p_stub_ovr.stderr
+    cap_stub_ovr = _parse_captured("stub_overrides")
+    assert cap_stub_ovr["RAM"] == "16"
+    assert cap_stub_ovr["HF"] == "35"
+
+    # 3. run) defaults: RAM=50, HF=60, RND=40-char sha, toolcount-pkg.tar in UPLOADS
+    fake_bin = tmp_path / "fake-llama-server"
+    fake_bin.write_bytes(b"fake_binary_bytes")
+    fake_bin_sha = hashlib.sha256(fake_bin.read_bytes()).hexdigest()
+    valid_roleset_sha = "a" * 40
+    p_run_def = _invoke(
+        "run",
+        {"PIN_ROLESET_COMMIT": valid_roleset_sha, "PIN_SERVER_SHA256": fake_bin_sha},
+        "run_defaults",
+        bin_arg=fake_bin.as_posix(),
+    )
+    assert p_run_def.returncode == 0, p_run_def.stderr
+    cap_run = _parse_captured("run_defaults")
+    assert cap_run["RAM"] == "50"
+    assert cap_run["HF"] == "60"
+    assert cap_run["RND"] == full_rnd_sha
+    assert cap_run["ROLESET"] == valid_roleset_sha
+    assert len(cap_run["PKG_SHA"]) == 64
+    assert "toolcount-pkg.tar" in cap_run["UPLOADS"]
+
+    # 4. run) overrides respected via ${VAR:-default}
+    p_run_ovr = _invoke(
+        "run",
+        {
+            "PIN_ROLESET_COMMIT": valid_roleset_sha,
+            "PIN_SERVER_SHA256": fake_bin_sha,
+            "PIN_GATE_MIN_RAM_GB": "64",
+            "PIN_GATE_MIN_HF_MBPS": "90",
+        },
+        "run_overrides",
+        bin_arg=fake_bin.as_posix(),
+    )
+    assert p_run_ovr.returncode == 0, p_run_ovr.stderr
+    cap_run_ovr = _parse_captured("run_overrides")
+    assert cap_run_ovr["RAM"] == "64"
+    assert cap_run_ovr["HF"] == "90"
+
+    # 5. 40-hex refusal in both stub) and run) for PIN_RND_COMMIT and PIN_ROLESET_COMMIT
+    for mode in ("stub", "run"):
+        for bad_var, bad_val in (
+            ("PIN_RND_COMMIT", "8400846"),
+            ("PIN_RND_COMMIT", "to pin"),
+            ("PIN_RND_COMMIT", "G" * 40),
+            ("PIN_ROLESET_COMMIT", "f23a223"),
+            ("PIN_ROLESET_COMMIT", "not-40-hex"),
+        ):
+            overrides = {"PIN_ROLESET_COMMIT": valid_roleset_sha, "PIN_SERVER_SHA256": fake_bin_sha}
+            overrides[bad_var] = bad_val
+            name = f"refuse_{mode}_{bad_var}_{bad_val.replace(' ', '_')}"
+            proc = _invoke(mode, overrides, name, bin_arg=fake_bin.as_posix())
+            assert proc.returncode == 2, f"Expected exit 2 for {mode} {bad_var}={bad_val!r}, got {proc.returncode}"
+            assert f"REFUSED: {bad_var}='{bad_val}' must be 40 hex characters" in proc.stderr
+            assert not (tmp_path / name / "captured_env.txt").exists(), "Window must not open on refused commit sha"
 
 
 

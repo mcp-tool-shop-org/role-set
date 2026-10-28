@@ -715,6 +715,30 @@ def test_gate_jsonl_records_vm_name_zone_and_pool_from_colab_sessions_for_every_
     ], rows
 
 
+def test_toolcount_role_uploads_toolcount_pkg_tar_and_forwards_its_sha256():
+    import json
+
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    st = out.parent / "st"
+    uploads = (st / "uploads.log").read_text(encoding="utf-8").splitlines()
+    assert "vm1 /content/toolcount-pkg.tar" in uploads, uploads
+    assert "uploaded toolcount-pkg.tar" in rig, rig
+    assert (st / "vm" / "content" / "toolcount-pkg.tar").is_file()
+    job_sh = (st / "job-1.sh").read_text(encoding="utf-8")
+    assert "PIN_TOOLCOUNT_PKG_SHA256=" in job_sh, job_sh
+    res = json.loads((out / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is True, res
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     only = set(sys.argv[1:])
     failed = 0
