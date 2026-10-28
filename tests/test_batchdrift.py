@@ -1099,3 +1099,57 @@ def test_smoke_window_accepts_batching_drift_read_token_and_refuses_write_token(
     )
     assert "PIN_ROLE=batching-drift may not send HF_TOKEN_GGUF_WRITE" in rig_bad and not job_bad, rig_bad
     assert not (out_bad.parent / "st" / "news").exists()
+
+
+def test_batchdrift_import_checks_role_set_out_before_importing_replay(tmp_path, monkeypatch):
+    # Window BL1 failed on a fresh VM with `No module named 'replay'`: pin_window imported scripts/batchdrift before
+    # role_set_env had cloned role-set. Here neither the VM checkout nor the repo root has scripts/batchdrift until
+    # role_set_env runs, so the import only succeeds if the clone comes first.
+    content = tmp_path / "content"
+    content.mkdir()
+    empty_root = tmp_path / "no-repo"
+    empty_root.mkdir()
+    src_dir = Path(__file__).resolve().parents[1] / "scripts" / "batchdrift"
+    import aspire_si_gates  # the test venv has it; the VM's pin_window interpreter does not
+
+    gates_pkg = Path(aspire_si_gates.__file__).resolve().parent
+    calls = []
+
+    def fake_role_set_env(commit):
+        calls.append(commit)
+        dst = content / "role-set" / "scripts" / "batchdrift"
+        shutil.copytree(src_dir, dst)
+        site = content / "rs-venv" / "lib" / "python3.15" / "site-packages"
+        shutil.copytree(gates_pkg, site / gates_pkg.name)  # the venv role_set_env built holds the gates package
+        return {"commit": commit}
+
+    monkeypatch.setattr(pw, "CONTENT", content)
+    monkeypatch.setattr(pw, "_repo_root", lambda: empty_root)
+    monkeypatch.setattr(pw, "role_set_env", fake_role_set_env)
+    monkeypatch.setenv("PIN_ROLESET_COMMIT", "a" * 40)
+    monkeypatch.delitem(sys.modules, "replay", raising=False)
+    for entry in [x for x in sys.path if x.endswith(("batchdrift", "batchdrift/", "batchdrift\\"))]:
+        monkeypatch.setattr(sys, "path", [x for x in sys.path if x != entry])
+    # As on the VM: aspire_si_gates is nowhere on this interpreter's path until the venv's site-packages is added.
+    for name in [m for m in sys.modules if m == "aspire_si_gates" or m.startswith("aspire_si_gates.")]:
+        monkeypatch.delitem(sys.modules, name)
+    monkeypatch.setattr(sys, "path", [x for x in sys.path if "site-packages" not in x])
+    monkeypatch.setattr(pw, "_TOKEN", "sentinel-token")
+    seen_token = []
+    real_fake = fake_role_set_env
+
+    def watching_role_set_env(commit):
+        seen_token.append(pw._TOKEN)
+        return real_fake(commit)
+
+    monkeypatch.setattr(pw, "role_set_env", watching_role_set_env)
+    result = {}
+    mod = pw.import_batchdrift_replay(result)
+    assert calls == ["a" * 40]
+    assert result["role_set"] == {"commit": "a" * 40}
+    assert Path(mod.__file__).resolve().parent == (content / "role-set" / "scripts" / "batchdrift").resolve()
+    assert seen_token == [None], "role_set_env ran with the token in memory"
+    assert pw._TOKEN == "sentinel-token", "the token was not handed back after the clone"
+    from role_set import gates
+
+    gates.load_gates()  # resolves aspire_si_gates from the venv's site-packages, as the window's comparison needs

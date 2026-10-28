@@ -933,6 +933,12 @@ def batching_drift_window(built: dict, result: dict, pw_mod=None) -> None:
             held_token = None
         rs = result["role_set"] = pw_mod.role_set_env(os.environ["PIN_ROLESET_COMMIT"])
         result["rnd"] = pw_mod.install_rnd(os.environ["PIN_RND_COMMIT"])
+        # Preflight: the comparison at the end needs the gates (aspire_si_gates); fail here, before any paid arm, not
+        # after six of them (review ko, 2026-10-28).
+        from role_set import gates as _gates  # noqa: PLC0415
+
+        _gates.load_gates()
+        result["gates_preflight"] = "ok"
         critic_name = (
             os.environ.get("PIN_BATCHDRIFT_CRITIC")
             or os.environ.get("PIN_CRITIC_MODEL")
