@@ -10,6 +10,7 @@ import os
 import re
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -61,10 +62,27 @@ class StubLlama:
     def __init__(self, writer_model: str = "stub", critic_model: str = "stub", *, critic: MockCritic | None = None,
                  writer: MockWriter | None = None, port: int = 0, ollama_model: str | None = None,
                  ollama_digest: str | None = None, ollama_version: str = "0.40.4",
-                 ollama_models_dir: Path | None = None):
+                 ollama_models_dir: Path | None = None, parallel: int = 1, n_ctx_per_slot: int = 32768,
+                 extra_args: list[str] | None = None, call_delay_s: float = 0.0,
+                 out_of_order: bool = False, cached_tokens: int = 0):
         self.writer_model, self.critic_model = writer_model, critic_model
         self.writer = writer or MockWriter()
         self.critic = critic or MockCritic(answers=getattr(self.writer, "answers", None))
+        self.parallel = max(1, int(parallel))
+        self.n_ctx_per_slot = int(n_ctx_per_slot)
+        self.extra_args = list(extra_args) if extra_args else []
+        self.call_delay_s = float(call_delay_s)
+        self.out_of_order = bool(out_of_order)
+        self.cached_tokens = int(cached_tokens)
+        self._flight_lock = threading.Lock()
+        self._flight_cond = threading.Condition(self._flight_lock)
+        self._critic_lock = threading.Lock()
+        self._arrival_seq = 0
+        self.in_flight = 0
+        self.max_in_flight = 0
+        self.in_flight_history: list[int] = []
+        self.slots_polls: list[int] = []
+        self.slot_log: list[str] = []
         self.requests: list[dict] = []
         self.ollama_requests: list[tuple[str, dict]] = []
         self.ollama_model = ollama_model or writer_model
@@ -101,7 +119,35 @@ class StubLlama:
                 self.wfile.write(data)
 
             def do_GET(self):  # noqa: N802 - http.server's name
-                if self.path == "/api/version":
+                if self.path == "/health":
+                    self._send_json(200, {"status": "ok"})
+                elif self.path == "/props":
+                    self._send_json(
+                        200,
+                        {
+                            "total_slots": stub.parallel,
+                            "default_generation_settings": {"n_ctx": stub.n_ctx_per_slot},
+                            "extra_args": list(stub.extra_args),
+                        },
+                    )
+                elif self.path == "/slots":
+                    with stub._flight_cond:
+                        busy = stub.in_flight
+                        stub.slots_polls.append(busy)
+                        stub._flight_cond.notify_all()
+                    self._send_json(
+                        200,
+                        [
+                            {
+                                "id": i,
+                                "is_processing": i < busy,
+                                "state": 1 if i < busy else 0,
+                                "n_ctx": stub.n_ctx_per_slot,
+                            }
+                            for i in range(stub.parallel)
+                        ],
+                    )
+                elif self.path == "/api/version":
                     self._send_json(200, {"version": stub.ollama_version})
                 elif self.path == "/api/tags":
                     active_digest = _active_digest()
@@ -218,28 +264,87 @@ class StubLlama:
                             },
                         )
                         return
-                stub.requests.append(body)
-                msgs = body.get("messages") or []
-                system = msgs[0].get("content") or "" if msgs else ""
-                user = msgs[-1].get("content") or "" if msgs else ""
-                if "## The trait lesson\n" in user:
-                    stub.in_apply = "# 4." in user or "## 4." in user or "Lesson T04" in user
-                elif "Lesson T04," in user:
-                    stub.in_apply = True
-                elif "Lesson T02," in user:
-                    stub.in_apply = False
-                is_writer = ("training items" in system or "training item" in system or "everyday material" in system)
-                if body["model"] == stub.writer_model and (body["model"] != stub.critic_model or is_writer):
-                    c = stub.writer(msgs, seed=body.get("seed") or 0, slot_id="T04-AP" if stub.in_apply else None)
-                elif body["model"] == stub.critic_model:
-                    c = stub.critic(msgs, seed=body.get("seed") or 0)
-                else:
-                    self.send_response(404)
-                    self.end_headers()
-                    return
-                out = {"model": body["model"], "choices": [{"message": {"content": c.text}, "finish_reason": "stop"}],
-                       "usage": {"prompt_tokens": 10, "completion_tokens": len(c.text.split())}}
-                self._send_json(200, out)
+                with stub._flight_cond:
+                    seq = stub._arrival_seq
+                    stub._arrival_seq += 1
+                    stub.in_flight += 1
+                    stub.in_flight_history.append(stub.in_flight)
+                    if stub.in_flight > stub.max_in_flight:
+                        stub.max_in_flight = stub.in_flight
+                    stub.slot_log.append(
+                        f"slot {seq % stub.parallel}: busy {stub.in_flight}/{stub.parallel} n_ctx={stub.n_ctx_per_slot}"
+                    )
+                    stub.requests.append(body)
+                    stub._flight_cond.notify_all()
+                    if stub.parallel > 1:
+                        stub._flight_cond.wait_for(lambda: stub.in_flight >= stub.parallel, timeout=0.08)
+                try:
+                    if stub.out_of_order and stub.parallel > 1:
+                        slot_pos = seq % stub.parallel
+                        time.sleep((stub.parallel - 1 - slot_pos) * 0.015)
+                    if stub.call_delay_s > 0:
+                        time.sleep(stub.call_delay_s)
+                    msgs = body.get("messages") or []
+                    system = msgs[0].get("content") or "" if msgs else ""
+                    user = msgs[-1].get("content") or "" if msgs else ""
+                    if "## The trait lesson\n" in user:
+                        stub.in_apply = "# 4." in user or "## 4." in user or "Lesson T04" in user
+                    elif "Lesson T04," in user:
+                        stub.in_apply = True
+                    elif "Lesson T02," in user:
+                        stub.in_apply = False
+                    is_writer = ("training items" in system or "training item" in system or "everyday material" in system)
+                    if body["model"] == stub.writer_model and (body["model"] != stub.critic_model or is_writer):
+                        with stub._critic_lock:
+                            c = stub.writer(msgs, seed=body.get("seed") or 0, slot_id="T04-AP" if stub.in_apply else None)
+                    elif body["model"] == stub.critic_model:
+                        with stub._critic_lock:
+                            c = stub.critic(msgs, seed=body.get("seed") or 0)
+                    else:
+                        self.send_response(404)
+                        self.end_headers()
+                        return
+                    words = c.text.split() or ["ok"]
+                    msg_payload: dict = {"content": c.text}
+                    choice_payload: dict = {"message": msg_payload, "finish_reason": "stop"}
+                    if body.get("logprobs"):
+                        digest = hashlib.sha256((system + "\n" + user).encode("utf-8")).hexdigest()[:16]
+                        msg_payload["reasoning_content"] = f"stub reasoning {digest} seed={body.get('seed', 0)}"
+                        choice_payload["logprobs"] = {
+                            "content": [
+                                {
+                                    "token": tok,
+                                    "logprob": -0.05,
+                                    "top_logprobs": [
+                                        {"token": tok, "logprob": -0.05},
+                                        {"token": "alt1", "logprob": -3.1},
+                                        {"token": "alt2", "logprob": -4.2},
+                                        {"token": "alt3", "logprob": -5.3},
+                                        {"token": "alt4", "logprob": -6.4},
+                                    ],
+                                }
+                                for tok in words
+                            ]
+                        }
+                    out = {
+                        "model": body["model"],
+                        "choices": [choice_payload],
+                        "timings": {
+                            "cache_n": stub.cached_tokens,
+                            "prompt_n": 10,
+                            "predicted_n": len(words),
+                        },
+                        "usage": {
+                            "prompt_tokens": 10,
+                            "completion_tokens": len(words),
+                            "prompt_tokens_details": {"cached_tokens": stub.cached_tokens},
+                        },
+                    }
+                    self._send_json(200, out)
+                finally:
+                    with stub._flight_cond:
+                        stub.in_flight -= 1
+                        stub._flight_cond.notify_all()
 
         self.server = _ReuseHTTPServer(("127.0.0.1", port), Handler)
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
