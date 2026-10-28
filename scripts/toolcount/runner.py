@@ -239,11 +239,14 @@ def calibrate_length_control_padding(
     padded_10_text = f"{SYSTEM_PROMPT}{padding_block}\n{l10_payload}\n{sample_prompt}"
     calibrated_tokens = _count_tokens(padded_10_text)
 
-    # Fine-tune if server /tokenize is active and gap > 32 tokens
-    if calibrated_tokens < tokens_100 and (tokens_100 - calibrated_tokens) > 16:
-        extra_Ratio = tokens_100 / max(1, calibrated_tokens - tokens_10)
-        adjusted = int(needed_pad_tokens * extra_Ratio)
-        padding_block = build_inert_padding_block(adjusted)
+    # Fine-tune in either direction (overshoot or undershoot) when gap > 16 tokens
+    current_target_pad = needed_pad_tokens
+    for _ in range(2):
+        if abs(calibrated_tokens - tokens_100) <= 16:
+            break
+        ratio = (tokens_100 - tokens_10) / max(1, calibrated_tokens - tokens_10)
+        current_target_pad = max(18, int(round(current_target_pad * ratio)))
+        padding_block = build_inert_padding_block(current_target_pad)
         padded_10_text = f"{SYSTEM_PROMPT}{padding_block}\n{l10_payload}\n{sample_prompt}"
         calibrated_tokens = _count_tokens(padded_10_text)
 

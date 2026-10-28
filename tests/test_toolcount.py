@@ -1019,3 +1019,81 @@ def test_fix1_compass_ollama_embedder_prefixes_and_metadata(
     assert tc_emb.embed_text("doc") == [1.0, 0.0, 0.0, 0.0]
 
 
+def test_fix2_calibrate_length_control_padding_both_directions(r0_bundle: dict[str, Any]) -> None:
+    """Fix 2: calibrate_length_control_padding adjusts both when calibrated_tokens > tokens_100
+    and when calibrated_tokens < tokens_100, using (tokens_100 - tokens_10) / max(1, calibrated_tokens - tokens_10),
+    keeping calibrated_prompt_tokens matched to target_100_tool_tokens and well below N_CTX=16384.
+    """
+    import http.server
+    import threading
+
+    registry_by_name = {t["name"]: t for t in r0_bundle["registry"]}
+    first_item = r0_bundle["items"][0]
+    anchor_lists = r0_bundle["lists_by_anchor"][first_item["anchor_id"]]["lists"]
+    l10 = [registry_by_name[n] for n in anchor_lists["10"]["tools"]]
+    l100 = [registry_by_name[n] for n in anchor_lists["100"]["tools"]]
+
+    # Direction A: initial padding overshoots target_100_tool_tokens (calibrated_tokens > tokens_100)
+    cal_over = calibrate_length_control_padding(
+        server_url=None,
+        l10_tools=l10,
+        l100_tools=l100,
+        sample_prompt=first_item["prompt"],
+    )
+    assert cal_over["calibrated_prompt_tokens"] < 16384, (
+        f"Padded L_10 overflowed N_CTX=16384: {cal_over['calibrated_prompt_tokens']}"
+    )
+    assert abs(cal_over["calibrated_prompt_tokens"] - cal_over["target_100_tool_tokens"]) <= 64, (
+        f"Expected calibrated_prompt_tokens ~ {cal_over['target_100_tool_tokens']}, "
+        f"got {cal_over['calibrated_prompt_tokens']}"
+    )
+
+    # Direction B: initial padding undershoots target_100_tool_tokens (calibrated_tokens < tokens_100)
+    class CompactFillerTokenizeHandler(http.server.BaseHTTPRequestHandler):
+        def do_POST(self) -> None:  # noqa: N802
+            length = int(self.headers.get("Content-Length", "0"))
+            body = json.loads(self.rfile.read(length).decode("utf-8"))
+            content = body.get("content", "")
+            # Simulate a tokenizer where non-filler text is 1 token per 2 chars (large tokens_10 and tokens_100)
+            # and each filler line is only 10 tokens (< 18 assumed by build_inert_padding_block), so initial
+            # padding undershoots tokens_100.
+            if "--- BEGIN INERT LENGTH-CONTROL PADDING BLOCK ---" in content:
+                before, after_begin = content.split("--- BEGIN INERT LENGTH-CONTROL PADDING BLOCK ---", 1)
+                pad_inner, after = after_begin.split("--- END INERT LENGTH-CONTROL PADDING BLOCK ---", 1)
+                base_toks = (len(before) + len(after)) // 2
+                n_lines = sum(1 for ln in pad_inner.splitlines() if "REFERENCE_FILLER_LINE:" in ln)
+                total_toks = base_toks + n_lines * 10
+            else:
+                total_toks = len(content) // 2
+            resp = json.dumps({"tokens": [1] * total_toks}).encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(resp)))
+            self.end_headers()
+            self.wfile.write(resp)
+
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            return
+
+    server = http.server.HTTPServer(("127.0.0.1", 0), CompactFillerTokenizeHandler)
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cal_under = calibrate_length_control_padding(
+            server_url=f"http://127.0.0.1:{port}",
+            l10_tools=l10,
+            l100_tools=l100,
+            sample_prompt=first_item["prompt"],
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert abs(cal_under["calibrated_prompt_tokens"] - cal_under["target_100_tool_tokens"]) <= 64, (
+        f"Undershoot branch failed to converge to {cal_under['target_100_tool_tokens']}: "
+        f"got {cal_under['calibrated_prompt_tokens']}"
+    )
+
+
+
