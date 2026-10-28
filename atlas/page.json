@@ -53,53 +53,46 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 5,
-      "changed": 8,
+      "added": 2,
+      "changed": 0,
       "moved": 0,
-      "parts": 3,
-      "removed": 2
+      "parts": 1,
+      "removed": 0
     },
     "items": [
       {
         "kind": "landing",
-        "sentence": "scripts/batchdrift/ is now read by scripts/batchdrift/compare_batch.py and scripts/batchdrift/replay.py.",
+        "sentence": "roles/domains/naics-2022.json is now also read by scripts/colab/pin_window.py.",
         "subjects": [
-          "scripts/batchdrift/",
-          "scripts/batchdrift/compare_batch.py",
-          "scripts/batchdrift/replay.py"
+          "roles/domains/naics-2022.json",
+          "scripts/colab/pin_window.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "scripts/batchdrift/requests-60.jsonl is now read by scripts/batchdrift/build_requests60.py and scripts/batchdrift/replay.py.",
+        "sentence": "roles/verifier/pool.jsonl is now also read by scripts/colab/pin_window.py.",
         "subjects": [
-          "scripts/batchdrift/requests-60.jsonl",
-          "scripts/batchdrift/build_requests60.py",
-          "scripts/batchdrift/replay.py"
+          "roles/verifier/pool.jsonl",
+          "scripts/colab/pin_window.py"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "scripts/colab/ is now also read by scripts/batchdrift/replay.py.",
+        "sentence": "src/ is now also read by scripts/colab/pin_window.py.",
         "subjects": [
-          "scripts/colab/",
-          "scripts/batchdrift/replay.py"
+          "src/",
+          "scripts/colab/pin_window.py"
         ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 1 more new writer or reader of a place.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "5 files added, 2 removed and 8 changed content, across 3 parts.",
+        "sentence": "2 files added, across 1 part.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "06866767643098c87d1fe66447d139f0d4fe66cb",
-      "generatedAt": "2026-10-28T03:08:53.100Z"
+      "commit": "184e9f0d98715f08ad63973eb5fca7910536ad37",
+      "generatedAt": "2026-10-28T04:46:32.979Z"
     },
     "unchanged": false
   },
@@ -166,14 +159,14 @@
     }
   ],
   "changesTogetherNote": [
-    "6 files changed together with their own tests, as expected.",
+    "5 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
     "Window: 180 days; a pair counts from 3 shared commits, since 24 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do."
   ],
-  "changesTogetherWithTests": 6,
-  "commit": "184e9f0d98715f08ad63973eb5fca7910536ad37",
-  "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (125 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "changesTogetherWithTests": 5,
+  "commit": "46289bc4615e80bef0d6716dda46ab4bff4bf590",
+  "defaultBranch": "fix/offrig-bench-ollama-zstd",
+  "derived": "9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -193,7 +186,7 @@
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 14
+          "files": 15
         },
         {
           "boundary": "src",
@@ -342,11 +335,11 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-28T04:46:32.979Z",
+  "generatedAt": "2026-10-28T05:03:08.808Z",
   "limits": [
-    "8 imports could not be resolved: `scripts/toolcount/runner.py` imports `scripts.colab`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `compare_batch`, which is no module on its import path and no declared dependency; and 5 more.",
-    "2 writes and 18 reads use paths built at run time and are not named here.",
-    "28 writes and 99 reads go to a path their caller passes, not to this repository.",
+    "8 imports could not be resolved: `scripts/batchdrift/replay.py` imports `pin_window`, which is no module on its import path and no declared dependency, twice; `scripts/colab/pin_window.py` imports `replay`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; and 4 more.",
+    "9 writes and 35 reads use paths built at run time and are not named here.",
+    "72 writes and 156 reads go to a path their caller passes, not to this repository.",
     "15 reads go to the directory the command is run in, not to this repository.",
     "9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -365,7 +358,7 @@
   },
   "parts": 9,
   "readers": [],
-  "repo": "mcp-tool-shop-org/role-set",
+  "repo": "clean-role-set-atlas",
   "sequences": [],
   "startDoor": "pyproject.toml#role-set",
   "startHere": [
@@ -378,10 +371,10 @@
   "summaryFrom": "person",
   "testFiles": 76,
   "testedBy": {
-    "scripts": 10,
-    "src": 50
+    "scripts": 12,
+    "src": 54
   },
-  "unnamedWrites": 2,
+  "unnamedWrites": 9,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],

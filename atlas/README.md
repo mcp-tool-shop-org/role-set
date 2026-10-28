@@ -1,20 +1,19 @@
-# role-set: how it works
+# clean-role-set-atlas: how it works
 
-Mapped at 2026-10-28 from commit 184e9f0 by Atlas 1.24.0.
+Mapped at 2026-10-28 from commit 46289bc by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (125 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-28 (0686676)
+## What changed since 2026-10-28 (184e9f0)
 
-- scripts/batchdrift/ is now read by scripts/batchdrift/compare_batch.py and scripts/batchdrift/replay.py.
-- scripts/batchdrift/requests-60.jsonl is now read by scripts/batchdrift/build_requests60.py and scripts/batchdrift/replay.py.
-- scripts/colab/ is now also read by scripts/batchdrift/replay.py.
-- And 1 more new writer or reader of a place.
-- 5 files added, 2 removed and 8 changed content, across 3 parts.
+- roles/domains/naics-2022.json is now also read by scripts/colab/pin_window.py.
+- roles/verifier/pool.jsonl is now also read by scripts/colab/pin_window.py.
+- src/ is now also read by scripts/colab/pin_window.py.
+- 2 files added, across 1 part.
 
 ## What comes in
 
@@ -25,7 +24,7 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (14 files) and src (43 files).
+2. That reaches scripts (15 files) and src (43 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -52,7 +51,7 @@ CI writes nothing this map can see.
 - **src/role_set/readout.py** and **tests/test_paid_run_data.py** changed together in 7 of 14 commits, and the tests part imports the src part.
 - **src/role_set/generate/recipes.py** and **tests/test_generate.py** changed together in 6 of 12 commits, and the tests part imports the src part.
 
-6 files changed together with their own tests, as expected.
+5 files changed together with their own tests, as expected.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
@@ -81,7 +80,7 @@ No two parts export a helper that looks alike.
 
 ## Hand-authored
 
-People write .github/, assets/, docs/, the repository root and site/; 2 writes with paths built at run time may land here.
+People write .github/, assets/, docs/, the repository root and site/; 9 writes with paths built at run time may land here.
 
 ## Where to start
 
@@ -91,9 +90,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 8 imports could not be resolved: `scripts/toolcount/runner.py` imports `scripts.colab`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `compare_batch`, which is no module on its import path and no declared dependency; and 5 more.
-- 2 writes and 18 reads use paths built at run time and are not named here.
-- 28 writes and 99 reads go to a path their caller passes, not to this repository.
+- 8 imports could not be resolved: `scripts/batchdrift/replay.py` imports `pin_window`, which is no module on its import path and no declared dependency, twice; `scripts/colab/pin_window.py` imports `replay`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; and 4 more.
+- 9 writes and 35 reads use paths built at run time and are not named here.
+- 72 writes and 156 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
