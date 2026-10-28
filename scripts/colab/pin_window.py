@@ -1219,17 +1219,29 @@ CRITIC_CTX = 32768
 CRITIC_PORT = 8092
 
 
-def start_server(built: dict, model: dict, ctx: int, port: int):
+def start_server(
+    built: dict,
+    model: dict,
+    ctx: int,
+    port: int,
+    *,
+    parallel: int = 1,
+    extra_args: list[str] | None = None,
+):
     """llama-server for one model, its log in a file; waits until healthy and fails at once if the server exits."""
 
     env = {**os.environ, "LD_LIBRARY_PATH": ":".join(str(p) for p in _cuda_lib_dirs()) + ":" + os.environ.get("LD_LIBRARY_PATH", "")}
     server_log = WORK / f"{model['served_as']}-critic-server.log"
     log_fh = open(server_log, "w", encoding="utf-8")  # noqa: SIM115 - closed by stop_server
-    # One slot: llama-server's default runs several, and each gets ctx / n_slots, so a long thinking reply would
-    # truncate at a quarter of the context (R&D on the critic window).
-    proc = subprocess.Popen([built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
-                             "--log-verbosity", str(LOAD_LOG_VERBOSITY),
-                             "-c", str(ctx), "--parallel", "1", "--jinja", "--reasoning-format", "deepseek"], stdout=log_fh,
+    # Default: one slot, because llama-server's default runs several and each gets ctx / n_slots (R&D on the critic
+    # window). Callers that pass parallel > 1 scale ctx accordingly and assert per-slot ctx via slots().
+    cmd = [
+        built["path"], "-m", model["path"], "--port", str(port), "--host", "127.0.0.1", "-ngl", "999",
+        "--log-verbosity", str(LOAD_LOG_VERBOSITY),
+        "-c", str(ctx), "--parallel", str(parallel), "--jinja", "--reasoning-format", "deepseek",
+        *(extra_args or []),
+    ]
+    proc = subprocess.Popen(cmd, stdout=log_fh,
                             stderr=subprocess.STDOUT, text=True, env=env, start_new_session=True)
     for _ in range(180):
         if proc.poll() is not None:
@@ -1269,14 +1281,15 @@ def all_on_gpu(lines: list[str]) -> dict:
     return {"offloaded": None, "layers": None, "ok": False, "why": "no 'offloaded N/M layers to GPU' line in the server log"}
 
 
-def slots(port: int, want_ctx: int) -> dict:
-    """The server's slot count and per-slot context, from /props; a per-slot context under the run's is refused."""
+def slots(port: int, want_ctx: int, want_slots: int = 1) -> dict:
+    """The server's slot count and per-slot context, from /props; a slot count mismatch or per-slot context under the run's is refused."""
 
     with urllib.request.urlopen(f"http://127.0.0.1:{port}/props", timeout=30) as r:  # noqa: S310 - loopback
         props = json.loads(r.read())
+    total = props.get("total_slots")
     per_slot = (props.get("default_generation_settings") or {}).get("n_ctx")
-    return {"total_slots": props.get("total_slots"), "n_ctx_per_slot": per_slot,
-            "ok": isinstance(per_slot, int) and per_slot >= want_ctx}
+    return {"total_slots": total, "n_ctx_per_slot": per_slot,
+            "ok": total == want_slots and isinstance(per_slot, int) and per_slot >= want_ctx}
 
 
 def tokenize_all(port: int, texts: list, want: list) -> dict:
@@ -1365,6 +1378,32 @@ def pinned_uv() -> str:
     if got != UV_VERSION:
         raise RuntimeError(f"REFUSED: uv {got} after the pinned install, not {UV_VERSION}")
     return installed
+
+
+def import_batchdrift_replay(result: dict):
+    """The batching-drift window's code lives in role-set's scripts/batchdrift, which a fresh VM has only after
+    role_set_env checks role-set out: clone first, then import (window BL1, 2026-10-28, failed `No module named
+    'replay'` because the import ran before the clone). role_set_env is idempotent, so batching_drift_window's own call
+    afterwards finds the checkout and venv in place."""
+
+    global _TOKEN
+    held, _TOKEN = _TOKEN, None  # the clone and installs run with no token in memory, as batching_drift_window's do
+    try:
+        if os.environ.get("PIN_ROLESET_COMMIT"):
+            result["role_set"] = role_set_env(os.environ["PIN_ROLESET_COMMIT"])
+    finally:
+        _TOKEN = held
+    for p in (CONTENT / "role-set" / "scripts" / "batchdrift", _repo_root() / "scripts" / "batchdrift"):
+        if p.exists() and str(p) not in sys.path:
+            sys.path.insert(0, str(p))
+    # role_set's gates import aspire_si_gates (a pyproject pin, pure Python) by name, and only the role-set venv has it.
+    # Appended last, so the venv never shadows this interpreter's own packages (review ko, 2026-10-28).
+    for sp in sorted((CONTENT / "rs-venv").glob("lib/python*/site-packages")):
+        if str(sp) not in sys.path:
+            sys.path.append(str(sp))
+    import replay  # noqa: PLC0415
+
+    return replay
 
 
 def role_set_env(commit: str) -> dict:
@@ -1582,7 +1621,8 @@ def _slow_stub(inner):
 
 
 def _start_stub(name: str, port: int, *, ollama_model: str | None = None, ollama_digest: str | None = None,
-                ollama_version: str = "0.40.4"):
+                ollama_version: str = "0.40.4", parallel: int = 1, n_ctx_per_slot: int = CRITIC_CTX,
+                extra_args: list[str] | None = None):
     """StubLlama on PILOT_PORT, answering with role-set's MockWriter and MockCritic."""
 
     global _STUB_WRITER
@@ -1596,7 +1636,8 @@ def _start_stub(name: str, port: int, *, ollama_model: str | None = None, ollama
         _STUB_WRITER = MockWriter()
     w = _STUB_WRITER
     c = MockCritic(answers=w.answers)
-    if ollama_model is not None and "ollama_model" in stub_mod.StubLlama.__init__.__code__.co_varnames:
+    varnames = stub_mod.StubLlama.__init__.__code__.co_varnames
+    if ollama_model is not None and "ollama_model" in varnames:
         return stub_mod.StubLlama(
             name,
             name,
@@ -1609,7 +1650,18 @@ def _start_stub(name: str, port: int, *, ollama_model: str | None = None, ollama
         )
     if ollama_model is not None:
         raise ImportError("StubLlama has no ollama_model support")
-    if "port" in stub_mod.StubLlama.__init__.__code__.co_varnames:
+    if "parallel" in varnames:
+        return stub_mod.StubLlama(
+            name,
+            name,
+            writer=_slow_stub(w),
+            critic=_slow_stub(c),
+            port=port,
+            parallel=parallel,
+            n_ctx_per_slot=n_ctx_per_slot,
+            extra_args=extra_args,
+        )
+    if "port" in varnames:
         return stub_mod.StubLlama(name, name, writer=_slow_stub(w), critic=_slow_stub(c), port=port)
     # Fallback when /content/role-set is checked out at an earlier commit before StubLlama gained `port`.
     orig_srv = stub_mod.ThreadingHTTPServer
@@ -1647,28 +1699,73 @@ def _start_stub(name: str, port: int, *, ollama_model: str | None = None, ollama
 class Served:
     """One model's GGUF on disk; each start re-checks its sha256 against the pin, its offload and its slots."""
 
-    def __init__(self, built: dict, model: dict, pinned: str):
+    def __init__(
+        self,
+        built: dict,
+        model: dict,
+        pinned: str,
+        *,
+        parallel: int = 1,
+        ctx: int | None = None,
+        extra_args: list[str] | None = None,
+    ):
         self.built, self.model, self.pinned = built, model, pinned
+        self.parallel = max(1, int(parallel))
+        self.ctx = (CRITIC_CTX * self.parallel) if ctx is None else int(ctx)
+        self.extra_args = list(extra_args) if extra_args else None
         self.proc = self.log_fh = self.stub = None
         self.starts: list = []
 
     def __enter__(self):
+        want_per_slot = self.ctx // self.parallel
         if stub_mode():
             t0 = time.time()
-            self.stub = _start_stub(self.model["served_as"], PILOT_PORT)
+            self.stub = _start_stub(
+                self.model["served_as"],
+                PILOT_PORT,
+                parallel=self.parallel,
+                n_ctx_per_slot=want_per_slot,
+                extra_args=self.extra_args,
+            )
             fit = {"offloaded": 1, "layers": 1, "ok": True, "stub": True}
-            sl = {"total_slots": 1, "n_ctx_per_slot": CRITIC_CTX, "ok": True, "stub": True}
-            self.starts.append({"seconds": round(time.time() - t0), "fit": fit, "slots": sl, "stub": True})
+            sl = {**slots(PILOT_PORT, CRITIC_CTX, want_slots=self.parallel), "stub": True}
+            self.starts.append({
+                "seconds": round(time.time() - t0),
+                "parallel": self.parallel,
+                "ctx": self.ctx,
+                "extra_args": list(self.extra_args or []),
+                "fit": fit,
+                "slots": sl,
+                "stub": True,
+            })
+            if not sl["ok"]:
+                self.stub.close()
+                self.stub = None
+                raise RuntimeError(f"{self.model['served_as']}: fit {fit} slots {sl}; the arm stops")
             return self
         got = sha256(Path(self.model["path"]))
         if got != self.pinned:
             raise RuntimeError(f"{self.model['served_as']}: GGUF {got[:12]} isn't the pin {self.pinned[:12]}")
         t0 = time.time()
-        self.proc, self.log_fh, log = start_server(self.built, self.model, CRITIC_CTX, PILOT_PORT)
+        self.proc, self.log_fh, log = start_server(
+            self.built,
+            self.model,
+            self.ctx,
+            PILOT_PORT,
+            parallel=self.parallel,
+            extra_args=self.extra_args,
+        )
         self.log = log
         wait_for_log(log)
-        fit, sl = all_on_gpu(_offload_lines(log)), slots(PILOT_PORT, CRITIC_CTX)
-        self.starts.append({"seconds": round(time.time() - t0), "fit": fit, "slots": sl})
+        fit, sl = all_on_gpu(_offload_lines(log)), slots(PILOT_PORT, CRITIC_CTX, want_slots=self.parallel)
+        self.starts.append({
+            "seconds": round(time.time() - t0),
+            "parallel": self.parallel,
+            "ctx": self.ctx,
+            "extra_args": list(self.extra_args or []),
+            "fit": fit,
+            "slots": sl,
+        })
         if not fit["ok"] or not sl["ok"]:
             stop_server(self.proc, self.log_fh)
             raise RuntimeError(f"{self.model['served_as']}: fit {fit} slots {sl}; the arm stops")
@@ -5445,7 +5542,7 @@ def _main() -> int:
         return 1
     needs_token = (
         role0 == "prebuild"
-        or (role0 in ("pilot", "critic-eval", "toolcount") and bool(os.environ.get("PIN_GGUF_REPO")))
+        or (role0 in ("pilot", "critic-eval", "batching-drift", "toolcount") and bool(os.environ.get("PIN_GGUF_REPO")))
         or (role0 == "offrig-bench" and bool((os.environ.get("PIN_OLLAMA_MIRROR") or "").strip()))
     )
     if needs_token and not token_file().parent.is_dir():
@@ -5471,8 +5568,8 @@ def _main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval", "toolcount"):
-            if stub_mode() and role in ("pilot", "rescore", "critic-eval", "toolcount"):
+        if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval", "batching-drift", "toolcount"):
+            if stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift", "toolcount"):
                 result["llama_server"] = built = {"commit": matched_server_pin["commit"], "sha256": want_server_sha,
                                                   "archs": matched_server_pin["archs"], "sha256_override": server_sha_overridden,
                                                   "path": "stub", "stub": True}
@@ -5528,6 +5625,10 @@ def _main() -> int:
             specs = []
         elif role == "offrig-bench":
             offrig_bench_window(result)
+            specs = []
+        elif role == "batching-drift":
+            _bd_replay = import_batchdrift_replay(result)
+            _bd_replay.batching_drift_window(built, result, sys.modules[__name__])
             specs = []
         elif role == "toolcount":
             toolcount_window(built, specs, result)
@@ -5591,7 +5692,7 @@ def _main() -> int:
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
             if tokenizer_hard_stop_enabled() and result.get("stopped_reason"):
                 break
-        if role not in ("convert", "prebuild", "smoke", "offrig-bench", "toolcount") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval", "toolcount")):
+        if role not in ("convert", "prebuild", "smoke", "offrig-bench", "toolcount") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift", "toolcount")):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")

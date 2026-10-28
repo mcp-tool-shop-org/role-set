@@ -53,24 +53,55 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 8,
-      "changed": 0,
+      "added": 5,
+      "changed": 8,
       "moved": 0,
-      "parts": 2,
-      "removed": 0
+      "parts": 3,
+      "removed": 2
     },
     "items": [
       {
+        "kind": "landing",
+        "sentence": "scripts/batchdrift/ is now read by scripts/batchdrift/compare_batch.py and scripts/batchdrift/replay.py.",
+        "subjects": [
+          "scripts/batchdrift/",
+          "scripts/batchdrift/compare_batch.py",
+          "scripts/batchdrift/replay.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "scripts/batchdrift/requests-60.jsonl is now read by scripts/batchdrift/build_requests60.py and scripts/batchdrift/replay.py.",
+        "subjects": [
+          "scripts/batchdrift/requests-60.jsonl",
+          "scripts/batchdrift/build_requests60.py",
+          "scripts/batchdrift/replay.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "scripts/colab/ is now also read by scripts/batchdrift/replay.py.",
+        "subjects": [
+          "scripts/colab/",
+          "scripts/batchdrift/replay.py"
+        ]
+      },
+      {
+        "kind": "landing",
+        "sentence": "And 1 more new writer or reader of a place.",
+        "subjects": []
+      },
+      {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-28; 8 files added.",
+        "sentence": "5 files added, 2 removed and 8 changed content, across 3 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "d29499f77a81bda144ebd51885f3c167a04667aa",
-      "generatedAt": "2026-10-28T02:54:03.771Z"
+      "commit": "06866767643098c87d1fe66447d139f0d4fe66cb",
+      "generatedAt": "2026-10-28T03:08:53.100Z"
     },
-    "unchanged": true
+    "unchanged": false
   },
   "changesTogether": [
     {
@@ -137,12 +168,12 @@
   "changesTogetherNote": [
     "6 files changed together with their own tests, as expected.",
     "Confidence is low: fewer than 25 source files reach 10 revisions in the window.",
-    "Window: 180 days; a pair counts from 3 shared commits, since 23 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do."
+    "Window: 180 days; a pair counts from 3 shared commits, since 24 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "06866767643098c87d1fe66447d139f0d4fe66cb",
+  "commit": "184e9f0d98715f08ad63973eb5fca7910536ad37",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (122 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (125 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -157,12 +188,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 55
+          "files": 56
         },
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 15
+          "files": 14
         },
         {
           "boundary": "src",
@@ -311,11 +342,11 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-28T03:08:53.100Z",
+  "generatedAt": "2026-10-28T04:46:32.979Z",
   "limits": [
-    "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
-    "8 writes and 34 reads use paths built at run time and are not named here.",
-    "62 writes and 135 reads go to a path their caller passes, not to this repository.",
+    "8 imports could not be resolved: `scripts/toolcount/runner.py` imports `scripts.colab`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `compare_batch`, which is no module on its import path and no declared dependency; and 5 more.",
+    "2 writes and 18 reads use paths built at run time and are not named here.",
+    "28 writes and 99 reads go to a path their caller passes, not to this repository.",
     "15 reads go to the directory the command is run in, not to this repository.",
     "9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -345,12 +376,12 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 75,
+  "testFiles": 76,
   "testedBy": {
-    "scripts": 12,
-    "src": 53
+    "scripts": 10,
+    "src": 50
   },
-  "unnamedWrites": 8,
+  "unnamedWrites": 2,
   "unread": [],
   "unreadFiles": 0,
   "unreadNote": [],

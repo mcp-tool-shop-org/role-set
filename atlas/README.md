@@ -1,16 +1,20 @@
 # role-set: how it works
 
-Mapped at 2026-10-28 from commit 0686676 by Atlas 1.24.0.
+Mapped at 2026-10-28 from commit 184e9f0 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (122 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (125 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-28 (d29499f)
+## What changed since 2026-10-28 (0686676)
 
-Nothing structural changed since 2026-10-28; 8 files added.
+- scripts/batchdrift/ is now read by scripts/batchdrift/compare_batch.py and scripts/batchdrift/replay.py.
+- scripts/batchdrift/requests-60.jsonl is now read by scripts/batchdrift/build_requests60.py and scripts/batchdrift/replay.py.
+- scripts/colab/ is now also read by scripts/batchdrift/replay.py.
+- And 1 more new writer or reader of a place.
+- 5 files added, 2 removed and 8 changed content, across 3 parts.
 
 ## What comes in
 
@@ -21,7 +25,7 @@ Nothing structural changed since 2026-10-28; 8 files added.
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (15 files) and src (43 files).
+2. That reaches scripts (14 files) and src (43 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -52,7 +56,7 @@ CI writes nothing this map can see.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 23 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 24 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do.
 
 ## What no test touches
 
@@ -77,7 +81,7 @@ No two parts export a helper that looks alike.
 
 ## Hand-authored
 
-People write .github/, assets/, docs/, the repository root and site/; 8 writes with paths built at run time may land here.
+People write .github/, assets/, docs/, the repository root and site/; 2 writes with paths built at run time may land here.
 
 ## Where to start
 
@@ -87,9 +91,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
-- 8 writes and 34 reads use paths built at run time and are not named here.
-- 62 writes and 135 reads go to a path their caller passes, not to this repository.
+- 8 imports could not be resolved: `scripts/toolcount/runner.py` imports `scripts.colab`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `compare_batch`, which is no module on its import path and no declared dependency; and 5 more.
+- 2 writes and 18 reads use paths built at run time and are not named here.
+- 28 writes and 99 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

@@ -89,17 +89,17 @@
         "coChangesOnly": [],
         "collapsed": false,
         "confidence": "low",
-        "importsAndCoChanges": [
+        "importsAndCoChanges": [],
+        "importsOnly": [
           "tests"
-        ],
-        "importsOnly": []
+        ]
       },
-      "cohesion": 0,
+      "cohesion": null,
       "cohesionDropped": false,
       "confidence": "full",
       "highWater": null,
       "name": "scripts",
-      "qualifyingSourceCommits": 75,
+      "qualifyingSourceCommits": 36,
       "rebaseline": null
     },
     {
@@ -145,17 +145,17 @@
         ],
         "collapsed": false,
         "confidence": "low",
-        "importsAndCoChanges": [
+        "importsAndCoChanges": [],
+        "importsOnly": [
           "scripts"
-        ],
-        "importsOnly": []
+        ]
       },
       "cohesion": 0,
       "cohesionDropped": false,
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 137,
+      "qualifyingSourceCommits": 147,
       "rebaseline": null
     }
   ],
@@ -268,8 +268,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 56,
-        "lines": 1076,
+        "commits": 57,
+        "lines": 1090,
         "path": "atlas/README.md"
       },
       {
@@ -278,18 +278,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 56,
-        "lines": 3486,
+        "commits": 57,
+        "lines": 3518,
         "path": "atlas/page.json"
       },
       {
-        "commits": 56,
-        "lines": 8487,
+        "commits": 57,
+        "lines": 8605,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 56,
-        "lines": 41795,
+        "commits": 57,
+        "lines": 42190,
         "path": "atlas/structure.json"
       },
       {
@@ -343,8 +343,8 @@
         "path": "docs/runs/2026-10-12-pilot-3.md"
       },
       {
-        "commits": 18,
-        "lines": 77,
+        "commits": 19,
+        "lines": 81,
         "path": "pyproject.toml"
       },
       {
@@ -408,8 +408,8 @@
         "path": "scripts/colab/mock_job.py"
       },
       {
-        "commits": 71,
-        "lines": 10705,
+        "commits": 75,
+        "lines": 11191,
         "path": "scripts/colab/pin_window.py"
       },
       {
@@ -428,8 +428,8 @@
         "path": "scripts/colab/preflight_window.py"
       },
       {
-        "commits": 42,
-        "lines": 1138,
+        "commits": 43,
+        "lines": 1142,
         "path": "scripts/colab/smoke_window.sh"
       },
       {
@@ -498,8 +498,8 @@
         "path": "scripts/toolcount/__init__.py"
       },
       {
-        "commits": 1,
-        "lines": 380,
+        "commits": 2,
+        "lines": 535,
         "path": "scripts/toolcount/compass_lists.py"
       },
       {
@@ -508,8 +508,8 @@
         "path": "scripts/toolcount/gen_registry.py"
       },
       {
-        "commits": 1,
-        "lines": 193,
+        "commits": 2,
+        "lines": 211,
         "path": "scripts/toolcount/launch-w1.sh"
       },
       {
@@ -518,13 +518,13 @@
         "path": "scripts/toolcount/oracle.py"
       },
       {
-        "commits": 1,
-        "lines": 1433,
+        "commits": 5,
+        "lines": 1632,
         "path": "scripts/toolcount/runner.py"
       },
       {
-        "commits": 1,
-        "lines": 1172,
+        "commits": 2,
+        "lines": 1339,
         "path": "scripts/toolcount/scorer.py"
       },
       {
@@ -1153,8 +1153,8 @@
         "path": "tests/test_pilot_findings.py"
       },
       {
-        "commits": 46,
-        "lines": 8362,
+        "commits": 47,
+        "lines": 8372,
         "path": "tests/test_pin_window.py"
       },
       {
@@ -1228,8 +1228,8 @@
         "path": "tests/test_t10_variety.py"
       },
       {
-        "commits": 1,
-        "lines": 898,
+        "commits": 11,
+        "lines": 1517,
         "path": "tests/test_toolcount.py"
       },
       {
@@ -1283,9 +1283,9 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-10-28T03:08:53.100Z",
+  "generatedAt": "2026-10-28T04:46:32.979Z",
   "generatedFrom": {
-    "commit": "06866767643098c87d1fe66447d139f0d4fe66cb"
+    "commit": "184e9f0d98715f08ad63973eb5fca7910536ad37"
   },
   "pairs": [
     {
@@ -1487,43 +1487,43 @@
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 51,
-      "shared": 51,
+      "either": 52,
+      "shared": 52,
       "strength": 1
     },
     {
@@ -1536,16 +1536,16 @@
     {
       "a": "pyproject.toml",
       "b": "uv.lock",
-      "either": 18,
+      "either": 19,
       "shared": 16,
-      "strength": 0.888889
+      "strength": 0.842105
     },
     {
       "a": "scripts/colab/pin_window.py",
       "b": "tests/test_pin_window.py",
-      "either": 63,
-      "shared": 33,
-      "strength": 0.52381
+      "either": 67,
+      "shared": 34,
+      "strength": 0.507463
     },
     {
       "a": "src/role_set/assemble.py",
@@ -1628,16 +1628,16 @@
     "floor": "fallen",
     "floorHeld": true,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-10-27T22:55:07-04:00",
-    "inScopeFiles": 222,
+    "headDate": "2026-10-28T00:39:49-04:00",
+    "inScopeFiles": 239,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 181,
+    "qualifyingCommits": 193,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-05-01T02:55:07.000Z",
+    "since": "2026-05-01T04:39:49.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",
@@ -1653,7 +1653,7 @@
     ],
     "sourceFileReach": 20,
     "sourceFileRise": 25,
-    "sourceFilesReachingStrongFloor": 23,
+    "sourceFilesReachingStrongFloor": 24,
     "strength": 0.5,
     "windowDays": 180
   },
