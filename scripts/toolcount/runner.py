@@ -208,8 +208,8 @@ def calibrate_length_control_padding(
     timeout: int = 30,
 ) -> dict[str, Any]:
     """Calibrate the single-block system-message padding so L_10 + padding matches L_100 token count."""
-    l10_payload = json.dumps([format_openai_tool(t) for t in l10_tools], sort_keys=True)
-    l100_payload = json.dumps([format_openai_tool(t) for t in l100_tools], sort_keys=True)
+    l10_payload = json.dumps([format_openai_tool(t) for t in l10_tools], sort_keys=True, separators=(",", ":"))
+    l100_payload = json.dumps([format_openai_tool(t) for t in l100_tools], sort_keys=True, separators=(",", ":"))
 
     def _count_tokens(text: str) -> int:
         if server_url:
@@ -226,8 +226,8 @@ def calibrate_length_control_padding(
                         return len(toks)
             except Exception:
                 pass
-        # Deterministic fallback token estimate (~4 chars per token)
-        return max(1, len(text) // 4)
+        # Deterministic fallback token estimate (~5 chars per token on JSON tool schemas)
+        return max(1, len(text) // 5)
 
     base_10_text = f"{SYSTEM_PROMPT}\n{l10_payload}\n{sample_prompt}"
     base_100_text = f"{SYSTEM_PROMPT}\n{l100_payload}\n{sample_prompt}"
