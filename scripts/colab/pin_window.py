@@ -98,8 +98,6 @@ MODELS = [
     {"served_as": "granite-4.2-30b", "how": "convert", "repo": "ibm-granite/granite-4.2-30b",
      "revision": "9e668ce1c538387ef24d3644e9b0606647762636", "tokenizer_check": True,
      "expect_sha256": "1b5c47835f6f8b8732550541dc432d0a351e3f706961ff3c750d3ee1987b9b4c"},
-    {"served_as": "granite-4.2-8b", "how": "convert", "repo": "ibm-granite/granite-4.2-8b",
-     "revision": "a7042144125ce5ae64f89610e8289647fc000b9a", "tokenizer_check": True},
     # Gemma 4 was saved with transformers 5.5.0.dev0; its tokenizer_config's list-shaped extra_special_tokens breaks
     # llama.cpp's pinned 4.57.6 (window 5), so it converts in its own env, as Muse does.
     {"served_as": "gemma-4-31b-it", "how": "convert", "repo": "google/gemma-4-31B-it",
@@ -125,6 +123,13 @@ MODELS = [
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
      "card": "nemotron-3.5-bolt-74b-a9b-24gb", "expect_sha256": "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75"},
 ]
+# Tool-count cliff study model (Card kh item 7): kept separate from default MODELS so critic/q6k/convert/smoke/all
+# windows and writers.json pin checks only iterate over writers.json-pinned models when PIN_ONLY is unset.
+TOOLCOUNT_MODELS = [
+    {"served_as": "granite-4.2-8b", "how": "convert", "repo": "ibm-granite/granite-4.2-8b",
+     "revision": "a7042144125ce5ae64f89610e8289647fc000b9a", "tokenizer_check": True},
+]
+ALL_MODELS = [*MODELS, *TOOLCOUNT_MODELS]
 # Window 1's llama-server (built 2026-10-17 at LLAMA_CPP_COMMIT, nvcc 13.4.92): every later window runs this file,
 # unless PIN_SERVER_SHA256 names another pinned build (e.g. window 16g's G4 sm120 binary).
 SERVER_SHA256 = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
@@ -1083,7 +1088,55 @@ def tokenizer_hard_stop_enabled() -> bool:
     return os.environ.get("PIN_ROLE") == "toolcount"
 
 
-def check_tokenizer_or_stop(port: int, model: dict, spec: dict | None = None) -> tuple[dict | None, str | None]:
+def _populate_hosted_tokenizer_hf(model: dict, spec: dict | None, built: dict | None = None) -> None:
+    """Compute or load `tokenizer_hf` when a model came from `HOSTED` (so no BF16 snapshot was converted in this window)."""
+    if model.get("tokenizer_hf"):
+        return
+    served = model.get("served_as") or (spec or {}).get("served_as") or "model"
+    cached = WORK / f"{served}-tokenizer-hf.json"
+    if cached.is_file():
+        model["tokenizer_hf"] = json.loads(cached.read_text(encoding="utf-8"))
+        return
+    repo = (spec or {}).get("repo") or model.get("repo")
+    rev = (spec or {}).get("revision") or model.get("revision")
+    if not repo or stub_mode():
+        return
+    from huggingface_hub import snapshot_download  # noqa: PLC0415
+
+    tok_dir = WORK / f"{served}-tokenizer-snap"
+    snap = Path(
+        with_heartbeat(
+            lambda: snapshot_download(
+                repo,
+                revision=rev,
+                local_dir=tok_dir,
+                token=False,
+                allow_patterns=[
+                    "*tokenizer*",
+                    "*.model",
+                    "vocab*",
+                    "merges*",
+                    "special_tokens*",
+                    "config.json",
+                    "*.tiktoken",
+                    "*.jinja",
+                ],
+            ),
+            f"tokenizer:{served}",
+            download_timeout(None),
+            watch=tok_dir,
+        )
+    )
+    try:
+        py = converter_python(spec or model, built) if (built and built.get("src")) else sys.executable
+        model["tokenizer_hf"] = hf_token_ids(py, snap)
+    finally:
+        shutil.rmtree(snap, ignore_errors=True)
+
+
+def check_tokenizer_or_stop(
+    port: int, model: dict, spec: dict | None = None, built: dict | None = None
+) -> tuple[dict | None, str | None]:
     """Run tokenizer_check and return (tokenizer_record, stop_reason_or_None)."""
 
     served = model.get("served_as") or (spec or {}).get("served_as") or "model"
@@ -1096,6 +1149,19 @@ def check_tokenizer_or_stop(port: int, model: dict, spec: dict | None = None) ->
         }
         return forced_rec, f"tokenizer mismatch on {served}: forced by PIN_FORCE_TOKENIZER_MISMATCH=1"
     needs_check = bool((spec or {}).get("tokenizer_check")) or bool(model.get("tokenizer_hf")) or tokenizer_hard_stop_enabled()
+    if (
+        not model.get("tokenizer_hf")
+        and needs_check
+        and not model.get("stub")
+        and (os.environ.get("PIN_FORCE_MISSING_TOKENIZER") or "").strip() != "1"
+    ):
+        try:
+            _populate_hosted_tokenizer_hf(model, spec, built)
+        except (OSError, ValueError, RuntimeError, KeyError, ImportError) as exc:
+            if tokenizer_hard_stop_enabled():
+                err_rec = {"strings": len(TOKENIZER_STRINGS), "match": False, "error": f"{type(exc).__name__}: {exc}"}
+                return err_rec, f"tokenizer check failed on {served}: {type(exc).__name__}: {exc}"
+            raise
     if not model.get("tokenizer_hf"):
         if needs_check and tokenizer_hard_stop_enabled():
             return None, f"tokenizer check missing on {served}: no tokenizer_hf token table produced"
@@ -5039,10 +5105,13 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
 
     raw_models = (os.environ.get("PIN_MODELS") or os.environ.get("PIN_ONLY") or "granite-4.2-8b").strip()
     wanted_names = [x.strip() for x in raw_models.split(",") if x.strip()]
-    by_name = {m["served_as"]: m for m in MODELS}
+    by_name = {m["served_as"]: m for m in ALL_MODELS}
     active_specs = [by_name[n] for n in wanted_names if n in by_name]
     if not active_specs:
         active_specs = specs or [by_name["granite-4.2-8b"]]
+
+    if not stub_mode() or os.environ.get("PIN_GGUF_REPO"):
+        prefetch_hosted([s["served_as"] for s in active_specs], by_name, result)
 
     libs_val = built.get("libs")
     if isinstance(built.get("library_sha"), str) and built["library_sha"]:
@@ -5174,7 +5243,7 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
                             rec["stopped"] = stop_msg
                             result["stopped_reason"] = stop_msg
                             continue
-                        tok_res, tok_stop = check_tokenizer_or_stop(TOOLCOUNT_PORT, m, spec)
+                        tok_res, tok_stop = check_tokenizer_or_stop(TOOLCOUNT_PORT, m, spec, built)
                         if tok_res is not None:
                             rec["tokenizer"] = tok_res
                         if tok_stop:
@@ -5380,17 +5449,26 @@ def _main() -> int:
             built = {}
         else:
             result["llama_server"] = built = build()
-        specs = MODELS if role in ("all", "smoke", "critic", "q6k", "toolcount") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+        specs = (
+            ALL_MODELS
+            if role == "toolcount"
+            else (
+                MODELS
+                if role in ("all", "smoke", "critic", "q6k")
+                else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+            )
+        )
         if role == "prebuild" and len([x for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]) != 1:
             raise RuntimeError("PIN_ROLE=prebuild converts one model per window: set PIN_ONLY to exactly one")
         if role == "prebuild":
-            unpinned = [m["served_as"] for m in specs if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
+            unpinned = [m["served_as"] for m in ALL_MODELS if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
             if unpinned:  # byte-match or don't host means nothing without a pin to match (R&D)
                 raise RuntimeError(f"REFUSED: {', '.join(unpinned)} has no expect_sha256; a prebuild needs a pin to match")
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:
-            specs = [m for m in specs if m["served_as"] in only]
+            pool_specs = ALL_MODELS if role in ("toolcount", "convert", "smoke", "all") else specs
+            specs = [m for m in pool_specs if m["served_as"] in only]
             if not specs:
                 raise RuntimeError(f"PIN_ONLY names no model: {only}")
             result["only"] = only

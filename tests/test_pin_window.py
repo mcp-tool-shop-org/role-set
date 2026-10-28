@@ -158,12 +158,7 @@ def test_every_window_model_has_a_pin_that_matches_writers_json():
     import json
 
     listed = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
-    pinned = [m["served_as"] for m in pw.MODELS if m.get("expect_sha256")]
-    unpinned = [m["served_as"] for m in pw.MODELS if not m.get("expect_sha256")]
-    assert unpinned == ["granite-4.2-8b"]
-    pw.check_pins(pinned, listed, {})
-    with pytest.raises(RuntimeError, match="granite-4.2-8b: MODELS None"):
-        pw.check_pins(["granite-4.2-8b"], listed, {})
+    pw.check_pins([m["served_as"] for m in pw.MODELS], listed, {})
 
 
 def test_check_pins_refuses_a_missing_or_different_pin_before_any_download():
@@ -6156,7 +6151,7 @@ def test_pilot_window_refuses_conflicting_per_arm_quant_for_one_writer(tmp_path,
 
 
 def test_granite_4_2_8b_models_entry():
-    spec = next(m for m in pw.MODELS if m["served_as"] == "granite-4.2-8b")
+    spec = next(m for m in pw.ALL_MODELS if m["served_as"] == "granite-4.2-8b")
     assert spec == {
         "served_as": "granite-4.2-8b",
         "how": "convert",
@@ -6165,6 +6160,7 @@ def test_granite_4_2_8b_models_entry():
         "tokenizer_check": True,
     }
     assert "expect_sha256" not in spec
+    assert "granite-4.2-8b" not in [m["served_as"] for m in pw.MODELS]
 
 
 def test_tokenizer_hard_stop_stops_before_any_measurement_row_on_forced_mismatch(tmp_path, monkeypatch):

@@ -1250,6 +1250,58 @@ def test_fix4_heartbeats_deadline_partial_tar_and_vram_library_sha(
     assert 1 <= len(partial_rows) < len(stub_sched) + 5
 
 
+def test_fix5_granite_isolation_prefetch_hosted_and_hosted_tokenizer_check(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix 5:
+    1) granite-4.2-8b is kept out of default pw.MODELS iteration for critic/q6k/convert/smoke/all when PIN_ONLY is unset,
+       so every model in pw.MODELS has a writers.json pin.
+    2) smoke_window.sh allows toolcount:HF_TOKEN_GGUF_READ, and toolcount_window calls prefetch_hosted.
+    3) check_tokenizer_or_stop can compute or load tokenizer_hf when a model comes from HOSTED.
+    """
+    # 1. Every model in default pw.MODELS is pinned in writers.json (granite-4.2-8b is in TOOLCOUNT_MODELS / ALL_MODELS)
+    listed = json.loads((Path(__file__).resolve().parents[1] / "writers.json").read_text(encoding="utf-8"))
+    pw.check_pins([m["served_as"] for m in pw.MODELS], listed, {})
+    assert "granite-4.2-8b" not in [m["served_as"] for m in pw.MODELS]
+    assert "granite-4.2-8b" in [m["served_as"] for m in pw.ALL_MODELS]
+
+    # 2. smoke_window.sh allows toolcount:HF_TOKEN_GGUF_READ
+    smoke_sh = (Path(__file__).resolve().parents[1] / "scripts" / "colab" / "smoke_window.sh").read_text(encoding="utf-8")
+    assert "toolcount:HF_TOKEN_GGUF_READ" in smoke_sh
+
+    # 3. toolcount_window calls prefetch_hosted and check_tokenizer_or_stop computes/loads tokenizer_hf for a HOSTED model
+    qwen_spec = next(m for m in pw.MODELS if m["served_as"] == "qwen3.8-27b")
+    expected_tok_ids = [
+        [100 + (b % 5000) for b in s.encode("utf-8")]
+        for s in pw.TOKENIZER_STRINGS
+    ]
+    prefetch_called: list[list[str]] = []
+
+    def fake_prefetch_hosted(names: list[str], by_name: dict[str, Any], result: dict[str, Any]) -> None:
+        prefetch_called.append(list(names))
+        gguf_p = tmp_path / "qwen3.8-27b-Q8_0.gguf"
+        gguf_p.write_bytes(b"fake_gguf")
+        pw.HOSTED["qwen3.8-27b"] = {"path": gguf_p, "sha256": qwen_spec["expect_sha256"]}
+
+    monkeypatch.setattr(pw, "WORK", tmp_path)
+    monkeypatch.setattr(pw, "CONTENT", tmp_path)
+    monkeypatch.setattr(pw, "HOSTED", {})
+    monkeypatch.setattr(pw, "prefetch_hosted", fake_prefetch_hosted)
+    monkeypatch.setattr(
+        pw,
+        "_populate_hosted_tokenizer_hf",
+        lambda model, spec, built=None: model.setdefault("tokenizer_hf", expected_tok_ids),
+    )
+
+    with StubToolCountServer() as srv:
+        fake_Fetch_out = pw.fetch_model(qwen_spec, {"src": str(tmp_path)})
+        assert "tokenizer_hf" not in fake_Fetch_out or fake_Fetch_out.get("tokenizer_hf") == expected_tok_ids
+        tok_rec, stop_reason = pw.check_tokenizer_or_stop(srv.port, fake_Fetch_out, qwen_spec)
+        assert stop_reason is None, f"Expected HOSTED model to pass check_tokenizer_or_stop, got {stop_reason}"
+        assert tok_rec is not None and tok_rec["match"] is True
+
+
+
 
 
 
