@@ -1949,7 +1949,18 @@
             }
           ],
           "hash": "f56f9b4fb22842946d9248f828a437d10a33a021f03101b76549eba169f5a62d",
+          "importOrder": [
+            "src/role_set/mock.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py"
+          ],
           "importsFiles": [
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py",
             "src/role_set/mock.py"
           ],
           "path": "scripts/colab/pin_window.py"
@@ -2691,6 +2702,320 @@
           "path": "scripts/t12_catalogue.py"
         },
         {
+          "hash": "4e10c9aa8a8c8aa12c2dd291413e24030dc018c0c7cba5ba95e95a9288e43bcd",
+          "path": "scripts/toolcount/__init__.py"
+        },
+        {
+          "exports": [
+            "build_compass_lists",
+            "build_tool_definition",
+            "cosine_similarity",
+            "main",
+            "resolve_tool_definition_class",
+            "retrieve_top5_for_item_list",
+            "write_compass_artifacts"
+          ],
+          "failurePaths": [
+            {
+              "in": "resolve_tool_definition_class",
+              "kind": "except",
+              "line": 75
+            },
+            {
+              "in": "__init__",
+              "kind": "raise",
+              "line": 115
+            },
+            {
+              "in": "cosine_similarity",
+              "kind": "raise",
+              "line": 147
+            },
+            {
+              "in": "build_compass_lists",
+              "kind": "raise",
+              "line": 190
+            },
+            {
+              "in": "build_compass_lists",
+              "kind": "raise",
+              "line": 202
+            },
+            {
+              "in": "write_compass_artifacts",
+              "kind": "raise",
+              "line": 312
+            },
+            {
+              "kind": "raise",
+              "line": 380
+            }
+          ],
+          "hash": "61d47b19bd3062191dd5ffd1ca11489577ebfa508534e40d90df4fa8e623cbe8",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/gen_registry.py"
+          ],
+          "path": "scripts/toolcount/compass_lists.py"
+        },
+        {
+          "exports": [
+            "build_audit_sample_40",
+            "build_nested_list_for_anchor",
+            "build_registry",
+            "classify_cross_domain_distractors",
+            "generate_all",
+            "main",
+            "order_tools_for_call",
+            "position_to_bin",
+            "select_target_tools_and_items",
+            "sha256_bytes",
+            "third_quotas",
+            "write_with_sha256"
+          ],
+          "failurePaths": [
+            {
+              "in": "_build_required_args",
+              "kind": "raise",
+              "line": 427
+            },
+            {
+              "in": "position_to_bin",
+              "kind": "raise",
+              "line": 611
+            },
+            {
+              "kind": "raise",
+              "line": 861
+            }
+          ],
+          "hash": "314ccef90fd92bf11a21089bc1f9707ab4d51e7a0254803517cccdabd4a28ec3",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/oracle.py"
+          ],
+          "path": "scripts/toolcount/gen_registry.py"
+        },
+        {
+          "hash": "5eb5f726b3eb6d9e6d51c52be35fcf1b9d738c8467e0b0859d47e2d945718485",
+          "path": "scripts/toolcount/launch-w1.sh"
+        },
+        {
+          "exports": [
+            "main",
+            "oracle_match_tools",
+            "verify_all_items",
+            "verify_domain_sibling_uniqueness",
+            "verify_no_tool_name_leak"
+          ],
+          "failurePaths": [
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 58
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 62
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 67
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 71
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 77
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 81
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 85
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 87
+            },
+            {
+              "in": "verify_no_tool_name_leak",
+              "kind": "raise",
+              "line": 100
+            },
+            {
+              "in": "verify_all_items",
+              "kind": "raise",
+              "line": 201
+            },
+            {
+              "in": "verify_all_items",
+              "kind": "raise",
+              "line": 208
+            },
+            {
+              "kind": "raise",
+              "line": 240
+            }
+          ],
+          "hash": "710ea9d795321659970be31cb5a458c095b3539d4a5bae28e53168d6731b2824",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py"
+          ],
+          "path": "scripts/toolcount/oracle.py"
+        },
+        {
+          "exports": [
+            "build_call_schedule",
+            "build_inert_padding_block",
+            "build_r1_stub_schedule",
+            "build_study_config",
+            "calibrate_length_control_padding",
+            "compute_first_50_repricing",
+            "count_thinking_tokens",
+            "format_openai_tool",
+            "load_resume_journal",
+            "main",
+            "run_model_window",
+            "run_preloop_smoke_assert",
+            "run_r1_stub_verification",
+            "send_chat_completion",
+            "write_study_config"
+          ],
+          "failurePaths": [
+            {
+              "in": "_count_tokens",
+              "kind": "except",
+              "line": 227
+            },
+            {
+              "in": "build_call_schedule",
+              "kind": "raise",
+              "line": 279
+            },
+            {
+              "in": "run_preloop_smoke_assert",
+              "kind": "raise",
+              "line": 439
+            },
+            {
+              "in": "load_resume_journal",
+              "kind": "except",
+              "line": 500
+            },
+            {
+              "in": "run_model_window",
+              "kind": "raise",
+              "line": 659
+            },
+            {
+              "in": "base_url",
+              "kind": "raise",
+              "line": 896
+            },
+            {
+              "in": "do_POST",
+              "kind": "except",
+              "line": 935
+            },
+            {
+              "in": "run_r1_stub_verification",
+              "kind": "raise",
+              "line": 1374
+            },
+            {
+              "kind": "raise",
+              "line": 1433
+            }
+          ],
+          "hash": "daed2dfd4a3cb2c2842361ce4593d602346635db0472daec90d0f4ae68ad5a36",
+          "importOrder": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/scorer.py",
+            "scripts/colab/pin_window.py"
+          ],
+          "importsFiles": [
+            "scripts/colab/pin_window.py",
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/scorer.py"
+          ],
+          "path": "scripts/toolcount/runner.py"
+        },
+        {
+          "exports": [
+            "check_arguments_grade",
+            "compute_cluster_means",
+            "estimate_intracluster_rho",
+            "evaluate_cross_model_decisions",
+            "evaluate_model_decisions",
+            "extract_tool_call_from_response",
+            "holm_adjust",
+            "main",
+            "paired_cluster_bootstrap_ci",
+            "paired_sign_flip_test",
+            "score_calls_file",
+            "score_single_call",
+            "summarize_cell"
+          ],
+          "failurePaths": [
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 193
+            },
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 222
+            },
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 249
+            },
+            {
+              "in": "_parse_arguments_payload",
+              "kind": "except",
+              "line": 282
+            },
+            {
+              "in": "paired_sign_flip_test",
+              "kind": "raise",
+              "line": 507
+            },
+            {
+              "in": "paired_cluster_bootstrap_ci",
+              "kind": "raise",
+              "line": 567
+            },
+            {
+              "kind": "raise",
+              "line": 1172
+            }
+          ],
+          "hash": "ccef34b199686584a9319fb5e53b15e44726226ca233c6b2f5a3b083f6193e44",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/gen_registry.py"
+          ],
+          "path": "scripts/toolcount/scorer.py"
+        },
+        {
           "exports": [
             "floor_line",
             "main"
@@ -2722,38 +3047,28 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 64,
+          "reads": 83,
           "where": [
             "caller"
           ],
-          "writes": 50
+          "writes": 52
         }
       ],
-      "outsideReads": 64,
-      "outsideWrites": 50,
+      "outsideReads": 83,
+      "outsideWrites": 52,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 10,
+      "testedBy": 12,
       "unresolvedNamed": [
         {
           "path": "scripts/colab/pin_window.py",
           "specifier": "stub_llama",
           "why": "unplaced"
-        },
-        {
-          "path": "scripts/colab/pin_window.py",
-          "specifier": "scripts.toolcount.compass_lists",
-          "why": "unplaced"
-        },
-        {
-          "path": "scripts/colab/pin_window.py",
-          "specifier": "scripts.toolcount.gen_registry",
-          "why": "unplaced"
         }
       ],
-      "unresolvedSites": 5
+      "unresolvedSites": 1
     },
     {
       "dynamicReads": 0,
@@ -10070,7 +10385,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 52,
+      "testedBy": 53,
       "unresolvedSites": 0
     },
     {
@@ -11909,6 +12224,34 @@
         },
         {
           "exports": [
+            "r0_bundle",
+            "test_cli_entrypoints_and_launch_w1_script",
+            "test_cluster_sign_flip_holm_bootstrap_and_decision_rules",
+            "test_compass_lists_min_confidence_zero_and_embedding_text",
+            "test_edge_cases_across_all_modules",
+            "test_oracle_100pct_and_loud_failures",
+            "test_order_tools_for_call_and_position_bins",
+            "test_r0_audit_sample_40_and_sha256_sidecars",
+            "test_r0_items_clusters_halves_and_nested_lists",
+            "test_r0_registry_structure_and_category_examples_ruling",
+            "test_runner_smoke_assert_and_r1_stub_all_9_branches",
+            "test_scorer_classifications_and_fallbacks"
+          ],
+          "hash": "e69aa42bfb99c20b22807d3e1de175929fc24bfbdc3949779cdcb8a8eda36c5c",
+          "importsFiles": [
+            "scripts/colab/pin_window.py",
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/oracle.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py"
+          ],
+          "path": "tests/test_toolcount.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_4xx_is_not_retried_and_other_hosts_are_refused",
             "test_a_card_is_sent_whole_and_replaces_the_temperature",
             "test_chat_builds_an_openai_request_and_reads_usage",
@@ -12361,7 +12704,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 54
+          "files": 55
         },
         {
           "boundary": "scripts",
@@ -12370,7 +12713,7 @@
             "file": "scripts/naics_table.py",
             "from": "tests/conftest.py"
           },
-          "files": 9
+          "files": 15
         },
         {
           "boundary": "src",
@@ -12441,7 +12784,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 54,
+          "files": 55,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -12449,7 +12792,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 54,
+          "files": 55,
           "job": "test-py313",
           "runner": "pytest",
           "step": "Test"
@@ -12457,7 +12800,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 54,
+          "files": 55,
           "job": "test-py314",
           "runner": "pytest",
           "step": "Test"
@@ -12465,7 +12808,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 54,
+          "files": 55,
           "job": "sweep",
           "runner": "pytest",
           "step": "Sweep"
@@ -12753,8 +13096,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "d29499f77a81bda144ebd51885f3c167a04667aa",
-    "tracked": 209
+    "commit": "06866767643098c87d1fe66447d139f0d4fe66cb",
+    "tracked": 217
   },
   "landings": [
     {
@@ -13620,6 +13963,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 74,
+  "testFiles": 75,
   "unassigned": []
 }

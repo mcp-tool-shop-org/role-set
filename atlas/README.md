@@ -1,16 +1,16 @@
 # role-set: how it works
 
-Mapped at 2026-10-28 from commit d29499f by Atlas 1.24.0.
+Mapped at 2026-10-28 from commit 0686676 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (115 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (122 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-26 (15834e0)
+## What changed since 2026-10-28 (d29499f)
 
-Nothing structural changed since 2026-10-26; 32 files changed content.
+Nothing structural changed since 2026-10-28; 8 files added.
 
 ## What comes in
 
@@ -21,7 +21,7 @@ Nothing structural changed since 2026-10-26; 32 files changed content.
 ## What happens through CI
 
 1. The workflow runs tests/ in tests.
-2. That reaches scripts (9 files) and src (43 files).
+2. That reaches scripts (15 files) and src (43 files).
 3. It uploads coverage to Codecov.
 
 ## Who reads the results
@@ -87,9 +87,9 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 ## What this map cannot see
 
-- 5 imports could not be resolved: `scripts/colab/pin_window.py` imports `scripts.toolcount.compass_lists`, which is no module on its import path and no declared dependency; `scripts/colab/pin_window.py` imports `scripts.toolcount.gen_registry`, which is no module on its import path and no declared dependency; `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency; and 2 more.
+- 1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.
 - 8 writes and 34 reads use paths built at run time and are not named here.
-- 60 writes and 116 reads go to a path their caller passes, not to this repository.
+- 62 writes and 135 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

@@ -53,22 +53,22 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 32,
+      "added": 8,
+      "changed": 0,
       "moved": 0,
-      "parts": 4,
+      "parts": 2,
       "removed": 0
     },
     "items": [
       {
         "kind": "counts",
-        "sentence": "Nothing structural changed since 2026-10-26; 32 files changed content.",
+        "sentence": "Nothing structural changed since 2026-10-28; 8 files added.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "15834e01e60b27f16bc2ac53d528d60d682bff6d",
-      "generatedAt": "2026-10-26T01:35:11.153Z"
+      "commit": "d29499f77a81bda144ebd51885f3c167a04667aa",
+      "generatedAt": "2026-10-28T02:54:03.771Z"
     },
     "unchanged": true
   },
@@ -140,9 +140,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 23 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do."
   ],
   "changesTogetherWithTests": 6,
-  "commit": "d29499f77a81bda144ebd51885f3c167a04667aa",
+  "commit": "06866767643098c87d1fe66447d139f0d4fe66cb",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (115 files), shell (5), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (122 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -157,12 +157,12 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 54
+          "files": 55
         },
         {
           "boundary": "scripts",
           "depth": 1,
-          "files": 9
+          "files": 15
         },
         {
           "boundary": "src",
@@ -311,11 +311,11 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-28T02:54:03.771Z",
+  "generatedAt": "2026-10-28T03:08:53.100Z",
   "limits": [
-    "5 imports could not be resolved: `scripts/colab/pin_window.py` imports `scripts.toolcount.compass_lists`, which is no module on its import path and no declared dependency; `scripts/colab/pin_window.py` imports `scripts.toolcount.gen_registry`, which is no module on its import path and no declared dependency; `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency; and 2 more.",
+    "1 import could not be resolved: `scripts/colab/pin_window.py` imports `stub_llama`, which is no module on its import path and no declared dependency.",
     "8 writes and 34 reads use paths built at run time and are not named here.",
-    "60 writes and 116 reads go to a path their caller passes, not to this repository.",
+    "62 writes and 135 reads go to a path their caller passes, not to this repository.",
     "15 reads go to the directory the command is run in, not to this repository.",
     "9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.",
     "Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window."
@@ -345,10 +345,10 @@
   "startReason": "This path follows role-set (a command people run) from its entry, since CI runs only tests.",
   "summary": "role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod.",
   "summaryFrom": "person",
-  "testFiles": 74,
+  "testFiles": 75,
   "testedBy": {
-    "scripts": 10,
-    "src": 52
+    "scripts": 12,
+    "src": 53
   },
   "unnamedWrites": 8,
   "unread": [],
