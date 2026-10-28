@@ -5091,8 +5091,30 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     half = (os.environ.get("PIN_TOOLCOUNT_HALF") or "ALL").strip().upper()
 
     if r0_tar.is_file():
+        import tarfile  # noqa: PLC0415
+
+        got_r0_sha = sha256(r0_tar)
+        result["r0_tar_sha256"] = got_r0_sha
+        want_r0_sha = (os.environ.get("R0_TAR_SHA256") or "").strip()
+        r0_tar_sidecar = CONTENT / "toolcount-r0.tar.sha256"
+        if (not want_r0_sha or want_r0_sha == "to pin") and r0_tar_sidecar.is_file():
+            want_r0_sha = r0_tar_sidecar.read_text(encoding="utf-8").strip().split()[0]
+        if want_r0_sha and want_r0_sha != "to pin" and got_r0_sha != want_r0_sha:
+            raise RuntimeError(f"toolcount-r0.tar {got_r0_sha[:12]} isn't pinned {want_r0_sha[:12]}")
         r0_dir.mkdir(parents=True, exist_ok=True)
-        sh(f"tar -xf {r0_tar} -C {r0_dir}")
+        with tarfile.open(r0_tar) as tf:
+            tf.extractall(r0_dir, filter="data")
+        verified_sidecars = 0
+        for sidecar in sorted(r0_dir.glob("*.sha256")):
+            target_file = r0_dir / sidecar.name.removesuffix(".sha256")
+            if not target_file.is_file():
+                raise RuntimeError(f"missing R0 artifact {target_file.name} for sidecar {sidecar.name}")
+            want_file_sha = sidecar.read_text(encoding="utf-8").strip().split()[0]
+            got_file_sha = sha256(target_file)
+            if got_file_sha != want_file_sha:
+                raise RuntimeError(f"R0 artifact {target_file.name} {got_file_sha[:12]} != sidecar {want_file_sha[:12]}")
+            verified_sidecars += 1
+        result["r0_sidecars_verified"] = verified_sidecars
     elif not (r0_dir / "registry.json").is_file():
         generate_all(out_dir=r0_dir, seed=seed)
         write_compass_artifacts(r0_dir=r0_dir, out_dir=r0_dir, seed=seed, embedder_mode="fake")
@@ -5101,7 +5123,9 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     if resume_unpacked:
         result["resume_unpacked"] = str(resume_unpacked)
     resume_dir_env = os.environ.get("PIN_RESUME_CALLS_DIR")
-    resume_dir = Path(resume_dir_env) if resume_dir_env else None
+    resume_dir = Path(resume_dir_env) if resume_dir_env else resume_unpacked
+    max_calls_env = (os.environ.get("PIN_TOOLCOUNT_MAX_CALLS") or "").strip()
+    max_calls = int(max_calls_env) if max_calls_env else None
 
     raw_models = (os.environ.get("PIN_MODELS") or os.environ.get("PIN_ONLY") or "granite-4.2-8b").strip()
     wanted_names = [x.strip() for x in raw_models.split(",") if x.strip()]
@@ -5152,6 +5176,13 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
             try:
                 if (os.environ.get("PIN_FORCE_CONVERT_ERROR") or "").strip() == "1":
                     raise RuntimeError(f"conversion failed for {spec['served_as']}: forced by PIN_FORCE_CONVERT_ERROR=1")
+                model_resume_dir = resume_dir
+                if (
+                    model_resume_dir is not None
+                    and not (model_resume_dir / "calls.jsonl").is_file()
+                    and (model_resume_dir / spec["served_as"] / "calls.jsonl").is_file()
+                ):
+                    model_resume_dir = model_resume_dir / spec["served_as"]
                 if stub_mode():
                     m: dict = {
                         "served_as": spec["served_as"],
@@ -5175,6 +5206,12 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
                         force_tokenizer_mismatch=force_mism,
                         fail_smoke_thinking=fail_smoke,
                     ) as srv:
+                        rec["slots"] = slots(srv.port, TOOLCOUNT_CTX)
+                        if not rec["slots"]["ok"]:
+                            stop_msg = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {TOOLCOUNT_CTX}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
                         tok_res, tok_stop = check_tokenizer_or_stop(srv.port, m, spec)
                         if tok_res is not None:
                             rec["tokenizer"] = tok_res
@@ -5195,7 +5232,8 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
                             out_dir=model_out_dir,
                             half=half,
                             seed=seed,
-                            resume_calls_dir=resume_dir,
+                            resume_calls_dir=model_resume_dir,
+                            max_calls=max_calls,
                             schedule_override=stub_sched,
                             model_meta=m,
                             machine_line=str(result.get("machine")),
@@ -5257,7 +5295,8 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
                             out_dir=model_out_dir,
                             half=half,
                             seed=seed,
-                            resume_calls_dir=resume_dir,
+                            resume_calls_dir=model_resume_dir,
+                            max_calls=max_calls,
                             model_meta=m,
                             machine_line=str(result.get("machine")),
                             peak_vram_mb=int(smi_stats["peak_vram_mib"]),

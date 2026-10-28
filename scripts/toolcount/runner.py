@@ -584,9 +584,13 @@ def run_model_window(
 
     # 3. Build schedule and load resume journal
     schedule = (
-        schedule_override
-        if schedule_override is not None
-        else build_call_schedule(items=items, half=half, seed=seed, max_calls=max_calls)
+        schedule_override[:max_calls]
+        if (schedule_override is not None and max_calls is not None)
+        else (
+            schedule_override
+            if schedule_override is not None
+            else build_call_schedule(items=items, half=half, seed=seed, max_calls=max_calls)
+        )
     )
     reused_map = load_resume_journal(resume_calls_dir)
 
@@ -1298,8 +1302,8 @@ def run_r1_stub_verification(
     work_dir: Path,
     seed: int = DEFAULT_SEED,
 ) -> dict[str, Any]:
-    """Execute the full CPU stub rung R1 (`PIN_STUB=1 PIN_GPU=CPU PIN_SKIP_BINARY=1`) reaching
-    every required branch:
+    """Execute the full CPU stub rung R1 (`PIN_STUB=1 PIN_GPU=CPU PIN_SKIP_BINARY=1`) via `pin_window.py`
+    reaching every required branch:
       1. `correct` call
       2. `wrong_tool` call
       3. `no_call`
@@ -1308,73 +1312,121 @@ def run_r1_stub_verification(
       6. `length-control` cell
       7. `compass` cell
       8. `tokenizer_stop` path (forced mismatch stops before any measurement row is written)
-      9. `resume` from journal (`PIN_RESUME_CALLS_DIR`)
+      9. `resume` from journal (`resume.tar` unpacked via `unpack_resume()`)
     """
-    from scripts.toolcount.gen_registry import generate_all
+    import tarfile
+    from scripts.colab import pin_window
     from scripts.toolcount.compass_lists import write_compass_artifacts
+    from scripts.toolcount.gen_registry import generate_all
 
     r0_dir = work_dir / "r0"
     generate_all(out_dir=r0_dir, seed=seed)
     write_compass_artifacts(r0_dir=r0_dir, out_dir=r0_dir, seed=seed, embedder_mode="fake")
 
-    items = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
-    schedule = build_r1_stub_schedule(items)
+    r0_tar_master = work_dir / "toolcount-r0.tar"
+    with tarfile.open(r0_tar_master, "w") as tf:
+        for p in sorted(r0_dir.iterdir()):
+            if p.is_file():
+                tf.add(p, arcname=p.name)
+    r0_tar_sha = hashlib.sha256(r0_tar_master.read_bytes()).hexdigest()
 
-    # Pass 1: run first 5 items of the schedule
-    run1_dir = work_dir / "run_initial"
-    with StubToolCountServer() as srv:
-        summary_1 = run_model_window(
-            endpoint_url=srv.base_url,
-            model_name="granite-4.2-8b",
-            r0_dir=r0_dir,
-            out_dir=run1_dir,
-            half="ALL",
-            seed=seed,
-            schedule_override=schedule[:5],
-            machine_line="CPU-stub-R1",
-        )
-
-    # Pass 2: resume from run1_dir and complete all 7 items (reuses 5, runs 2 fresh: length-control & compass)
-    run2_dir = work_dir / "run_resumed"
-    with StubToolCountServer() as srv:
-        summary_2 = run_model_window(
-            endpoint_url=srv.base_url,
-            model_name="granite-4.2-8b",
-            r0_dir=r0_dir,
-            out_dir=run2_dir,
-            half="ALL",
-            seed=seed,
-            resume_calls_dir=run1_dir,
-            schedule_override=schedule,
-            machine_line="CPU-stub-R1",
-        )
-
-    # Pass 3: verify tokenizer-stop path via pin_window with forced mismatch
-    from scripts.colab import pin_window
-
-    tok_stop_dir = work_dir / "tokenizer_stop_check"
-    tok_stop_dir.mkdir(parents=True, exist_ok=True)
-    prev_env = {k: os.environ.get(k) for k in (
+    env_keys = (
         "PIN_STUB",
         "PIN_GPU",
         "PIN_SKIP_BINARY",
         "PIN_ROLE",
         "PIN_MODELS",
+        "PIN_ONLY",
+        "PIN_CONTENT",
+        "PIN_WORK",
         "PIN_OUT_DIR",
         "PIN_TOKENIZER_HARD_STOP",
         "PIN_FORCE_TOKENIZER_MISMATCH",
-    )}
+        "PIN_TOOLCOUNT_MAX_CALLS",
+        "PIN_TOOLCOUNT_SEED",
+        "PIN_RESUME_CALLS_DIR",
+        "R0_TAR_SHA256",
+    )
+    prev_env = {k: os.environ.get(k) for k in env_keys}
+    prev_content, prev_work = pin_window.CONTENT, pin_window.WORK
+
     try:
+        # Pass 1: run first 5 items of the schedule through pin_window.main() with r0_tar unpack + R0_TAR_SHA256 check
+        run1_content = work_dir / "pass1_content"
+        run1_dir = work_dir / "run_initial"
+        run1_content.mkdir(parents=True, exist_ok=True)
+        run1_dir.mkdir(parents=True, exist_ok=True)
+        (run1_content / "toolcount-r0.tar").write_bytes(r0_tar_master.read_bytes())
+
+        for k in env_keys:
+            os.environ.pop(k, None)
         os.environ["PIN_STUB"] = "1"
         os.environ["PIN_GPU"] = "CPU"
         os.environ["PIN_SKIP_BINARY"] = "1"
         os.environ["PIN_ROLE"] = "toolcount"
         os.environ["PIN_MODELS"] = "granite-4.2-8b"
+        os.environ["PIN_CONTENT"] = str(run1_content)
+        os.environ["PIN_OUT_DIR"] = str(run1_dir)
+        os.environ["PIN_TOKENIZER_HARD_STOP"] = "1"
+        os.environ["PIN_TOOLCOUNT_MAX_CALLS"] = "5"
+        os.environ["PIN_TOOLCOUNT_SEED"] = str(seed)
+        os.environ["R0_TAR_SHA256"] = r0_tar_sha
+        rc1 = pin_window.main()
+        if rc1 != 0:
+            raise RuntimeError(f"R1 stub Pass 1 failed with exit code {rc1}")
+        pin_res_1 = json.loads((run1_dir / "pin-result.json").read_text(encoding="utf-8"))
+        summary_1 = pin_res_1["models"][0]["window_summary"]
+
+        # Pass 2: pack run1 calls.jsonl into resume.tar (without PIN_RESUME_CALLS_DIR) and complete all 7 items via pin_window.main()
+        run2_content = work_dir / "pass2_content"
+        run2_dir = work_dir / "run_resumed"
+        run2_content.mkdir(parents=True, exist_ok=True)
+        run2_dir.mkdir(parents=True, exist_ok=True)
+        (run2_content / "toolcount-r0.tar").write_bytes(r0_tar_master.read_bytes())
+        with tarfile.open(run2_content / "resume.tar", "w") as tf:
+            tf.add(run1_dir / "calls.jsonl", arcname="calls.jsonl")
+
+        for k in env_keys:
+            os.environ.pop(k, None)
+        os.environ["PIN_STUB"] = "1"
+        os.environ["PIN_GPU"] = "CPU"
+        os.environ["PIN_SKIP_BINARY"] = "1"
+        os.environ["PIN_ROLE"] = "toolcount"
+        os.environ["PIN_MODELS"] = "granite-4.2-8b"
+        os.environ["PIN_CONTENT"] = str(run2_content)
+        os.environ["PIN_OUT_DIR"] = str(run2_dir)
+        os.environ["PIN_TOKENIZER_HARD_STOP"] = "1"
+        os.environ["PIN_TOOLCOUNT_SEED"] = str(seed)
+        os.environ["R0_TAR_SHA256"] = r0_tar_sha
+        rc2 = pin_window.main()
+        if rc2 != 0:
+            raise RuntimeError(f"R1 stub Pass 2 failed with exit code {rc2}")
+        pin_res_2 = json.loads((run2_dir / "pin-result.json").read_text(encoding="utf-8"))
+        summary_2 = pin_res_2["models"][0]["window_summary"]
+
+        # Pass 3: verify tokenizer-stop path via pin_window.main() with forced mismatch
+        tok_content = work_dir / "pass3_content"
+        tok_stop_dir = work_dir / "tokenizer_stop_check"
+        tok_content.mkdir(parents=True, exist_ok=True)
+        tok_stop_dir.mkdir(parents=True, exist_ok=True)
+        (tok_content / "toolcount-r0.tar").write_bytes(r0_tar_master.read_bytes())
+
+        for k in env_keys:
+            os.environ.pop(k, None)
+        os.environ["PIN_STUB"] = "1"
+        os.environ["PIN_GPU"] = "CPU"
+        os.environ["PIN_SKIP_BINARY"] = "1"
+        os.environ["PIN_ROLE"] = "toolcount"
+        os.environ["PIN_MODELS"] = "granite-4.2-8b"
+        os.environ["PIN_CONTENT"] = str(tok_content)
         os.environ["PIN_OUT_DIR"] = str(tok_stop_dir)
         os.environ["PIN_TOKENIZER_HARD_STOP"] = "1"
         os.environ["PIN_FORCE_TOKENIZER_MISMATCH"] = "1"
+        os.environ["PIN_TOOLCOUNT_SEED"] = str(seed)
+        os.environ["R0_TAR_SHA256"] = r0_tar_sha
         tok_exit_code = pin_window.main()
     finally:
+        pin_window.CONTENT, pin_window.WORK = prev_content, prev_work
         for k, v in prev_env.items():
             if v is None:
                 os.environ.pop(k, None)
@@ -1414,6 +1466,8 @@ def run_r1_stub_verification(
         "branches_reached": branches,
         "initial_run": summary_1,
         "resumed_run": summary_2,
+        "initial_pin_result": pin_res_1,
+        "resumed_pin_result": pin_res_2,
         "tokenizer_stop_receipt": {
             "exit_code": tok_exit_code,
             "ok": tok_receipt.get("ok"),

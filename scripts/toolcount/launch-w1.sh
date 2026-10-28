@@ -80,6 +80,15 @@ case "$MODE" in
     export PIN_FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
     export PIN_SESSION="${PIN_SESSION:-tc-r1-stub}"
     CARD_RATE="0.08"
+    if [ ! -f "$R0_TAR" ] && [ -d "$REPO_ROOT/artifacts/toolcount/r0" ]; then
+      tar -C "$REPO_ROOT/artifacts/toolcount/r0" -cf "$R0_TAR" .
+    fi
+    if [ -f "$R0_TAR" ] && { [ "$R0_TAR_SHA256" = "to pin" ] || [ -z "$R0_TAR_SHA256" ]; }; then
+      export R0_TAR_SHA256="$(sha256sum "$R0_TAR" | awk '{print $1}')"
+    fi
+    if [ -f "$R0_TAR" ]; then
+      export PIN_UPLOADS="${PIN_UPLOADS:-$R0_TAR}"
+    fi
     ;;
   run)
     export PIN_STUB=0
@@ -175,8 +184,13 @@ c2_guard_loop() {
       epid="$(cat "$OUT/.exec.pid" 2>/dev/null || true)"
       if [ -n "$epid" ] && ! kill -0 "$epid" 2>/dev/null; then
         if ! grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
-          printf '%s DEAD HARNESS: exec pid %s exited without PIN_RESULT\n' \
-            "$(date -u +%FT%TZ)" "$epid" | tee -a "$VITALS_LOG"
+          printf '%s DEAD HARNESS: exec pid %s exited without PIN_RESULT: stopping window and session %s\n' \
+            "$(date -u +%FT%TZ)" "$epid" "$PIN_SESSION" | tee -a "$VITALS_LOG"
+          kill -TERM "$win_pid" 2>/dev/null || true
+          sleep 10
+          kill -KILL "$win_pid" 2>/dev/null || true
+          colab stop -s "$PIN_SESSION" 2>&1 | scrub_colab_log >> "$VITALS_LOG" || true
+          break
         fi
       fi
     fi

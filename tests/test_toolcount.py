@@ -1423,6 +1423,61 @@ def test_fix6_rule2_holm_unification_and_rule4_discordance_paired_rho() -> None:
     assert r4["measured_cluster_floor_pts"] == expected_floor
 
 
+def test_fix7_c2_dead_harness_r0_tar_sha_resume_unpacked_and_r1_stub_via_pin_window(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Fix 7:
+    1) launch-w1.sh: in c2_guard_loop, DEAD HARNESS kills win_pid, stops Colab session, and breaks;
+       and stub mode prepares/uploads R0_TAR.
+    2) pin_window.py toolcount_window: verifies R0_TAR_SHA256 before/after extracting r0_tar,
+       uses resume_unpacked when resume.tar is unpacked without PIN_RESUME_CALLS_DIR, and calls slots() in stub mode.
+    3) run_r1_stub_verification runs Pass 1 and Pass 2 through pin_window.main() (including slots(), r0_tar unpack, and resume.tar).
+    """
+    import tarfile
+
+    repo_root = Path(__file__).resolve().parents[1]
+    launch_sh = (repo_root / "scripts" / "toolcount" / "launch-w1.sh").read_text(encoding="utf-8")
+
+    # 1. Verify DEAD HARNESS block in launch-w1.sh kills win_pid, stops colab session, and breaks
+    dead_idx = launch_sh.index("DEAD HARNESS:")
+    dead_block = launch_sh[dead_idx : dead_idx + 450]
+    assert 'kill -TERM "$win_pid"' in dead_block, "Expected DEAD HARNESS in c2_guard_loop to kill win_pid"
+    assert 'colab stop -s "$PIN_SESSION"' in dead_block, "Expected DEAD HARNESS in c2_guard_loop to stop Colab session"
+    assert "break" in dead_block, "Expected DEAD HARNESS in c2_guard_loop to break out of loop"
+
+    # 2. Verify toolcount_window rejects a mismatched R0_TAR_SHA256 before extracting r0_tar
+    bad_tar_work = tmp_path / "bad_r0_tar"
+    bad_tar_work.mkdir(parents=True, exist_ok=True)
+    r0_tar_path = bad_tar_work / "toolcount-r0.tar"
+    with tarfile.open(r0_tar_path, "w") as tf:
+        for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+            src_f = r0_bundle["r0_dir"] / fn
+            tf.add(src_f, arcname=fn)
+            sidecar_f = r0_bundle["r0_dir"] / f"{fn}.sha256"
+            if sidecar_f.is_file():
+                tf.add(sidecar_f, arcname=f"{fn}.sha256")
+
+    monkeypatch.setattr(pw, "WORK", bad_tar_work)
+    monkeypatch.setattr(pw, "CONTENT", bad_tar_work)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+    monkeypatch.setenv("R0_TAR_SHA256", "0" * 64)
+
+    with pytest.raises(RuntimeError, match="toolcount-r0.tar"):
+        pw.toolcount_window({"commit": LLAMA_CPP_COMMIT, "sha256": LLAMA_SERVER_SHA256}, [], {})
+
+    # 3. Verify run_r1_stub_verification runs Pass 1 and Pass 2 through pin_window.main() with r0_tar, resume.tar, and slots()
+    monkeypatch.delenv("R0_TAR_SHA256", raising=False)
+    r1_rep = run_r1_stub_verification(work_dir=tmp_path / "r1_via_pw", seed=DEFAULT_SEED)
+    assert r1_rep["r1_passed"] is True
+    assert "initial_pin_result" in r1_rep, "Expected run_r1_stub_verification Pass 1 to run via pin_window.main()"
+    assert "resumed_pin_result" in r1_rep, "Expected run_r1_stub_verification Pass 2 to run via pin_window.main()"
+    assert r1_rep["initial_pin_result"].get("r0_tar_sha256"), "Expected Pass 1 to unpack and verify r0_tar"
+    assert r1_rep["resumed_pin_result"].get("resume_unpacked"), "Expected Pass 2 to unpack and use resume.tar via unpack_resume()"
+    assert r1_rep["resumed_pin_result"]["models"][0]["slots"]["ok"] is True
+
+
+
 
 
 
