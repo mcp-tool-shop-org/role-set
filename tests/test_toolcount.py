@@ -1287,16 +1287,25 @@ def test_fix5_granite_isolation_prefetch_hosted_and_hosted_tokenizer_check(
     monkeypatch.setattr(pw, "CONTENT", tmp_path)
     monkeypatch.setattr(pw, "HOSTED", {})
     monkeypatch.setattr(pw, "prefetch_hosted", fake_prefetch_hosted)
-    monkeypatch.setattr(
-        pw,
-        "_populate_hosted_tokenizer_hf",
-        lambda model, spec, built=None: model.setdefault("tokenizer_hf", expected_tok_ids),
-    )
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_MODELS", "qwen3.8-27b")
+    monkeypatch.setenv("PIN_GGUF_REPO", "mcp-tool-shop-org/private-ggufs")
 
+    r0_dest = tmp_path / "toolcount" / "r0"
+    r0_dest.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest / fn).write_text((r0_bundle["r0_dir"] / fn).read_text(encoding="utf-8"), encoding="utf-8")
+
+    res_tc: dict[str, Any] = {}
+    pw.toolcount_window({"commit": LLAMA_CPP_COMMIT, "sha256": LLAMA_SERVER_SHA256}, [], res_tc)
+    assert prefetch_called == [["qwen3.8-27b"]]
+
+    # Write cached tokenizer_hf table for HOSTED qwen3.8-27b and verify real _populate_hosted_tokenizer_hf loads it
+    (tmp_path / "qwen3.8-27b-tokenizer-hf.json").write_text(json.dumps(expected_tok_ids), encoding="utf-8")
     with StubToolCountServer() as srv:
-        fake_Fetch_out = pw.fetch_model(qwen_spec, {"src": str(tmp_path)})
-        assert "tokenizer_hf" not in fake_Fetch_out or fake_Fetch_out.get("tokenizer_hf") == expected_tok_ids
-        tok_rec, stop_reason = pw.check_tokenizer_or_stop(srv.port, fake_Fetch_out, qwen_spec)
+        fake_fetch_out = pw.fetch_model(qwen_spec, {"src": str(tmp_path)})
+        assert "tokenizer_hf" not in fake_fetch_out
+        tok_rec, stop_reason = pw.check_tokenizer_or_stop(srv.port, fake_fetch_out, qwen_spec)
         assert stop_reason is None, f"Expected HOSTED model to pass check_tokenizer_or_stop, got {stop_reason}"
         assert tok_rec is not None and tok_rec["match"] is True
 
