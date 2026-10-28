@@ -1477,6 +1477,20 @@ def test_fix7_c2_dead_harness_r0_tar_sha_resume_unpacked_and_r1_stub_via_pin_win
     assert r1_rep["resumed_pin_result"]["models"][0]["slots"]["ok"] is True
 
 
+def test_fix8_pyproject_coverage_includes_scripts_toolcount() -> None:
+    """Fix 8: pyproject.toml addopts and [tool.coverage.run].source include scripts/toolcount."""
+    import tomllib
+
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    data = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    addopts = data["tool"]["pytest"]["ini_options"]["addopts"]
+    cov_source = data["tool"]["coverage"]["run"]["source"]
+
+    assert "--cov=scripts/toolcount" in addopts, f"Expected --cov=scripts/toolcount in addopts, got: {addopts}"
+    assert "scripts/toolcount" in cov_source, f"Expected 'scripts/toolcount' in [tool.coverage.run].source, got: {cov_source}"
+
+
+
 
 
 
