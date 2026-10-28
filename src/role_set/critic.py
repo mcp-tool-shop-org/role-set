@@ -267,6 +267,7 @@ def compare_verdict(
     material: str,
     *,
     check_evidence: bool = True,
+    content_kind: str | None = None,
 ) -> CriticVerdict:
     parsed = gates.parse_answer(reply)
     cv = parsed.get("verdict")
@@ -281,7 +282,7 @@ def compare_verdict(
     repairs: list[dict] = []
     cd: list[str] = []
     for x in raw_cd:
-        res = resolve_verbatim_line(x, material)
+        res = resolve_verbatim_line(x, material, content_kind=content_kind)
         if res is not None:
             resolved, repair = res
             cd.append(resolved)

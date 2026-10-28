@@ -410,3 +410,50 @@ def test_the_last_wave_holds_the_whole_batch_and_its_models(pack_dir: Path, plan
     # The gates' own loader reads the sidecar, each row_sha256 matching its line as written.
     gates = pytest.importorskip("aspire_si_gates")
     assert set(gates.load_models(last / "accepted.jsonl")) == b_rows
+
+
+def test_mock_write_t09_kind_c_slots_with_comma_side_end_awaiting_critique(tmp_path: Path):
+    from role_set.cli import DEFAULT_DOMAINS, VERIFIER_SIDES
+    from role_set.mock import MockWriter, mock_excerpts, mock_gates
+    from role_set.plan import plan_batch
+    from role_set import domains, solvefirst
+    from role_set.runner import Runner
+    from role_set.waves import write_wave
+
+    pack = {
+        "traits/T09.md": "## 9. As a verifier, you are consistent\n\nSame facts, same verdict.\n",
+        "kinds.md": "kinds\n",
+        "amendments/1.md": "## Amendment 1\n\nq\n",
+    }
+    traits = {"T09": "consistent"}
+    table = domains.load(DEFAULT_DOMAINS)
+    packs = solvefirst.load_packs()
+
+    for seed, wanted_ids in ((2, ("T09-C-01", "T09-C-03")), (1, ("T09-C-03",))):
+        slots = plan_batch({"T09": VERIFIER_SIDES["T09"]}, seed=seed)
+        domains.assign(slots, table, seed=seed)
+        solvefirst.assign(slots, packs, seed=seed, table=table)
+        solvefirst.lock_skeletons(slots, packs)
+        picked = [s for s in slots if s.id in wanted_ids]
+        assert [s.id for s in picked] == list(wanted_ids)
+        assert all(s.side == "same facts, same verdict" for s in picked)
+
+        order = {s.id: i for i, s in enumerate(picked)}
+        answers: dict = {}
+        runner = Runner(
+            gates=mock_gates(),
+            pack=pack,
+            trait_names=traits,
+            writer=MockWriter(keyed_order=order, answers=answers),
+            critic=None,
+            out_dir=tmp_path / f"t09-s{seed}",
+            excerpts=mock_excerpts(),
+        )
+        drafts = write_wave(runner, picked)
+        by_id = {d["slot"]["id"]: d for d in drafts}
+        for sid in wanted_ids:
+            assert by_id[sid]["state"] == "awaiting_critique", (seed, sid, by_id[sid]["refusals"])
+            assert by_id[sid]["refusals"] == []
+            cand_fields = json.loads(by_id[sid]["candidate"]["text"])
+            assert cand_fields.get("checker_trace")
+

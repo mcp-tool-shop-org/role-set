@@ -137,6 +137,15 @@ def extract_item_parts(d: dict) -> dict:
     else:
         material = str(row.get("material") or "")
 
+    raw_ck = (
+        d.get("content_kind")
+        or slot.get("content_kind")
+        or row.get("content_kind")
+        or (mat_field.get("content_kind") if isinstance(mat_field, dict) else None)
+        or fields.get("content_kind")
+    )
+    content_kind = str(raw_ck).strip() if isinstance(raw_ck, str) and raw_ck.strip() else None
+
     turns = row.get("turns") or []
     user0 = str(turns[0].get("user") or "") if turns and isinstance(turns[0], dict) else ""
 
@@ -267,6 +276,7 @@ def extract_item_parts(d: dict) -> dict:
         "control_item_id": str(d.get("control_item_id") or f"{source_row_id}:d"),
         "perturbation_type": perturbation_type,
         "kind": kind,
+        "content_kind": content_kind,
         "material": material,
         "new_material": new_lines,
         "seen_material": seen_material,
@@ -737,6 +747,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                     vt["key_deciding"],
                     vt["seen_material"],
                     check_evidence=vt.get("has_key_deciding", True),
+                    content_kind=parts.get("content_kind"),
                 )
                 vc_entry = {
                     "turn": vt["turn"],
@@ -793,6 +804,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                         vt["key_deciding"],
                         vt["seen_material"],
                         check_evidence=vt.get("has_key_deciding", True),
+                        content_kind=parts.get("content_kind"),
                     )
                     if v.code != "VOID":
                         break
@@ -911,7 +923,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
                 )
                 match_votes = sum(1 for w in vote_words if w == parts["key_flaw"])
                 p2_ok = match_votes >= 2
-                p2_code = "AGREE" if p2_ok else ("VOID" if void_votes >= 2 else "FLAW_MISMATCH")
+                p2_code = "AGREE" if p2_ok else ("FLAW_MISMATCH" if (flaw_label_votes + none_votes - match_votes) >= 2 else "VOID")
                 v0_word = votes[0]["critic_flaw"]
                 v0_pc_ok = v0_word is not None and ((v0_word == "none") == (parts["key_flaw"] == "none"))
                 v0_pc_code = "VOID" if v0_word is None else ("AGREE" if v0_pc_ok else "FLAW_MISMATCH")
@@ -976,6 +988,7 @@ def run_critic_eval(cfg: CriticEvalConfig, *, critic=None) -> dict:
             "prompt_tokens": item_prompt,
         }
         if has_trackb_ext:
+            rec["content_kind"] = parts.get("content_kind")
             rec["input_sha256"] = input_sha256
             rec["flaw_votes"] = cfg.flaw_votes
             if verdict_from_sha256 is not None:
@@ -1224,6 +1237,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
         return f"turn{turn_num}:{code}" if multi_turn else code
 
     last_v: CriticVerdict | None = None
+    content_kind = key_item.get("content_kind") or eval_rec.get("content_kind")
     for vt, v_reply in zip(verdict_turns, v_replies, strict=True):
         t_num = int(vt.get("turn") or 1)
         key_verdict = vt["key_verdict"]
@@ -1231,7 +1245,15 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
         has_key_deciding = vt.get("has_key_deciding", True)
         material = vt["seen_material"]
 
-        v = compare_verdict(gates, v_reply, key_verdict, key_deciding, material, check_evidence=has_key_deciding)
+        v = compare_verdict(
+            gates,
+            v_reply,
+            key_verdict,
+            key_deciding,
+            material,
+            check_evidence=has_key_deciding,
+            content_kind=content_kind,
+        )
         last_v = v
         cd = list(v.critic_deciding if v.critic_deciding is not None else _lines(gates.parse_answer(v_reply).get("deciding")))
 
@@ -1343,7 +1365,7 @@ def score_single_item(gates: Gates, eval_rec: dict, key_item: dict, rule_set: st
             else:
                 match_votes = sum(1 for w in words if w == key_flaw)
                 if match_votes < 2:
-                    code = "VOID" if void_votes >= 2 else "FLAW_MISMATCH"
+                    code = "FLAW_MISMATCH" if (flaw_label_votes + none_votes - match_votes) >= 2 else "VOID"
                     return {
                         "outcome": "refuse",
                         "accepted": False,
@@ -1506,6 +1528,7 @@ def _merge_key_into_base(base: dict, ki: dict) -> dict:
     return {
         **ki,
         "kind": ki["kind"] or base["kind"],
+        "content_kind": ki.get("content_kind") or base.get("content_kind"),
         "material": mat,
         "new_material": new_lines,
         "seen_material": seen_mat,

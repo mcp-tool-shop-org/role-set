@@ -400,5 +400,5 @@ def test_readout_on_wave_batch_report_counts_every_state_and_keeps_inline_readou
         ],
     }
     expected_bytes_file = tmp_path / "expected-readout.json"
-    expected_bytes_file.write_text(json.dumps(expected_main_data, indent=1), encoding="utf-8")
+    expected_bytes_file.write_text(json.dumps(expected_main_data, indent=1), encoding="utf-8", newline="\n")
     assert (inline_ro / "readout.json").read_bytes() == expected_bytes_file.read_bytes()

@@ -10,10 +10,15 @@ Priority order within each 24-slot half (sorted in lesson order, then slot ID or
 2. `phase4_only`: slots used only by Phase 4 (re-planned at fresh seed 2).
 3. `track_a`: slots Track A used (re-planned at fresh seed 2).
 
-Real-source rule:
-- `Runner._material_for` picks a real-source excerpt from a hash of `slot.id` alone (`runner.py` 687-699).
-- Therefore, a slot that is `real_source` in V's seed-2 plan is taken only if its ID was never a `real_source` slot in
-  Phase 4 or Track A. Any slot skipped under this rule is recorded in `real_source_skipped` with its reason.
+Real-source and excerpt-collision rules:
+- `Runner._material_for` picks a real-source excerpt from a hash of `slot.id` alone, stepping forward if an earlier
+  slot in the run already took that index (`runner.py` 687-699).
+- Same-ID rule: a slot that is `real_source` in V's seed-2 plan is skipped if its ID was a `real_source` slot in
+  Phase 4 or Track A.
+- Excerpt-collision rule: a fixed-point loop simulates `Runner._material_for` over the candidate 48 in `_slot_order_key`
+  order against `--pool` and `--against`, skipping and replacing with the next slot in priority any `real_source` slot
+  whose whitespace-normalised excerpt collides with any D material (`reason="excerpt_collision"`, recording `d_slot_id`,
+  `d_file`, `pool_index`, and `material_sha256` in `real_source_skipped`).
 """
 
 from __future__ import annotations
