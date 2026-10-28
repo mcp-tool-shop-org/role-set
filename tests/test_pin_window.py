@@ -6150,6 +6150,68 @@ def test_pilot_window_refuses_conflicting_per_arm_quant_for_one_writer(tmp_path,
     assert seen_policies == [{"gemma-4-31b-it": "q8"}]
 
 
+def test_granite_4_2_8b_models_entry():
+    spec = next(m for m in pw.ALL_MODELS if m["served_as"] == "granite-4.2-8b")
+    assert spec == {
+        "served_as": "granite-4.2-8b",
+        "how": "convert",
+        "repo": "ibm-granite/granite-4.2-8b",
+        "revision": "a7042144125ce5ae64f89610e8289647fc000b9a",
+        "tokenizer_check": True,
+    }
+    assert "expect_sha256" not in spec
+    assert "granite-4.2-8b" not in [m["served_as"] for m in pw.MODELS]
+
+
+def test_tokenizer_hard_stop_stops_before_any_measurement_row_on_forced_mismatch(tmp_path, monkeypatch):
+    monkeypatch.setattr(pw, "WORK", tmp_path)
+    monkeypatch.setattr(pw, "CONTENT", tmp_path)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_GPU", "CPU")
+    monkeypatch.setenv("PIN_SKIP_BINARY", "1")
+    monkeypatch.setenv("PIN_ROLE", "toolcount")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+    monkeypatch.setenv("PIN_TOKENIZER_HARD_STOP", "1")
+    monkeypatch.setenv("PIN_FORCE_TOKENIZER_MISMATCH", "1")
+
+    rc = pw._main()
+    assert rc == 1
+    res = json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is False
+    assert "tokenizer mismatch on granite-4.2-8b" in (res.get("stopped_reason") or "")
+    assert res["models"][0]["tokenizer"]["match"] is False
+    assert not (tmp_path / "calls.jsonl").exists()
+    assert not (tmp_path / "toolcount" / "granite-4.2-8b" / "calls.jsonl").exists()
+
+
+def test_tokenizer_hard_stop_stops_on_missing_tokenizer_or_conversion_error(tmp_path, monkeypatch):
+    monkeypatch.setattr(pw, "WORK", tmp_path)
+    monkeypatch.setattr(pw, "CONTENT", tmp_path)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_GPU", "CPU")
+    monkeypatch.setenv("PIN_SKIP_BINARY", "1")
+    monkeypatch.setenv("PIN_ROLE", "toolcount")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+    monkeypatch.setenv("PIN_FORCE_MISSING_TOKENIZER", "1")
+
+    rc_missing = pw._main()
+    assert rc_missing == 1
+    res_missing = json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
+    assert res_missing["ok"] is False
+    assert "tokenizer check missing on granite-4.2-8b" in (res_missing.get("stopped_reason") or "")
+    assert not (tmp_path / "calls.jsonl").exists()
+
+    monkeypatch.delenv("PIN_FORCE_MISSING_TOKENIZER", raising=False)
+    monkeypatch.setenv("PIN_FORCE_CONVERT_ERROR", "1")
+    rc_conv = pw._main()
+    assert rc_conv == 1
+    res_conv = json.loads((tmp_path / "pin-result.json").read_text(encoding="utf-8"))
+    assert res_conv["ok"] is False
+    assert "conversion failed for granite-4.2-8b" in (res_conv.get("stopped_reason") or "")
+    assert not (tmp_path / "calls.jsonl").exists()
+
+
+
 
 
 

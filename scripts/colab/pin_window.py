@@ -123,6 +123,13 @@ MODELS = [
      "revision": "e0fecb69cb3e5e4c5e8a056fa2aec98c78e91246", "file": "NVIDIA-Nemotron-3.5-Bolt-74B-A9B-24GB.gguf",
      "card": "nemotron-3.5-bolt-74b-a9b-24gb", "expect_sha256": "91d63363e782c8a3d5f4be42816eba8e0d42dd2530bd07a7d0d2dc440599af75"},
 ]
+# Tool-count cliff study model (Card kh item 7): kept separate from default MODELS so critic/q6k/convert/smoke/all
+# windows and writers.json pin checks only iterate over writers.json-pinned models when PIN_ONLY is unset.
+TOOLCOUNT_MODELS = [
+    {"served_as": "granite-4.2-8b", "how": "convert", "repo": "ibm-granite/granite-4.2-8b",
+     "revision": "a7042144125ce5ae64f89610e8289647fc000b9a", "tokenizer_check": True},
+]
+ALL_MODELS = [*MODELS, *TOOLCOUNT_MODELS]
 # Window 1's llama-server (built 2026-10-17 at LLAMA_CPP_COMMIT, nvcc 13.4.92): every later window runs this file,
 # unless PIN_SERVER_SHA256 names another pinned build (e.g. window 16g's G4 sm120 binary).
 SERVER_SHA256 = "b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
@@ -915,6 +922,11 @@ def smoke(built: dict, model: dict) -> dict:
                 time.sleep(5)
         else:
             raise RuntimeError("llama-server never came up: " + server_log.read_text(encoding="utf-8", errors="replace")[-800:])
+        if tokenizer_hard_stop_enabled():
+            wait_for_log(server_log)
+            tok, tok_stop = check_tokenizer_or_stop(port, model)
+            if tok_stop:
+                return {"ok": False, "stopped": tok_stop, "tokenizer": tok, "ctx": ctx}
         max_tokens = int(os.environ.get("PIN_SMOKE_MAX_TOKENS") or SMOKE_MAX_TOKENS)
         req_body = {"model": model["served_as"], "temperature": 0, "seed": 0, "max_tokens": max_tokens,
                     "logprobs": True, "top_logprobs": 5,
@@ -1065,6 +1077,106 @@ def tokenizer_check(port: int, model: dict) -> dict:
         if got != want:
             mism.append({"i": i, "text": text[:40], "hf": want[:12], "gguf": got[:12]})
     return {"strings": len(TOKENIZER_STRINGS), "match": not mism, "mismatches": mism[:10]}
+
+
+def tokenizer_hard_stop_enabled() -> bool:
+    """Opt-in tokenizer hard stop (Card kh item 8): active when PIN_TOKENIZER_HARD_STOP=1 or PIN_ROLE=toolcount."""
+
+    raw = (os.environ.get("PIN_TOKENIZER_HARD_STOP") or "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    return os.environ.get("PIN_ROLE") == "toolcount"
+
+
+def _populate_hosted_tokenizer_hf(model: dict, spec: dict | None, built: dict | None = None) -> None:
+    """Compute or load `tokenizer_hf` when a model came from `HOSTED` (so no BF16 snapshot was converted in this window)."""
+    if model.get("tokenizer_hf"):
+        return
+    served = model.get("served_as") or (spec or {}).get("served_as") or "model"
+    cached = WORK / f"{served}-tokenizer-hf.json"
+    if cached.is_file():
+        model["tokenizer_hf"] = json.loads(cached.read_text(encoding="utf-8"))
+        return
+    repo = (spec or {}).get("repo") or model.get("repo")
+    rev = (spec or {}).get("revision") or model.get("revision")
+    if not repo or stub_mode():
+        return
+    from huggingface_hub import snapshot_download  # noqa: PLC0415
+
+    tok_dir = WORK / f"{served}-tokenizer-snap"
+    snap = Path(
+        with_heartbeat(
+            lambda: snapshot_download(
+                repo,
+                revision=rev,
+                local_dir=tok_dir,
+                token=False,
+                allow_patterns=[
+                    "*tokenizer*",
+                    "*.model",
+                    "vocab*",
+                    "merges*",
+                    "special_tokens*",
+                    "config.json",
+                    "*.tiktoken",
+                    "*.jinja",
+                ],
+            ),
+            f"tokenizer:{served}",
+            download_timeout(None),
+            watch=tok_dir,
+        )
+    )
+    try:
+        py = converter_python(spec or model, built) if (built and built.get("src")) else sys.executable
+        model["tokenizer_hf"] = hf_token_ids(py, snap)
+    finally:
+        shutil.rmtree(snap, ignore_errors=True)
+
+
+def check_tokenizer_or_stop(
+    port: int, model: dict, spec: dict | None = None, built: dict | None = None
+) -> tuple[dict | None, str | None]:
+    """Run tokenizer_check and return (tokenizer_record, stop_reason_or_None)."""
+
+    served = model.get("served_as") or (spec or {}).get("served_as") or "model"
+    if (os.environ.get("PIN_FORCE_TOKENIZER_MISMATCH") or "").strip() == "1":
+        forced_rec = {
+            "strings": len(TOKENIZER_STRINGS),
+            "match": False,
+            "forced": True,
+            "mismatches": [{"i": 0, "text": TOKENIZER_STRINGS[0], "hf": [1], "gguf": [999999]}],
+        }
+        return forced_rec, f"tokenizer mismatch on {served}: forced by PIN_FORCE_TOKENIZER_MISMATCH=1"
+    needs_check = bool((spec or {}).get("tokenizer_check")) or bool(model.get("tokenizer_hf")) or tokenizer_hard_stop_enabled()
+    if (
+        not model.get("tokenizer_hf")
+        and needs_check
+        and not model.get("stub")
+        and (os.environ.get("PIN_FORCE_MISSING_TOKENIZER") or "").strip() != "1"
+    ):
+        try:
+            _populate_hosted_tokenizer_hf(model, spec, built)
+        except (OSError, ValueError, RuntimeError, KeyError, ImportError) as exc:
+            if tokenizer_hard_stop_enabled():
+                err_rec = {"strings": len(TOKENIZER_STRINGS), "match": False, "error": f"{type(exc).__name__}: {exc}"}
+                return err_rec, f"tokenizer check failed on {served}: {type(exc).__name__}: {exc}"
+            raise
+    if not model.get("tokenizer_hf"):
+        if needs_check and tokenizer_hard_stop_enabled():
+            return None, f"tokenizer check missing on {served}: no tokenizer_hf token table produced"
+        return None, None
+    try:
+        tok = tokenizer_check(port, model)
+    except (OSError, ValueError, RuntimeError, KeyError) as exc:
+        if tokenizer_hard_stop_enabled():
+            err_rec = {"strings": len(TOKENIZER_STRINGS), "match": False, "error": f"{type(exc).__name__}: {exc}"}
+            return err_rec, f"tokenizer check failed on {served}: {type(exc).__name__}: {exc}"
+        raise
+    if not tok.get("match"):
+        n_mism = len(tok.get("mismatches") or [])
+        return tok, f"tokenizer mismatch on {served}: {n_mism} string(s) differed between HF and GGUF"
+    return tok, None
 
 
 def pin_libs(binary: str) -> list[dict]:
@@ -1381,7 +1493,15 @@ def critic_window(built: dict, specs: list, result: dict) -> None:
                 if not rec["slots"]["ok"]:
                     rec["stopped"] = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {CRITIC_CTX}"
                     continue
-                if m.get("tokenizer_hf"):
+                if tokenizer_hard_stop_enabled():
+                    tok_res, tok_stop = check_tokenizer_or_stop(CRITIC_PORT, m, spec)
+                    if tok_res is not None:
+                        rec["tokenizer"] = tok_res
+                    if tok_stop:
+                        rec["stopped"] = tok_stop
+                        result["stopped_reason"] = tok_stop
+                        continue
+                elif m.get("tokenizer_hf"):
                     rec["tokenizer"] = tokenizer_check(CRITIC_PORT, m)
                 if m.get("brief_hf"):
                     rec["brief_check"] = tokenize_all(CRITIC_PORT, m["brief_texts"], m["brief_hf"])
@@ -5027,6 +5147,322 @@ def runtime() -> dict:
             "src": str(src), "cuda_wheels": wheels, "cuda_toolkit": CUDA_TOOLKIT}
 
 
+TOOLCOUNT_CTX = 16384
+TOOLCOUNT_PORT = 8094
+
+
+def toolcount_window(built: dict, specs: list, result: dict) -> None:
+    """PIN_ROLE=toolcount (Design v1 §§2-5, 7-8; Card kh items 5, 7, 8, 9):
+    Enforces the tokenizer hard stop before any measurement row is written, runs the pre-loop smoke
+    assertion (thinking_tokens == 0, output_tokens < 80), executes the 3 arms (full, compass, length-control),
+    checkpoints per call, and scores the window."""
+
+    global _TOKEN
+    held, _TOKEN = _TOKEN, None  # the clone and installs run with no token in memory, as import_batchdrift_replay's do
+    try:
+        roleset_commit = (os.environ.get("PIN_ROLESET_COMMIT") or "").strip()
+        if roleset_commit and roleset_commit != "to pin":
+            rs = result["role_set"] = role_set_env(roleset_commit)
+            rs_src = rs.get("src") if isinstance(rs, dict) else None
+            if rs_src and str(rs_src) not in sys.path:
+                sys.path.insert(0, str(rs_src))
+        rnd_commit = (os.environ.get("PIN_RND_COMMIT") or "").strip()
+        if rnd_commit and rnd_commit != "to pin":
+            result["rnd"] = install_rnd(rnd_commit)
+    finally:
+        _TOKEN = held
+
+    root = _repo_root()
+    if str(root) not in sys.path:
+        sys.path.insert(0, str(root))
+    from scripts.toolcount.compass_lists import write_compass_artifacts  # noqa: PLC0415
+    from scripts.toolcount.gen_registry import generate_all  # noqa: PLC0415
+    from scripts.toolcount.runner import (  # noqa: PLC0415
+        SmokeAssertError,
+        StubToolCountServer,
+        build_r1_stub_schedule,
+        run_model_window,
+    )
+    from scripts.toolcount.scorer import score_calls_file  # noqa: PLC0415
+
+    base = WORK / "toolcount"
+    base.mkdir(parents=True, exist_ok=True)
+    r0_dir = base / "r0"
+    r0_tar = CONTENT / "toolcount-r0.tar"
+    seed = int(os.environ.get("PIN_TOOLCOUNT_SEED") or "20261028")
+    half = (os.environ.get("PIN_TOOLCOUNT_HALF") or "ALL").strip().upper()
+
+    if r0_tar.is_file():
+        import tarfile  # noqa: PLC0415
+
+        got_r0_sha = sha256(r0_tar)
+        result["r0_tar_sha256"] = got_r0_sha
+        want_r0_sha = (os.environ.get("R0_TAR_SHA256") or "").strip()
+        r0_tar_sidecar = CONTENT / "toolcount-r0.tar.sha256"
+        if (not want_r0_sha or want_r0_sha == "to pin") and r0_tar_sidecar.is_file():
+            want_r0_sha = r0_tar_sidecar.read_text(encoding="utf-8").strip().split()[0]
+        if want_r0_sha and want_r0_sha != "to pin" and got_r0_sha != want_r0_sha:
+            raise RuntimeError(f"toolcount-r0.tar {got_r0_sha[:12]} isn't pinned {want_r0_sha[:12]}")
+        r0_dir.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(r0_tar) as tf:
+            tf.extractall(r0_dir, filter="data")
+        verified_sidecars = 0
+        for sidecar in sorted(r0_dir.glob("*.sha256")):
+            target_file = r0_dir / sidecar.name.removesuffix(".sha256")
+            if not target_file.is_file():
+                raise RuntimeError(f"missing R0 artifact {target_file.name} for sidecar {sidecar.name}")
+            want_file_sha = sidecar.read_text(encoding="utf-8").strip().split()[0]
+            got_file_sha = sha256(target_file)
+            if got_file_sha != want_file_sha:
+                raise RuntimeError(f"R0 artifact {target_file.name} {got_file_sha[:12]} != sidecar {want_file_sha[:12]}")
+            verified_sidecars += 1
+        result["r0_sidecars_verified"] = verified_sidecars
+    elif not (r0_dir / "registry.json").is_file():
+        generate_all(out_dir=r0_dir, seed=seed)
+        write_compass_artifacts(r0_dir=r0_dir, out_dir=r0_dir, seed=seed, embedder_mode="fake")
+
+    resume_unpacked = unpack_resume()
+    if resume_unpacked:
+        result["resume_unpacked"] = str(resume_unpacked)
+    resume_dir_env = os.environ.get("PIN_RESUME_CALLS_DIR")
+    resume_dir = Path(resume_dir_env) if resume_dir_env else resume_unpacked
+    max_calls_env = (os.environ.get("PIN_TOOLCOUNT_MAX_CALLS") or "").strip()
+    max_calls = int(max_calls_env) if max_calls_env else None
+
+    raw_models = (os.environ.get("PIN_MODELS") or os.environ.get("PIN_ONLY") or "granite-4.2-8b").strip()
+    wanted_names = [x.strip() for x in raw_models.split(",") if x.strip()]
+    by_name = {m["served_as"]: m for m in ALL_MODELS}
+    active_specs = [by_name[n] for n in wanted_names if n in by_name]
+    if not active_specs:
+        active_specs = specs or [by_name["granite-4.2-8b"]]
+
+    if not stub_mode() or os.environ.get("PIN_GGUF_REPO"):
+        prefetch_hosted([s["served_as"] for s in active_specs], by_name, result)
+
+    libs_val = built.get("libs")
+    if isinstance(built.get("library_sha"), str) and built["library_sha"]:
+        lib_sha = built["library_sha"]
+    elif libs_val:
+        lib_sha = hashlib.sha256(json.dumps(libs_val, sort_keys=True).encode("utf-8")).hexdigest()
+    else:
+        lib_sha = str(built.get("sha256") or built.get("binary_sha256") or server_sha256())
+    srv_sha = str(built.get("sha256") or built.get("binary_sha256") or server_sha256())
+    srv_commit = str(built.get("commit") or LLAMA_CPP_COMMIT)
+
+    result["models"] = []
+    try:
+        for spec in active_specs:
+            rec: dict = {"served_as": spec["served_as"], "quant": "Q8_0"}
+            result["models"].append(rec)
+            model_out_dir = base / spec["served_as"]
+            model_out_dir.mkdir(parents=True, exist_ok=True)
+            smi_csv = model_out_dir / "smi.csv"
+            smi_stop = threading.Event()
+            smi_stats = {"samples": 0, "peak_vram_mib": 0}
+            try:
+                out_smi = _query_smi_csv()
+                if out_smi and out_smi.strip():
+                    with smi_csv.open("a", encoding="utf-8") as f:
+                        f.write(out_smi if out_smi.endswith("\n") else out_smi + "\n")
+                    for line in out_smi.splitlines():
+                        parts = [p.strip() for p in line.split(",")]
+                        if len(parts) >= 2 and parts[1]:
+                            mib = int(float(parts[1].split()[0]))
+                            smi_stats["peak_vram_mib"] = max(smi_stats["peak_vram_mib"], mib)
+                            smi_stats["samples"] += 1
+            except (subprocess.SubprocessError, OSError, ValueError):
+                pass
+            smi_thread = threading.Thread(target=sample_smi_every_2s, args=(smi_csv, smi_stop, smi_stats), daemon=True)
+            smi_thread.start()
+            t0_model = time.time()
+            try:
+                if (os.environ.get("PIN_FORCE_CONVERT_ERROR") or "").strip() == "1":
+                    raise RuntimeError(f"conversion failed for {spec['served_as']}: forced by PIN_FORCE_CONVERT_ERROR=1")
+                model_resume_dir = resume_dir
+                if (
+                    model_resume_dir is not None
+                    and not (model_resume_dir / "calls.jsonl").is_file()
+                    and (model_resume_dir / spec["served_as"] / "calls.jsonl").is_file()
+                ):
+                    model_resume_dir = model_resume_dir / spec["served_as"]
+                if stub_mode():
+                    m: dict = {
+                        "served_as": spec["served_as"],
+                        "repo": spec["repo"],
+                        "revision": spec.get("revision") or "to pin",
+                        "gguf_sha256": spec.get("expect_sha256") or "to pin",
+                        "quant": "Q8_0",
+                        "server_build": srv_commit,
+                        "server_sha256": srv_sha,
+                        "library_sha": lib_sha,
+                        "stub": True,
+                    }
+                    if (os.environ.get("PIN_FORCE_MISSING_TOKENIZER") or "").strip() != "1":
+                        m["tokenizer_hf"] = [
+                            [100 + (b % 5000) for b in s.encode("utf-8")]
+                            for s in TOKENIZER_STRINGS
+                        ]
+                    force_mism = (os.environ.get("PIN_FORCE_TOKENIZER_MISMATCH") or "").strip() == "1"
+                    fail_smoke = (os.environ.get("PIN_FORCE_SMOKE_THINKING_FAIL") or "").strip() == "1"
+                    with StubToolCountServer(
+                        force_tokenizer_mismatch=force_mism,
+                        fail_smoke_thinking=fail_smoke,
+                    ) as srv:
+                        rec["slots"] = slots(srv.port, TOOLCOUNT_CTX)
+                        if not rec["slots"]["ok"]:
+                            stop_msg = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {TOOLCOUNT_CTX}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
+                        tok_res, tok_stop = check_tokenizer_or_stop(srv.port, m, spec)
+                        if tok_res is not None:
+                            rec["tokenizer"] = tok_res
+                        if tok_stop:
+                            rec["stopped"] = tok_stop
+                            result["stopped_reason"] = tok_stop
+                            continue
+                        items_data = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
+                        stub_sched = (
+                            build_r1_stub_schedule(items_data)
+                            if (os.environ.get("PIN_TOOLCOUNT_FULL_STUB") or "").strip() != "1"
+                            else None
+                        )
+                        win_summary = run_model_window(
+                            endpoint_url=srv.base_url,
+                            model_name=spec["served_as"],
+                            r0_dir=r0_dir,
+                            out_dir=model_out_dir,
+                            half=half,
+                            seed=seed,
+                            resume_calls_dir=model_resume_dir,
+                            max_calls=max_calls,
+                            schedule_override=stub_sched,
+                            model_meta=m,
+                            machine_line=str(result.get("machine")),
+                            peak_vram_mb=int(smi_stats["peak_vram_mib"]),
+                            vram_fn=lambda s=smi_stats: int(s["peak_vram_mib"]),
+                            heartbeat_fn=heartbeat,
+                            deadline_check_fn=check_deadline,
+                        )
+                        rec["window_summary"] = win_summary
+                        shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                        shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                        score_rep = score_calls_file(
+                            calls_jsonl=model_out_dir / "calls.jsonl",
+                            r0_dir=r0_dir,
+                            out_path=model_out_dir / "score_report.json",
+                            n_flips=1000,
+                            n_boot=200,
+                            seed=seed,
+                        )
+                        rec["score_report_sha256"] = score_rep.get("report_sha256")
+                else:
+                    m = fetch_model(spec, built)
+                    m["server_build"] = srv_commit
+                    m["server_sha256"] = srv_sha
+                    m["library_sha"] = lib_sha
+                    rec.update({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
+                    if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+                        stop_msg = f"GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
+                        rec["stopped"] = stop_msg
+                        result["stopped_reason"] = stop_msg
+                        continue
+                    proc, log_fh, server_log = start_server(built, m, TOOLCOUNT_CTX, TOOLCOUNT_PORT)
+                    try:
+                        wait_for_log(server_log)
+                        rec["offload_lines"] = _offload_lines(server_log)
+                        rec["fit"] = all_on_gpu(rec["offload_lines"])
+                        if not rec["fit"]["ok"]:
+                            stop_msg = f"not every layer is on the GPU for {spec['served_as']}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
+                        rec["slots"] = slots(TOOLCOUNT_PORT, TOOLCOUNT_CTX)
+                        if not rec["slots"]["ok"]:
+                            stop_msg = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {TOOLCOUNT_CTX}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
+                        tok_res, tok_stop = check_tokenizer_or_stop(TOOLCOUNT_PORT, m, spec, built)
+                        if tok_res is not None:
+                            rec["tokenizer"] = tok_res
+                        if tok_stop:
+                            rec["stopped"] = tok_stop
+                            result["stopped_reason"] = tok_stop
+                            continue
+                        win_summary = run_model_window(
+                            endpoint_url=f"http://127.0.0.1:{TOOLCOUNT_PORT}",
+                            model_name=spec["served_as"],
+                            r0_dir=r0_dir,
+                            out_dir=model_out_dir,
+                            half=half,
+                            seed=seed,
+                            resume_calls_dir=model_resume_dir,
+                            max_calls=max_calls,
+                            model_meta=m,
+                            machine_line=str(result.get("machine")),
+                            peak_vram_mb=int(smi_stats["peak_vram_mib"]),
+                            vram_fn=lambda s=smi_stats: int(s["peak_vram_mib"]),
+                            heartbeat_fn=heartbeat,
+                            deadline_check_fn=check_deadline,
+                        )
+                        rec["window_summary"] = win_summary
+                        shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                        shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                        score_rep = score_calls_file(
+                            calls_jsonl=model_out_dir / "calls.jsonl",
+                            r0_dir=r0_dir,
+                            out_path=model_out_dir / "score_report.json",
+                            seed=seed,
+                        )
+                        rec["score_report_sha256"] = score_rep.get("report_sha256")
+                    finally:
+                        stop_server(proc, log_fh)
+            except DeadlineReached:
+                global CUT_AT
+                CUT_AT = {
+                    "wave": "toolcount",
+                    "out": str(model_out_dir),
+                    "model": spec["served_as"],
+                    "journal": str(model_out_dir / "calls.jsonl"),
+                    "seconds": round(time.time() - t0_model),
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+                say(f"CUT AT THE DEADLINE toolcount {spec['served_as']} after {CUT_AT['seconds']} s")
+                raise
+            except (SmokeAssertError, RuntimeError, ValueError, OSError, KeyError) as e:
+                stop_msg = _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")
+                rec["stopped"] = stop_msg
+                rec["error"] = stop_msg
+                result["stopped_reason"] = stop_msg
+            finally:
+                smi_stop.set()
+                smi_thread.join(timeout=10)
+                rec["smi"] = {
+                    "interval_s": SMI_INTERVAL_S,
+                    "samples": smi_stats["samples"],
+                    "peak_vram_mib": smi_stats["peak_vram_mib"],
+                    "csv": str(smi_csv),
+                }
+                if (model_out_dir / "calls.jsonl").is_file():
+                    shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                if (model_out_dir / "generations.jsonl").is_file():
+                    shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                g = WORK / f"{spec['served_as']}-Q8_0.gguf"
+                if g.exists():
+                    g.unlink(missing_ok=True)
+    finally:
+        result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
+        try:
+            import tarfile as _tarfile  # noqa: PLC0415
+
+            with _tarfile.open(WORK / "toolcount-out.tar", "w") as tf:
+                if base.exists():
+                    tf.add(base, arcname="toolcount")
+        except (RuntimeError, OSError) as e:
+            result["tar_error"] = str(e)[:300]
+
+
 def take_job_lock(work: Path):
     """One job per VM, per window (R&D, 2026-10-17; fixed after Browser Argon's v2 re-review).
 
@@ -5039,7 +5475,10 @@ def take_job_lock(work: Path):
     module global held for the kernel's life; `colab exec -f` re-runs the whole file in the kernel's globals, which
     rebound it to None and released the lock (Argon). Returns the open lock file, or None when this job must stop."""
 
-    import fcntl  # noqa: PLC0415 - Linux, where the window runs
+    try:
+        import fcntl  # noqa: PLC0415 - Linux, where the window runs
+    except ImportError:
+        fcntl = None
 
     work.mkdir(parents=True, exist_ok=True)
 
@@ -5058,6 +5497,8 @@ def take_job_lock(work: Path):
         note("JOB ALREADY DONE: this window's result is written; this exec stops")
         return None
     fh = (work / "job.lock").open("w")
+    if fcntl is None:
+        return fh
     try:
         fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -5076,8 +5517,8 @@ def main() -> int:
     if "PIN_CONTENT" in os.environ:
         CONTENT = Path(os.environ["PIN_CONTENT"])
         BRIEFS, RESUME_TAR = CONTENT / "brief-strings.json", CONTENT / "resume.tar"
-    if "PIN_WORK" in os.environ or "PIN_CONTENT" in os.environ:
-        WORK = Path(os.environ.get("PIN_WORK") or str(CONTENT / "pin"))
+    if "PIN_WORK" in os.environ or "PIN_OUT_DIR" in os.environ or "PIN_CONTENT" in os.environ:
+        WORK = Path(os.environ.get("PIN_WORK") or os.environ.get("PIN_OUT_DIR") or str(CONTENT / "pin"))
         JOB_LOG = WORK / "job.log"
     WORK.mkdir(parents=True, exist_ok=True)
     lock = take_job_lock(WORK)
@@ -5106,7 +5547,7 @@ def _main() -> int:
         return 1
     needs_token = (
         role0 == "prebuild"
-        or (role0 in ("pilot", "critic-eval", "batching-drift") and bool(os.environ.get("PIN_GGUF_REPO")))
+        or (role0 in ("pilot", "critic-eval", "batching-drift", "toolcount") and bool(os.environ.get("PIN_GGUF_REPO")))
         or (role0 == "offrig-bench" and bool((os.environ.get("PIN_OLLAMA_MIRROR") or "").strip()))
     )
     if needs_token and not token_file().parent.is_dir():
@@ -5132,8 +5573,8 @@ def _main() -> int:
         # binary serves it in the next window). Unset: everything, on one VM.
         role = os.environ.get("PIN_ROLE", "all")
         result["role"] = role
-        if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval", "batching-drift"):
-            if stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift"):
+        if role in ("smoke", "critic", "q6k", "pilot", "rescore", "critic-eval", "batching-drift", "toolcount"):
+            if stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift", "toolcount"):
                 result["llama_server"] = built = {"commit": matched_server_pin["commit"], "sha256": want_server_sha,
                                                   "archs": matched_server_pin["archs"], "sha256_override": server_sha_overridden,
                                                   "path": "stub", "stub": True}
@@ -5149,17 +5590,26 @@ def _main() -> int:
             built = {}
         else:
             result["llama_server"] = built = build()
-        specs = MODELS if role in ("all", "smoke", "critic", "q6k") else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+        specs = (
+            ALL_MODELS
+            if role == "toolcount"
+            else (
+                MODELS
+                if role in ("all", "smoke", "critic", "q6k")
+                else [m for m in MODELS if (role == "build") == (m["how"] == "maker_gguf")]
+            )
+        )
         if role == "prebuild" and len([x for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]) != 1:
             raise RuntimeError("PIN_ROLE=prebuild converts one model per window: set PIN_ONLY to exactly one")
         if role == "prebuild":
-            unpinned = [m["served_as"] for m in specs if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
+            unpinned = [m["served_as"] for m in ALL_MODELS if m["served_as"] in os.environ["PIN_ONLY"].split(",") and not m.get("expect_sha256")]
             if unpinned:  # byte-match or don't host means nothing without a pin to match (R&D)
                 raise RuntimeError(f"REFUSED: {', '.join(unpinned)} has no expect_sha256; a prebuild needs a pin to match")
         # PIN_ONLY=<served_as,...> runs just those models (window 4: Muse alone, Lightning already pinned three times).
         only = [x.strip() for x in os.environ.get("PIN_ONLY", "").split(",") if x.strip()]
         if only:
-            specs = [m for m in specs if m["served_as"] in only]
+            pool_specs = ALL_MODELS if role in ("toolcount", "convert", "smoke", "all") else specs
+            specs = [m for m in pool_specs if m["served_as"] in only]
             if not specs:
                 raise RuntimeError(f"PIN_ONLY names no model: {only}")
             result["only"] = only
@@ -5185,6 +5635,9 @@ def _main() -> int:
             _bd_replay = import_batchdrift_replay(result)
             _bd_replay.batching_drift_window(built, result, sys.modules[__name__])
             specs = []
+        elif role == "toolcount":
+            toolcount_window(built, specs, result)
+            specs = []
         else:
             result["models"] = []
         for spec in specs:
@@ -5195,8 +5648,15 @@ def _main() -> int:
                 except DeadlineReached:
                     raise
                 except Exception as e:  # noqa: BLE001 - recorded, and the window's result is not ok
-                    result["models"].append({"served_as": spec["served_as"], "error": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")})
+                    err_str = _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")
+                    rec_err = {"served_as": spec["served_as"], "error": err_str}
+                    if tokenizer_hard_stop_enabled():
+                        rec_err["stopped"] = err_str
+                        result["stopped_reason"] = err_str
+                    result["models"].append(rec_err)
                     result["model_errors"] = result.get("model_errors", 0) + 1
+                    if tokenizer_hard_stop_enabled():
+                        break
                     continue
             else:
                 m = fetch_model(spec, built)
@@ -5210,20 +5670,34 @@ def _main() -> int:
             elif role == "prebuild":
                 upload_hosted(spec, m, result)
             elif role != "convert":
-                try:
-                    m["smoke"] = smoke(built, m)
-                except DeadlineReached:
-                    raise
-                except Exception as e:  # noqa: BLE001 - a smoke window records a failed serve and goes on
-                    if role != "smoke":
-                        raise
-                    m["smoke"] = {"ok": False, "error": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")}
+                if tokenizer_hard_stop_enabled() and spec.get("tokenizer_check") and not m.get("tokenizer_hf"):
+                    stop_msg = f"tokenizer check missing on {spec['served_as']}: no tokenizer_hf token table produced"
+                    m["stopped"] = stop_msg
+                    m["smoke"] = {"ok": False, "stopped": stop_msg}
+                    result["stopped_reason"] = stop_msg
                     result["model_errors"] = result.get("model_errors", 0) + 1
+                else:
+                    try:
+                        m["smoke"] = smoke(built, m)
+                    except DeadlineReached:
+                        raise
+                    except Exception as e:  # noqa: BLE001 - a smoke window records a failed serve and goes on
+                        if role != "smoke":
+                            raise
+                        m["smoke"] = {"ok": False, "error": _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")}
+                        result["model_errors"] = result.get("model_errors", 0) + 1
+                    if tokenizer_hard_stop_enabled() and (m.get("smoke") or {}).get("stopped"):
+                        stop_msg = m["smoke"]["stopped"]
+                        m["stopped"] = stop_msg
+                        result["stopped_reason"] = stop_msg
+                        result["model_errors"] = result.get("model_errors", 0) + 1
                 say(f"{m['served_as']}: {m['smoke']}")
             result["models"].append({k: v for k, v in m.items() if k != "path"})
             Path(m["path"]).unlink(missing_ok=True)  # the hash is the record; the file is rebuilt per window
             resources(f"{m['served_as']}: after unlinking {Path(m['path']).name}")
-        if role not in ("convert", "prebuild", "smoke", "offrig-bench") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift")):
+            if tokenizer_hard_stop_enabled() and result.get("stopped_reason"):
+                break
+        if role not in ("convert", "prebuild", "smoke", "offrig-bench", "toolcount") and not (stub_mode() and role in ("pilot", "rescore", "critic-eval", "batching-drift", "toolcount")):
             # The server binary is the one artifact fetched back: every later window and pod runs this exact file.
             if Path(built["path"]) != WORK / "llama-server":
                 shutil.copy(built["path"], WORK / "llama-server")

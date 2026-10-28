@@ -33,8 +33,8 @@ if [ -n "${PIN_HF_TOKEN_FROM:-}" ]; then
   # each fine-grained to the one private repo. The account-wide HF_TOKEN never goes to a VM. Checked before any VM is
   # asked for; presence only, never the value.
   case "${PIN_ROLE:-}:$PIN_HF_TOKEN_FROM" in
-    pilot:HF_TOKEN_GGUF_READ|critic-eval:HF_TOKEN_GGUF_READ|batching-drift:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE|offrig-bench:HF_TOKEN_OLLAMA_PINS_READ) ;;
-    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot/critic-eval/batching-drift: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE; offrig-bench: HF_TOKEN_OLLAMA_PINS_READ)"; exit 2;;
+    pilot:HF_TOKEN_GGUF_READ|critic-eval:HF_TOKEN_GGUF_READ|batching-drift:HF_TOKEN_GGUF_READ|toolcount:HF_TOKEN_GGUF_READ|prebuild:HF_TOKEN_GGUF_WRITE|offrig-bench:HF_TOKEN_OLLAMA_PINS_READ) ;;
+    *) echo "REFUSED: PIN_ROLE=${PIN_ROLE:-unset} may not send $PIN_HF_TOKEN_FROM (pilot/critic-eval/batching-drift/toolcount: HF_TOKEN_GGUF_READ; prebuild: HF_TOKEN_GGUF_WRITE; offrig-bench: HF_TOKEN_OLLAMA_PINS_READ)"; exit 2;;
   esac
   tokvar=$PIN_HF_TOKEN_FROM
   [ -n "${!tokvar:-}" ] || { echo "PIN_HF_TOKEN_FROM names $tokvar, which is empty on the rig"; exit 3; }
@@ -384,6 +384,7 @@ if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
   fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
   DEFAULT_DL="pin-result.json pilot-out.tar lib.tar generations.jsonl"
   [ "${PIN_ROLE:-}" = offrig-bench ] && DEFAULT_DL="pin-result.json offrig-bench-out.tar ps.json"
+  [ "${PIN_ROLE:-}" = toolcount ] && DEFAULT_DL="pin-result.json toolcount-out.tar lib.tar generations.jsonl"
   for f in ${PIN_DOWNLOADS:-$DEFAULT_DL}; do
     dl_out=$(timeout "$DL_S" colab download -s "$S" "/content/pin/$f" "$OUT/$f" 2>&1) && dl_rc=0 || dl_rc=$?
     printf '%s\n' "$dl_out" | strip_colab_banner | tail -1 | scrub_log

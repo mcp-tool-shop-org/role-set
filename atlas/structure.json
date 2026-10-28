@@ -173,7 +173,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "252fd1f37712df67295dc71816e949e10b81a04185701799e8d3fcdc45ca2b20",
+          "hash": "d8ba103459b3f745f8f08c549b548a0c31f19976caef75ad9965ac593210e9dc",
           "path": "CHANGELOG.md"
         },
         {
@@ -233,7 +233,7 @@
           "path": "codecov.yml"
         },
         {
-          "hash": "bdb0b2a20ebd0d4fd5fd1c88d0d4da5dd0ee4d408c4a73c72dd1473c7a575432",
+          "hash": "e1d553fc77315b89ac641e1dd6c4271f3ea4bf78cfba8b050b096c2a6ce77c9d",
           "path": "pyproject.toml"
         },
         {
@@ -256,7 +256,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 19,
+      "dynamicReads": 20,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 8,
@@ -750,32 +750,34 @@
             {
               "in": "batching_drift_window",
               "kind": "raise",
-              "line": 943
+              "line": 949
             },
             {
               "in": "batching_drift_window",
               "kind": "raise",
-              "line": 971
+              "line": 977
             },
             {
               "kind": "raise",
-              "line": 1020
+              "line": 1026
             }
           ],
-          "hash": "c7bc7544f156147772239322801c96c1fb582da5ae78144468d53828aed77ccc",
+          "hash": "f7eb37dbf5af41d08ead60544cf6d5af35760807187a13d99d5b43f3dafdc014",
           "importOrder": [
             "scripts/batchdrift/build_requests60.py",
             "src/role_set/__init__.py",
             "src/role_set/callcache.py",
             "src/role_set/transport.py",
             "src/role_set/mock.py",
-            "scripts/batchdrift/compare_batch.py"
+            "scripts/batchdrift/compare_batch.py",
+            "src/role_set/gates.py"
           ],
           "importsFiles": [
             "scripts/batchdrift/build_requests60.py",
             "scripts/batchdrift/compare_batch.py",
             "src/role_set/__init__.py",
             "src/role_set/callcache.py",
+            "src/role_set/gates.py",
             "src/role_set/mock.py",
             "src/role_set/transport.py"
           ],
@@ -895,6 +897,7 @@
             "check_deadline",
             "check_pins",
             "check_token_clean",
+            "check_tokenizer_or_stop",
             "checkpoint",
             "choose_quant",
             "conversion_route",
@@ -921,6 +924,7 @@
             "hf_revision",
             "hf_token_ids",
             "hosted_name",
+            "import_batchdrift_replay",
             "install_ollama",
             "install_ollama_manifest",
             "install_rnd",
@@ -982,6 +986,8 @@
             "token_file",
             "tokenize_all",
             "tokenizer_check",
+            "tokenizer_hard_stop_enabled",
+            "toolcount_window",
             "training_inputs",
             "twins_enabled",
             "twins_skip_reason",
@@ -1004,727 +1010,702 @@
             {
               "in": "server_sha256",
               "kind": "raise",
-              "line": 144
+              "line": 151
             },
             {
               "in": "server_pin_entry",
               "kind": "raise",
-              "line": 159
+              "line": 166
             },
             {
               "in": "check_deadline",
               "kind": "raise",
-              "line": 202
+              "line": 209
             },
             {
               "in": "_signal_group",
               "kind": "except",
-              "line": 213
+              "line": 220
             },
             {
               "in": "_tree_bytes",
               "kind": "except",
-              "line": 236
+              "line": 243
             },
             {
               "in": "run",
               "kind": "except",
-              "line": 282
+              "line": 289
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 297
+              "line": 304
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 300
+              "line": 307
             },
             {
               "in": "with_heartbeat",
               "kind": "raise",
-              "line": 308
+              "line": 315
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 335
+              "line": 342
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 345
+              "line": 352
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 349
+              "line": 356
             },
             {
               "in": "run_proc",
               "kind": "raise",
-              "line": 351
+              "line": 358
             },
             {
               "in": "run_proc",
               "kind": "except",
-              "line": 362
+              "line": 369
             },
             {
               "in": "sh",
               "kind": "raise",
-              "line": 369
+              "line": 376
             },
             {
               "in": "write",
               "kind": "except",
-              "line": 397
+              "line": 404
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 451
+              "line": 458
             },
             {
               "in": "build",
               "kind": "raise",
-              "line": 455
+              "line": 462
             },
             {
               "in": "check_token_clean",
               "kind": "raise",
-              "line": 576
+              "line": 583
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 593
+              "line": 600
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 596
+              "line": 603
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 606
+              "line": 613
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 611
+              "line": 618
             },
             {
               "in": "prefetch_hosted",
               "kind": "raise",
-              "line": 626
+              "line": 633
             },
             {
               "in": "upload_hosted",
               "kind": "raise",
-              "line": 745
+              "line": 752
             },
             {
               "in": "upload_hosted",
               "kind": "raise",
-              "line": 779
+              "line": 786
             },
             {
               "in": "fetch_model",
               "kind": "raise",
-              "line": 805
+              "line": 812
             },
             {
               "in": "sample",
               "kind": "except",
-              "line": 899
+              "line": 906
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 908
+              "line": 915
             },
             {
               "in": "smoke",
               "kind": "except",
-              "line": 914
+              "line": 921
             },
             {
               "in": "smoke",
               "kind": "raise",
-              "line": 917
+              "line": 924
             },
             {
               "in": "_card_kwargs",
               "kind": "raise",
-              "line": 1004
+              "line": 1016
             },
             {
               "in": "converter_python",
               "kind": "raise",
-              "line": 1041
+              "line": 1053
+            },
+            {
+              "in": "check_tokenizer_or_stop",
+              "kind": "except",
+              "line": 1160
+            },
+            {
+              "in": "check_tokenizer_or_stop",
+              "kind": "raise",
+              "line": 1164
+            },
+            {
+              "in": "check_tokenizer_or_stop",
+              "kind": "except",
+              "line": 1171
+            },
+            {
+              "in": "check_tokenizer_or_stop",
+              "kind": "raise",
+              "line": 1175
             },
             {
               "in": "pin_libs",
               "kind": "raise",
-              "line": 1091
+              "line": 1203
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 1137
+              "line": 1249
             },
             {
               "in": "start_server",
               "kind": "except",
-              "line": 1142
+              "line": 1254
             },
             {
               "in": "start_server",
               "kind": "raise",
-              "line": 1146
+              "line": 1258
             },
             {
               "in": "stop_server",
               "kind": "except",
-              "line": 1153
+              "line": 1265
             },
             {
               "in": "nums",
               "kind": "except",
-              "line": 1226
+              "line": 1338
             },
             {
               "in": "nums",
               "kind": "raise",
-              "line": 1227
+              "line": 1339
             },
             {
               "in": "requires_python_allows",
               "kind": "raise",
-              "line": 1241
+              "line": 1353
             },
             {
               "in": "requires_python_allows",
               "kind": "raise",
-              "line": 1252
+              "line": 1364
             },
             {
               "in": "pinned_uv",
               "kind": "raise",
-              "line": 1267
+              "line": 1379
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 1283
+              "line": 1421
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 1295
+              "line": 1433
             },
             {
               "in": "role_set_env",
               "kind": "raise",
-              "line": 1298
+              "line": 1436
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 1375
+              "line": 1521
             },
             {
               "in": "critic_window",
               "kind": "raise",
-              "line": 1376
+              "line": 1522
             },
             {
               "in": "critic_window",
               "kind": "except",
-              "line": 1377
+              "line": 1523
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 1425
+              "line": 1571
             },
             {
               "in": "q6k_window",
               "kind": "raise",
-              "line": 1426
+              "line": 1572
             },
             {
               "in": "q6k_window",
               "kind": "except",
-              "line": 1427
+              "line": 1573
             },
             {
               "in": "_start_stub",
               "kind": "raise",
-              "line": 1506
+              "line": 1652
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 1598
+              "line": 1744
             },
             {
               "in": "__enter__",
-              "kind": "raise",
-              "line": 1602
-            },
-            {
-              "in": "__enter__",
-              "kind": "raise",
-              "line": 1625
-            },
-            {
-              "in": "install_rnd",
-              "kind": "raise",
-              "line": 1646
-            },
-            {
-              "in": "write_wave",
-              "kind": "except",
-              "line": 1741
-            },
-            {
-              "in": "write_wave",
-              "kind": "raise",
-              "line": 1743
-            },
-            {
-              "in": "write_wave",
               "kind": "raise",
               "line": 1748
             },
             {
+              "in": "__enter__",
+              "kind": "raise",
+              "line": 1771
+            },
+            {
+              "in": "install_rnd",
+              "kind": "raise",
+              "line": 1792
+            },
+            {
               "in": "write_wave",
               "kind": "except",
-              "line": 1759
+              "line": 1887
+            },
+            {
+              "in": "write_wave",
+              "kind": "raise",
+              "line": 1889
+            },
+            {
+              "in": "write_wave",
+              "kind": "raise",
+              "line": 1894
+            },
+            {
+              "in": "write_wave",
+              "kind": "except",
+              "line": 1905
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1861
+              "line": 2007
             },
             {
               "in": "resume_from",
               "kind": "raise",
-              "line": 1865
+              "line": 2011
             },
             {
               "in": "resume_priors",
               "kind": "raise",
-              "line": 1883
+              "line": 2029
             },
             {
               "in": "rebuild_batch",
               "kind": "raise",
-              "line": 1974
+              "line": 2120
             },
             {
               "in": "get",
               "kind": "raise",
-              "line": 1996
+              "line": 2142
             },
             {
               "in": "get",
               "kind": "raise",
-              "line": 2012
+              "line": 2158
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2062
+              "line": 2208
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2064
+              "line": 2210
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2067
+              "line": 2213
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2074
+              "line": 2220
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2076
+              "line": 2222
             },
             {
               "in": "critics_for",
               "kind": "raise",
-              "line": 2080
+              "line": 2226
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 2211
+              "line": 2357
             },
             {
               "in": "to_q6k",
               "kind": "raise",
-              "line": 2229
+              "line": 2375
             },
             {
               "in": "choose_quant",
               "kind": "except",
-              "line": 2249
+              "line": 2395
             },
             {
               "in": "buffers_enabled",
               "kind": "raise",
-              "line": 2265
+              "line": 2411
             },
             {
               "in": "critique_scope",
               "kind": "raise",
-              "line": 2274
+              "line": 2420
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2292
+              "line": 2438
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2298
+              "line": 2444
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2301
+              "line": 2447
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2303
+              "line": 2449
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2311
+              "line": 2457
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2323
+              "line": 2469
             },
             {
               "in": "pilot_arms",
               "kind": "raise",
-              "line": 2327
+              "line": 2473
             },
             {
               "in": "_parse_pilot_setting_value",
               "kind": "raise",
-              "line": 2341
+              "line": 2487
             },
             {
               "in": "_parse_pilot_setting_value",
               "kind": "raise",
-              "line": 2343
+              "line": 2489
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2362
+              "line": 2508
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2370
+              "line": 2516
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2377
+              "line": 2523
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2379
+              "line": 2525
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2395
+              "line": 2541
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2400
+              "line": 2546
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2402
+              "line": 2548
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2409
+              "line": 2555
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2415
+              "line": 2561
             },
             {
               "in": "_resolve_pilot_setting",
               "kind": "raise",
-              "line": 2428
+              "line": 2574
             },
             {
               "in": "_check_write_setting_flags",
               "kind": "raise",
-              "line": 2505
+              "line": 2651
             },
             {
               "in": "pilot_quant_policies",
               "kind": "raise",
-              "line": 2527
+              "line": 2673
             },
             {
               "in": "pilot_quant_policies",
               "kind": "raise",
-              "line": 2538
+              "line": 2684
             },
             {
               "in": "pilot_quant_policies",
               "kind": "raise",
-              "line": 2552
+              "line": 2698
             },
             {
               "in": "check_pins",
               "kind": "raise",
-              "line": 2576
+              "line": 2722
             },
             {
               "in": "screen_plan",
-              "kind": "raise",
-              "line": 2605
-            },
-            {
-              "in": "screen_plan",
-              "kind": "raise",
-              "line": 2612
-            },
-            {
-              "in": "plan_pilot_lessons",
-              "kind": "raise",
-              "line": 2624
-            },
-            {
-              "in": "plan_pilot_lessons",
-              "kind": "raise",
-              "line": 2626
-            },
-            {
-              "in": "plan_pilot_lessons",
-              "kind": "raise",
-              "line": 2629
-            },
-            {
-              "in": "plan_pilot_lessons",
-              "kind": "raise",
-              "line": 2631
-            },
-            {
-              "in": "plan_pilot_lessons",
-              "kind": "raise",
-              "line": 2647
-            },
-            {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2713
-            },
-            {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2717
-            },
-            {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2730
-            },
-            {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2733
-            },
-            {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2736
-            },
-            {
-              "in": "training_inputs",
               "kind": "raise",
               "line": 2751
             },
             {
-              "in": "training_inputs",
+              "in": "screen_plan",
               "kind": "raise",
-              "line": 2754
+              "line": 2758
             },
             {
-              "in": "training_inputs",
+              "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2761
+              "line": 2770
             },
             {
-              "in": "training_inputs",
-              "kind": "raise",
-              "line": 2765
-            },
-            {
-              "in": "training_inputs",
+              "in": "plan_pilot_lessons",
               "kind": "raise",
               "line": 2772
             },
             {
-              "in": "rescore_inputs",
+              "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2792
+              "line": 2775
             },
             {
-              "in": "rescore_inputs",
+              "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2795
+              "line": 2777
             },
             {
-              "in": "rescore_inputs",
+              "in": "plan_pilot_lessons",
               "kind": "raise",
-              "line": 2804
+              "line": 2793
             },
             {
-              "in": "rescore_window",
+              "in": "training_inputs",
               "kind": "raise",
-              "line": 2828
+              "line": 2859
             },
             {
-              "in": "rescore_window",
-              "kind": "except",
-              "line": 2869
-            },
-            {
-              "in": "rescore_window",
+              "in": "training_inputs",
               "kind": "raise",
-              "line": 2871
+              "line": 2863
             },
             {
-              "in": "rescore_window",
+              "in": "training_inputs",
               "kind": "raise",
               "line": 2876
             },
             {
-              "in": "rescore_window",
+              "in": "training_inputs",
               "kind": "raise",
-              "line": 2883
+              "line": 2879
             },
             {
-              "in": "rescore_window",
+              "in": "training_inputs",
               "kind": "raise",
-              "line": 2887
+              "line": 2882
             },
             {
-              "in": "rescore_window",
-              "kind": "except",
-              "line": 2895
+              "in": "training_inputs",
+              "kind": "raise",
+              "line": 2897
             },
             {
-              "in": "critic_eval_inputs",
+              "in": "training_inputs",
+              "kind": "raise",
+              "line": 2900
+            },
+            {
+              "in": "training_inputs",
               "kind": "raise",
               "line": 2907
             },
             {
-              "in": "critic_eval_inputs",
+              "in": "training_inputs",
               "kind": "raise",
-              "line": 2910
+              "line": 2911
             },
             {
-              "in": "critic_eval_inputs",
-              "kind": "raise",
-              "line": 2914
-            },
-            {
-              "in": "critic_eval_inputs",
+              "in": "training_inputs",
               "kind": "raise",
               "line": 2918
             },
             {
-              "in": "critic_eval_inputs",
+              "in": "rescore_inputs",
               "kind": "raise",
-              "line": 2927
+              "line": 2938
+            },
+            {
+              "in": "rescore_inputs",
+              "kind": "raise",
+              "line": 2941
+            },
+            {
+              "in": "rescore_inputs",
+              "kind": "raise",
+              "line": 2950
+            },
+            {
+              "in": "rescore_window",
+              "kind": "raise",
+              "line": 2974
+            },
+            {
+              "in": "rescore_window",
+              "kind": "except",
+              "line": 3015
+            },
+            {
+              "in": "rescore_window",
+              "kind": "raise",
+              "line": 3017
+            },
+            {
+              "in": "rescore_window",
+              "kind": "raise",
+              "line": 3022
+            },
+            {
+              "in": "rescore_window",
+              "kind": "raise",
+              "line": 3029
+            },
+            {
+              "in": "rescore_window",
+              "kind": "raise",
+              "line": 3033
+            },
+            {
+              "in": "rescore_window",
+              "kind": "except",
+              "line": 3041
             },
             {
               "in": "critic_eval_inputs",
               "kind": "raise",
-              "line": 2931
+              "line": 3053
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 3056
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 3060
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 3064
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 3073
+            },
+            {
+              "in": "critic_eval_inputs",
+              "kind": "raise",
+              "line": 3077
             },
             {
               "in": "critic_eval_resume",
               "kind": "raise",
-              "line": 2956
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3015
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3023
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3032
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "except",
-              "line": 3040
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3041
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3043
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3047
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "except",
-              "line": 3146
-            },
-            {
-              "in": "critic_eval_window",
-              "kind": "raise",
-              "line": 3148
+              "line": 3102
             },
             {
               "in": "critic_eval_window",
@@ -1739,387 +1720,362 @@
             {
               "in": "critic_eval_window",
               "kind": "raise",
-              "line": 3173
+              "line": 3178
             },
             {
               "in": "critic_eval_window",
               "kind": "except",
-              "line": 3196
+              "line": 3186
             },
             {
-              "in": "_require_sha256",
+              "in": "critic_eval_window",
               "kind": "raise",
-              "line": 3277
+              "line": 3187
             },
             {
-              "in": "offrig_bench_inputs",
+              "in": "critic_eval_window",
               "kind": "raise",
-              "line": 3293
+              "line": 3189
             },
             {
-              "in": "offrig_bench_inputs",
+              "in": "critic_eval_window",
               "kind": "raise",
-              "line": 3304
+              "line": 3193
             },
             {
-              "in": "offrig_bench_inputs",
+              "in": "critic_eval_window",
+              "kind": "except",
+              "line": 3292
+            },
+            {
+              "in": "critic_eval_window",
+              "kind": "raise",
+              "line": 3294
+            },
+            {
+              "in": "critic_eval_window",
               "kind": "raise",
               "line": 3307
             },
             {
+              "in": "critic_eval_window",
+              "kind": "raise",
+              "line": 3315
+            },
+            {
+              "in": "critic_eval_window",
+              "kind": "raise",
+              "line": 3319
+            },
+            {
+              "in": "critic_eval_window",
+              "kind": "except",
+              "line": 3342
+            },
+            {
+              "in": "_require_sha256",
+              "kind": "raise",
+              "line": 3423
+            },
+            {
               "in": "offrig_bench_inputs",
               "kind": "raise",
-              "line": 3310
+              "line": 3439
+            },
+            {
+              "in": "offrig_bench_inputs",
+              "kind": "raise",
+              "line": 3450
+            },
+            {
+              "in": "offrig_bench_inputs",
+              "kind": "raise",
+              "line": 3453
+            },
+            {
+              "in": "offrig_bench_inputs",
+              "kind": "raise",
+              "line": 3456
             },
             {
               "in": "zstandard_wheel_sha256",
               "kind": "raise",
-              "line": 3346
+              "line": 3492
             },
             {
               "in": "ensure_zstandard",
               "kind": "except",
-              "line": 3361
+              "line": 3507
             },
             {
               "in": "ensure_zstandard",
               "kind": "raise",
-              "line": 3372
+              "line": 3518
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 3384
+              "line": 3530
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 3387
+              "line": 3533
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 3391
+              "line": 3537
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 3395
+              "line": 3541
             },
             {
               "in": "_safe_tar_filter",
               "kind": "raise",
-              "line": 3399
+              "line": 3545
             },
             {
               "in": "_safe_tar_filter",
               "kind": "except",
-              "line": 3402
+              "line": 3548
             },
             {
               "in": "_safe_tar_filter",
-              "kind": "raise",
-              "line": 3403
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3448
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3460
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3480
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3493
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3500
-            },
-            {
-              "in": "install_ollama",
-              "kind": "raise",
-              "line": 3505
-            },
-            {
-              "in": "_parse_ollama_model",
               "kind": "raise",
               "line": 3549
             },
             {
-              "in": "_parse_ollama_model",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3554
+              "line": 3594
             },
             {
-              "in": "_resolve_ollama_registry_base",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3581
+              "line": 3606
             },
             {
-              "in": "_resolve_ollama_registry_base",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3590
-            },
-            {
-              "in": "_resolve_ollama_mirror_base",
-              "kind": "raise",
-              "line": 3611
-            },
-            {
-              "in": "_resolve_ollama_mirror_base",
-              "kind": "raise",
-              "line": 3618
-            },
-            {
-              "in": "_resolve_ollama_mirror_base",
-              "kind": "raise",
-              "line": 3623
-            },
-            {
-              "in": "_resolve_ollama_mirror_base",
-              "kind": "except",
               "line": 3626
             },
             {
-              "in": "_resolve_ollama_mirror_base",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3627
+              "line": 3639
             },
             {
-              "in": "_resolve_ollama_mirror_base",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3631
+              "line": 3646
             },
             {
-              "in": "_resolve_ollama_mirror_base",
+              "in": "install_ollama",
               "kind": "raise",
-              "line": 3635
+              "line": 3651
             },
             {
-              "in": "_resolve_ollama_mirror_base",
+              "in": "_parse_ollama_model",
               "kind": "raise",
-              "line": 3638
+              "line": 3695
             },
             {
-              "in": "_resolve_ollama_mirror_base",
-              "kind": "raise",
-              "line": 3653
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3691
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3696
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "except",
-              "line": 3699
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
+              "in": "_parse_ollama_model",
               "kind": "raise",
               "line": 3700
             },
             {
-              "in": "_validate_ollama_mirror_redirect_target",
+              "in": "_resolve_ollama_registry_base",
               "kind": "raise",
-              "line": 3702
+              "line": 3727
             },
             {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3706
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3708
-            },
-            {
-              "in": "_validate_ollama_mirror_redirect_target",
-              "kind": "raise",
-              "line": 3714
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "except",
-              "line": 3735
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
+              "in": "_resolve_ollama_registry_base",
               "kind": "raise",
               "line": 3736
             },
             {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3757
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3764
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3769
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "except",
+              "line": 3772
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3773
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3777
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3781
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3784
+            },
+            {
+              "in": "_resolve_ollama_mirror_base",
+              "kind": "raise",
+              "line": 3799
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3837
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3842
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "except",
+              "line": 3845
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3846
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3848
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3852
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3854
+            },
+            {
+              "in": "_validate_ollama_mirror_redirect_target",
+              "kind": "raise",
+              "line": 3860
+            },
+            {
               "in": "_open_ollama_mirror_blob",
               "kind": "except",
-              "line": 3737
+              "line": 3881
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3739
-            },
-            {
-              "in": "_open_ollama_mirror_blob",
-              "kind": "raise",
-              "line": 3740
+              "line": 3882
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "except",
-              "line": 3741
+              "line": 3883
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3742
+              "line": 3885
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3886
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "except",
-              "line": 3743
+              "line": 3887
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3744
+              "line": 3888
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "except",
-              "line": 3745
+              "line": 3889
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3746
+              "line": 3890
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "except",
+              "line": 3891
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3754
+              "line": 3892
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3759
+              "line": 3900
             },
             {
               "in": "_open_ollama_mirror_blob",
               "kind": "raise",
-              "line": 3778
+              "line": 3905
+            },
+            {
+              "in": "_open_ollama_mirror_blob",
+              "kind": "raise",
+              "line": 3924
             },
             {
               "in": "_written_ollama_manifest_digest",
               "kind": "except",
-              "line": 3862
+              "line": 4008
             },
             {
               "in": "_resolve_manifest_path",
               "kind": "raise",
-              "line": 3941
+              "line": 4087
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3947
+              "line": 4093
             },
             {
               "in": "_verify_manifest_sha256",
               "kind": "raise",
-              "line": 3951
+              "line": 4097
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 3983
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "except",
-              "line": 3986
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 3987
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 3991
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 3996
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4002
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4013
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4042
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4072
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4086
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4107
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4113
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4118
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "except",
-              "line": 4122
-            },
-            {
-              "in": "install_ollama_manifest",
-              "kind": "raise",
-              "line": 4131
+              "line": 4129
             },
             {
               "in": "install_ollama_manifest",
@@ -2129,311 +2085,442 @@
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 4156
+              "line": 4133
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 4169
+              "line": 4137
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 4177
+              "line": 4142
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4148
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4159
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4188
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4218
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4232
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4253
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4259
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4264
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 4178
+              "line": 4268
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 4189
+              "line": 4277
             },
             {
               "in": "install_ollama_manifest",
               "kind": "except",
-              "line": 4190
+              "line": 4278
             },
             {
               "in": "install_ollama_manifest",
               "kind": "raise",
-              "line": 4201
+              "line": 4302
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4315
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4323
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "except",
+              "line": 4324
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4335
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "except",
+              "line": 4336
+            },
+            {
+              "in": "install_ollama_manifest",
+              "kind": "raise",
+              "line": 4347
             },
             {
               "in": "_start_stub_ollama",
               "kind": "except",
-              "line": 4231
+              "line": 4377
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 4372
+              "line": 4518
             },
             {
               "in": "__enter__",
               "kind": "except",
-              "line": 4381
+              "line": 4527
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 4385
+              "line": 4531
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 4388
+              "line": 4534
             },
             {
               "in": "__enter__",
               "kind": "raise",
-              "line": 4393
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "except",
-              "line": 4428
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 4430
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 4431
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 4433
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 4442
-            },
-            {
-              "in": "pull_ollama_model",
-              "kind": "raise",
-              "line": 4445
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 4488
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 4492
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 4495
-            },
-            {
-              "in": "warmup_ollama_model",
-              "kind": "raise",
-              "line": 4499
-            },
-            {
-              "in": "sample_smi_every_2s",
-              "kind": "except",
               "line": 4539
             },
             {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4564
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4568
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
+              "in": "pull_ollama_model",
+              "kind": "except",
               "line": 4574
             },
             {
-              "in": "offrig_bench_window",
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 4576
+            },
+            {
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 4577
+            },
+            {
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 4579
+            },
+            {
+              "in": "pull_ollama_model",
+              "kind": "raise",
+              "line": 4588
+            },
+            {
+              "in": "pull_ollama_model",
               "kind": "raise",
               "line": 4591
             },
             {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4634
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4638
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4641
+            },
+            {
+              "in": "warmup_ollama_model",
+              "kind": "raise",
+              "line": 4645
+            },
+            {
+              "in": "sample_smi_every_2s",
+              "kind": "except",
+              "line": 4685
+            },
+            {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4593
+              "line": 4710
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4714
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4720
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4737
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4739
             },
             {
               "in": "offrig_bench_window",
               "kind": "except",
-              "line": 4650
+              "line": 4796
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4652
+              "line": 4798
             },
             {
               "in": "offrig_bench_window",
               "kind": "raise",
-              "line": 4661
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "except",
-              "line": 4683
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4687
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4693
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4700
-            },
-            {
-              "in": "offrig_bench_window",
-              "kind": "raise",
-              "line": 4706
+              "line": 4807
             },
             {
               "in": "offrig_bench_window",
               "kind": "except",
-              "line": 4748
+              "line": 4829
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4833
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4839
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4846
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "raise",
+              "line": 4852
+            },
+            {
+              "in": "offrig_bench_window",
+              "kind": "except",
+              "line": 4894
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4778
+              "line": 4924
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4780
+              "line": 4926
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4783
+              "line": 4929
             },
             {
               "in": "resolve_pilot_pool",
               "kind": "raise",
-              "line": 4786
+              "line": 4932
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 4849
+              "line": 4995
             },
             {
               "in": "pilot_window",
               "kind": "raise",
-              "line": 4878
-            },
-            {
-              "in": "pilot_window",
-              "kind": "except",
-              "line": 4967
-            },
-            {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 4988
-            },
-            {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 4992
-            },
-            {
-              "in": "runtime",
-              "kind": "raise",
-              "line": 4999
-            },
-            {
-              "in": "done_here",
-              "kind": "except",
               "line": 5024
             },
             {
-              "in": "take_job_lock",
+              "in": "pilot_window",
               "kind": "except",
-              "line": 5037
+              "line": 5113
             },
             {
-              "in": "_main",
+              "in": "runtime",
               "kind": "raise",
-              "line": 5128
+              "line": 5134
             },
             {
-              "in": "_main",
-              "kind": "raise",
-              "line": 5132
-            },
-            {
-              "in": "_main",
+              "in": "runtime",
               "kind": "raise",
               "line": 5138
             },
             {
-              "in": "_main",
+              "in": "runtime",
+              "kind": "raise",
+              "line": 5145
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "raise",
+              "line": 5200
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "raise",
+              "line": 5208
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "raise",
+              "line": 5212
+            },
+            {
+              "in": "toolcount_window",
               "kind": "except",
-              "line": 5173
+              "line": 5268
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "raise",
+              "line": 5275
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "except",
+              "line": 5416
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "raise",
+              "line": 5427
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "except",
+              "line": 5428
+            },
+            {
+              "in": "toolcount_window",
+              "kind": "except",
+              "line": 5457
+            },
+            {
+              "in": "take_job_lock",
+              "kind": "except",
+              "line": 5475
+            },
+            {
+              "in": "done_here",
+              "kind": "except",
+              "line": 5484
+            },
+            {
+              "in": "take_job_lock",
+              "kind": "except",
+              "line": 5499
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 5174
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 5175
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 5193
+              "line": 5598
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 5194
-            },
-            {
-              "in": "_main",
-              "kind": "except",
-              "line": 5195
+              "line": 5602
             },
             {
               "in": "_main",
               "kind": "raise",
-              "line": 5197
+              "line": 5609
             },
             {
               "in": "_main",
               "kind": "except",
-              "line": 5210
+              "line": 5643
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 5644
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 5645
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 5677
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 5678
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 5679
+            },
+            {
+              "in": "_main",
+              "kind": "raise",
+              "line": 5681
+            },
+            {
+              "in": "_main",
+              "kind": "except",
+              "line": 5701
             }
           ],
-          "hash": "92a2ec47ab90a45fa96be5aa619f99676c806f82526bdceb6a140ba3819eea90",
+          "hash": "b59a179cb4bcd8fb174efdab342e30f7f5128831c4ed2a7e96d36e5585d8ee51",
+          "importOrder": [
+            "src/role_set/mock.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py"
+          ],
           "importsFiles": [
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py",
             "src/role_set/mock.py"
           ],
           "path": "scripts/colab/pin_window.py"
@@ -2520,7 +2607,7 @@
           "path": "scripts/colab/preflight_window.py"
         },
         {
-          "hash": "c112d40426110bbdfa7958b66fb62f9a80c0b8064607a1603683111f21ccbd29",
+          "hash": "d53b8de40a9a34201006155c7b9eaffd3c6a7744df6edd4d95b3efa9003f66eb",
           "path": "scripts/colab/smoke_window.sh"
         },
         {
@@ -3175,6 +3262,361 @@
           "path": "scripts/t12_catalogue.py"
         },
         {
+          "hash": "4e10c9aa8a8c8aa12c2dd291413e24030dc018c0c7cba5ba95e95a9288e43bcd",
+          "path": "scripts/toolcount/__init__.py"
+        },
+        {
+          "exports": [
+            "build_compass_lists",
+            "build_tool_definition",
+            "cosine_similarity",
+            "main",
+            "resolve_tool_definition_class",
+            "retrieve_top5_for_item_list",
+            "write_compass_artifacts"
+          ],
+          "failurePaths": [
+            {
+              "in": "resolve_tool_definition_class",
+              "kind": "except",
+              "line": 83
+            },
+            {
+              "in": "__init__",
+              "kind": "raise",
+              "line": 127
+            },
+            {
+              "in": "_l2_normalize",
+              "kind": "raise",
+              "line": 165
+            },
+            {
+              "in": "_l2_normalize",
+              "kind": "raise",
+              "line": 168
+            },
+            {
+              "in": "__init__",
+              "kind": "except",
+              "line": 208
+            },
+            {
+              "in": "_post_embed",
+              "kind": "raise",
+              "line": 226
+            },
+            {
+              "in": "cosine_similarity",
+              "kind": "raise",
+              "line": 248
+            },
+            {
+              "in": "build_compass_lists",
+              "kind": "raise",
+              "line": 292
+            },
+            {
+              "in": "build_compass_lists",
+              "kind": "raise",
+              "line": 305
+            },
+            {
+              "in": "write_compass_artifacts",
+              "kind": "raise",
+              "line": 444
+            },
+            {
+              "in": "write_compass_artifacts",
+              "kind": "raise",
+              "line": 461
+            },
+            {
+              "kind": "raise",
+              "line": 529
+            }
+          ],
+          "hash": "20fbf45b67e8031aa798b4d325483d8313ec5fc5891d163b5ee8a58dc8c3cfeb",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/gen_registry.py"
+          ],
+          "path": "scripts/toolcount/compass_lists.py"
+        },
+        {
+          "exports": [
+            "build_audit_sample_40",
+            "build_nested_list_for_anchor",
+            "build_registry",
+            "classify_cross_domain_distractors",
+            "generate_all",
+            "main",
+            "order_tools_for_call",
+            "position_to_bin",
+            "select_target_tools_and_items",
+            "sha256_bytes",
+            "third_quotas",
+            "write_with_sha256"
+          ],
+          "failurePaths": [
+            {
+              "in": "_build_required_args",
+              "kind": "raise",
+              "line": 427
+            },
+            {
+              "in": "position_to_bin",
+              "kind": "raise",
+              "line": 611
+            },
+            {
+              "kind": "raise",
+              "line": 861
+            }
+          ],
+          "hash": "314ccef90fd92bf11a21089bc1f9707ab4d51e7a0254803517cccdabd4a28ec3",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/oracle.py"
+          ],
+          "path": "scripts/toolcount/gen_registry.py"
+        },
+        {
+          "hash": "1fc42a74d8aaee0907f362be5dbbda29f464daff41a542d847db8c52b1cd0de5",
+          "path": "scripts/toolcount/launch-w1.sh"
+        },
+        {
+          "exports": [
+            "main",
+            "oracle_match_tools",
+            "verify_all_items",
+            "verify_domain_sibling_uniqueness",
+            "verify_no_tool_name_leak"
+          ],
+          "failurePaths": [
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 58
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 62
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 67
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 71
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 77
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 81
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 85
+            },
+            {
+              "in": "verify_domain_sibling_uniqueness",
+              "kind": "raise",
+              "line": 87
+            },
+            {
+              "in": "verify_no_tool_name_leak",
+              "kind": "raise",
+              "line": 100
+            },
+            {
+              "in": "verify_all_items",
+              "kind": "raise",
+              "line": 201
+            },
+            {
+              "in": "verify_all_items",
+              "kind": "raise",
+              "line": 208
+            },
+            {
+              "kind": "raise",
+              "line": 240
+            }
+          ],
+          "hash": "710ea9d795321659970be31cb5a458c095b3539d4a5bae28e53168d6731b2824",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py"
+          ],
+          "path": "scripts/toolcount/oracle.py"
+        },
+        {
+          "exports": [
+            "build_call_schedule",
+            "build_inert_padding_block",
+            "build_r1_stub_schedule",
+            "build_study_config",
+            "calibrate_length_control_padding",
+            "compute_first_50_repricing",
+            "count_thinking_tokens",
+            "format_openai_tool",
+            "load_resume_journal",
+            "main",
+            "run_model_window",
+            "run_preloop_smoke_assert",
+            "run_r1_stub_verification",
+            "send_chat_completion",
+            "write_study_config"
+          ],
+          "failurePaths": [
+            {
+              "in": "_count_tokens",
+              "kind": "except",
+              "line": 227
+            },
+            {
+              "in": "build_call_schedule",
+              "kind": "raise",
+              "line": 282
+            },
+            {
+              "in": "run_preloop_smoke_assert",
+              "kind": "raise",
+              "line": 442
+            },
+            {
+              "in": "load_resume_journal",
+              "kind": "except",
+              "line": 503
+            },
+            {
+              "in": "run_model_window",
+              "kind": "raise",
+              "line": 621
+            },
+            {
+              "in": "run_model_window",
+              "kind": "raise",
+              "line": 698
+            },
+            {
+              "in": "base_url",
+              "kind": "raise",
+              "line": 935
+            },
+            {
+              "in": "do_POST",
+              "kind": "except",
+              "line": 974
+            },
+            {
+              "in": "run_r1_stub_verification",
+              "kind": "raise",
+              "line": 1376
+            },
+            {
+              "in": "run_r1_stub_verification",
+              "kind": "raise",
+              "line": 1403
+            },
+            {
+              "in": "run_r1_stub_verification",
+              "kind": "raise",
+              "line": 1461
+            },
+            {
+              "kind": "raise",
+              "line": 1522
+            }
+          ],
+          "hash": "9a597b46413b1ba8118911f67848f5f9882de2a7efd156b3c40efdf5a78330c8",
+          "importOrder": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/scorer.py",
+            "scripts/colab/pin_window.py"
+          ],
+          "importsFiles": [
+            "scripts/colab/pin_window.py",
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/scorer.py"
+          ],
+          "path": "scripts/toolcount/runner.py"
+        },
+        {
+          "exports": [
+            "check_arguments_grade",
+            "compute_cluster_means",
+            "estimate_intracluster_rho",
+            "estimate_paired_diff_rho_and_discordance",
+            "evaluate_cross_model_decisions",
+            "evaluate_model_decisions",
+            "extract_tool_call_from_response",
+            "holm_adjust",
+            "main",
+            "paired_cluster_bootstrap_ci",
+            "paired_sign_flip_test",
+            "score_calls_file",
+            "score_single_call",
+            "summarize_cell"
+          ],
+          "failurePaths": [
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 193
+            },
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 222
+            },
+            {
+              "in": "extract_tool_call_from_response",
+              "kind": "except",
+              "line": 249
+            },
+            {
+              "in": "_parse_arguments_payload",
+              "kind": "except",
+              "line": 282
+            },
+            {
+              "in": "paired_sign_flip_test",
+              "kind": "raise",
+              "line": 580
+            },
+            {
+              "in": "paired_cluster_bootstrap_ci",
+              "kind": "raise",
+              "line": 640
+            },
+            {
+              "kind": "raise",
+              "line": 1315
+            }
+          ],
+          "hash": "1ffa32378793f81355f6bcb33a5a0f69838e77af3b051f72be11aeaea71abea8",
+          "importsFiles": [
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/gen_registry.py"
+          ],
+          "path": "scripts/toolcount/scorer.py"
+        },
+        {
           "exports": [
             "floor_line",
             "main"
@@ -3206,20 +3648,20 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 74,
+          "reads": 104,
           "where": [
             "caller"
           ],
-          "writes": 51
+          "writes": 62
         }
       ],
-      "outsideReads": 74,
-      "outsideWrites": 51,
+      "outsideReads": 104,
+      "outsideWrites": 62,
       "role": "code",
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 10,
+      "testedBy": 12,
       "unresolvedNamed": [
         {
           "path": "scripts/batchdrift/replay.py",
@@ -3233,7 +3675,7 @@
         },
         {
           "path": "scripts/colab/pin_window.py",
-          "specifier": "stub_llama",
+          "specifier": "replay",
           "why": "unplaced"
         }
       ],
@@ -10554,7 +10996,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 53,
+      "testedBy": 54,
       "unresolvedSites": 0
     },
     {
@@ -10767,12 +11209,14 @@
         },
         {
           "exports": [
+            "test_batchdrift_import_checks_role_set_out_before_importing_replay",
             "test_build_requests60_from_real_p1r_receipts_reproduces_committed_file",
             "test_build_requests60_synthetic_end_to_end_and_refusals",
             "test_committed_requests60_matches_pin_and_schema",
             "test_compare_batch_detects_known_bad_inputs",
             "test_compare_batch_planted_drifts_and_statistics",
             "test_replay_and_compare_edge_case_refusals",
+            "test_smoke_window_accepts_batching_drift_read_token_and_refuses_write_token",
             "test_start_server_command_line_and_slots_validation",
             "test_stub_check_1_and_2_concurrency_and_props_across_all_widths",
             "test_stub_check_3_zero_cached_tokens_and_no_journal_replay",
@@ -10781,14 +11225,15 @@
             "test_stub_check_6_join_survives_out_of_order_completion",
             "test_stub_check_8_cap_watcher_cuts_cleanly_and_preserves_checkpoint_rows"
           ],
-          "hash": "380c5cb773922412bb8d2e535fd74d0dd365948a7b9ede792fd00c6e4cbd157e",
+          "hash": "92ccc772ce67dc7ea80aa9b01bd614dd9ccd17ce68abaab1d19afbaf7a5557ac",
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/callcache.py",
             "src/role_set/cards.py",
             "src/role_set/critic.py",
             "src/role_set/gates.py",
-            "src/role_set/pack.py"
+            "src/role_set/pack.py",
+            "tests/test_window_script.py"
           ],
           "path": "tests/test_batchdrift.py",
           "testFramework": "pytest"
@@ -11757,6 +12202,7 @@
             "test_each_writer_is_set_up_just_before_its_own_write_and_the_critic_last",
             "test_every_in_process_hub_download_goes_through_the_heartbeat",
             "test_every_window_model_has_a_pin_that_matches_writers_json",
+            "test_granite_4_2_8b_models_entry",
             "test_install_ollama_zstd_absent_tampered_archive_unsafe_members_and_zstandard_pin",
             "test_no_broad_handler_can_swallow_the_deadline",
             "test_no_model_setup_or_hosted_download_starts_past_the_deadline",
@@ -11822,6 +12268,8 @@
             "test_the_stub_call_knob_refuses_a_real_run",
             "test_the_twins_switch",
             "test_to_q6k_unlinks_q8_0_before_bf16_conversion_and_logs_resources",
+            "test_tokenizer_hard_stop_stops_before_any_measurement_row_on_forced_mismatch",
+            "test_tokenizer_hard_stop_stops_on_missing_tokenizer_or_conversion_error",
             "test_training_inputs_refuses_missing_vars_sidecar_or_sha_mismatch_before_serving_and_orders_by_frozen_md",
             "test_training_inputs_with_real_frozen_training_files_refuses_tar_missing_a_file",
             "test_twins_skip_an_arm_with_a_failed_wave",
@@ -11831,7 +12279,7 @@
             "test_write_only_critics_for_and_pilot_batch_no_critic",
             "test_write_wave_default_arm_command_line_unchanged_from_b246455"
           ],
-          "hash": "6fdaed5d6d9d4e080aee78880a2d08c0e844bc88ecd482e8261a40e2ffe58ef9",
+          "hash": "f532831d056e512ef3c2708b794aad5a263551f079897dab67ab50592cf62801",
           "importOrder": [
             "scripts/colab/pin_window.py",
             "scripts/colab/checkpoints.py",
@@ -12418,6 +12866,42 @@
         },
         {
           "exports": [
+            "r0_bundle",
+            "test_cli_entrypoints_and_launch_w1_script",
+            "test_cluster_sign_flip_holm_bootstrap_and_decision_rules",
+            "test_compass_lists_min_confidence_zero_and_embedding_text",
+            "test_edge_cases_across_all_modules",
+            "test_fix1_compass_ollama_embedder_prefixes_and_metadata",
+            "test_fix2_calibrate_length_control_padding_both_directions",
+            "test_fix3_toolcount_window_clones_roleset_before_import_even_in_stub",
+            "test_fix4_heartbeats_deadline_partial_tar_and_vram_library_sha",
+            "test_fix5_granite_isolation_prefetch_hosted_and_hosted_tokenizer_check",
+            "test_fix6_rule2_holm_unification_and_rule4_discordance_paired_rho",
+            "test_fix7_c2_dead_harness_r0_tar_sha_resume_unpacked_and_r1_stub_via_pin_window",
+            "test_fix8_pyproject_coverage_includes_scripts_toolcount",
+            "test_oracle_100pct_and_loud_failures",
+            "test_order_tools_for_call_and_position_bins",
+            "test_r0_audit_sample_40_and_sha256_sidecars",
+            "test_r0_items_clusters_halves_and_nested_lists",
+            "test_r0_registry_structure_and_category_examples_ruling",
+            "test_runner_smoke_assert_and_r1_stub_all_9_branches",
+            "test_scorer_classifications_and_fallbacks"
+          ],
+          "hash": "8457ae9449404d8482549cf5b0bf3bd6d067ce50f76979664c3473520b35149e",
+          "importsFiles": [
+            "scripts/colab/pin_window.py",
+            "scripts/toolcount/__init__.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/oracle.py",
+            "scripts/toolcount/runner.py",
+            "scripts/toolcount/scorer.py"
+          ],
+          "path": "tests/test_toolcount.py",
+          "testFramework": "pytest"
+        },
+        {
+          "exports": [
             "test_4xx_is_not_retried_and_other_hosts_are_refused",
             "test_a_card_is_sent_whole_and_replaces_the_temperature",
             "test_chat_builds_an_openai_request_and_reads_usage",
@@ -12887,7 +13371,7 @@
         {
           "boundary": "tests",
           "depth": 0,
-          "files": 55
+          "files": 56
         },
         {
           "boundary": "scripts",
@@ -12896,7 +13380,7 @@
             "file": "scripts/naics_table.py",
             "from": "tests/conftest.py"
           },
-          "files": 9
+          "files": 15
         },
         {
           "boundary": "src",
@@ -12967,7 +13451,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 55,
+          "files": 56,
           "job": "test",
           "runner": "pytest",
           "step": "Test"
@@ -12975,7 +13459,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 55,
+          "files": 56,
           "job": "test-py313",
           "runner": "pytest",
           "step": "Test"
@@ -12983,7 +13467,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 55,
+          "files": 56,
           "job": "test-py314",
           "runner": "pytest",
           "step": "Test"
@@ -12991,7 +13475,7 @@
         {
           "config": "pyproject.toml",
           "coverage": true,
-          "files": 55,
+          "files": 56,
           "job": "sweep",
           "runner": "pytest",
           "step": "Sweep"
@@ -13279,8 +13763,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "cf02baa0f5cab3cd9e07442ca83158c3993dce83",
-    "tracked": 214
+    "commit": "46289bc4615e80bef0d6716dda46ab4bff4bf590",
+    "tracked": 222
   },
   "landings": [
     {
@@ -13574,6 +14058,23 @@
         }
       ],
       "target": "scripts/colab",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "pyproject.toml",
+          "call": "configuration",
+          "confidence": "config"
+        },
+        {
+          "by": "tests/test_toolcount.py",
+          "call": "literal",
+          "confidence": "ast",
+          "fromTests": true
+        }
+      ],
+      "target": "scripts/toolcount",
       "writers": []
     },
     {
@@ -14183,6 +14684,6 @@
   "overlaps": [],
   "submodules": [],
   "symlinks": [],
-  "testFiles": 75,
+  "testFiles": 76,
   "unassigned": []
 }
