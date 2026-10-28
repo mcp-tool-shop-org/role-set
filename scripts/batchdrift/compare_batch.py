@@ -876,7 +876,10 @@ def main(argv: list[str] | None = None) -> int:
         loaded: dict[str, dict] = {}
         for spec in args.arm:
             name, rest = spec.split("=", 1)
-            c_str, g_str = re.split(r":(?![\\/])", rest, maxsplit=1)
+            sep_idx = rest.find(":", 2) if len(rest) >= 2 and rest[1] == ":" else rest.find(":")
+            if sep_idx < 0:
+                raise RuntimeError(f"invalid --arm spec {spec!r}; expected <ARM>=<calls.jsonl>:<generations.jsonl>")
+            c_str, g_str = rest[:sep_idx], rest[sep_idx + 1 :]
             loaded[name] = load_and_validate_arm(
                 arm_name=name,
                 calls_path=Path(c_str),

@@ -736,13 +736,15 @@ def test_stub_check_5_and_7_full_6_arm_run_and_non_zero_exit_if_arm_missing(tmp_
     assert cli_report["arm_tiers"] == comp["arm_tiers"]
 
     arm_specs = [
-        f"{a}={work / 'batchdrift' / f'calls-{a}-muse-glimmer-30b.jsonl'}:{work / 'batchdrift' / f'generations-{a}-muse-glimmer-30b.jsonl'}"
+        f"{a}={(work / 'batchdrift' / f'calls-{a}-muse-glimmer-30b.jsonl').as_posix()}:{(work / 'batchdrift' / f'generations-{a}-muse-glimmer-30b.jsonl').as_posix()}"
         for a, _ in rp.REQUIRED_ARMS
     ]
     cli_arm_args = ["--requests", str(rp.REQUESTS60_DEFAULT_PATH)]
     for s in arm_specs:
         cli_arm_args.extend(["--arm", s])
     assert cb.main(cli_arm_args) == 0
+    with pytest.raises(RuntimeError, match="invalid --arm spec"):
+        cb.main(["--requests", str(rp.REQUESTS60_DEFAULT_PATH), "--arm", "A1=/tmp/only_calls.jsonl"])
 
     # Check 7 refusal: if fewer than 6 arms run, run_all_arms raises RuntimeError
     with pytest.raises(RuntimeError, match="REFUSED: batching-drift did not complete all six required arms; missing or incomplete: B8, B4r"):
