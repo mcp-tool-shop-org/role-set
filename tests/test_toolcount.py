@@ -1279,7 +1279,9 @@ def test_fix5_granite_isolation_prefetch_hosted_and_hosted_tokenizer_check(
 
     def fake_prefetch_hosted(names: list[str], by_name: dict[str, Any], result: dict[str, Any]) -> None:
         prefetch_called.append(list(names))
-        gguf_p = tmp_path / "qwen3.8-27b-Q8_0.gguf"
+        hosted_dir = tmp_path / "hosted"
+        hosted_dir.mkdir(parents=True, exist_ok=True)
+        gguf_p = hosted_dir / "qwen3.8-27b-Q8_0.gguf"
         gguf_p.write_bytes(b"fake_gguf")
         pw.HOSTED["qwen3.8-27b"] = {"path": gguf_p, "sha256": qwen_spec["expect_sha256"]}
 
