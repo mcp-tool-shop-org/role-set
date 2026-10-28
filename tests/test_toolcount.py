@@ -1154,5 +1154,102 @@ def test_fix3_toolcount_window_clones_roleset_before_import_even_in_stub(
     assert res.get("rnd") == "6a8f1b5"
 
 
+def test_fix4_heartbeats_deadline_partial_tar_and_vram_library_sha(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Fix 4:
+    1) run_model_window emits HEARTBEAT lines to stdout (job.log).
+    2) Per-call receipts record real peak_vram_mb (from sample_smi_every_2s / vram_fn) and library_sha (from built['libs']).
+    3) Checking PIN_DEADLINE between calls cuts the window cleanly and still tars partial calls.jsonl/generations.jsonl.
+    """
+    import os
+    import time
+
+    r0_dir = r0_bundle["r0_dir"]
+    items = r0_bundle["items"]
+    stub_sched = build_r1_stub_schedule(items)[:4]
+
+    # Part A: Verify heartbeats, library_sha from built['libs'], and live peak_vram_mb via toolcount_window
+    work_dir = tmp_path / "work_a"
+    content_dir = tmp_path / "content_a"
+    r0_dest = work_dir / "toolcount" / "r0"
+    r0_dest.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest / fn).write_text((r0_dir / fn).read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(pw, "WORK", work_dir)
+    monkeypatch.setattr(pw, "CONTENT", content_dir)
+    monkeypatch.setattr(pw, "JOB_LOG", work_dir / "job.log")
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_MODELS", "granite-4.2-8b")
+    monkeypatch.setenv("PIN_HEARTBEAT_S", "0")
+    monkeypatch.setattr(
+        pw,
+        "_query_smi_csv",
+        lambda: "2026/10/28 00:00:00.000, 14320 MiB, 85 %, 52, 180.00 W\n",
+    )
+
+    built_libs = [
+        {"name": "libcublas.so.13", "sha256": "aa" * 32, "bytes": 1234},
+        {"name": "libcudart.so.13", "sha256": "bb" * 32, "bytes": 5678},
+    ]
+    built_info = {
+        "commit": LLAMA_CPP_COMMIT,
+        "sha256": LLAMA_SERVER_SHA256,
+        "libs": built_libs,
+    }
+    res_a: dict[str, Any] = {}
+    pw.toolcount_window(built_info, [], res_a)
+
+    captured = capsys.readouterr().out
+    assert "HEARTBEAT toolcount" in captured, "Expected run_model_window to emit HEARTBEAT progress lines to stdout"
+
+    calls_lines = (work_dir / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(calls_lines) > 0
+    first_receipt = json.loads(calls_lines[0])
+    assert first_receipt["peak_vram_mb"] == 14320, (
+        f"Expected peak_vram_mb=14320 from sample_smi_every_2s, got {first_receipt['peak_vram_mb']}"
+    )
+    assert first_receipt["library_sha"] != LLAMA_SERVER_SHA256, (
+        "Expected library_sha to be derived from built['libs'], not equal to server_sha256"
+    )
+
+    # Part B: Verify PIN_DEADLINE mid-run cuts between calls and tars partial calls.jsonl/generations.jsonl
+    work_b = tmp_path / "work_b"
+    content_b = tmp_path / "content_b"
+    r0_dest_b = work_b / "toolcount" / "r0"
+    r0_dest_b.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest_b / fn).write_text((r0_dir / fn).read_text(encoding="utf-8"), encoding="utf-8")
+
+    monkeypatch.setattr(pw, "WORK", work_b)
+    monkeypatch.setattr(pw, "CONTENT", content_b)
+    monkeypatch.setattr(pw, "JOB_LOG", work_b / "job.log")
+
+    # Expire deadline after 2 calls inside run_model_window
+    orig_send = sys.modules["scripts.toolcount.runner"].send_chat_completion
+    call_counter = {"n": 0}
+
+    def counting_send(*args: Any, **kwargs: Any) -> Any:
+        call_counter["n"] += 1
+        # call 1 is smoke assert; calls 2 and 3 are measurement calls 1 and 2
+        if call_counter["n"] >= 3:
+            os.environ["PIN_DEADLINE"] = str(time.time() - 10.0)
+        return orig_send(*args, **kwargs)
+
+    monkeypatch.setattr("scripts.toolcount.runner.send_chat_completion", counting_send)
+    monkeypatch.setenv("PIN_DEADLINE", str(time.time() + 3600.0))
+
+    res_b: dict[str, Any] = {}
+    with pytest.raises(pw.DeadlineReached):
+        pw.toolcount_window(built_info, [], res_b)
+
+    assert (work_b / "calls.jsonl").is_file(), "Expected partial calls.jsonl to be copied on DeadlineReached"
+    assert (work_b / "toolcount-out.tar").is_file(), "Expected toolcount-out.tar to be written on DeadlineReached"
+    partial_rows = (work_b / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+    assert 1 <= len(partial_rows) < len(stub_sched) + 5
+
+
+
 
 

@@ -519,6 +519,9 @@ def run_model_window(
     machine_line: str = "CPU-stub",
     peak_vram_mb: int = 0,
     timeout: int = 60,
+    vram_fn: Any = None,
+    heartbeat_fn: Any = None,
+    deadline_check_fn: Any = None,
 ) -> dict[str, Any]:
     """Execute the tool-count window for `model_name`, writing `calls.jsonl`, `generations.jsonl`,
     and `window_summary.json`.
@@ -593,11 +596,40 @@ def run_model_window(
     reused_count = 0
     fresh_count = 0
 
+    hb_emit = heartbeat_fn if callable(heartbeat_fn) else (lambda msg: print(msg, flush=True))
+    hb_interval_s = float(os.environ.get("PIN_HEARTBEAT_S") or 60.0)
+    loop_t0 = time.monotonic()
+    last_hb_t = loop_t0
+    total_sched = len(schedule)
+    hb_emit(f"HEARTBEAT toolcount model={model_name} call=0/{total_sched} elapsed=0s")
+
     with (
         calls_path.open("w", encoding="utf-8", newline="\n") as calls_f,
         generations_path.open("w", encoding="utf-8", newline="\n") as gen_f,
     ):
         for step_idx, sched_entry in enumerate(schedule):
+            if callable(deadline_check_fn):
+                deadline_check_fn(f"toolcount {model_name} call {step_idx + 1}/{total_sched}")
+            elif os.environ.get("PIN_DEADLINE"):
+                if float(os.environ["PIN_DEADLINE"]) - time.time() <= 0:
+                    calls_f.flush()
+                    gen_f.flush()
+                    raise TimeoutError(
+                        f"the window's deadline passed before toolcount {model_name} call {step_idx + 1}/{total_sched}"
+                    )
+
+            now_mono = time.monotonic()
+            if (
+                (now_mono - last_hb_t) >= hb_interval_s
+                or (step_idx + 1) % 25 == 0
+                or (step_idx + 1) == total_sched
+            ):
+                hb_emit(
+                    f"HEARTBEAT toolcount model={model_name} call={step_idx + 1}/{total_sched} "
+                    f"elapsed={round(now_mono - loop_t0)}s"
+                )
+                last_hb_t = now_mono
+
             item_id = sched_entry["item_id"]
             arm = sched_entry["arm"]
             cell = sched_entry["cell"]
@@ -790,7 +822,7 @@ def run_model_window(
                 "thinking_tokens": thinking_tokens,
                 "truncated": truncated,
                 "wall_time_s": round(wall_s, 6),
-                "peak_vram_mb": peak_vram_mb,
+                "peak_vram_mb": int(vram_fn()) if callable(vram_fn) else int(peak_vram_mb),
                 "machine_line": machine_line,
                 "compass_meta": compass_meta,
                 "length_control_meta": length_control_meta,

@@ -5044,141 +5044,213 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     if not active_specs:
         active_specs = specs or [by_name["granite-4.2-8b"]]
 
+    libs_val = built.get("libs")
+    if isinstance(built.get("library_sha"), str) and built["library_sha"]:
+        lib_sha = built["library_sha"]
+    elif libs_val:
+        lib_sha = hashlib.sha256(json.dumps(libs_val, sort_keys=True).encode("utf-8")).hexdigest()
+    else:
+        lib_sha = str(built.get("sha256") or built.get("binary_sha256") or server_sha256())
+    srv_sha = str(built.get("sha256") or built.get("binary_sha256") or server_sha256())
+    srv_commit = str(built.get("commit") or LLAMA_CPP_COMMIT)
+
     result["models"] = []
-    for spec in active_specs:
-        rec: dict = {"served_as": spec["served_as"], "quant": "Q8_0"}
-        result["models"].append(rec)
-        model_out_dir = base / spec["served_as"]
-        try:
-            if (os.environ.get("PIN_FORCE_CONVERT_ERROR") or "").strip() == "1":
-                raise RuntimeError(f"conversion failed for {spec['served_as']}: forced by PIN_FORCE_CONVERT_ERROR=1")
-            if stub_mode():
-                m: dict = {
-                    "served_as": spec["served_as"],
-                    "repo": spec["repo"],
-                    "revision": spec.get("revision") or "to pin",
-                    "gguf_sha256": spec.get("expect_sha256") or "to pin",
-                    "quant": "Q8_0",
-                    "stub": True,
-                }
-                if (os.environ.get("PIN_FORCE_MISSING_TOKENIZER") or "").strip() != "1":
-                    m["tokenizer_hf"] = [
-                        [100 + (b % 5000) for b in s.encode("utf-8")]
-                        for s in TOKENIZER_STRINGS
-                    ]
-                force_mism = (os.environ.get("PIN_FORCE_TOKENIZER_MISMATCH") or "").strip() == "1"
-                fail_smoke = (os.environ.get("PIN_FORCE_SMOKE_THINKING_FAIL") or "").strip() == "1"
-                with StubToolCountServer(
-                    force_tokenizer_mismatch=force_mism,
-                    fail_smoke_thinking=fail_smoke,
-                ) as srv:
-                    tok_res, tok_stop = check_tokenizer_or_stop(srv.port, m, spec)
-                    if tok_res is not None:
-                        rec["tokenizer"] = tok_res
-                    if tok_stop:
-                        rec["stopped"] = tok_stop
-                        result["stopped_reason"] = tok_stop
-                        continue
-                    items_data = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
-                    stub_sched = (
-                        build_r1_stub_schedule(items_data)
-                        if (os.environ.get("PIN_TOOLCOUNT_FULL_STUB") or "").strip() != "1"
-                        else None
-                    )
-                    win_summary = run_model_window(
-                        endpoint_url=srv.base_url,
-                        model_name=spec["served_as"],
-                        r0_dir=r0_dir,
-                        out_dir=model_out_dir,
-                        half=half,
-                        seed=seed,
-                        resume_calls_dir=resume_dir,
-                        schedule_override=stub_sched,
-                        model_meta=m,
-                        machine_line=str(result.get("machine")),
-                    )
-                    rec["window_summary"] = win_summary
-                    shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
-                    shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
-                    score_rep = score_calls_file(
-                        calls_jsonl=model_out_dir / "calls.jsonl",
-                        r0_dir=r0_dir,
-                        out_path=model_out_dir / "score_report.json",
-                        n_flips=1000,
-                        n_boot=200,
-                        seed=seed,
-                    )
-                    rec["score_report_sha256"] = score_rep.get("report_sha256")
-            else:
-                m = fetch_model(spec, built)
-                rec.update({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
-                if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
-                    stop_msg = f"GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
-                    rec["stopped"] = stop_msg
-                    result["stopped_reason"] = stop_msg
-                    continue
-                proc, log_fh, server_log = start_server(built, m, TOOLCOUNT_CTX, TOOLCOUNT_PORT)
-                try:
-                    wait_for_log(server_log)
-                    rec["offload_lines"] = _offload_lines(server_log)
-                    rec["fit"] = all_on_gpu(rec["offload_lines"])
-                    if not rec["fit"]["ok"]:
-                        stop_msg = f"not every layer is on the GPU for {spec['served_as']}"
-                        rec["stopped"] = stop_msg
-                        result["stopped_reason"] = stop_msg
-                        continue
-                    rec["slots"] = slots(TOOLCOUNT_PORT, TOOLCOUNT_CTX)
-                    if not rec["slots"]["ok"]:
-                        stop_msg = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {TOOLCOUNT_CTX}"
-                        rec["stopped"] = stop_msg
-                        result["stopped_reason"] = stop_msg
-                        continue
-                    tok_res, tok_stop = check_tokenizer_or_stop(TOOLCOUNT_PORT, m, spec)
-                    if tok_res is not None:
-                        rec["tokenizer"] = tok_res
-                    if tok_stop:
-                        rec["stopped"] = tok_stop
-                        result["stopped_reason"] = tok_stop
-                        continue
-                    win_summary = run_model_window(
-                        endpoint_url=f"http://127.0.0.1:{TOOLCOUNT_PORT}",
-                        model_name=spec["served_as"],
-                        r0_dir=r0_dir,
-                        out_dir=model_out_dir,
-                        half=half,
-                        seed=seed,
-                        resume_calls_dir=resume_dir,
-                        model_meta=m,
-                        machine_line=str(result.get("machine")),
-                    )
-                    rec["window_summary"] = win_summary
-                    shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
-                    shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
-                    score_rep = score_calls_file(
-                        calls_jsonl=model_out_dir / "calls.jsonl",
-                        r0_dir=r0_dir,
-                        out_path=model_out_dir / "score_report.json",
-                        seed=seed,
-                    )
-                    rec["score_report_sha256"] = score_rep.get("report_sha256")
-                finally:
-                    stop_server(proc, log_fh)
-        except DeadlineReached:
-            raise
-        except (SmokeAssertError, RuntimeError, ValueError, OSError, KeyError) as e:
-            stop_msg = _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")
-            rec["stopped"] = stop_msg
-            rec["error"] = stop_msg
-            result["stopped_reason"] = stop_msg
-        finally:
-            g = WORK / f"{spec['served_as']}-Q8_0.gguf"
-            if g.exists():
-                g.unlink(missing_ok=True)
-    result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
     try:
-        sh(f"tar -C {WORK} -cf {WORK}/toolcount-out.tar toolcount")
-    except (RuntimeError, OSError) as e:
-        result["tar_error"] = str(e)[:300]
+        for spec in active_specs:
+            rec: dict = {"served_as": spec["served_as"], "quant": "Q8_0"}
+            result["models"].append(rec)
+            model_out_dir = base / spec["served_as"]
+            model_out_dir.mkdir(parents=True, exist_ok=True)
+            smi_csv = model_out_dir / "smi.csv"
+            smi_stop = threading.Event()
+            smi_stats = {"samples": 0, "peak_vram_mib": 0}
+            try:
+                out_smi = _query_smi_csv()
+                if out_smi and out_smi.strip():
+                    with smi_csv.open("a", encoding="utf-8") as f:
+                        f.write(out_smi if out_smi.endswith("\n") else out_smi + "\n")
+                    for line in out_smi.splitlines():
+                        parts = [p.strip() for p in line.split(",")]
+                        if len(parts) >= 2 and parts[1]:
+                            mib = int(float(parts[1].split()[0]))
+                            smi_stats["peak_vram_mib"] = max(smi_stats["peak_vram_mib"], mib)
+                            smi_stats["samples"] += 1
+            except (subprocess.SubprocessError, OSError, ValueError):
+                pass
+            smi_thread = threading.Thread(target=sample_smi_every_2s, args=(smi_csv, smi_stop, smi_stats), daemon=True)
+            smi_thread.start()
+            t0_model = time.time()
+            try:
+                if (os.environ.get("PIN_FORCE_CONVERT_ERROR") or "").strip() == "1":
+                    raise RuntimeError(f"conversion failed for {spec['served_as']}: forced by PIN_FORCE_CONVERT_ERROR=1")
+                if stub_mode():
+                    m: dict = {
+                        "served_as": spec["served_as"],
+                        "repo": spec["repo"],
+                        "revision": spec.get("revision") or "to pin",
+                        "gguf_sha256": spec.get("expect_sha256") or "to pin",
+                        "quant": "Q8_0",
+                        "server_build": srv_commit,
+                        "server_sha256": srv_sha,
+                        "library_sha": lib_sha,
+                        "stub": True,
+                    }
+                    if (os.environ.get("PIN_FORCE_MISSING_TOKENIZER") or "").strip() != "1":
+                        m["tokenizer_hf"] = [
+                            [100 + (b % 5000) for b in s.encode("utf-8")]
+                            for s in TOKENIZER_STRINGS
+                        ]
+                    force_mism = (os.environ.get("PIN_FORCE_TOKENIZER_MISMATCH") or "").strip() == "1"
+                    fail_smoke = (os.environ.get("PIN_FORCE_SMOKE_THINKING_FAIL") or "").strip() == "1"
+                    with StubToolCountServer(
+                        force_tokenizer_mismatch=force_mism,
+                        fail_smoke_thinking=fail_smoke,
+                    ) as srv:
+                        tok_res, tok_stop = check_tokenizer_or_stop(srv.port, m, spec)
+                        if tok_res is not None:
+                            rec["tokenizer"] = tok_res
+                        if tok_stop:
+                            rec["stopped"] = tok_stop
+                            result["stopped_reason"] = tok_stop
+                            continue
+                        items_data = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
+                        stub_sched = (
+                            build_r1_stub_schedule(items_data)
+                            if (os.environ.get("PIN_TOOLCOUNT_FULL_STUB") or "").strip() != "1"
+                            else None
+                        )
+                        win_summary = run_model_window(
+                            endpoint_url=srv.base_url,
+                            model_name=spec["served_as"],
+                            r0_dir=r0_dir,
+                            out_dir=model_out_dir,
+                            half=half,
+                            seed=seed,
+                            resume_calls_dir=resume_dir,
+                            schedule_override=stub_sched,
+                            model_meta=m,
+                            machine_line=str(result.get("machine")),
+                            peak_vram_mb=int(smi_stats["peak_vram_mib"]),
+                            vram_fn=lambda s=smi_stats: int(s["peak_vram_mib"]),
+                            heartbeat_fn=heartbeat,
+                            deadline_check_fn=check_deadline,
+                        )
+                        rec["window_summary"] = win_summary
+                        shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                        shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                        score_rep = score_calls_file(
+                            calls_jsonl=model_out_dir / "calls.jsonl",
+                            r0_dir=r0_dir,
+                            out_path=model_out_dir / "score_report.json",
+                            n_flips=1000,
+                            n_boot=200,
+                            seed=seed,
+                        )
+                        rec["score_report_sha256"] = score_rep.get("report_sha256")
+                else:
+                    m = fetch_model(spec, built)
+                    m["server_build"] = srv_commit
+                    m["server_sha256"] = srv_sha
+                    m["library_sha"] = lib_sha
+                    rec.update({k: v for k, v in m.items() if k not in ("path", "tokenizer_hf", "converter_py")})
+                    if spec.get("expect_sha256") and m["gguf_sha256"] != spec["expect_sha256"]:
+                        stop_msg = f"GGUF {m['gguf_sha256'][:12]} doesn't reproduce the pin {spec['expect_sha256'][:12]}"
+                        rec["stopped"] = stop_msg
+                        result["stopped_reason"] = stop_msg
+                        continue
+                    proc, log_fh, server_log = start_server(built, m, TOOLCOUNT_CTX, TOOLCOUNT_PORT)
+                    try:
+                        wait_for_log(server_log)
+                        rec["offload_lines"] = _offload_lines(server_log)
+                        rec["fit"] = all_on_gpu(rec["offload_lines"])
+                        if not rec["fit"]["ok"]:
+                            stop_msg = f"not every layer is on the GPU for {spec['served_as']}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
+                        rec["slots"] = slots(TOOLCOUNT_PORT, TOOLCOUNT_CTX)
+                        if not rec["slots"]["ok"]:
+                            stop_msg = f"per-slot context {rec['slots']['n_ctx_per_slot']} is under {TOOLCOUNT_CTX}"
+                            rec["stopped"] = stop_msg
+                            result["stopped_reason"] = stop_msg
+                            continue
+                        tok_res, tok_stop = check_tokenizer_or_stop(TOOLCOUNT_PORT, m, spec)
+                        if tok_res is not None:
+                            rec["tokenizer"] = tok_res
+                        if tok_stop:
+                            rec["stopped"] = tok_stop
+                            result["stopped_reason"] = tok_stop
+                            continue
+                        win_summary = run_model_window(
+                            endpoint_url=f"http://127.0.0.1:{TOOLCOUNT_PORT}",
+                            model_name=spec["served_as"],
+                            r0_dir=r0_dir,
+                            out_dir=model_out_dir,
+                            half=half,
+                            seed=seed,
+                            resume_calls_dir=resume_dir,
+                            model_meta=m,
+                            machine_line=str(result.get("machine")),
+                            peak_vram_mb=int(smi_stats["peak_vram_mib"]),
+                            vram_fn=lambda s=smi_stats: int(s["peak_vram_mib"]),
+                            heartbeat_fn=heartbeat,
+                            deadline_check_fn=check_deadline,
+                        )
+                        rec["window_summary"] = win_summary
+                        shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                        shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                        score_rep = score_calls_file(
+                            calls_jsonl=model_out_dir / "calls.jsonl",
+                            r0_dir=r0_dir,
+                            out_path=model_out_dir / "score_report.json",
+                            seed=seed,
+                        )
+                        rec["score_report_sha256"] = score_rep.get("report_sha256")
+                    finally:
+                        stop_server(proc, log_fh)
+            except DeadlineReached:
+                global CUT_AT
+                CUT_AT = {
+                    "wave": "toolcount",
+                    "out": str(model_out_dir),
+                    "model": spec["served_as"],
+                    "journal": str(model_out_dir / "calls.jsonl"),
+                    "seconds": round(time.time() - t0_model),
+                    "at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                }
+                say(f"CUT AT THE DEADLINE toolcount {spec['served_as']} after {CUT_AT['seconds']} s")
+                raise
+            except (SmokeAssertError, RuntimeError, ValueError, OSError, KeyError) as e:
+                stop_msg = _strip_url_query_and_fragment(f"{type(e).__name__}: {e}")
+                rec["stopped"] = stop_msg
+                rec["error"] = stop_msg
+                result["stopped_reason"] = stop_msg
+            finally:
+                smi_stop.set()
+                smi_thread.join(timeout=10)
+                rec["smi"] = {
+                    "interval_s": SMI_INTERVAL_S,
+                    "samples": smi_stats["samples"],
+                    "peak_vram_mib": smi_stats["peak_vram_mib"],
+                    "csv": str(smi_csv),
+                }
+                if (model_out_dir / "calls.jsonl").is_file():
+                    shutil.copyfile(model_out_dir / "calls.jsonl", WORK / "calls.jsonl")
+                if (model_out_dir / "generations.jsonl").is_file():
+                    shutil.copyfile(model_out_dir / "generations.jsonl", WORK / "generations.jsonl")
+                g = WORK / f"{spec['served_as']}-Q8_0.gguf"
+                if g.exists():
+                    g.unlink(missing_ok=True)
+    finally:
+        result["model_errors"] = sum(1 for r in result["models"] if r.get("stopped") or r.get("error"))
+        try:
+            import tarfile as _tarfile  # noqa: PLC0415
+
+            with _tarfile.open(WORK / "toolcount-out.tar", "w") as tf:
+                if base.exists():
+                    tf.add(base, arcname="toolcount")
+        except (RuntimeError, OSError) as e:
+            result["tar_error"] = str(e)[:300]
 
 
 def take_job_lock(work: Path):
