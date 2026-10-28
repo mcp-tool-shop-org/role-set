@@ -328,6 +328,22 @@ for part in "$UP"/llama-server.gz.part*; do
   [ "$ok" = 1 ] || { echo "UPLOAD FAILED: $(basename "$part")"; exit 3; }
   echo "uploaded $(basename "$part")"
 done
+if [ "${PIN_ROLE:-}" = toolcount ]; then
+  case " ${PIN_UPLOADS:-} " in
+    */toolcount-pkg.tar\ *|*toolcount-pkg.tar\ *) ;;
+    *)
+      tar -C "$here/../.." -c \
+        scripts/toolcount/__init__.py \
+        scripts/toolcount/compass_lists.py \
+        scripts/toolcount/gen_registry.py \
+        scripts/toolcount/oracle.py \
+        scripts/toolcount/runner.py \
+        scripts/toolcount/scorer.py > "$UP/toolcount-pkg.tar"
+      export PIN_TOOLCOUNT_PKG_SHA256="${PIN_TOOLCOUNT_PKG_SHA256:-$(sha256sum "$UP/toolcount-pkg.tar" | awk '{print $1}')}"
+      PIN_UPLOADS="${PIN_UPLOADS:+$PIN_UPLOADS }$UP/toolcount-pkg.tar"
+      ;;
+  esac
+fi
 # Inputs for the window (PIN_UPLOADS: space-separated local files), each to /content/<basename>, retried like the parts.
 for f in ${PIN_UPLOADS:-}; do
   ok=0
