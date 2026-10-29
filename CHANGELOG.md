@@ -6,6 +6,17 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-29
+
+### Changed
+
+- **First PyPI release.** `pip install role-set`. The one runtime dependency is now `aspire-si-gates==1.7.6` from PyPI,
+  in place of the git URL that PyPI does not accept. 1.7.6 is the same source as the commit that was pinned
+  (`gates_identity()` sha256 `ff67dc9c…`), so no gate changed.
+- Added PyPI metadata, a release workflow (trusted publishing, SLSA provenance), and an audit of the site's npm tree in
+  CI. README translations refreshed.
+- Everything below, under the previous Unreleased heading, ships in this release.
+
 ### Fixed
 
 - **Fixes queue 1: LF CLI outputs, `MockWriter` multi-clause side parsing, planted-none `checker_verdict` candidate fill, code/record verbatim-repair guard, 3-vote `P2` refusal code, and `track_b_slots.py` docstring** (`src/role_set/cli.py`, `src/role_set/mock.py`, `src/role_set/assemble.py`, `src/role_set/runner.py`, `src/role_set/critic.py`, `src/role_set/critic_eval.py`, `src/role_set/generate/t10_record.json`, `scripts/critic_signal/track_b_slots.py`; R&D and Argon, 2026-10-22):

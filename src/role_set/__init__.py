@@ -5,4 +5,4 @@ isn't a local endpoint, an allowed writer, or a granted card; the gates come fro
 aspire-si's package and are never copied here.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

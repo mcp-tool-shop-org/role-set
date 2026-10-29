@@ -5,14 +5,21 @@ sidebar:
   order: 1
 ---
 
-Python 3.13 or newer (3.15 is the main target) and [uv](https://docs.astral.sh/uv/). The only runtime dependency is aspire-si's gates package, pinned to one commit of [aspire-si](https://github.com/mcp-tool-shop-org/aspire-si). The gates are imported. They are not copied into this repo.
+Python 3.13 or newer (3.15 is the main target) and [uv](https://docs.astral.sh/uv/). The only runtime dependency is [aspire-si-gates](https://pypi.org/project/aspire-si-gates/) 1.7.6, pinned. The gates are imported. They are not copied into this repo.
+
+```text
+pip install role-set
+role-set --version
+```
+
+To work on role-set itself, clone the repository and use uv:
 
 ```text
 uv sync --frozen
 uv run role-set --version
 ```
 
-`0.2.0` is the prototype. It is still 0.x: interfaces and data shapes can change without notice.
+`0.3.0` is the prototype. It is still 0.x: interfaces and data shapes can change without notice.
 
 ## Plan
 

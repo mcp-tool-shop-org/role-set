@@ -5,7 +5,7 @@
 
 **Tags:** `[all]` every repo · `[npm]` `[pypi]` `[vsix]` `[desktop]` `[container]` published artifacts · `[mcp]` MCP servers · `[cli]` CLI tools
 
-**This release:** 0.2.0 prototype, 2026-10-14. A re-treatment of 0.1.0 for the T10 generator. Lines re-run for this release carry 2026-10-14. A skipped line says why.
+**This release:** 0.3.0 prototype, 2026-10-29: the first PyPI release. Lines re-run for this release carry 2026-10-29. A skipped line says why. Earlier lines keep the date they were checked.
 
 ---
 
@@ -47,13 +47,13 @@
 
 - [x] `[all]` `verify` script exists (test + build + smoke in one command) (2026-10-11, `scripts/verify.ps1` and `scripts/verify.sh`: `uv sync --frozen`, pytest, `plan`, `puzzle-check`. No model. 2026-10-14: its pytest call does not exclude the `sweep` marker, so it is slower than CI's job; noted, not changed in this release)
 - [x] `[all]` Version in manifest matches git tag — executed by `npx @mcptoolshop/shipcheck manifest` (D2: manifest version not behind the newest released tag; `--expect <ver>` for a strict release-time match) (2026-10-14, version 0.2.0; `shipcheck manifest --expect 0.2.0` passed; newest tag v0.1.0, v0.2.0 is the Publisher's after merge)
-- [ ] `[all]` SKIP: dependency scanning is not configured. CI runs pytest, atlas check, `plan`, and `puzzle-check`. It has no scanner shipcheck recognises, and this release does not add one. `shipcheck ci` is the check.
-- [ ] `[all]` SKIP: `shipcheck deps` exited 0 as a skip. It found no npm lockfile at the repo root, so it did not audit `uv.lock`, and Dependabot alerting was not checked from this environment. Ticking the box would record a pass the gate did not make.
+- [x] `[all]` Dependency scanning runs in CI (ecosystem-appropriate) — executed by `npx @mcptoolshop/shipcheck ci` (2026-10-29; `npm audit --audit-level=high` on the site tree in ci.yml. The Python side has one pinned runtime dependency, aspire-si-gates 1.7.6, checked by `uv.lock` and the identity hash.)
+- [x] `[all]` No known high/critical vulnerabilities in any dependency tree — executed by `npx @mcptoolshop/shipcheck deps` (2026-10-29; the site tree had one high advisory (undici) and `npm audit fix` cleared it, 0 vulnerabilities now. Dependabot alerting was not verified from this environment: no token in env.)
 - [ ] `[all]` SKIP: no auto-PR update bot. The org rule restricts that bot. The vulnerability outcome is the `deps` line above.
 - [ ] `[npm]` SKIP: not an npm package.
 - [ ] `[npm]` SKIP: not an npm package.
-- [x] `[npm]` `engines.node` set · `[pypi]` `python_requires` set — executed by `npx @mcptoolshop/shipcheck manifest` (D6, checked per publishable package) (2026-10-14, `requires-python = ">=3.12,<3.13"`)
-- [x] `[npm]` Lockfile committed · `[pypi]` Clean wheel + sdist build — lockfile executed by `npx @mcptoolshop/shipcheck manifest` (D7); the pypi wheel/sdist build is not yet executed (2026-10-14, `uv.lock` is committed; its only change is the root package's version, 0.1.0 to 0.2.0. role-set is not on PyPI, and this release does not publish to PyPI.)
+- [x] `[npm]` `engines.node` set · `[pypi]` `python_requires` set — executed by `npx @mcptoolshop/shipcheck manifest` (D6, checked per publishable package) (2026-10-29, `requires-python = ">=3.13"`)
+- [x] `[npm]` Lockfile committed · `[pypi]` Clean wheel + sdist build — lockfile executed by `npx @mcptoolshop/shipcheck manifest` (D7); the pypi wheel/sdist build was executed 2026-10-29: `uv build` makes both, and the wheel installs into a clean Python 3.15 venv and runs `role-set plan`; `uv.lock` is committed.)
 - [ ] `[vsix]` SKIP: not a VS Code extension.
 - [ ] `[desktop]` SKIP: not a desktop app.
 

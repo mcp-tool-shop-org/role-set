@@ -9,6 +9,7 @@
 <p align="center">
   <a href="https://github.com/mcp-tool-shop-org/role-set/actions/workflows/ci.yml"><img src="https://github.com/mcp-tool-shop-org/role-set/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://codecov.io/gh/mcp-tool-shop-org/role-set"><img src="https://codecov.io/gh/mcp-tool-shop-org/role-set/graph/badge.svg" alt="Coverage"></a>
+  <a href="https://pypi.org/project/role-set/"><img src="https://img.shields.io/pypi/v/role-set" alt="PyPI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <a href="https://mcp-tool-shop-org.github.io/role-set/"><img src="https://img.shields.io/badge/Landing_Page-live-blue" alt="Landing Page"></a>
 </p>
@@ -23,7 +24,13 @@ The designs are [docs/role-set-design.md](docs/role-set-design.md) and [docs/gen
 
 ## Install
 
-Python 3.13 or newer (3.15 is the main target; CI tests 3.13, 3.14 and 3.15), managed by uv. One runtime dependency: [aspire-si-gates](https://github.com/mcp-tool-shop-org/aspire-si) 1.4.0, pinned to aspire-si commit `388a6bc`. The gates are imported, not copied.
+Python 3.13 or newer (3.15 is the main target; CI tests 3.13, 3.14 and 3.15). One runtime dependency: [aspire-si-gates](https://pypi.org/project/aspire-si-gates/) 1.7.6, pinned. The gates are imported, not copied.
+
+```text
+pip install role-set
+```
+
+To work on role-set itself, clone it and let uv install the locked environment:
 
 ```text
 uv sync --frozen

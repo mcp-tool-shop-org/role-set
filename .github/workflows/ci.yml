@@ -31,6 +31,7 @@ on:
       - "atlas/**"
       - "scripts/**"
       - "codecov.yml"
+      - "site/package*.json"
       - ".github/workflows/**"
   # Every pull request, whatever its base: stacked PRs (#88, #89) never ran CI under a main-only filter (R&D,
   # 2026-10-17), and a required check runs on every PR (github-actions rule, amended 2026-09-30).
@@ -77,6 +78,10 @@ jobs:
 
       - name: Atlas check
         run: npx --yes @dogfood-lab/atlas@1.24.0 check
+
+      - name: Audit the site's npm tree
+        working-directory: site
+        run: npm ci && npm audit --audit-level=high
 
       - name: Plan without a model
         run: uv run role-set plan --lessons T02,T03 --seed 0 --out /tmp/plan.json
