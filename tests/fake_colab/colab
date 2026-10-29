@@ -120,6 +120,12 @@ case "$cmd" in
         fi
         ;;
       */toolcount/*/calls.jsonl)
+        if [ ! -s "$VM$1" ] && { [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] || [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] || [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] || [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] || [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ]; }; then
+          for _ in $(seq 1 30); do
+            [ -s "$VM$1" ] && break
+            sleep 0.2
+          done
+        fi
         if [ -s "$VM$1" ]; then
           cb_try=$(( $(cat "$ST/copyback-calls-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_try" > "$ST/copyback-calls-tries"
@@ -132,7 +138,13 @@ case "$cmd" in
             exit 1
           fi
           if [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] && [ "$cb_try" = "$FAKE_PARTIAL_LAST_LINE_ON" ]; then
+            prev_l=$(cat "$ST/copyback-calls-lines" 2>/dev/null || echo 0)
+            for _ in $(seq 1 30); do
+              [ "$(wc -l < "$VM$1" 2>/dev/null || echo 0)" -gt "$prev_l" ] && break
+              sleep 0.2
+            done
             cp "$VM$1" "$2"
+            wc -l < "$VM$1" > "$ST/copyback-calls-lines"
             printf '{"call_id": "partial_mid_append' >> "$2"
             echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
             exit 0
@@ -148,9 +160,16 @@ case "$cmd" in
             echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
             exit 0
           fi
+          wc -l < "$VM$1" > "$ST/copyback-calls-lines"
         fi
         ;;
       */toolcount/*/generations.jsonl)
+        if [ ! -s "$VM$1" ] && { [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] || [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] || [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] || [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] || [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ]; }; then
+          for _ in $(seq 1 30); do
+            [ -s "$VM$1" ] && break
+            sleep 0.2
+          done
+        fi
         if [ -s "$VM$1" ]; then
           cb_g_try=$(( $(cat "$ST/copyback-gen-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_g_try" > "$ST/copyback-gen-tries"

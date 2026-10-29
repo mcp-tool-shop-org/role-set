@@ -788,7 +788,7 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
             "PIN_HEARTBEAT_S": "0",
             "PIN_COPYBACK_S": "1",
             "PIN_WATCH_S": "1",
-            "PIN_STUB_CALL_S": "1.8",
+            "PIN_STUB_CALL_S": "1.2",
             "PIN_GATE": "0",
             "FAKE_PARTIAL_LAST_LINE_ON": "2",
             "FAKE_UNASSIGN_MID_DOWNLOAD_ON": "3",
