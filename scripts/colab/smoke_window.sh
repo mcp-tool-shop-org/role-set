@@ -21,6 +21,10 @@ if [ -n "${PIN_STUB_CALL_S:-}" ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB_CALL_S is a stub rung's setting; never on ${PIN_GPU:-A100}" >&2
   exit 2
 fi
+if [ -n "${PIN_STUB_DROP_AFTER_CALLS:-}" ] && { [ "${PIN_GPU:-A100}" != CPU ] || [ "${PIN_STUB:-0}" != 1 ]; }; then
+  echo "REFUSED: PIN_STUB_DROP_AFTER_CALLS is a stub rung's setting; never on ${PIN_GPU:-A100} (requires PIN_STUB=1 PIN_GPU=CPU)" >&2
+  exit 2
+fi
 if [ "${PIN_GPU:-A100}" != CPU ] && [ "${PIN_GATE:-1}" != 0 ] && [ -z "${PIN_GATE_MIN_DISK_GB:-}" ]; then
   # The gate's disk floor is the window's computed peak + 20 GB; without it a too-small VM is found only after the token
   # and the paid time (R&D on 346ea2d). A CPU window may leave it at its default.
@@ -234,20 +238,170 @@ export PIN_JOB_TOKEN="$S-$T_OPEN"
 # job.log comes down to job.log.part and replaces the local copy only when the fetch exited 0 and the new copy is no
 # smaller (R&D, 2026-10-17): a fetch that dies partway, a VM reclaimed mid-transfer or the timeout, can't truncate the
 # one local copy of the checkpoint lines, which is the case they are kept for.
+COPYBACK_S="${PIN_COPYBACK_S:-600}"
+COPYBACK_DIR="$OUT/copyback"
+COPYBACK_LOCK="${PIN_COPYBACK_LOCK:-$COPYBACK_DIR/.copyback.lock}"
+COPYBACK_STATE="${PIN_COPYBACK_STATE:-$COPYBACK_DIR/.copyback.state.json}"
+cli() {
+  local cfg_args=()
+  [ -n "${PIN_COLAB_CONFIG:-}" ] && cfg_args=(--config "$PIN_COLAB_CONFIG")
+  timeout "${CLI_T:-$DL_S}" colab "${cfg_args[@]}" "$@" 2>&1 | strip_colab_banner | scrub_log
+  return "${PIPESTATUS[0]}"
+}
 fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and the exit sequence's never collide
   local part="$OUT/job.log.part.${1:-x}" new old dl_out dl_rc
   rm -f "$part"
-  dl_out=$(timeout "$DL_S" colab download -s "$S" /content/pin/job.log "$part" 2>&1) && dl_rc=0 || dl_rc=$?
-  printf '%s\n' "$dl_out" | scrub_log > "$OUT/.fetch.out"
+  dl_out=$(CLI_T="$DL_S" cli download -s "$S" /content/pin/job.log "$part") && dl_rc=0 || dl_rc=$?
+  printf '%s\n' "$dl_out" > "$OUT/.fetch.out"
   [ "$dl_rc" -eq 0 ] || { rm -f "$part"; return 1; }
   grep -qi "fail\|error" "$OUT/.fetch.out" && { rm -f "$part"; return 1; }
   [ -f "$part" ] || return 1
   new=$(stat -c %s "$part"); old=$(stat -c %s "$OUT/job.log" 2>/dev/null || echo 0)
   if [ "$new" -ge "$old" ]; then mv -f "$part" "$OUT/job.log"; else rm -f "$part"; return 1; fi
 }
-( seen=0; size0=-1; grew=0; ended=""; noted=""
-  end_window() { echo "$1" > "$OUT/.end"; ended=$1; [ -f "$OUT/.exec.pid" ] && kill "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; }
-  while sleep "${PIN_WATCH_S:-120}"; do
+# Journal copy-back (R&D, Card nh): every PIN_COPYBACK_S (default 600s), pull live calls.jsonl and generations.jsonl
+# under /content/pin/toolcount/<served_as>/ plus the latest heartbeat into $OUT/copyback/<served_as>/.
+# Uses a private lock and state file under $OUT/copyback/ (never writing shared ~/.config/colab-cli/sessions.json).
+copyback_journals() {
+  [ "$COPYBACK_S" -gt 0 ] 2>/dev/null || return 0
+  local models m jf remote dest_dir dest part dl_out dl_rc ts hb
+  models=$(
+    {
+      grep -oE 'HEARTBEAT toolcount model=[^ ]+' "$OUT/job.log" 2>/dev/null | sed 's/.*model=//' || true
+      sed -n 's/^.*=== \([^ ]*\) ===$/\1/p' "$OUT/job.log" 2>/dev/null || true
+    } | sed '/^$/d' | awk '!seen[$0]++'
+  )
+  [ -n "$models" ] || return 0
+  mkdir -p "$COPYBACK_DIR"
+  (
+    flock -w 30 8 || return 0
+    local mypid="${BASHPID:-$$}"
+    for m in $models; do
+      dest_dir="$COPYBACK_DIR/$m"
+      mkdir -p "$dest_dir"
+      hb=$(grep -E "(^| )HEARTBEAT toolcount model=${m}( |$)" "$OUT/job.log" 2>/dev/null | tail -1 || true)
+      [ -n "$hb" ] || hb=$(grep -E "(^| )HEARTBEAT " "$OUT/job.log" 2>/dev/null | tail -1 || true)
+      if [ -n "$hb" ]; then
+        printf '%s\n' "$hb" | scrub_log > "$dest_dir/heartbeat.txt.part.$mypid"
+        mv -f "$dest_dir/heartbeat.txt.part.$mypid" "$dest_dir/heartbeat.txt"
+        cp -f "$dest_dir/heartbeat.txt" "$COPYBACK_DIR/heartbeat.txt"
+      fi
+      for jf in calls.jsonl generations.jsonl; do
+        remote="/content/pin/toolcount/$m/$jf"
+        dest="$dest_dir/$jf"
+        part="$dest.part.$mypid"
+        rm -f "$part"
+        ts=$(date -u +%FT%TZ)
+        dl_out=$(CLI_T="$DL_S" cli download -s "$S" "$remote" "$part") && dl_rc=0 || dl_rc=$?
+        printf '%s\n' "$dl_out" > "$COPYBACK_DIR/.copyback.fetch.out"
+        if [ "$dl_rc" -eq 0 ] && printf '%s\n' "$dl_out" | grep -qi "fail\|error"; then
+          dl_rc=1
+        fi
+        python3 - "$part" "$dest" "$COPYBACK_STATE" "$COPYBACK_DIR/copyback.jsonl" "$OUT/copyback.jsonl" "$ts" "$m/$jf" "$dl_rc" "${hb:-}" <<'PY' || true
+import json, os, pathlib, sys
+part_p = pathlib.Path(sys.argv[1])
+dest_p = pathlib.Path(sys.argv[2])
+state_p = pathlib.Path(sys.argv[3])
+log1_p = pathlib.Path(sys.argv[4])
+log2_p = pathlib.Path(sys.argv[5])
+ts, rel_file, dl_rc, hb = sys.argv[6], sys.argv[7], int(sys.argv[8]), sys.argv[9]
+
+try:
+    state = json.loads(state_p.read_text(encoding="utf-8")) if state_p.is_file() else {}
+    if not isinstance(state, dict):
+        state = {}
+except Exception:
+    state = {}
+files_state = state.setdefault("files", {})
+prev_info = files_state.get(rel_file, {}) if isinstance(files_state.get(rel_file), dict) else {}
+
+old_lines = 0
+old_bytes = 0
+if dest_p.is_file():
+    try:
+        old_raw = dest_p.read_bytes()
+        old_bytes = len(old_raw)
+        old_lines = len([ln for ln in old_raw.decode("utf-8").splitlines() if ln.strip()])
+    except Exception:
+        old_lines = int(prev_info.get("lines", 0) or 0)
+        old_bytes = int(prev_info.get("bytes", 0) or 0)
+else:
+    old_lines = int(prev_info.get("lines", 0) or 0)
+    old_bytes = int(prev_info.get("bytes", 0) or 0)
+
+rc = dl_rc
+new_bytes = 0
+new_lines = 0
+if rc == 0 and part_p.is_file():
+    try:
+        raw = part_p.read_bytes()
+        new_bytes = len(raw)
+        if new_bytes == 0 and old_lines == 0 and old_bytes == 0:
+            try:
+                part_p.unlink()
+            except OSError:
+                pass
+            sys.exit(0)
+        if new_bytes == 0 or not raw.endswith(b"\n"):
+            rc = 2
+        else:
+            text = raw.decode("utf-8")
+            non_empty = [ln for ln in text.splitlines() if ln.strip()]
+            new_lines = len(non_empty)
+            if new_lines == 0 or new_lines < old_lines or (new_lines == old_lines and new_bytes < old_bytes):
+                rc = 2
+            else:
+                for ln in non_empty:
+                    obj = json.loads(ln)
+                    if not isinstance(obj, dict) or not obj.get("call_id"):
+                        raise ValueError("missing call_id")
+                os.replace(part_p, dest_p)
+                files_state[rel_file] = {
+                    "time": ts,
+                    "bytes": new_bytes,
+                    "lines": new_lines,
+                    "heartbeat": hb,
+                }
+                state_part = state_p.with_name(f"{state_p.name}.part.{os.getpid()}")
+                state_part.write_text(json.dumps(state, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+                os.replace(state_part, state_p)
+    except Exception:
+        rc = 2
+elif rc == 0:
+    rc = 2
+
+if part_p.exists():
+    try:
+        part_p.unlink()
+    except OSError:
+        pass
+
+if rc != 0:
+    rep_bytes = old_bytes
+    rep_lines = old_lines
+else:
+    rep_bytes = new_bytes
+    rep_lines = new_lines
+
+entry = json.dumps(
+    {"time": ts, "file": rel_file, "bytes": rep_bytes, "lines": rep_lines, "rc": rc}
+) + "\n"
+for lp in (log1_p, log2_p):
+    with lp.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(entry)
+PY
+      done
+    done
+  ) 8>"$COPYBACK_LOCK"
+}
+WATCH_S="${PIN_WATCH_S:-120}"
+TICK_S="$WATCH_S"
+if [ "$COPYBACK_S" -gt 0 ] 2>/dev/null && [ "$COPYBACK_S" -lt "$TICK_S" ]; then
+  TICK_S="$COPYBACK_S"
+fi
+( seen=0; size0=-1; grew=0; ended=""; noted=""; last_copyback=0
+  end_window() { echo "$1" > "$OUT/.end"; ended=$1; if [ -f "$OUT/.exec.pid" ]; then pkill -TERM -P "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; kill "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; fi; }
+  while sleep "$TICK_S"; do
     now=$(date +%s)
     spent=$(awk -v r="$OWN_RATE" -v t="$(( now - T_OPEN ))" 'BEGIN{printf "%.3f", r*t/3600}')
     if awk -v s="$spent" -v c="$CAP_UNITS" 'BEGIN{exit !(s>=c)}'; then
@@ -275,6 +429,20 @@ fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and t
         touch "$OUT/.retried" "$OUT/.retry"; kill "$(cat "$OUT/.exec.pid")" 2>/dev/null || true; continue
       fi
       if [ "$size" -gt 0 ] && [ "$size" != "$size0" ]; then seen=1; grew=$now; size0=$size; fi
+      if [ "$COPYBACK_S" -gt 0 ] 2>/dev/null && [ "$size" -gt 0 ] && [ $(( now - last_copyback )) -ge "$COPYBACK_S" ]; then
+        copyback_journals || true
+        last_copyback=$now
+        if [ "${PIN_STUB:-0}" = 1 ] && [ -n "${PIN_STUB_DROP_AFTER_CALLS:-}" ]; then
+          cb_lines=$(wc -l "$COPYBACK_DIR"/*/calls.jsonl 2>/dev/null | awk 'END{print $1+0}')
+          if [ "${cb_lines:-0}" -ge "$PIN_STUB_DROP_AFTER_CALLS" ]; then
+            (
+              flock -w 60 9 || true
+              colab stop -s "$S" >/dev/null 2>&1 || true
+            ) 9>"$OPEN_LOCK"
+            echo "SESSION GONE ($S) $(date -u +%T)"; end_window gone; exit 0
+          fi
+        fi
+      fi
       if grep -q "^PIN_RESULT" "$OUT/job.log" 2>/dev/null; then
         echo "JOB DONE (PIN_RESULT in job.log) $(date -u +%T)"; end_window done; continue
       fi
@@ -344,6 +512,20 @@ if [ "${PIN_ROLE:-}" = toolcount ]; then
       ;;
   esac
 fi
+if [ -n "${PIN_RESUME_CALLS_DIR:-}" ]; then
+  case " ${PIN_UPLOADS:-} " in
+    */resume.tar\ *|*resume.tar\ *) ;;
+    *)
+      if [ -d "$PIN_RESUME_CALLS_DIR" ]; then
+        tar -C "$PIN_RESUME_CALLS_DIR" --exclude='copyback.jsonl' --exclude='.copyback*' --exclude='*.part.*' -cf "$UP/resume.tar" .
+        PIN_UPLOADS="${PIN_UPLOADS:+$PIN_UPLOADS }$UP/resume.tar"
+      elif [ -f "$PIN_RESUME_CALLS_DIR" ]; then
+        tar -C "$(dirname "$PIN_RESUME_CALLS_DIR")" -cf "$UP/resume.tar" "$(basename "$PIN_RESUME_CALLS_DIR")"
+        PIN_UPLOADS="${PIN_UPLOADS:+$PIN_UPLOADS }$UP/resume.tar"
+      fi
+      ;;
+  esac
+fi
 # Inputs for the window (PIN_UPLOADS: space-separated local files), each to /content/<basename>, retried like the parts.
 for f in ${PIN_UPLOADS:-}; do
   ok=0
@@ -377,7 +559,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S|UPLOAD_RETRY_SLEEP_S)$' || true); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S|UPLOAD_RETRY_SLEEP_S|COPYBACK_S|COPYBACK_LOCK|COPYBACK_STATE|COLAB_CONFIG|STUB_COPYBACK_RESUME)$' || true); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
@@ -398,6 +580,9 @@ echo "exec exit=$rc wall=$(( $(date +%s)-t0 ))s end=$(cat "$OUT/.end" 2>/dev/nul
 if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
   f0=$(date +%s)
   fetch_log final && echo "fetched job.log ($(stat -c %s "$OUT/job.log") bytes)" || echo "job.log not refreshed; the last good copy stays"
+  if [ "$COPYBACK_S" -gt 0 ] 2>/dev/null; then
+    copyback_journals || true
+  fi
   DEFAULT_DL="pin-result.json pilot-out.tar lib.tar generations.jsonl"
   [ "${PIN_ROLE:-}" = offrig-bench ] && DEFAULT_DL="pin-result.json offrig-bench-out.tar ps.json"
   [ "${PIN_ROLE:-}" = toolcount ] && DEFAULT_DL="pin-result.json toolcount-out.tar lib.tar generations.jsonl"
@@ -409,7 +594,10 @@ if [ "$(cat "$OUT/.end" 2>/dev/null)" != gone ]; then
   echo "exit fetch took $(( $(date +%s) - f0 ))s"
 fi
 kill "$WATCH" 2>/dev/null || true
-rm -f "$OUT"/job.log.part.*
+rm -f "$OUT"/job.log.part.* 2>/dev/null || true
+if [ -d "$COPYBACK_DIR" ]; then
+  ( flock -w 5 8 || true; rm -f "$OUT"/copyback/*/*.part.* 2>/dev/null || true ) 8>"$COPYBACK_LOCK"
+fi
 grep -h "^PIN_RESULT" "$OUT/job.log" "$OUT/smoke-window.log" 2>/dev/null | head -1 | cut -c1-600 | scrub_log || true
 echo "end balance $(bal) (start $START)"
 # The window's outcome record (R&D, 2026-10-18: every outcome.json carries its date and commit). The rig writes what it

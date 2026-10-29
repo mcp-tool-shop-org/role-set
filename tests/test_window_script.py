@@ -739,6 +739,217 @@ def test_toolcount_role_uploads_toolcount_pkg_tar_and_forwards_its_sha256():
     assert res["ok"] is True, res
 
 
+def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or_truncated_pulls():
+    import json
+
+    jwt_hdr = "eyJhbGciOiJSUzI1NiIsImtpZCI6IjEifQ"
+    jwt_pay = "eyJzdWIiOiJjb3B5YmFjayIsImlhdCI6MTcwMDAwMDAwMH0"
+    jwt_sig = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+    fake_jwt = f"{jwt_hdr}.{jwt_pay}.{jwt_sig}"
+    fake_access = "ya29.a0AfH6SMB_COPYBACK_SECRET_TOKEN_112233"
+    leak_line = (
+        "https://8080-m-s-kkb-usc1b2-1a2b.prod.colab.dev/api/contents/content/pin/toolcount/granite-4.2-8b/calls.jsonl"
+        f"?colab-runtime-proxy-token={fake_jwt}&access_token={fake_access}"
+    )
+
+    tmp_home = Path(tempfile.mkdtemp(prefix="fakewin-cb-home-"))
+    colab_cfg_dir = tmp_home / ".config" / "colab-cli"
+    colab_cfg_dir.mkdir(parents=True, exist_ok=True)
+    shared_sessions = colab_cfg_dir / "sessions.json"
+    sentinel_sessions = '{"sentinel": "never_touch_shared_sessions_json"}\n'
+    shared_sessions.write_text(sentinel_sessions, encoding="utf-8")
+
+    # Refuses PIN_STUB_DROP_AFTER_CALLS on any GPU window or when PIN_STUB != 1
+    rig_refused, job_refused, out_refused = _window(
+        "normal",
+        extra={"PIN_GPU": "A100", "PIN_STUB_DROP_AFTER_CALLS": "3"},
+    )
+    assert "REFUSED: PIN_STUB_DROP_AFTER_CALLS is a stub rung's setting" in rig_refused, rig_refused
+    assert not (out_refused.parent / "st" / "open").exists() and not job_refused
+
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "HOME": str(tmp_home),
+            "COLAB_SETTINGS_FILE": str(colab_cfg_dir / "settings.json"),
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "1",
+            "PIN_WATCH_S": "1",
+            "PIN_STUB_CALL_S": "1.1",
+            "PIN_GATE": "0",
+            "FAKE_CORRUPT_COPYBACK_ON": "2",
+            "FAKE_TRUNCATE_COPYBACK_ON": "3",
+            "FAKE_COPYBACK_LEAK_URL": leak_line,
+        },
+    )
+    assert job.count("PIN_RESULT") == 1, (rig, job)
+    # Shared ~/.config/colab-cli/sessions.json is never touched
+    assert shared_sessions.read_text(encoding="utf-8") == sentinel_sessions
+
+    cb_dir = out / "copyback" / "granite-4.2-8b"
+    calls_cb = cb_dir / "calls.jsonl"
+    gens_cb = cb_dir / "generations.jsonl"
+    hb_cb = cb_dir / "heartbeat.txt"
+    assert calls_cb.is_file() and gens_cb.is_file() and hb_cb.is_file(), list(out.rglob("*"))
+    assert "HEARTBEAT toolcount model=granite-4.2-8b" in hb_cb.read_text(encoding="utf-8")
+    # No leftover .part files
+    assert not list((out / "copyback").rglob("*.part*"))
+
+    # Every line in copied calls.jsonl and generations.jsonl parses as JSON
+    copied_calls = [json.loads(ln) for ln in calls_cb.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    copied_gens = [json.loads(ln) for ln in gens_cb.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(copied_calls) >= 2 and len(copied_gens) >= 2
+
+    # Verify copyback.jsonl logs every pull with time, file, bytes, lines, rc
+    cb_log_1 = out / "copyback" / "copyback.jsonl"
+    cb_log_2 = out / "copyback.jsonl"
+    assert cb_log_1.is_file() and cb_log_2.is_file()
+    assert cb_log_1.read_text(encoding="utf-8") == cb_log_2.read_text(encoding="utf-8")
+    log_rows = [json.loads(ln) for ln in cb_log_1.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    for r in log_rows:
+        assert set(r.keys()) == {"time", "file", "bytes", "lines", "rc"}, r
+
+    call_pulls = [r for r in log_rows if r["file"] == "granite-4.2-8b/calls.jsonl"]
+    assert len(call_pulls) >= 4, call_pulls
+    # Pull #1 is valid (rc == 0, lines >= 1)
+    assert call_pulls[0]["rc"] == 0 and call_pulls[0]["lines"] >= 1, call_pulls
+    # Pull #2 (corrupt partial line) and Pull #3 (truncated 1-line pull) are rejected (rc == 2) and keep Pull #1's lines/bytes
+    assert call_pulls[1]["rc"] == 2 and call_pulls[1]["lines"] == call_pulls[0]["lines"], call_pulls
+    assert call_pulls[2]["rc"] == 2 and call_pulls[2]["lines"] == call_pulls[0]["lines"], call_pulls
+    # Subsequent good pull grows beyond Pull #1
+    good_pulls = [r for r in call_pulls if r["rc"] == 0]
+    assert len(good_pulls) >= 2 and good_pulls[-1]["lines"] > good_pulls[0]["lines"], call_pulls
+
+    # Proxy tokens are scrubbed from all kept CLI output
+    fetch_out = (out / "copyback" / ".copyback.fetch.out").read_text(encoding="utf-8")
+    assert "colab-runtime-proxy-token=[REDACTED]" in fetch_out, fetch_out
+    assert "access_token=[REDACTED]" in fetch_out, fetch_out
+    for secret in (fake_jwt, jwt_pay, jwt_sig, fake_access):
+        assert secret not in rig
+        for p in out.rglob("*"):
+            if p.is_file():
+                assert secret.encode("utf-8") not in p.read_bytes(), (secret, p)
+
+
+def test_journal_copyback_survives_midrun_session_drop_and_resumes_byte_identically():
+    import json
+
+    seed = "20261028"
+    # 1. Uninterrupted reference run (all 7 R1 stub calls for seed 20261028)
+    rig_ref, job_ref, out_ref = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_TOOLCOUNT_SEED": seed,
+            "PIN_COPYBACK_S": "0",
+            "PIN_WATCH_S": "1",
+            "PIN_GATE": "0",
+            "PIN_DOWNLOADS": "pin-result.json calls.jsonl generations.jsonl",
+        },
+    )
+    assert job_ref.count("PIN_RESULT") == 1, (rig_ref, job_ref)
+    ref_calls_bytes = (out_ref / "calls.jsonl").read_bytes()
+    ref_gens_bytes = (out_ref / "generations.jsonl").read_bytes()
+    ref_calls_lines = ref_calls_bytes.decode("utf-8").splitlines()
+    assert len(ref_calls_lines) == 7
+
+    # 2. Dropped session mid-run after N=3 calls are copied back
+    rig_drop, job_drop, out_drop = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_TOOLCOUNT_SEED": seed,
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "1",
+            "PIN_WATCH_S": "1",
+            "PIN_STUB_CALL_S": "0.35",
+            "PIN_STUB_DROP_AFTER_CALLS": "3",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "SESSION GONE" in rig_drop, rig_drop
+    assert (out_drop / ".end").read_text(encoding="utf-8").strip() == "gone"
+    draft_drop = json.loads((out_drop / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert draft_drop["end"] == "gone", draft_drop
+
+    cb_calls = out_drop / "copyback" / "granite-4.2-8b" / "calls.jsonl"
+    cb_gens = out_drop / "copyback" / "granite-4.2-8b" / "generations.jsonl"
+    assert cb_calls.is_file() and cb_gens.is_file()
+    copied_lines = cb_calls.read_text(encoding="utf-8").splitlines()
+    assert len(copied_lines) == 3, copied_lines
+    assert copied_lines == ref_calls_lines[:3]
+
+    # Also verify a mid-run drop triggered directly by fake_colab (FAKE_DROP_AFTER_COPYBACKS=1) closes as "gone" with copy intact
+    rig_fakedrop, _, out_fakedrop = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_TOOLCOUNT_SEED": seed,
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "1",
+            "PIN_WATCH_S": "1",
+            "PIN_STUB_CALL_S": "1.2",
+            "FAKE_DROP_AFTER_COPYBACKS": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "SESSION GONE" in rig_fakedrop, rig_fakedrop
+    assert json.loads((out_fakedrop / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "gone"
+    assert (out_fakedrop / "copyback" / "granite-4.2-8b" / "calls.jsonl").is_file()
+
+    # 3. Resume from PIN_RESUME_CALLS_DIR=<out_drop>/copyback
+    rig_res, job_res, out_res = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_TOOLCOUNT_SEED": seed,
+            "PIN_RESUME_CALLS_DIR": str(out_drop / "copyback"),
+            "PIN_COPYBACK_S": "1",
+            "PIN_WATCH_S": "1",
+            "PIN_GATE": "0",
+            "PIN_DOWNLOADS": "pin-result.json calls.jsonl generations.jsonl",
+        },
+    )
+    assert "uploaded resume.tar" in rig_res, rig_res
+    assert job_res.count("PIN_RESULT") == 1, (rig_res, job_res)
+    pin_res = json.loads((out_res / "pin-result.json").read_text(encoding="utf-8"))
+    assert pin_res["ok"] is True, pin_res
+    summary = pin_res["models"][0]["window_summary"]
+    assert summary["total_calls"] == 7, summary
+    assert summary["reused_calls"] == 3, summary
+    assert summary["fresh_calls"] == 4, summary  # total (7) - N (3) == 4 fresh calls
+
+    resumed_calls_bytes = (out_res / "calls.jsonl").read_bytes()
+    resumed_gens_bytes = (out_res / "generations.jsonl").read_bytes()
+    resumed_rows = [json.loads(ln) for ln in resumed_calls_bytes.decode("utf-8").splitlines()]
+    call_ids = [r["call_id"] for r in resumed_rows]
+    assert len(call_ids) == 7 and len(set(call_ids)) == 7, call_ids  # no call_id repeated
+    # Final journal equals what an uninterrupted run produces for the same seed (byte-for-byte)
+    assert resumed_calls_bytes == ref_calls_bytes
+    assert resumed_gens_bytes == ref_gens_bytes
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     only = set(sys.argv[1:])
     failed = 0

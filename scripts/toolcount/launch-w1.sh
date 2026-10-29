@@ -81,6 +81,7 @@ case "$MODE" in
     export PIN_FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
     export PIN_GATE_MIN_RAM_GB="${PIN_GATE_MIN_RAM_GB:-8}"
     export PIN_GATE_MIN_HF_MBPS="${PIN_GATE_MIN_HF_MBPS:-20}"
+    export PIN_COPYBACK_S="${PIN_COPYBACK_S:-10}"
     export PIN_SESSION="${PIN_SESSION:-tc-r1-stub}"
     CARD_RATE="0.08"
     if [ "$PIN_ROLESET_COMMIT" = "to pin" ] || [ -z "$PIN_ROLESET_COMMIT" ]; then
@@ -231,11 +232,28 @@ c2_guard_loop() {
   done
 }
 
-bash "$SMOKE_SH" "$BIN" "$OUT" &
-WIN_PID=$!
-c2_guard_loop "$WIN_PID" &
-GUARD_PID=$!
+run_one_window() {
+  bash "$SMOKE_SH" "$BIN" "$OUT" &
+  WIN_PID=$!
+  c2_guard_loop "$WIN_PID" &
+  GUARD_PID=$!
 
-wait "$WIN_PID" && WIN_RC=0 || WIN_RC=$?
-kill "$GUARD_PID" 2>/dev/null || true
-exit "$WIN_RC"
+  wait "$WIN_PID" && WIN_RC=0 || WIN_RC=$?
+  kill "$GUARD_PID" 2>/dev/null || true
+  return "$WIN_RC"
+}
+
+if [ "$MODE" = "stub" ] && [ "${PIN_STUB_COPYBACK_RESUME:-0}" = "1" ]; then
+  export PIN_STUB_DROP_AFTER_CALLS="${PIN_STUB_DROP_AFTER_CALLS:-3}"
+  export PIN_COPYBACK_S="${PIN_COPYBACK_S:-2}"
+  run_one_window || true
+  [ -f "$OUT/outcome.draft.json" ] && cp -f "$OUT/outcome.draft.json" "$OUT/outcome.pass1.draft.json"
+  unset PIN_STUB_DROP_AFTER_CALLS
+  export PIN_RESUME_CALLS_DIR="${PIN_RESUME_CALLS_DIR:-$OUT/copyback}"
+  T_LAUNCH="$(date +%s)"
+  run_one_window
+  exit $?
+fi
+
+run_one_window
+exit $?

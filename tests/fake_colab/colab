@@ -10,6 +10,12 @@
 #   neverstarts     every exec hangs with nothing run
 # FAKE_GATE (any mode) sets what each VM health gate exec reports: good (default), bad or dead.
 ST=${FAKE_ST:?FAKE_ST}; VM=$ST/vm; mkdir -p "$VM/content/pin"
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --config) shift 2;;
+    *) break;;
+  esac
+done
 cmd=$1; shift
 maybe_banner() {
   local emit=0
@@ -87,7 +93,38 @@ case "$cmd" in
       echo "${FAKE_LEAK_URL:-download failed}"
       exit 1
     fi
-    if [ -f "$ST/open" ] && [ -f "$VM$1" ]; then cp "$VM$1" "$2"; echo "[colab] Downloaded"; else echo "[colab] Download failed: $1"; exit 1; fi;;
+    case "$1" in
+      */toolcount/*/calls.jsonl)
+        if [ -f "$ST/open" ] && [ -s "$VM$1" ]; then
+          cb_try=$(( $(cat "$ST/copyback-calls-tries" 2>/dev/null || echo 0) + 1 ))
+          echo "$cb_try" > "$ST/copyback-calls-tries"
+          if [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] && [ "$cb_try" = "$FAKE_CORRUPT_COPYBACK_ON" ]; then
+            cp "$VM$1" "$2"
+            printf '{"call_id": "corrupt_partial_line' >> "$2"
+            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            exit 0
+          fi
+          if [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] && [ "$cb_try" = "$FAKE_TRUNCATE_COPYBACK_ON" ]; then
+            printf '{"call_id": "truncated_pull"}\n' > "$2"
+            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            exit 0
+          fi
+        fi
+        ;;
+      */toolcount/*/generations.jsonl)
+        if [ -f "$ST/open" ] && [ -s "$VM$1" ]; then
+          cb_g_try=$(( $(cat "$ST/copyback-gen-tries" 2>/dev/null || echo 0) + 1 ))
+          echo "$cb_g_try" > "$ST/copyback-gen-tries"
+          if [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ] && [ "$cb_g_try" -ge "$FAKE_DROP_AFTER_COPYBACKS" ]; then
+            cp "$VM$1" "$2"
+            rm -f "$ST/open"
+            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            exit 0
+          fi
+        fi
+        ;;
+    esac
+    if [ -f "$ST/open" ] && [ -f "$VM$1" ]; then cp "$VM$1" "$2"; echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"; else echo "[colab] Download failed: $1"; exit 1; fi;;
   exec)
     file=""; envs=()
     while [ $# -gt 0 ]; do case "$1" in -f) file=$2; shift 2;; --env) envs+=("$2"); shift 2;; -s|--timeout) shift 2;; *) shift;; esac; done
@@ -113,19 +150,20 @@ case "$cmd" in
     n=$(( $(cat "$ST/execs" 2>/dev/null || echo 0) + 1 )); echo $n > "$ST/execs"
     job="$ST/job-$n.sh"
     { echo "#!/usr/bin/env bash"; echo "touch '$ST/busy.$n'"
+      echo "trap 'rm -f \"$ST/busy.$n\"; [ -n \"\${JPID:-}\" ] && kill \"\$JPID\" 2>/dev/null || true' TERM INT EXIT"
       for e in "${envs[@]}"; do printf 'export %q\n' "$e"; done
-      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file'"; echo "rm -f '$ST/busy.$n'"; } > "$job"
+      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file' & JPID=\$!; wait \$JPID"; } > "$job"
     chmod +x "$job"
     lost() { echo "RuntimeError: Connection was lost."; exec sleep 3600; }
     case "$FAKE_MODE:$n" in
-      normal:*|neighbourclose:*) "$job";;
+      normal:*|neighbourclose:*) exec "$job";;
       lostfirst:1|neverstarts:*) lost;;
-      lostfirst:*) "$job";;
+      lostfirst:*) exec "$job";;
       late:1) setsid bash -c "sleep ${FAKE_LATE_S:-4}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
-      late:*) "$job";;
+      late:*) exec "$job";;
       # latefirstwins: the first exec's job arrives just after the watcher's IDLE read and takes the lock; the retry's
       # job arrives later, waits for it, and stops on this window's result.
       latefirstwins:1) setsid bash -c "sleep ${FAKE_LATE_S:-1.5}; '$job'" > /dev/null 2>&1 < /dev/null & lost;;
-      latefirstwins:*) sleep "${FAKE_SECOND_DELAY_S:-2}"; "$job";;
+      latefirstwins:*) sleep "${FAKE_SECOND_DELAY_S:-2}"; exec "$job";;
     esac;;
 esac

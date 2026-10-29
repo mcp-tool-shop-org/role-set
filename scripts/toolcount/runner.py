@@ -484,12 +484,44 @@ def compute_first_50_repricing(
     }
 
 
-def load_resume_journal(resume_dir: Path | None) -> dict[str, dict[str, Any]]:
-    """Load already-completed calls keyed by `call_id` from `resume_dir/calls.jsonl`."""
+def _resolve_resume_file(
+    resume_dir: Path | None,
+    filename: str = "calls.jsonl",
+    model_name: str | None = None,
+) -> Path | None:
+    """Resolve `filename` ('calls.jsonl' or 'generations.jsonl') inside `resume_dir`.
+
+    Supports flat layouts (`<dir>/calls.jsonl`), direct file paths (`<dir>/calls.jsonl`),
+    and `<out>/copyback/<served_as>/calls.jsonl` subdirectory layouts.
+    """
     if resume_dir is None:
-        return {}
-    calls_file = resume_dir / "calls.jsonl" if resume_dir.is_dir() else resume_dir
-    if not calls_file.is_file():
+        return None
+    if resume_dir.is_file():
+        if filename == "calls.jsonl":
+            return resume_dir
+        sib = resume_dir.parent / filename
+        return sib if sib.is_file() else None
+    if resume_dir.is_dir():
+        direct = resume_dir / filename
+        if direct.is_file():
+            return direct
+        if model_name:
+            sub = resume_dir / model_name / filename
+            if sub.is_file():
+                return sub
+        matches = sorted(resume_dir.glob(f"*/{filename}"))
+        if len(matches) == 1:
+            return matches[0]
+    return None
+
+
+def load_resume_journal(
+    resume_dir: Path | None,
+    model_name: str | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Load already-completed calls keyed by `call_id` from `resume_dir`."""
+    calls_file = _resolve_resume_file(resume_dir, "calls.jsonl", model_name=model_name)
+    if calls_file is None or not calls_file.is_file():
         return {}
     completed: dict[str, dict[str, Any]] = {}
     for line in calls_file.read_text(encoding="utf-8").splitlines():
@@ -503,6 +535,29 @@ def load_resume_journal(resume_dir: Path | None) -> dict[str, dict[str, Any]]:
         except Exception:
             continue
     return completed
+
+
+def _load_resume_raw_lines(
+    resume_dir: Path | None,
+    filename: str,
+    model_name: str | None = None,
+) -> dict[str, str]:
+    """Load raw JSONL lines keyed by `call_id` from `resume_dir` for byte-identical reuse."""
+    target = _resolve_resume_file(resume_dir, filename, model_name=model_name)
+    if target is None or not target.is_file():
+        return {}
+    raw_lines: dict[str, str] = {}
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+            cid = row.get("call_id")
+            if isinstance(cid, str):
+                raw_lines[cid] = line
+        except Exception:
+            continue
+    return raw_lines
 
 
 def run_model_window(
@@ -592,7 +647,9 @@ def run_model_window(
             else build_call_schedule(items=items, half=half, seed=seed, max_calls=max_calls)
         )
     )
-    reused_map = load_resume_journal(resume_calls_dir)
+    reused_map = load_resume_journal(resume_calls_dir, model_name=model_name)
+    reused_raw_calls = _load_resume_raw_lines(resume_calls_dir, "calls.jsonl", model_name=model_name)
+    reused_raw_gens = _load_resume_raw_lines(resume_calls_dir, "generations.jsonl", model_name=model_name)
 
     calls_path = out_dir / "calls.jsonl"
     generations_path = out_dir / "generations.jsonl"
@@ -642,18 +699,39 @@ def run_model_window(
 
             if call_id in reused_map:
                 rec = dict(reused_map[call_id])
-                rec["reused_from_journal"] = True
-                calls_f.write(json.dumps(rec, sort_keys=True) + "\n")
+                raw_call_line = reused_raw_calls.get(call_id, json.dumps(rec, sort_keys=True))
+                calls_f.write(raw_call_line + "\n")
                 calls_f.flush()
-                gen_entry = {
-                    "call_id": call_id,
-                    "item_id": item_id,
-                    "model": model_name,
-                    "cell": cell,
-                    "reused_from_journal": True,
-                    "top_logprobs": rec.get("top_logprobs", []),
-                }
-                gen_f.write(json.dumps(gen_entry, sort_keys=True) + "\n")
+                if call_id in reused_raw_gens:
+                    gen_f.write(reused_raw_gens[call_id] + "\n")
+                else:
+                    up_reused = rec.get("upstream_response") if isinstance(rec.get("upstream_response"), dict) else {}
+                    choices_reused = up_reused.get("choices") if isinstance(up_reused, dict) else []
+                    fr_reused = (
+                        choices_reused[0].get("finish_reason")
+                        if (isinstance(choices_reused, list) and choices_reused and isinstance(choices_reused[0], dict))
+                        else None
+                    )
+                    lp_reused = (
+                        choices_reused[0].get("logprobs")
+                        if (isinstance(choices_reused, list) and choices_reused and isinstance(choices_reused[0], dict))
+                        else rec.get("top_logprobs")
+                    )
+                    gen_entry = {
+                        "call_id": call_id,
+                        "item_id": item_id,
+                        "model": model_name,
+                        "arm": arm,
+                        "cell": cell,
+                        "N": n_val,
+                        "seed": seed,
+                        "prompt_tokens": int(rec.get("prompt_tokens") or 0),
+                        "output_tokens": int(rec.get("output_tokens") or 0),
+                        "finish_reason": fr_reused,
+                        "top_logprobs": lp_reused,
+                        "reused_from_journal": bool(rec.get("reused_from_journal", False)),
+                    }
+                    gen_f.write(json.dumps(gen_entry, sort_keys=True) + "\n")
                 gen_f.flush()
                 all_records.append(rec)
                 reused_count += 1
@@ -734,6 +812,8 @@ def run_model_window(
                 timeout=timeout,
                 extra_body=extra_body,
             )
+            if isinstance(resp_body, dict) and "_stub_wall_time_s" in resp_body:
+                wall_s = float(resp_body.pop("_stub_wall_time_s"))
 
             upstream = (
                 resp_body.get("upstream_response")
@@ -854,6 +934,18 @@ def run_model_window(
 
             all_records.append(receipt)
             fresh_count += 1
+
+            if os.environ.get("PIN_STUB") == "1" and os.environ.get("PIN_STUB_DROP_AFTER_CALLS"):
+                drop_after = int(os.environ["PIN_STUB_DROP_AFTER_CALLS"])
+                if drop_after > 0 and len(all_records) >= drop_after:
+                    hb_emit(
+                        f"HEARTBEAT toolcount model={model_name} call={step_idx + 1}/{total_sched} "
+                        f"elapsed={round(time.monotonic() - loop_t0)}s"
+                    )
+                    hold_s = float(os.environ.get("PIN_STUB_DROP_HOLD_S") or 300.0)
+                    if hold_s > 0:
+                        time.sleep(hold_s)
+                    raise RuntimeError(f"stub drop after {drop_after} calls")
 
     repricing_50 = compute_first_50_repricing(all_records)
     class_counts: dict[str, int] = {
@@ -1203,7 +1295,10 @@ class StubToolCountServer:
             {"token": "tok_3", "logprob": -6.20},
             {"token": "tok_4", "logprob": -7.05},
         ]
+        if os.environ.get("PIN_STUB_CALL_S"):
+            time.sleep(max(0.0, float(os.environ["PIN_STUB_CALL_S"])))
         return {
+            "_stub_wall_time_s": 0.01,
             "id": f"chatcmpl-stub-{step_idx}",
             "object": "chat.completion",
             "model": body.get("model", "stub"),
