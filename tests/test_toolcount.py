@@ -1929,6 +1929,237 @@ def test_mg_c_launch_w1_gate_floors_rnd_default_and_40_hex_refusal(tmp_path: Pat
             assert not (tmp_path / name / "captured_env.txt").exists(), "Window must not open on refused commit sha"
 
 
+def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_resume(
+    tmp_path: Path, r0_bundle: dict[str, Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Card nh:
+    1) Resuming from <out>/copyback/<served_as>/{calls.jsonl,generations.jsonl} (both direct and via resume.tar)
+       makes exactly total - N fresh calls, repeats no call_id, and produces final calls.jsonl and generations.jsonl
+       byte-identical to an uninterrupted run for the same seed.
+    2) PIN_STUB_DROP_AFTER_CALLS stops mid-run after flushing exactly N calls in PIN_STUB=1 mode.
+    3) launch-w1.sh with TOOLCOUNT_MODE=stub PIN_STUB=1 PIN_STUB_COPYBACK_RESUME=1 runs Pass 1 (forced drop + short
+       PIN_COPYBACK_S) and Pass 2 (resume from <out>/copyback).
+    """
+    import os
+    import shutil
+    import subprocess
+    import tarfile
+
+    r0_dir = r0_bundle["r0_dir"]
+    model_name = "granite-4.2-8b"
+    total_calls = 12
+    copied_n = 5
+
+    # 1. Uninterrupted 12-call reference run
+    ref_out = tmp_path / "ref_full"
+    with StubToolCountServer() as srv_ref:
+        ref_summary = run_model_window(
+            endpoint_url=srv_ref.base_url,
+            model_name=model_name,
+            r0_dir=r0_dir,
+            out_dir=ref_out,
+            half="A",
+            seed=DEFAULT_SEED,
+            max_calls=total_calls,
+        )
+        ref_chat_reqs = [r for r in srv_ref.requests_log if not r.get("_smoke_check")]
+    assert ref_summary["total_calls"] == total_calls
+    assert ref_summary["fresh_calls"] == total_calls
+    assert ref_summary["reused_calls"] == 0
+    assert len(ref_chat_reqs) == total_calls
+
+    ref_calls_lines = (ref_out / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+    ref_gens_lines = (ref_out / "generations.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(ref_calls_lines) == total_calls
+    assert len(ref_gens_lines) == total_calls
+
+    # 2. Build a copied journal directory matching <out>/copyback/<served_as>/ layout with N = 5 calls
+    copyback_root = tmp_path / "copyback"
+    cb_model_dir = copyback_root / model_name
+    cb_model_dir.mkdir(parents=True, exist_ok=True)
+    (cb_model_dir / "calls.jsonl").write_text("\n".join(ref_calls_lines[:copied_n]) + "\n", encoding="utf-8", newline="\n")
+    (cb_model_dir / "generations.jsonl").write_text("\n".join(ref_gens_lines[:copied_n]) + "\n", encoding="utf-8", newline="\n")
+    (cb_model_dir / "heartbeat.txt").write_text(
+        f"HEARTBEAT toolcount model={model_name} call={copied_n}/{total_calls} elapsed=2s\n",
+        encoding="utf-8",
+    )
+    (copyback_root / "copyback.jsonl").write_text(
+        json.dumps({"time": "2026-10-29T00:00:00Z", "file": f"{model_name}/calls.jsonl", "bytes": 100, "lines": copied_n, "rc": 0}) + "\n",
+        encoding="utf-8",
+    )
+
+    # Verify resume_calls() discovers <served_as>/calls.jsonl and ignores copyback.jsonl
+    monkeypatch.setenv("PIN_RESUME_CALLS_DIR", str(copyback_root))
+    found_map = pw.resume_calls()
+    assert found_map == {model_name: cb_model_dir / "calls.jsonl"}
+
+    # 3. Resume run from PIN_RESUME_CALLS_DIR=<out>/copyback
+    resumed_out = tmp_path / "resumed_full"
+    with StubToolCountServer() as srv_res:
+        res_summary = run_model_window(
+            endpoint_url=srv_res.base_url,
+            model_name=model_name,
+            r0_dir=r0_dir,
+            out_dir=resumed_out,
+            half="A",
+            seed=DEFAULT_SEED,
+            resume_calls_dir=copyback_root,
+            max_calls=total_calls,
+        )
+        fresh_chat_reqs = [r for r in srv_res.requests_log if not r.get("_smoke_check")]
+
+    assert res_summary["total_calls"] == total_calls
+    assert res_summary["reused_calls"] == copied_n
+    assert res_summary["fresh_calls"] == total_calls - copied_n
+    assert len(fresh_chat_reqs) == total_calls - copied_n
+
+    copied_call_ids = {json.loads(ln)["call_id"] for ln in ref_calls_lines[:copied_n]}
+    fresh_req_call_ids = {r["_call_id"] for r in fresh_chat_reqs}
+    assert copied_call_ids.isdisjoint(fresh_req_call_ids), "Already-journalled call_ids must never be re-requested"
+
+    final_calls_lines = (resumed_out / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+    final_call_ids = [json.loads(ln)["call_id"] for ln in final_calls_lines]
+    assert len(final_call_ids) == total_calls and len(set(final_call_ids)) == total_calls
+
+    # Byte-identical final journals compared to uninterrupted run for the same seed
+    assert (resumed_out / "calls.jsonl").read_bytes() == (ref_out / "calls.jsonl").read_bytes()
+    assert (resumed_out / "generations.jsonl").read_bytes() == (ref_out / "generations.jsonl").read_bytes()
+    assert res_summary["classification_counts"] == ref_summary["classification_counts"]
+
+    # 4. Also verify resume through pin_window.toolcount_window when PIN_RESUME_CALLS_DIR is a rig path uploaded as resume.tar
+    vm_content = tmp_path / "vm_content"
+    vm_work = tmp_path / "vm_work"
+    vm_content.mkdir(parents=True, exist_ok=True)
+    vm_work.mkdir(parents=True, exist_ok=True)
+    r0_dest = vm_work / "toolcount" / "r0"
+    r0_dest.mkdir(parents=True, exist_ok=True)
+    for fn in ("registry.json", "items.json", "nested_lists.json", "compass_lists.json"):
+        (r0_dest / fn).write_text((r0_dir / fn).read_text(encoding="utf-8"), encoding="utf-8")
+    with tarfile.open(vm_content / "resume.tar", "w") as tf:
+        tf.add(cb_model_dir / "calls.jsonl", arcname=f"{model_name}/calls.jsonl")
+        tf.add(cb_model_dir / "generations.jsonl", arcname=f"{model_name}/generations.jsonl")
+
+    monkeypatch.setattr(pw, "CONTENT", vm_content)
+    monkeypatch.setattr(pw, "WORK", vm_work)
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.setenv("PIN_GPU", "CPU")
+    monkeypatch.setenv("PIN_MODELS", model_name)
+    monkeypatch.setenv("PIN_RESUME_CALLS_DIR", "/rig/nonexistent/path/out/copyback")
+    assert pw.machine_line() == {
+        "card": "STUB (CPU)",
+        "memory": "0 MiB",
+        "driver": "stub",
+        "compat": False,
+        "driver_cuda": "stub",
+        "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG") or "stub-local",
+        "cores": 2,
+        "disk_free_gb": 100.0,
+        "runtime": "13.4",
+        "stub": True,
+    }
+    res_pw: dict[str, Any] = {}
+    pw.toolcount_window({"commit": LLAMA_CPP_COMMIT, "sha256": LLAMA_SERVER_SHA256}, [], res_pw)
+    pw_sum = res_pw["models"][0]["window_summary"]
+    assert pw_sum["total_calls"] == 7
+
+    # Refuses PIN_STUB_DROP_AFTER_CALLS in pin_window._main() when PIN_STUB != 1
+    monkeypatch.setenv("PIN_STUB", "0")
+    monkeypatch.setenv("PIN_STUB_DROP_AFTER_CALLS", "3")
+    assert pw._main() == 1
+    refused_res = json.loads((pw.WORK / "pin-result.json").read_text(encoding="utf-8"))
+    assert refused_res["ok"] is False and "PIN_STUB_DROP_AFTER_CALLS is set without PIN_STUB=1" in refused_res["error"]
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.delenv("PIN_STUB_DROP_AFTER_CALLS", raising=False)
+
+    # 5. Verify PIN_STUB_DROP_AFTER_CALLS flushes exact N calls and raises in stub mode
+    drop_out = tmp_path / "drop_out"
+    monkeypatch.setenv("PIN_STUB_DROP_AFTER_CALLS", "3")
+    monkeypatch.setenv("PIN_STUB_DROP_HOLD_S", "0")
+    with StubToolCountServer() as srv_drop:
+        with pytest.raises(RuntimeError, match="stub drop after 3 calls"):
+            run_model_window(
+                endpoint_url=srv_drop.base_url,
+                model_name=model_name,
+                r0_dir=r0_dir,
+                out_dir=drop_out,
+                half="A",
+                seed=DEFAULT_SEED,
+                max_calls=total_calls,
+            )
+    monkeypatch.delenv("PIN_STUB_DROP_AFTER_CALLS", raising=False)
+    monkeypatch.delenv("PIN_STUB_DROP_HOLD_S", raising=False)
+    dropped_lines = (drop_out / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+    assert len(dropped_lines) == 3
+    assert dropped_lines == ref_calls_lines[:3]
+
+    # 6. Verify launch-w1.sh with TOOLCOUNT_MODE=stub PIN_STUB=1 PIN_STUB_COPYBACK_RESUME=1 runs Pass 1 in "${OUT}-drop"
+    # and Pass 2 in "$OUT" resuming from "${OUT}-drop/copyback"
+    repo_root = Path(__file__).resolve().parents[1]
+    launch_sh = repo_root / "scripts" / "toolcount" / "launch-w1.sh"
+    git_bin = shutil.which("git")
+    git_bash = Path(git_bin).resolve().parents[1] / "bin" / "bash.exe" if (os.name == "nt" and git_bin) else None
+    bash_bin = str(git_bash) if (git_bash and git_bash.is_file()) else shutil.which("bash")
+    assert bash_bin is not None
+
+    stub_out = tmp_path / "launch_stub_cb"
+    stub_out.mkdir(parents=True, exist_ok=True)
+    stub_out_drop = tmp_path / "launch_stub_cb-drop"
+    r0_tar = stub_out / "toolcount-r0.tar"
+    r0_tar.write_bytes(b"stub_r0")
+    r0_sha = hashlib.sha256(r0_tar.read_bytes()).hexdigest()
+
+    count_file = (tmp_path / "pass_count.txt").as_posix()
+    wrapper = (
+        'kill() { return 1; }; '
+        f'COUNT_F="{count_file}"; '
+        'bash() { if [ "$1" = "$SMOKE_SH" ]; then '
+        'pass_n=$(( $(cat "$COUNT_F" 2>/dev/null || echo 0) + 1 )); '
+        'echo "$pass_n" > "$COUNT_F"; '
+        'mkdir -p "$3"; '
+        'printf "OUT=%s\\nDROP=%s\\nCOPYBACK_S=%s\\nRESUME_FROM=%s\\nRESUME=%s\\n" '
+        '"$3" "${PIN_STUB_DROP_AFTER_CALLS:-}" "${PIN_COPYBACK_S:-}" "${PIN_RESUME_FROM:-}" "${PIN_RESUME_CALLS_DIR:-}" > "$3/pass_${pass_n}.txt"; '
+        'if [ "$pass_n" = 1 ]; then '
+        'mkdir -p "$3/copyback/granite-4.2-8b"; '
+        'printf "{\\"end\\": \\"gone\\"}\\n" > "$3/outcome.draft.json"; '
+        'return 1; '
+        'fi; '
+        'printf "{\\"end\\": \\"done\\"}\\n" > "$3/outcome.draft.json"; '
+        'return 0; '
+        'fi; command bash "$@"; }; '
+        'source "$0" "$@"'
+    )
+    env = dict(os.environ)
+    env.pop("PIN_RESUME_FROM", None)
+    env.pop("PIN_RESUME_CALLS_DIR", None)
+    env.pop("PIN_COPYBACK_S", None)
+    env.pop("PIN_STUB_DROP_AFTER_CALLS", None)
+    env["TOOLCOUNT_MODE"] = "stub"
+    env["PIN_STUB"] = "1"
+    env["PIN_STUB_COPYBACK_RESUME"] = "1"
+    env["R0_TAR"] = r0_tar.as_posix()
+    env["R0_TAR_SHA256"] = r0_sha
+    proc = subprocess.run(
+        [bash_bin, "-c", wrapper, launch_sh.as_posix(), "/dev/null", stub_out.as_posix()],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert (tmp_path / "pass_count.txt").read_text(encoding="utf-8").strip() == "2"
+    p1 = dict(ln.split("=", 1) for ln in (stub_out_drop / "pass_1.txt").read_text(encoding="utf-8").splitlines() if "=" in ln)
+    p2 = dict(ln.split("=", 1) for ln in (stub_out / "pass_2.txt").read_text(encoding="utf-8").splitlines() if "=" in ln)
+    assert p1["OUT"] == stub_out_drop.as_posix()
+    assert p1["DROP"] == "3" and p1["COPYBACK_S"] == "10" and p1["RESUME"] == "" and p1["RESUME_FROM"] == ""
+    assert p2["OUT"] == stub_out.as_posix()
+    assert p2["DROP"] == ""
+    assert p2["RESUME_FROM"] == f"{stub_out_drop.as_posix()}/copyback"
+    assert p2["RESUME"] == f"{stub_out_drop.as_posix()}/copyback"
+    assert json.loads((stub_out_drop / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "gone"
+    assert json.loads((stub_out / "outcome.pass1.draft.json").read_text(encoding="utf-8"))["end"] == "gone"
+    assert json.loads((stub_out / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "done"
+
+
 
 
 
