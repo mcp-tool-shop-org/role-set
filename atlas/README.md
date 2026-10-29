@@ -1,6 +1,6 @@
-# clean-role-set-atlas: how it works
+# role-set: how it works
 
-Mapped at 2026-10-28 from commit 46289bc by Atlas 1.24.0.
+Mapped at 2026-10-29 from commit 7feccba by Atlas 1.24.0.
 
 ## What this is
 
@@ -8,16 +8,18 @@ role-set plans every slot of a role-shaping batch, has a loopback model write on
 
 9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-28 (184e9f0)
+## What changed since 2026-10-28 (46289bc)
 
-- roles/domains/naics-2022.json is now also read by scripts/colab/pin_window.py.
-- roles/verifier/pool.jsonl is now also read by scripts/colab/pin_window.py.
-- src/ is now also read by scripts/colab/pin_window.py.
-- 2 files added, across 1 part.
+- CI's push trigger now also names `site/package*.json`.
+- LICENSE is now also read by pyproject.toml.
+- scripts/ is now read by scripts/colab/pin_window.py.
+- scripts/toolcount/__init__.py is now read by scripts/colab/pin_window.py, scripts/colab/smoke_window.sh and scripts/toolcount/launch-w1.sh.
+- And 5 more new writers and readers of places.
+- 26 files changed content, across 6 parts.
 
 ## What comes in
 
-1. **CI.** On a pull request; on a push to main touching 10 paths; or by hand. Runs tests/.
+1. **CI.** On a pull request; on a push to main touching 11 paths; or by hand. Runs tests/.
 2. **Deploy site to GitHub Pages.** On a push to main touching 2 paths; or by hand. Runs site/astro.config.mjs and site/src/.
 3. **role-set** (a command people run). Runs src/role_set/cli.py.
 
@@ -55,7 +57,7 @@ CI writes nothing this map can see.
 
 Confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
-Window: 180 days; a pair counts from 3 shared commits, since 24 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do.
+Window: 180 days; a pair counts from 3 shared commits, since 23 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do.
 
 ## What no test touches
 
@@ -92,7 +94,7 @@ Read those in order to follow one run of role-set end to end. This path follows 
 
 - 8 imports could not be resolved: `scripts/batchdrift/replay.py` imports `pin_window`, which is no module on its import path and no declared dependency, twice; `scripts/colab/pin_window.py` imports `replay`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; and 4 more.
 - 9 writes and 35 reads use paths built at run time and are not named here.
-- 72 writes and 156 reads go to a path their caller passes, not to this repository.
+- 73 writes and 160 reads go to a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
 - 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.

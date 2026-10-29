@@ -1,13 +1,30 @@
 [project]
 name = "role-set"
-version = "0.2.0"
+version = "0.3.0"
 description = "Prototype. Plans role-shaping items, writes the parts a writer should write, records the gates each item passed, and builds kind B puzzles in code that are proven before a model words them. Nothing it writes is training data until a person checks it."
 readme = "README.md"
 requires-python = ">=3.13"
 license = "MIT"
-dependencies = [
-    "aspire-si-gates @ git+https://github.com/mcp-tool-shop-org/aspire-si-gates@8ed78f2fee388e81443953f8dd3753c73e1ff2bd",
+license-files = ["LICENSE"]
+authors = [{ name = "mcp-tool-shop" }]
+keywords = ["dataset-generation", "puzzles", "synthetic-data", "constraint-satisfaction", "role-training", "logic-puzzles"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
+dependencies = [
+    "aspire-si-gates==1.7.6",
+]
+
+[project.urls]
+Homepage = "https://mcp-tool-shop-org.github.io/role-set/"
+Repository = "https://github.com/mcp-tool-shop-org/role-set"
+Changelog = "https://github.com/mcp-tool-shop-org/role-set/blob/main/CHANGELOG.md"
+Issues = "https://github.com/mcp-tool-shop-org/role-set/issues"
 
 [project.scripts]
 role-set = "role_set.cli:main"
@@ -23,9 +40,6 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/role_set"]

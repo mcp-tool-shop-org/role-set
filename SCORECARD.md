@@ -57,3 +57,15 @@ Audit: 15 checked, 23 skipped with a reason, 1 unchecked (translations), pass ra
 | **Overall** | **37/50** | Up from 31. A prototype release, 0.x by the version rule, not a 1.0 |
 
 After the Publisher's translation commit (`ea24d70`, merged as `891b364`), the audit on `main` reads 16 checked, 23 skipped with a reason, 0 unchecked, pass rate 100%, exit 0 (re-run 2026-10-14).
+## Post-treatment assessment (0.3.0, 2026-10-29)
+
+The first PyPI release. The dependency moved from a git URL to `aspire-si-gates==1.7.6` on PyPI, a release workflow was added, and CI now audits the site's npm tree.
+
+| Category | Score | Notes |
+|----------|-------|-------|
+| A. Security | 8/10 | SECURITY.md supports 0.3.x. `shipcheck secrets` still skips a Python repo |
+| B. Error handling | 4/10 | Unchanged: `REFUSED:` lines and per-command exit codes. Documented, not fixed |
+| C. Operator docs | 9/10 | README, CHANGELOG [0.3.0], handbook install page updated for `pip install role-set` |
+| D. Shipping hygiene | 8/10 | Dependency scan in CI (npm audit on the site tree), `shipcheck deps` passes after one high advisory (undici) was cleared, a wheel and sdist build and install cleanly. Dependabot alerting not verified from this environment |
+| E. Identity (soft) | 10/10 | Unchanged; translations refreshed for the new README |
+| **Overall** | **39/50** | A prototype release, 0.x by the version rule |
