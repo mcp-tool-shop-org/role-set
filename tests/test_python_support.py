@@ -144,6 +144,12 @@ def test_every_action_in_the_workflows_is_pinned_by_commit_sha_with_a_version_co
     assert found
 
 
+def test_release_workflow_runs_only_on_a_published_release():
+    text = (ROOT / ".github" / "workflows" / "release.yml").read_text(encoding="utf-8")
+    on_block = text.split("on:", 1)[1].split("concurrency:", 1)[0]
+    assert [line.strip() for line in on_block.strip().splitlines()] == ["release:", "types: [published]"]
+
+
 def test_requires_python_allows_follows_pep_440_for_exact_versions_and_refuses_what_it_cannot_read():
     assert not pw.requires_python_allows("<=3.15", "3.15.1")  # 3.15.1 > 3.15
     assert pw.requires_python_allows("<=3.15.1", "3.15.1")
