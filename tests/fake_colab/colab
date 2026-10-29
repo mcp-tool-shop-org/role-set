@@ -50,13 +50,28 @@ case "$cmd" in
       echo "[colab] Requesting runtime..."
       exit 1
     fi
+    rm -f "$ST/sessions_gone" "$ST/unassigned"
     echo "$*" >> "$ST/new-args.log"; touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
   sessions)
-    if [ -f "$ST/open" ]; then
+    if [ -n "${FAKE_DROP_SESSION_AT_CALLS:-}" ] && [ -f "$ST/open" ]; then
+      vm_calls=$(wc -l "$VM"/content/pin/toolcount/*/calls.jsonl 2>/dev/null | awk 'END{print $1+0}')
+      if [ "${vm_calls:-0}" -ge "$FAKE_DROP_SESSION_AT_CALLS" ]; then
+        touch "$ST/sessions_gone"
+      fi
+    fi
+    if [ -f "$ST/open" ] && [ ! -f "$ST/sessions_gone" ]; then
       n_vm=$(cat "$ST/news" 2>/dev/null || echo 1)
       vm_id=$(echo "${FAKE_VM:-}" | cut -d, -f"$n_vm")
       [ -n "$vm_id" ] || vm_id="gpu-a100-s-kkb-usc1b2-fake${n_vm}"
-      echo "[${PIN_SESSION:-fake}] $vm_id | Hardware: ${PIN_GPU:-A100}"
+      hw="${PIN_GPU:-A100}"
+      shape="Standard"; [ "${PIN_HIGH_MEM:-0}" = 1 ] && shape="High-RAM"
+      variant="GPU"; [ "$hw" = CPU ] && variant="CPU"
+      echo "[${PIN_SESSION:-fake}] $vm_id | Hardware: $hw | Shape: $shape | Variant: $variant"
+    else
+      if [ -f "$ST/unassigned" ] || [ -f "$ST/sessions_gone" ]; then
+        echo "[colab] Pruned 1 stale local session(s)."
+      fi
+      echo "[colab] No active sessions found on server."
     fi
     true;;
   stop)
@@ -66,7 +81,7 @@ case "$cmd" in
     else
       echo unlocked >> "$ST/stop-lock.log"
     fi
-    rm -f "$ST/open"; echo "[colab] Session terminated.";;
+    rm -f "$ST/open" "$ST/sessions_gone" "$ST/unassigned"; echo "[colab] Session terminated.";;
   status)
     [ -n "${FAKE_LEAK_URL:-}" ] && echo "$FAKE_LEAK_URL"
     if [ -n "${FAKE_BANNER:-}" ]; then
@@ -87,44 +102,74 @@ case "$cmd" in
     mkdir -p "$VM$(dirname "$2")"; cp "$1" "$VM$2"
     echo "vm$(cat "$ST/news" 2>/dev/null || echo 0) $2" >> "$ST/uploads.log"; echo "[colab] Uploaded";;
   download)
-    [ "$1" = -s ] && shift 2
+    sess_name="${PIN_SESSION:-fake}"
+    if [ "$1" = -s ]; then sess_name="$2"; shift 2; fi
     d_try=$(( $(cat "$ST/download-tries" 2>/dev/null || echo 0) + 1 )); echo "$d_try" > "$ST/download-tries"
     if [ "${FAKE_DOWNLOAD_LEAK_ONCE:-0}" = 1 ] && [ "$d_try" = 1 ]; then
-      echo "${FAKE_LEAK_URL:-download failed}"
+      echo "[colab] Download failed: ${FAKE_LEAK_URL:-download failed}"
+      exit 1
+    fi
+    if [ ! -f "$ST/open" ]; then
+      echo "[colab] Session '$sess_name' not found."
       exit 1
     fi
     case "$1" in
+      /content/pin/job.log)
+        if [ -s "$VM$1" ] && [ -n "${FAKE_HB_LINE:-}" ] && ! grep -Fq "$FAKE_HB_LINE" "$VM$1" 2>/dev/null; then
+          printf '%s\n' "$FAKE_HB_LINE" >> "$VM$1"
+        fi
+        ;;
       */toolcount/*/calls.jsonl)
-        if [ -f "$ST/open" ] && [ -s "$VM$1" ]; then
+        if [ -s "$VM$1" ]; then
           cb_try=$(( $(cat "$ST/copyback-calls-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_try" > "$ST/copyback-calls-tries"
-          if [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] && [ "$cb_try" = "$FAKE_CORRUPT_COPYBACK_ON" ]; then
+          if [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] && [ "$cb_try" = "$FAKE_UNASSIGN_MID_DOWNLOAD_ON" ]; then
+            head -c 32 "$VM$1" > "$2"
+            if [ "${FAKE_UNASSIGN_DROP_SESSION:-0}" = 1 ]; then
+              rm -f "$ST/open"; touch "$ST/unassigned"
+            fi
+            echo "[colab] Download failed: 502 Server Error for url: ${FAKE_COPYBACK_LEAK_URL:-https://8080-m-s-kkb-usc1b2.prod.colab.dev/api/contents$1}"
+            exit 1
+          fi
+          if [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] && [ "$cb_try" = "$FAKE_PARTIAL_LAST_LINE_ON" ]; then
             cp "$VM$1" "$2"
-            printf '{"call_id": "corrupt_partial_line' >> "$2"
-            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            printf '{"call_id": "partial_mid_append' >> "$2"
+            echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
+            exit 0
+          fi
+          if [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] && [ "$cb_try" = "$FAKE_CORRUPT_COPYBACK_ON" ]; then
+            printf '{"call_id": ""}\n' > "$2"
+            cat "$VM$1" >> "$2"
+            echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
             exit 0
           fi
           if [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] && [ "$cb_try" = "$FAKE_TRUNCATE_COPYBACK_ON" ]; then
             printf '{"call_id": "truncated_pull"}\n' > "$2"
-            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
             exit 0
           fi
         fi
         ;;
       */toolcount/*/generations.jsonl)
-        if [ -f "$ST/open" ] && [ -s "$VM$1" ]; then
+        if [ -s "$VM$1" ]; then
           cb_g_try=$(( $(cat "$ST/copyback-gen-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_g_try" > "$ST/copyback-gen-tries"
           if [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ] && [ "$cb_g_try" -ge "$FAKE_DROP_AFTER_COPYBACKS" ]; then
             cp "$VM$1" "$2"
-            rm -f "$ST/open"
-            echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"
+            rm -f "$ST/open"; touch "$ST/unassigned"
+            echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
             exit 0
           fi
         fi
         ;;
     esac
-    if [ -f "$ST/open" ] && [ -f "$VM$1" ]; then cp "$VM$1" "$2"; echo "[colab] Downloaded ${FAKE_COPYBACK_LEAK_URL:-}"; else echo "[colab] Download failed: $1"; exit 1; fi;;
+    if [ -f "$VM$1" ]; then
+      cp "$VM$1" "$2"
+      echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
+    else
+      echo "[colab] Download failed: $1"
+      exit 1
+    fi;;
   exec)
     file=""; envs=()
     while [ $# -gt 0 ]; do case "$1" in -f) file=$2; shift 2;; --env) envs+=("$2"); shift 2;; -s|--timeout) shift 2;; *) shift;; esac; done
@@ -150,9 +195,18 @@ case "$cmd" in
     n=$(( $(cat "$ST/execs" 2>/dev/null || echo 0) + 1 )); echo $n > "$ST/execs"
     job="$ST/job-$n.sh"
     { echo "#!/usr/bin/env bash"; echo "touch '$ST/busy.$n'"
-      echo "trap 'rm -f \"$ST/busy.$n\"; [ -n \"\${JPID:-}\" ] && kill \"\$JPID\" 2>/dev/null || true' TERM INT EXIT"
+      if [ "${FAKE_EXEC_IGNORE_TERM:-0}" = 1 ]; then
+        echo "trap 'rm -f \"$ST/busy.$n\"' EXIT"
+        echo "trap '' TERM INT"
+      else
+        echo "trap 'rm -f \"$ST/busy.$n\"; [ -n \"\${JPID:-}\" ] && kill \"\$JPID\" 2>/dev/null || true' TERM INT EXIT"
+      fi
       for e in "${envs[@]}"; do printf 'export %q\n' "$e"; done
-      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file' & JPID=\$!; wait \$JPID"; } > "$job"
+      echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file' & JPID=\$!; wait \$JPID"
+      if [ -n "${FAKE_EXEC_HANG_AFTER_DONE_S:-}" ]; then
+        echo "sleep '${FAKE_EXEC_HANG_AFTER_DONE_S}' & HPID=\$!; wait \$HPID"
+      fi
+    } > "$job"
     chmod +x "$job"
     lost() { echo "RuntimeError: Connection was lost."; exec sleep 3600; }
     case "$FAKE_MODE:$n" in

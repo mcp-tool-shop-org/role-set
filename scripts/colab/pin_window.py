@@ -429,7 +429,7 @@ def machine_line(cpu_ok: bool = False) -> dict:
     if stub_mode():
         return {"card": "STUB (CPU)", "memory": "0 MiB", "driver": "stub", "compat": False,
                 "driver_cuda": "stub", "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG") or "stub-local",
-                "cores": os.cpu_count(), "disk_free_gb": round(shutil.disk_usage(_disk_target()).free / 2**30, 1),
+                "cores": 2, "disk_free_gb": 100.0,
                 "runtime": "13.4", "stub": True}
     gpu = sh("nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader")
     name, mem, driver = [x.strip() for x in gpu.split(",")]
@@ -2035,7 +2035,7 @@ def resume_calls() -> dict:
     was in when it stopped. The first wave this window runs replays each arm's journal and asks the model only for
     the calls it lacks."""
 
-    d = os.environ.get("PIN_RESUME_CALLS_DIR")
+    d = os.environ.get("PIN_RESUME_CALLS_DIR") or os.environ.get("PIN_RESUME_FROM")
     if not d:
         return {}
     p = Path(d)
@@ -5286,7 +5286,7 @@ def toolcount_window(built: dict, specs: list, result: dict) -> None:
     resume_unpacked = unpack_resume()
     if resume_unpacked:
         result["resume_unpacked"] = str(resume_unpacked)
-    resume_dir_env = os.environ.get("PIN_RESUME_CALLS_DIR")
+    resume_dir_env = os.environ.get("PIN_RESUME_CALLS_DIR") or os.environ.get("PIN_RESUME_FROM")
     if resume_dir_env:
         resume_dir: Path | None = Path(resume_dir_env)
         if not resume_dir.exists() and str(resume_dir).startswith("/content/"):
@@ -5611,6 +5611,11 @@ def _main() -> int:
     if os.environ.get("PIN_STUB_CALL_S") and not stub_mode():
         # A test knob that slows the stub's calls (R&D on #91): it can never slow a real run.
         result["ok"], result["error"] = False, "REFUSED: PIN_STUB_CALL_S is set without PIN_STUB=1; nothing ran"
+        (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
+        print("PIN_RESULT " + json.dumps(result), flush=True)
+        return 1
+    if os.environ.get("PIN_STUB_DROP_AFTER_CALLS") and not stub_mode():
+        result["ok"], result["error"] = False, "REFUSED: PIN_STUB_DROP_AFTER_CALLS is set without PIN_STUB=1; nothing ran"
         (WORK / "pin-result.json").write_text(json.dumps(result, indent=1))
         print("PIN_RESULT " + json.dumps(result), flush=True)
         return 1

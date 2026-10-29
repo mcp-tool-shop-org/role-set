@@ -2045,10 +2045,31 @@ def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_re
     monkeypatch.setenv("PIN_GPU", "CPU")
     monkeypatch.setenv("PIN_MODELS", model_name)
     monkeypatch.setenv("PIN_RESUME_CALLS_DIR", "/rig/nonexistent/path/out/copyback")
+    assert pw.machine_line() == {
+        "card": "STUB (CPU)",
+        "memory": "0 MiB",
+        "driver": "stub",
+        "compat": False,
+        "driver_cuda": "stub",
+        "colab_release_tag": os.environ.get("COLAB_RELEASE_TAG") or "stub-local",
+        "cores": 2,
+        "disk_free_gb": 100.0,
+        "runtime": "13.4",
+        "stub": True,
+    }
     res_pw: dict[str, Any] = {}
     pw.toolcount_window({"commit": LLAMA_CPP_COMMIT, "sha256": LLAMA_SERVER_SHA256}, [], res_pw)
     pw_sum = res_pw["models"][0]["window_summary"]
     assert pw_sum["total_calls"] == 7
+
+    # Refuses PIN_STUB_DROP_AFTER_CALLS in pin_window._main() when PIN_STUB != 1
+    monkeypatch.setenv("PIN_STUB", "0")
+    monkeypatch.setenv("PIN_STUB_DROP_AFTER_CALLS", "3")
+    assert pw._main() == 1
+    refused_res = json.loads((pw.WORK / "pin-result.json").read_text(encoding="utf-8"))
+    assert refused_res["ok"] is False and "PIN_STUB_DROP_AFTER_CALLS is set without PIN_STUB=1" in refused_res["error"]
+    monkeypatch.setenv("PIN_STUB", "1")
+    monkeypatch.delenv("PIN_STUB_DROP_AFTER_CALLS", raising=False)
 
     # 5. Verify PIN_STUB_DROP_AFTER_CALLS flushes exact N calls and raises in stub mode
     drop_out = tmp_path / "drop_out"
@@ -2071,7 +2092,8 @@ def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_re
     assert len(dropped_lines) == 3
     assert dropped_lines == ref_calls_lines[:3]
 
-    # 6. Verify launch-w1.sh with TOOLCOUNT_MODE=stub PIN_STUB=1 PIN_STUB_COPYBACK_RESUME=1 runs Pass 1 and Pass 2
+    # 6. Verify launch-w1.sh with TOOLCOUNT_MODE=stub PIN_STUB=1 PIN_STUB_COPYBACK_RESUME=1 runs Pass 1 in "${OUT}-drop"
+    # and Pass 2 in "$OUT" resuming from "${OUT}-drop/copyback"
     repo_root = Path(__file__).resolve().parents[1]
     launch_sh = repo_root / "scripts" / "toolcount" / "launch-w1.sh"
     git_bin = shutil.which("git")
@@ -2081,17 +2103,21 @@ def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_re
 
     stub_out = tmp_path / "launch_stub_cb"
     stub_out.mkdir(parents=True, exist_ok=True)
+    stub_out_drop = tmp_path / "launch_stub_cb-drop"
     r0_tar = stub_out / "toolcount-r0.tar"
     r0_tar.write_bytes(b"stub_r0")
     r0_sha = hashlib.sha256(r0_tar.read_bytes()).hexdigest()
 
+    count_file = (tmp_path / "pass_count.txt").as_posix()
     wrapper = (
         'kill() { return 1; }; '
+        f'COUNT_F="{count_file}"; '
         'bash() { if [ "$1" = "$SMOKE_SH" ]; then '
-        'pass_n=$(( $(cat "$3/pass_count.txt" 2>/dev/null || echo 0) + 1 )); '
-        'echo "$pass_n" > "$3/pass_count.txt"; '
-        'printf "DROP=%s\\nCOPYBACK_S=%s\\nRESUME=%s\\n" '
-        '"${PIN_STUB_DROP_AFTER_CALLS:-}" "${PIN_COPYBACK_S:-}" "${PIN_RESUME_CALLS_DIR:-}" > "$3/pass_${pass_n}.txt"; '
+        'pass_n=$(( $(cat "$COUNT_F" 2>/dev/null || echo 0) + 1 )); '
+        'echo "$pass_n" > "$COUNT_F"; '
+        'mkdir -p "$3"; '
+        'printf "OUT=%s\\nDROP=%s\\nCOPYBACK_S=%s\\nRESUME_FROM=%s\\nRESUME=%s\\n" '
+        '"$3" "${PIN_STUB_DROP_AFTER_CALLS:-}" "${PIN_COPYBACK_S:-}" "${PIN_RESUME_FROM:-}" "${PIN_RESUME_CALLS_DIR:-}" > "$3/pass_${pass_n}.txt"; '
         'if [ "$pass_n" = 1 ]; then '
         'mkdir -p "$3/copyback/granite-4.2-8b"; '
         'printf "{\\"end\\": \\"gone\\"}\\n" > "$3/outcome.draft.json"; '
@@ -2103,6 +2129,7 @@ def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_re
         'source "$0" "$@"'
     )
     env = dict(os.environ)
+    env.pop("PIN_RESUME_FROM", None)
     env.pop("PIN_RESUME_CALLS_DIR", None)
     env.pop("PIN_COPYBACK_S", None)
     env.pop("PIN_STUB_DROP_AFTER_CALLS", None)
@@ -2119,12 +2146,18 @@ def test_nh_copyback_layout_resume_byte_identical_and_launch_w1_stub_copyback_re
         timeout=30,
     )
     assert proc.returncode == 0, proc.stderr
-    assert (stub_out / "pass_count.txt").read_text(encoding="utf-8").strip() == "2"
-    p1 = dict(ln.split("=", 1) for ln in (stub_out / "pass_1.txt").read_text(encoding="utf-8").splitlines() if "=" in ln)
+    assert (tmp_path / "pass_count.txt").read_text(encoding="utf-8").strip() == "2"
+    p1 = dict(ln.split("=", 1) for ln in (stub_out_drop / "pass_1.txt").read_text(encoding="utf-8").splitlines() if "=" in ln)
     p2 = dict(ln.split("=", 1) for ln in (stub_out / "pass_2.txt").read_text(encoding="utf-8").splitlines() if "=" in ln)
-    assert p1["DROP"] == "3" and p1["COPYBACK_S"] == "10" and p1["RESUME"] == ""
-    assert p2["DROP"] == "" and p2["RESUME"].endswith("/copyback")
+    assert p1["OUT"] == stub_out_drop.as_posix()
+    assert p1["DROP"] == "3" and p1["COPYBACK_S"] == "10" and p1["RESUME"] == "" and p1["RESUME_FROM"] == ""
+    assert p2["OUT"] == stub_out.as_posix()
+    assert p2["DROP"] == ""
+    assert p2["RESUME_FROM"] == f"{stub_out_drop.as_posix()}/copyback"
+    assert p2["RESUME"] == f"{stub_out_drop.as_posix()}/copyback"
+    assert json.loads((stub_out_drop / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "gone"
     assert json.loads((stub_out / "outcome.pass1.draft.json").read_text(encoding="utf-8"))["end"] == "gone"
+    assert json.loads((stub_out / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "done"
 
 
 

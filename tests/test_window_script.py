@@ -22,7 +22,7 @@ pytestmark = pytest and pytest.mark.skipif(os.name == "nt" or not shutil.which("
                                 reason="needs bash, flock and setsid (Linux)")
 
 
-def _window(mode: str, *, extra: dict | None = None) -> tuple[str, str, Path]:
+def _window(mode: str, *, extra: dict | None = None, out_name: str = "out") -> tuple[str, str, Path]:
     tmp = Path(tempfile.mkdtemp(prefix=f"fakewin-{mode}-"))
     binfile = tmp / "bin.dat"
     binfile.write_bytes(b"x" * 1000)
@@ -33,7 +33,7 @@ def _window(mode: str, *, extra: dict | None = None) -> tuple[str, str, Path]:
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
            # The fake card is an A100 at 5.30/hr: a margin of 0.01 is ~6.8 s, so the grace and the fetch allowance fit it.
            "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
-    out = tmp / "out"
+    out = tmp / out_name
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env, 180)
     job = (out / "job.log").read_text(encoding="utf-8") if (out / "job.log").exists() else ""
@@ -747,19 +747,19 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
     jwt_sig = "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
     fake_jwt = f"{jwt_hdr}.{jwt_pay}.{jwt_sig}"
     fake_access = "ya29.a0AfH6SMB_COPYBACK_SECRET_TOKEN_112233"
+    fake_bearer = "ya29.BEARER_SECRET_99887766"
+    fake_short_hf = "hf_" + "short98765"
     leak_line = (
         "https://8080-m-s-kkb-usc1b2-1a2b.prod.colab.dev/api/contents/content/pin/toolcount/granite-4.2-8b/calls.jsonl"
-        f"?colab-runtime-proxy-token={fake_jwt}&access_token={fake_access}"
+        f"?colab-runtime-proxy-token={fake_jwt}&access_token={fake_access} "
+        f"Authorization: Bearer {fake_bearer} token={fake_short_hf}"
+    )
+    hb_leak_line = (
+        f"[00:00:01] HEARTBEAT toolcount model=granite-4.2-8b call=1/7 elapsed=1s "
+        f"auth=Bearer {fake_bearer} hf={fake_short_hf}"
     )
 
-    tmp_home = Path(tempfile.mkdtemp(prefix="fakewin-cb-home-"))
-    colab_cfg_dir = tmp_home / ".config" / "colab-cli"
-    colab_cfg_dir.mkdir(parents=True, exist_ok=True)
-    shared_sessions = colab_cfg_dir / "sessions.json"
-    sentinel_sessions = '{"sentinel": "never_touch_shared_sessions_json"}\n'
-    shared_sessions.write_text(sentinel_sessions, encoding="utf-8")
-
-    # Refuses PIN_STUB_DROP_AFTER_CALLS on any GPU window or when PIN_STUB != 1
+    # Refuses PIN_STUB_DROP_AFTER_CALLS on any GPU window or when PIN_STUB != 1, and PIN_STUB_CALL_S when PIN_STUB != 1
     rig_refused, job_refused, out_refused = _window(
         "normal",
         extra={"PIN_GPU": "A100", "PIN_STUB_DROP_AFTER_CALLS": "3"},
@@ -767,11 +767,19 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
     assert "REFUSED: PIN_STUB_DROP_AFTER_CALLS is a stub rung's setting" in rig_refused, rig_refused
     assert not (out_refused.parent / "st" / "open").exists() and not job_refused
 
+    rig_call_refused, job_call_refused, out_call_refused = _window(
+        "normal",
+        extra={"PIN_GPU": "CPU", "PIN_STUB": "0", "PIN_STUB_CALL_S": "1"},
+    )
+    assert "REFUSED: PIN_STUB_CALL_S is a stub rung's setting" in rig_call_refused, rig_call_refused
+    assert not (out_call_refused.parent / "st" / "open").exists() and not job_call_refused
+
+    # Run in an output directory whose name contains "fail" and "error" to verify 0.7.4's
+    # `[colab] Downloaded '<remote>' to '<local>'` output does not trigger false-positive error rejection.
     rig, job, out = _window(
         "normal",
+        out_name="test-fail-error-out",
         extra={
-            "HOME": str(tmp_home),
-            "COLAB_SETTINGS_FILE": str(colab_cfg_dir / "settings.json"),
             "PIN_ROLE": "toolcount",
             "PIN_STUB": "1",
             "PIN_GPU": "CPU",
@@ -780,30 +788,35 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
             "PIN_HEARTBEAT_S": "0",
             "PIN_COPYBACK_S": "1",
             "PIN_WATCH_S": "1",
-            "PIN_STUB_CALL_S": "1.1",
+            "PIN_STUB_CALL_S": "1.8",
             "PIN_GATE": "0",
-            "FAKE_CORRUPT_COPYBACK_ON": "2",
-            "FAKE_TRUNCATE_COPYBACK_ON": "3",
+            "FAKE_PARTIAL_LAST_LINE_ON": "2",
+            "FAKE_UNASSIGN_MID_DOWNLOAD_ON": "3",
+            "FAKE_CORRUPT_COPYBACK_ON": "4",
+            "FAKE_TRUNCATE_COPYBACK_ON": "5",
             "FAKE_COPYBACK_LEAK_URL": leak_line,
+            "FAKE_HB_LINE": hb_leak_line,
         },
     )
     assert job.count("PIN_RESULT") == 1, (rig, job)
-    # Shared ~/.config/colab-cli/sessions.json is never touched
-    assert shared_sessions.read_text(encoding="utf-8") == sentinel_sessions
 
     cb_dir = out / "copyback" / "granite-4.2-8b"
     calls_cb = cb_dir / "calls.jsonl"
     gens_cb = cb_dir / "generations.jsonl"
     hb_cb = cb_dir / "heartbeat.txt"
-    assert calls_cb.is_file() and gens_cb.is_file() and hb_cb.is_file(), list(out.rglob("*"))
+    hb_top = out / "copyback" / "heartbeat.txt"
+    state_cb = out / "copyback" / ".copyback.state.json"
+    assert calls_cb.is_file() and gens_cb.is_file() and hb_cb.is_file() and hb_top.is_file() and state_cb.is_file()
     assert "HEARTBEAT toolcount model=granite-4.2-8b" in hb_cb.read_text(encoding="utf-8")
+    assert hb_cb.read_text(encoding="utf-8") == hb_top.read_text(encoding="utf-8")
     # No leftover .part files
     assert not list((out / "copyback").rglob("*.part*"))
 
-    # Every line in copied calls.jsonl and generations.jsonl parses as JSON
+    # Every line in copied calls.jsonl and generations.jsonl parses as JSON with call_id (partial tail was stripped)
     copied_calls = [json.loads(ln) for ln in calls_cb.read_text(encoding="utf-8").splitlines() if ln.strip()]
     copied_gens = [json.loads(ln) for ln in gens_cb.read_text(encoding="utf-8").splitlines() if ln.strip()]
-    assert len(copied_calls) >= 2 and len(copied_gens) >= 2
+    assert len(copied_calls) == 7 and len(copied_gens) == 7, (len(copied_calls), len(copied_gens))
+    assert all(r["call_id"] != "partial_mid_append" for r in copied_calls)
 
     # Verify copyback.jsonl logs every pull with time, file, bytes, lines, rc
     cb_log_1 = out / "copyback" / "copyback.jsonl"
@@ -815,24 +828,28 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
         assert set(r.keys()) == {"time", "file", "bytes", "lines", "rc"}, r
 
     call_pulls = [r for r in log_rows if r["file"] == "granite-4.2-8b/calls.jsonl"]
-    assert len(call_pulls) >= 4, call_pulls
+    assert len(call_pulls) >= 6, call_pulls
     # Pull #1 is valid (rc == 0, lines >= 1)
     assert call_pulls[0]["rc"] == 0 and call_pulls[0]["lines"] >= 1, call_pulls
-    # Pull #2 (corrupt partial line) and Pull #3 (truncated 1-line pull) are rejected (rc == 2) and keep Pull #1's lines/bytes
-    assert call_pulls[1]["rc"] == 2 and call_pulls[1]["lines"] == call_pulls[0]["lines"], call_pulls
-    assert call_pulls[2]["rc"] == 2 and call_pulls[2]["lines"] == call_pulls[0]["lines"], call_pulls
-    # Subsequent good pull grows beyond Pull #1
-    good_pulls = [r for r in call_pulls if r["rc"] == 0]
-    assert len(good_pulls) >= 2 and good_pulls[-1]["lines"] > good_pulls[0]["lines"], call_pulls
+    # Pull #2 had a partial trailing line after new complete lines -> salvaged (rc == 0, lines > Pull #1)
+    assert call_pulls[1]["rc"] == 0 and call_pulls[1]["lines"] > call_pulls[0]["lines"], call_pulls
+    # Pull #3 (mid-download unassign, rc == 1), Pull #4 (corrupt JSON line, rc == 2), Pull #5 (truncated 1-line pull, rc == 2)
+    # are all rejected and preserve Pull #2's line count and bytes
+    assert call_pulls[2]["rc"] == 1 and call_pulls[2]["lines"] == call_pulls[1]["lines"], call_pulls
+    assert call_pulls[3]["rc"] == 2 and call_pulls[3]["lines"] == call_pulls[1]["lines"], call_pulls
+    assert call_pulls[4]["rc"] == 2 and call_pulls[4]["lines"] == call_pulls[1]["lines"], call_pulls
+    # Final pull reaches all 7 lines
+    assert call_pulls[-1]["rc"] == 0 and call_pulls[-1]["lines"] == 7, call_pulls
 
-    # Proxy tokens are scrubbed from all kept CLI output
+    # Proxy tokens, Bearer tokens, and short hf_ tokens are scrubbed from all kept CLI output and .copyback.state.json
     fetch_out = (out / "copyback" / ".copyback.fetch.out").read_text(encoding="utf-8")
     assert "colab-runtime-proxy-token=[REDACTED]" in fetch_out, fetch_out
     assert "access_token=[REDACTED]" in fetch_out, fetch_out
-    for secret in (fake_jwt, jwt_pay, jwt_sig, fake_access):
-        assert secret not in rig
+    assert "Bearer REDACTED" in fetch_out, fetch_out
+    for secret in (fake_jwt, jwt_pay, jwt_sig, fake_access, fake_bearer, fake_short_hf):
+        assert secret not in rig, (secret, rig)
         for p in out.rglob("*"):
-            if p.is_file():
+            if p.is_file() and p.name != "job.log":
                 assert secret.encode("utf-8") not in p.read_bytes(), (secret, p)
 
 
@@ -857,6 +874,8 @@ def test_journal_copyback_survives_midrun_session_drop_and_resumes_byte_identica
         },
     )
     assert job_ref.count("PIN_RESULT") == 1, (rig_ref, job_ref)
+    ref_pin = json.loads((out_ref / "pin-result.json").read_text(encoding="utf-8"))
+    assert ref_pin["machine"]["cores"] == 2 and ref_pin["machine"]["disk_free_gb"] == 100.0, ref_pin["machine"]
     ref_calls_bytes = (out_ref / "calls.jsonl").read_bytes()
     ref_gens_bytes = (out_ref / "generations.jsonl").read_bytes()
     ref_calls_lines = ref_calls_bytes.decode("utf-8").splitlines()
@@ -948,6 +967,146 @@ def test_journal_copyback_survives_midrun_session_drop_and_resumes_byte_identica
     # Final journal equals what an uninterrupted run produces for the same seed (byte-for-byte)
     assert resumed_calls_bytes == ref_calls_bytes
     assert resumed_gens_bytes == ref_gens_bytes
+
+
+def test_session_drop_after_new_journal_lines_runs_final_copyback_freezes_spend_and_closes_gone():
+    import json
+    import time
+
+    # Periodic PIN_COPYBACK_S=60 means after the initial watcher pull at t=1s (when only 1-2 calls exist),
+    # no further periodic copyback fires before call #3 lands. Once 3 calls land on the VM,
+    # FAKE_DROP_SESSION_AT_CALLS=3 removes [$S] from `colab sessions` while the exec hangs ignoring SIGTERM.
+    # The SESSION GONE handler must:
+    #   1. Run one final copy-back (`fetch_log gone` + `copyback_journals`) so all 3 calls land in <out>/copyback/,
+    #   2. Record .end.ts and freeze spend at that timestamp (not charging the 5s SIGKILL escalation + 5s stop sleep),
+    #   3. Escalate from SIGTERM to SIGKILL to terminate the wedged exec and close as "gone".
+    t_start = time.time()
+    rig, _job, out = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "60",
+            "PIN_WATCH_S": "1",
+            "PIN_WALL_S": "15",
+            "PIN_STUB_CALL_S": "0.6",
+            "PIN_STUB_DROP_AFTER_CALLS": "3",
+            "FAKE_DROP_SESSION_AT_CALLS": "3",
+            "FAKE_EXEC_IGNORE_TERM": "1",
+            "PIN_KILL_ESCALATE_S": "5",
+            "PIN_GATE": "0",
+        },
+    )
+    t_done = time.time()
+    assert "SESSION GONE (fake)" in rig, rig
+    assert (out / ".end").read_text(encoding="utf-8").strip() == "gone"
+    assert (out / ".end.ts").is_file(), "missing .end.ts timestamp for spend freeze"
+    end_ts = int((out / ".end.ts").read_text(encoding="utf-8").strip())
+    # The script ran ~10s past .end.ts (5s SIGKILL escalation + 5s stop sleep), so end_ts must precede t_done by >= 7s
+    assert t_done - end_ts >= 7, (end_ts, t_done)
+
+    draft = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert draft["end"] == "gone", draft
+    # Fake account rate is 5.30/hr when open; frozen runtime (end_ts - T_OPEN) is ~3-5s (<= 0.01 units),
+    # whereas un-frozen runtime up to outcome.draft.json (~9-11s) would be >= 0.01-0.02 units.
+    frozen_elapsed = max(0, end_ts - int(t_start))
+    expected_max_spent = round(5.30 * (frozen_elapsed + 2) / 3600, 2)
+    assert draft["spent"] <= expected_max_spent, (draft, frozen_elapsed, t_done - t_start)
+
+    # Final copy-back on SESSION GONE pulled all 3 calls that landed before the drop
+    cb_calls = out / "copyback" / "granite-4.2-8b" / "calls.jsonl"
+    cb_gens = out / "copyback" / "granite-4.2-8b" / "generations.jsonl"
+    assert cb_calls.is_file() and cb_gens.is_file()
+    copied_calls = [json.loads(ln) for ln in cb_calls.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    copied_gens = [json.loads(ln) for ln in cb_gens.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(copied_calls) == 3 and len(copied_gens) == 3, (len(copied_calls), len(copied_gens))
+
+    # Also verify Fix 3: when CAP CEILING fires in the watcher, it calls `end_window cap` (not `stop_all`),
+    # so the main shell runs the final `copyback_journals` BEFORE `colab stop` tears down the VM.
+    rig_cap, _job_cap, out_cap = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "60",
+            "PIN_WATCH_S": "1",
+            "PIN_WALL_S": "25",
+            "PIN_STUB_CALL_S": "0.4",
+            "PIN_STUB_DROP_AFTER_CALLS": "4",
+            "FAKE_EXEC_HANG_AFTER_DONE_S": "15",
+            "FAKE_EXEC_IGNORE_TERM": "1",
+            "PIN_KILL_ESCALATE_S": "2",
+            "PIN_CAP_UNITS": "0.008",
+            "PIN_CAP_MARGIN": "0.0005",
+            "PIN_DEADLINE_GRACE_S": "10",
+            "PIN_FETCH_ALLOW_S": "1",
+            "PIN_GATE": "0",
+        },
+    )
+    assert "CAP CEILING" in rig_cap, rig_cap
+    assert json.loads((out_cap / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "cap"
+    cap_calls = [
+        json.loads(ln)
+        for ln in (out_cap / "copyback" / "granite-4.2-8b" / "calls.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip()
+    ]
+    assert len(cap_calls) == 4, len(cap_calls)
+
+
+def test_hung_exec_after_pin_result_takes_exit_sequence_within_one_watch_interval_and_kills_exec():
+    import json
+    import re
+
+    # Fix 4 (C2:82 finish detection): `colab exec` hangs after `PIN_RESULT` is written to job.log and ignores SIGTERM
+    # (simulating a >1 h exec with a dead websocket). Within one watcher interval (PIN_WATCH_S=3s), the watcher must
+    # see `^PIN_RESULT` with this window's job_token BEFORE running periodic copyback, call `end_window done`,
+    # escalate to SIGKILL after PIN_KILL_ESCALATE_S=5s, run the single exit-sequence fetch/copyback, and close as "done".
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "3",
+            "PIN_WATCH_S": "3",
+            "PIN_WALL_S": "25",
+            "PIN_KILL_ESCALATE_S": "5",
+            "FAKE_EXEC_IGNORE_TERM": "1",
+            "FAKE_EXEC_HANG_AFTER_DONE_S": "25",
+            "PIN_GATE": "0",
+            "PIN_DOWNLOADS": "pin-result.json calls.jsonl generations.jsonl",
+        },
+    )
+    assert "JOB DONE (PIN_RESULT in job.log)" in rig, rig
+    assert job.count("PIN_RESULT") == 1, (rig, job)
+    m_wall = re.search(r"exec exit=\d+ wall=(\d+)s end=(\w+)", rig)
+    assert m_wall is not None, rig
+    exec_wall_s = int(m_wall.group(1))
+    end_reason = m_wall.group(2)
+    # Exec was hung for 60s ignoring SIGTERM, but watcher detected PIN_RESULT within 1s and SIGKILLed it after 5s (< 20s total)
+    assert exec_wall_s < 20 and end_reason == "done", (exec_wall_s, end_reason, rig)
+    draft = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert draft["end"] == "done", draft
+    res = json.loads((out / "pin-result.json").read_text(encoding="utf-8"))
+    assert res["ok"] is True, res
+    # Because PIN_RESULT was checked before periodic copyback in the watcher, copyback_journals only ran once (in the exit sequence)
+    cb_rows = [
+        json.loads(ln)
+        for ln in (out / "copyback" / "copyback.jsonl").read_text(encoding="utf-8").splitlines()
+        if ln.strip() and "calls.jsonl" in ln
+    ]
+    assert len(cb_rows) == 1 and cb_rows[0]["lines"] == 7, cb_rows
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
