@@ -332,6 +332,10 @@ copyback_journals() {
         ts=$(date -u +%FT%TZ)
         dl_out=$(CLI_T="${CLI_T:-$DL_S}" cli download -s "$S" "$remote" "$part") && dl_rc=0 || dl_rc=$?
         printf '%s\n' "$dl_out" > "$COPYBACK_DIR/.copyback.fetch.out"
+        if [ ! -f "$dest" ] && printf '%s\n' "$dl_out" | grep -Fq "[colab] Download failed: $remote"; then
+          rm -f "$part"
+          continue
+        fi
         if [ "$dl_rc" -eq 0 ] && printf '%s\n' "$dl_out" | grep -Eqi "^\[colab\] (Download failed|Error|Session .* not found)"; then
           dl_rc=1
         fi

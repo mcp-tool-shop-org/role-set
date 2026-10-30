@@ -700,10 +700,8 @@ def run_model_window(
             if call_id in reused_map:
                 rec = dict(reused_map[call_id])
                 raw_call_line = reused_raw_calls.get(call_id, json.dumps(rec, sort_keys=True))
-                calls_f.write(raw_call_line + "\n")
-                calls_f.flush()
                 if call_id in reused_raw_gens:
-                    gen_f.write(reused_raw_gens[call_id] + "\n")
+                    raw_gen_line = reused_raw_gens[call_id]
                 else:
                     up_reused = rec.get("upstream_response") if isinstance(rec.get("upstream_response"), dict) else {}
                     choices_reused = up_reused.get("choices") if isinstance(up_reused, dict) else []
@@ -731,8 +729,11 @@ def run_model_window(
                         "top_logprobs": lp_reused,
                         "reused_from_journal": bool(rec.get("reused_from_journal", False)),
                     }
-                    gen_f.write(json.dumps(gen_entry, sort_keys=True) + "\n")
+                    raw_gen_line = json.dumps(gen_entry, sort_keys=True)
+                gen_f.write(raw_gen_line + "\n")
                 gen_f.flush()
+                calls_f.write(raw_call_line + "\n")
+                calls_f.flush()
                 all_records.append(rec)
                 reused_count += 1
                 continue
@@ -912,9 +913,6 @@ def run_model_window(
                 "length_control_meta": length_control_meta,
                 "reused_from_journal": False,
             }
-            calls_f.write(json.dumps(receipt, sort_keys=True) + "\n")
-            calls_f.flush()
-
             gen_record = {
                 "call_id": call_id,
                 "item_id": item_id,
@@ -931,6 +929,9 @@ def run_model_window(
             }
             gen_f.write(json.dumps(gen_record, sort_keys=True) + "\n")
             gen_f.flush()
+
+            calls_f.write(json.dumps(receipt, sort_keys=True) + "\n")
+            calls_f.flush()
 
             all_records.append(receipt)
             fresh_count += 1
