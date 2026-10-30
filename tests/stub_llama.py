@@ -278,6 +278,7 @@ class StubLlama:
                     stub._flight_cond.notify_all()
                     if stub.parallel > 1:
                         stub._flight_cond.wait_for(lambda: stub.in_flight >= stub.parallel, timeout=0.08)
+                    in_flight_active = True
                 try:
                     if stub.out_of_order and stub.parallel > 1:
                         slot_pos = seq % stub.parallel
@@ -301,6 +302,10 @@ class StubLlama:
                         with stub._critic_lock:
                             c = stub.critic(msgs, seed=body.get("seed") or 0)
                     else:
+                        with stub._flight_cond:
+                            stub.in_flight -= 1
+                            in_flight_active = False
+                            stub._flight_cond.notify_all()
                         self.send_response(404)
                         self.end_headers()
                         return
@@ -340,11 +345,16 @@ class StubLlama:
                             "prompt_tokens_details": {"cached_tokens": stub.cached_tokens},
                         },
                     }
-                    self._send_json(200, out)
-                finally:
                     with stub._flight_cond:
                         stub.in_flight -= 1
+                        in_flight_active = False
                         stub._flight_cond.notify_all()
+                    self._send_json(200, out)
+                finally:
+                    if in_flight_active:
+                        with stub._flight_cond:
+                            stub.in_flight -= 1
+                            stub._flight_cond.notify_all()
 
         self.server = _ReuseHTTPServer(("127.0.0.1", port), Handler)
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"

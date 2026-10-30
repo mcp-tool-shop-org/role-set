@@ -633,6 +633,90 @@ def test_stub_check_6_join_survives_out_of_order_completion(tmp_path, monkeypatc
     assert comp["group4_whole_reply_drifts"] == 0
 
 
+def test_stub_in_flight_decremented_before_response_sent_under_post_response_interleaving(
+    tmp_path, monkeypatch
+):
+    """Deterministic regression test for Run 40967817297 (c2dbcf4c):
+    Force Handler 1 (serving request 0 at parallel=1) to pause immediately after flushing the HTTP response bytes
+    to `wfile` until Request 1 arrives at `StubLlama.do_POST` AND increments `stub.in_flight`, using threading.Events
+    (no sleeps).
+    Before the fix, `stub.in_flight` was decremented in `finally:` after `_send_json(200, out)` wrote the response,
+    so Request 1 incremented `stub.in_flight` to 2 (`max_in_flight=2`) while Handler 1 was still in post-response
+    teardown, causing `replay_arm` to raise `RuntimeError: REFUSED: stub arm A1 max_in_flight=2, expected 1`.
+    """
+    import threading
+    import stub_llama
+
+    _content, work, port = _configure_stub_pw(tmp_path, monkeypatch)
+    all_reqs, req_sha = rp.load_and_verify_requests60(rp.REQUESTS60_DEFAULT_PATH)
+    subset_2 = [dict(r, request_index=i) for i, r in enumerate(all_reqs[:2])]
+
+    resp0_written = threading.Event()
+    req1_counted = threading.Event()
+    orig_reuse_srv = stub_llama._ReuseHTTPServer
+
+    class _ControlledReuseHTTPServer(orig_reuse_srv):
+        def __init__(self, server_address, RequestHandlerClass):
+            orig_do_post = RequestHandlerClass.do_POST
+            orig_send_json = RequestHandlerClass._send_json
+            post_count = 0
+            post_lock = threading.Lock()
+            stub_obj = next(
+                c.cell_contents
+                for c in (orig_do_post.__closure__ or ())
+                if isinstance(c.cell_contents, stub_llama.StubLlama)
+            )
+            orig_requests = stub_obj.requests
+
+            class _NotifyingList(list):
+                def append(self, item):
+                    super().append(item)
+                    if len(self) == 2:
+                        req1_counted.set()
+
+            stub_obj.requests = _NotifyingList(orig_requests)
+
+            def controlled_send_json(handler_self, status: int, payload: dict) -> None:
+                orig_send_json(handler_self, status, payload)
+                handler_self.wfile.flush()
+                if getattr(handler_self, "_controlled_post_idx", None) == 0:
+                    resp0_written.set()
+                    req1_counted.wait(timeout=5.0)
+
+            def controlled_do_post(handler_self):
+                nonlocal post_count
+                if not handler_self.path.startswith("/api/"):
+                    with post_lock:
+                        idx = post_count
+                        post_count += 1
+                    handler_self._controlled_post_idx = idx
+                    if idx == 1:
+                        resp0_written.wait(timeout=5.0)
+                return orig_do_post(handler_self)
+
+            RequestHandlerClass._send_json = controlled_send_json
+            RequestHandlerClass.do_POST = controlled_do_post
+            super().__init__(server_address, RequestHandlerClass)
+
+    monkeypatch.setattr(stub_llama, "_ReuseHTTPServer", _ControlledReuseHTTPServer)
+
+    res_a1 = rp.replay_arm(
+        arm_name="A1",
+        parallel=1,
+        requests=subset_2,
+        requests_sha256=req_sha,
+        built={},
+        model_info=_critic_model_info(),
+        proxy_cfg=_critic_proxy_cfg(),
+        out_dir=work / "bd-race1",
+        pw_mod=pw,
+        port=port,
+    )
+    assert resp0_written.is_set() and req1_counted.is_set()
+    assert res_a1["stub"]["max_in_flight"] == 1
+
+
+
 def test_stub_check_8_cap_watcher_cuts_cleanly_and_preserves_checkpoint_rows(tmp_path, monkeypatch, capsys):
     """DESIGN-v1.md §5 check 8:
     When PIN_DEADLINE expires mid-arm, the watcher cuts the arm cleanly, raises DeadlineReached, records pw.CUT_AT,

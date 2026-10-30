@@ -118,17 +118,38 @@ case "$cmd" in
         if [ -s "$VM$1" ] && [ -n "${FAKE_HB_LINE:-}" ] && ! grep -Fq "$FAKE_HB_LINE" "$VM$1" 2>/dev/null; then
           printf '%s\n' "$FAKE_HB_LINE" >> "$VM$1"
         fi
+        max_fault_pull=0
+        for fp in "${FAKE_PARTIAL_LAST_LINE_ON:-0}" "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-0}" "${FAKE_CORRUPT_COPYBACK_ON:-0}" "${FAKE_TRUNCATE_COPYBACK_ON:-0}"; do
+          [ "${fp:-0}" -gt "$max_fault_pull" ] 2>/dev/null && max_fault_pull="$fp"
+        done
+        if [ "$max_fault_pull" -gt 0 ]; then
+          cb_done=$(cat "$ST/copyback-calls-tries" 2>/dev/null || echo 0)
+          if [ "${cb_done:-0}" -lt "$max_fault_pull" ] && [ -f "$VM$1" ]; then
+            grep -v '^PIN_RESULT' "$VM$1" > "$2" || true
+            echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
+            exit 0
+          fi
+        fi
         ;;
       */toolcount/*/calls.jsonl)
         if [ ! -s "$VM$1" ] && { [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] || [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] || [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] || [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] || [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ]; }; then
-          for _ in $(seq 1 30); do
-            [ -s "$VM$1" ] && break
-            sleep 0.2
-          done
+          echo "[colab] Download failed: $1"
+          exit 1
         fi
         if [ -s "$VM$1" ]; then
           cb_try=$(( $(cat "$ST/copyback-calls-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_try" > "$ST/copyback-calls-tries"
+          if [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] && [ "$cb_try" -lt "$FAKE_PARTIAL_LAST_LINE_ON" ]; then
+            total_l=$(wc -l < "$VM$1" 2>/dev/null || echo 0)
+            if [ "${total_l:-0}" -ge 2 ]; then
+              max_l=$(( total_l - 1 ))
+              [ "$cb_try" -lt "$max_l" ] && max_l="$cb_try"
+              head -n "$max_l" "$VM$1" > "$2"
+              echo "$max_l" > "$ST/copyback-calls-lines"
+              echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
+              exit 0
+            fi
+          fi
           if [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] && [ "$cb_try" = "$FAKE_UNASSIGN_MID_DOWNLOAD_ON" ]; then
             head -c 32 "$VM$1" > "$2"
             if [ "${FAKE_UNASSIGN_DROP_SESSION:-0}" = 1 ]; then
@@ -165,14 +186,22 @@ case "$cmd" in
         ;;
       */toolcount/*/generations.jsonl)
         if [ ! -s "$VM$1" ] && { [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] || [ -n "${FAKE_UNASSIGN_MID_DOWNLOAD_ON:-}" ] || [ -n "${FAKE_CORRUPT_COPYBACK_ON:-}" ] || [ -n "${FAKE_TRUNCATE_COPYBACK_ON:-}" ] || [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ]; }; then
-          for _ in $(seq 1 30); do
-            [ -s "$VM$1" ] && break
-            sleep 0.2
-          done
+          echo "[colab] Download failed: $1"
+          exit 1
         fi
         if [ -s "$VM$1" ]; then
           cb_g_try=$(( $(cat "$ST/copyback-gen-tries" 2>/dev/null || echo 0) + 1 ))
           echo "$cb_g_try" > "$ST/copyback-gen-tries"
+          if [ -n "${FAKE_PARTIAL_LAST_LINE_ON:-}" ] && [ "$cb_g_try" -lt "$FAKE_PARTIAL_LAST_LINE_ON" ]; then
+            total_g=$(wc -l < "$VM$1" 2>/dev/null || echo 0)
+            if [ "${total_g:-0}" -ge 2 ]; then
+              max_g=$(( total_g - 1 ))
+              [ "$cb_g_try" -lt "$max_g" ] && max_g="$cb_g_try"
+              head -n "$max_g" "$VM$1" > "$2"
+              echo "[colab] Downloaded '$1' to '$2'${FAKE_COPYBACK_LEAK_URL:+ $FAKE_COPYBACK_LEAK_URL}"
+              exit 0
+            fi
+          fi
           if [ -n "${FAKE_DROP_AFTER_COPYBACKS:-}" ] && [ "$cb_g_try" -ge "$FAKE_DROP_AFTER_COPYBACKS" ]; then
             cp "$VM$1" "$2"
             rm -f "$ST/open"; touch "$ST/unassigned"

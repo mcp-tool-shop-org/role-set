@@ -853,6 +853,215 @@ def test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or
                 assert secret.encode("utf-8") not in p.read_bytes(), (secret, p)
 
 
+def test_copyback_synchronization_under_fast_writer_and_mid_call_watcher_interleaving():
+    """Deterministic regression test for the copy-back synchronization races in Run 40850724572 / e4d2057 (c2dbcf4c):
+    Force the bad interleavings deterministically (no real sleeps in the test):
+    1. In `scripts/toolcount/runner.py`, verify `generations.jsonl` is flushed BEFORE `calls.jsonl` on every call
+       (fresh and reused). At c2dbcf4c, `calls_f.flush()` ran before `gen_f.write()` / `gen_f.flush()`, so a
+       `copyback_journals` pull (or `PIN_STUB_DROP_AFTER_CALLS` / `FAKE_DROP_SESSION_AT_CALLS` trigger) immediately
+       after `calls_f.flush()` saw `N` lines in `calls.jsonl` and `N - 1` lines in `generations.jsonl`.
+       Here we intercept `calls.jsonl` flushes in `run_model_window` with a controlled wrapper and assert that at the
+       exact moment each line of `calls.jsonl` is flushed, `generations.jsonl` on disk already has the matching line count.
+    2. In `scripts/colab/smoke_window.sh` and `tests/fake_colab/colab`:
+       a. When `copyback_journals` runs after `=== granite-4.2-8b ===` appears in `job.log` but before `calls.jsonl`
+          exists on the VM (`[colab] Download failed: /content/pin/toolcount/granite-4.2-8b/calls.jsonl`), `copyback_journals`
+          must skip the not-yet-created file rather than logging `bytes: 0, lines: 0, rc: 1` as Pull #1.
+       b. When all 7 VM call lines finish before the watcher's first `copyback_journals` pull (`PIN_STUB_CALL_S=0`),
+          Pull #2 (`FAKE_PARTIAL_LAST_LINE_ON=2`) must still have new complete lines after Pull #1 (`rc=0, lines > call_pulls[0]['lines']`)
+          rather than failing with `rc=2` because Pull #1 already consumed all 7 lines.
+    """
+    import json
+    import tempfile
+
+    if str(ROOT) not in sys.path:
+        sys.path.insert(0, str(ROOT))
+    if str(ROOT / "scripts" / "toolcount") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts" / "toolcount"))
+    if str(ROOT / "scripts" / "colab") not in sys.path:
+        sys.path.insert(0, str(ROOT / "scripts" / "colab"))
+    import gen_registry
+    import compass_lists
+    import runner as tc_runner
+
+    with tempfile.TemporaryDirectory(prefix="tc-order-") as td:
+        td_p = Path(td)
+        r0_dir = td_p / "r0"
+        out_tc = td_p / "out"
+        gen_registry.generate_all(out_dir=r0_dir, seed=20261028)
+        compass_lists.write_compass_artifacts(r0_dir=r0_dir, out_dir=r0_dir, seed=20261028, embedder_mode="fake")
+        items_data = json.loads((r0_dir / "items.json").read_text(encoding="utf-8"))
+        stub_sched = tc_runner.build_r1_stub_schedule(items_data)[:3]
+
+        calls_path = out_tc / "calls.jsonl"
+        gens_path = out_tc / "generations.jsonl"
+        observed_counts: list[tuple[int, int]] = []
+        orig_open = Path.open
+
+        def wrapped_open(self_path: Path, mode: str = "r", *args, **kwargs):
+            fh = orig_open(self_path, mode, *args, **kwargs)
+            if self_path == calls_path and "w" in mode:
+                orig_flush = fh.flush
+
+                class _FlushObserver:
+                    def __init__(self, inner):
+                        self._inner = inner
+
+                    def write(self, s):
+                        return self._inner.write(s)
+
+                    def flush(self):
+                        res = orig_flush()
+                        c_lines = (
+                            len([ln for ln in calls_path.read_text(encoding="utf-8").splitlines() if ln.strip()])
+                            if calls_path.is_file()
+                            else 0
+                        )
+                        g_lines = (
+                            len([ln for ln in gens_path.read_text(encoding="utf-8").splitlines() if ln.strip()])
+                            if gens_path.is_file()
+                            else 0
+                        )
+                        if c_lines > 0:
+                            observed_counts.append((c_lines, g_lines))
+                        return res
+
+                    def __enter__(self):
+                        self._inner.__enter__()
+                        return self
+
+                    def __exit__(self, *exc):
+                        return self._inner.__exit__(*exc)
+
+                    def __getattr__(self, name):
+                        return getattr(self._inner, name)
+
+                return _FlushObserver(fh)
+            return fh
+
+        Path.open = wrapped_open  # type: ignore[method-assign]
+        try:
+            with tc_runner.StubToolCountServer() as srv:
+                tc_runner.run_model_window(
+                    endpoint_url=srv.base_url,
+                    model_name="granite-4.2-8b",
+                    r0_dir=r0_dir,
+                    out_dir=out_tc,
+                    half="H1",
+                    seed=20261028,
+                    schedule_override=stub_sched,
+                    machine_line="stub",
+                )
+        finally:
+            Path.open = orig_open  # type: ignore[method-assign]
+
+        assert observed_counts == [(1, 1), (2, 2), (3, 3)], (
+            f"generations.jsonl lagged behind calls.jsonl at calls_f.flush(): {observed_counts}"
+        )
+
+        # Also verify the reuse path (`call_id in reused_map`) flushes generations.jsonl before calls.jsonl
+        out_reused = td_p / "out-reused"
+        calls_reused_path = out_reused / "calls.jsonl"
+        gens_reused_path = out_reused / "generations.jsonl"
+        observed_reused_counts: list[tuple[int, int]] = []
+
+        def wrapped_open_reused(self_path: Path, mode: str = "r", *args, **kwargs):
+            fh = orig_open(self_path, mode, *args, **kwargs)
+            if self_path == calls_reused_path and "w" in mode:
+                orig_flush = fh.flush
+
+                class _ReusedFlushObserver:
+                    def __init__(self, inner):
+                        self._inner = inner
+
+                    def write(self, s):
+                        return self._inner.write(s)
+
+                    def flush(self):
+                        res = orig_flush()
+                        c_lines = (
+                            len([ln for ln in calls_reused_path.read_text(encoding="utf-8").splitlines() if ln.strip()])
+                            if calls_reused_path.is_file()
+                            else 0
+                        )
+                        g_lines = (
+                            len([ln for ln in gens_reused_path.read_text(encoding="utf-8").splitlines() if ln.strip()])
+                            if gens_reused_path.is_file()
+                            else 0
+                        )
+                        if c_lines > 0:
+                            observed_reused_counts.append((c_lines, g_lines))
+                        return res
+
+                    def __enter__(self):
+                        self._inner.__enter__()
+                        return self
+
+                    def __exit__(self, *exc):
+                        return self._inner.__exit__(*exc)
+
+                    def __getattr__(self, name):
+                        return getattr(self._inner, name)
+
+                return _ReusedFlushObserver(fh)
+            return fh
+
+        Path.open = wrapped_open_reused  # type: ignore[method-assign]
+        try:
+            with tc_runner.StubToolCountServer() as srv:
+                tc_runner.run_model_window(
+                    endpoint_url=srv.base_url,
+                    model_name="granite-4.2-8b",
+                    r0_dir=r0_dir,
+                    out_dir=out_reused,
+                    half="H1",
+                    seed=20261028,
+                    resume_calls_dir=out_tc,
+                    schedule_override=stub_sched,
+                    machine_line="stub",
+                )
+        finally:
+            Path.open = orig_open  # type: ignore[method-assign]
+
+        assert observed_reused_counts == [(1, 1), (2, 2), (3, 3)], (
+            f"reused generations.jsonl lagged behind calls.jsonl at calls_f.flush(): {observed_reused_counts}"
+        )
+
+    rig, job, out = _window(
+        "normal",
+        extra={
+            "PIN_ROLE": "toolcount",
+            "PIN_STUB": "1",
+            "PIN_GPU": "CPU",
+            "PIN_JOB_SCRIPT": "pin_window.py",
+            "PIN_MODELS": "granite-4.2-8b",
+            "PIN_HEARTBEAT_S": "0",
+            "PIN_COPYBACK_S": "1",
+            "PIN_WATCH_S": "1",
+            "PIN_GATE": "0",
+            "FAKE_EXEC_HANG_AFTER_DONE_S": "10",
+            "FAKE_PARTIAL_LAST_LINE_ON": "2",
+            "FAKE_UNASSIGN_MID_DOWNLOAD_ON": "3",
+            "FAKE_CORRUPT_COPYBACK_ON": "4",
+            "FAKE_TRUNCATE_COPYBACK_ON": "5",
+        },
+    )
+    assert job.count("PIN_RESULT") == 1, (rig, job)
+    cb_log = out / "copyback" / "copyback.jsonl"
+    assert cb_log.is_file(), rig
+    log_rows = [json.loads(ln) for ln in cb_log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    call_pulls = [r for r in log_rows if r["file"] == "granite-4.2-8b/calls.jsonl"]
+    gen_pulls = [r for r in log_rows if r["file"] == "granite-4.2-8b/generations.jsonl"]
+    assert len(call_pulls) >= 6, call_pulls
+    assert call_pulls[0]["rc"] == 0 and call_pulls[0]["lines"] >= 1, call_pulls
+    assert call_pulls[1]["rc"] == 0 and call_pulls[1]["lines"] > call_pulls[0]["lines"], call_pulls
+    assert call_pulls[2]["rc"] == 1 and call_pulls[2]["lines"] == call_pulls[1]["lines"], call_pulls
+    assert call_pulls[3]["rc"] == 2 and call_pulls[3]["lines"] == call_pulls[1]["lines"], call_pulls
+    assert call_pulls[4]["rc"] == 2 and call_pulls[4]["lines"] == call_pulls[1]["lines"], call_pulls
+    assert call_pulls[-1]["rc"] == 0 and call_pulls[-1]["lines"] == 7, call_pulls
+    assert gen_pulls[-1]["rc"] == 0 and gen_pulls[-1]["lines"] == 7, gen_pulls
+
+
+
 def test_journal_copyback_survives_midrun_session_drop_and_resumes_byte_identically():
     import json
 
