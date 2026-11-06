@@ -22,7 +22,7 @@ pytestmark = pytest and pytest.mark.skipif(os.name == "nt" or not shutil.which("
                                 reason="needs bash, flock and setsid (Linux)")
 
 
-def _window(mode: str, *, extra: dict | None = None, out_name: str = "out") -> tuple[str, str, Path]:
+def _window(mode: str, *, extra: dict | None = None, out_name: str = "out", args: tuple = ()) -> tuple[str, str, Path]:
     tmp = Path(tempfile.mkdtemp(prefix=f"fakewin-{mode}-"))
     binfile = tmp / "bin.dat"
     binfile.write_bytes(b"x" * 1000)
@@ -31,11 +31,16 @@ def _window(mode: str, *, extra: dict | None = None, out_name: str = "out") -> t
            "PIN_WATCH_S": "1", "PIN_STALL_FIRST_S": "6", "PIN_STALL_S": "8", "PIN_WALL_S": "120", "PIN_SESSION": "fake",
            "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.01", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
-           # The fake card is an A100 at 5.30/hr: a margin of 0.01 is ~6.8 s, so the grace and the fetch allowance fit it.
+           # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: a margin of 0.01 at the max rate is 6 s,
+           # so the grace and the fetch allowance fit it. PIN_RATE_POLL_S 0: an unread rate is re-read at once.
+           "PIN_MAX_RATE": "6", "PIN_RATE_POLL_S": "0",
            "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
     out = tmp / out_name
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
-    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)], env, 180)
+    if env.get("PIN_GPU") == "CPU" and "PIN_MAX_RATE" not in (extra or {}):
+        env.pop("PIN_MAX_RATE")  # a CPU stub needs no max rate; its margin runs at its configured rate, as before
+    env = {k: v for k, v in env.items() if v is not None}  # extra may drop a base setting with None
+    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), *args, str(binfile), str(out)], env, 180)
     job = (out / "job.log").read_text(encoding="utf-8") if (out / "job.log").exists() else ""
     return stdout + stderr, job, out
 
@@ -89,12 +94,13 @@ def test_a_normal_exec_is_not_retried():
     assert (out.parent / "st" / "stopped_under_lock").exists()
 
 
-def test_a_neighbour_closing_between_rate_reads_falls_back_to_gpu_rate():
+def test_a_neighbour_closing_between_rate_reads_leaves_a_gpu_rate_unread_and_refuses():
+    # No fallback to a constant on a GPU card (R&D, 2026-11-06): the own rate is unread, so the window refuses and stops.
     rig, job, out = _window("neighbourclose", extra={"PIN_MOCK_S": "2"})
     assert "account rate 15.90/hr" in rig, rig
-    assert "own rate 5.3/hr" in rig, rig
-    assert (out / "pin-result.json").exists()
-    assert (out.parent / "st" / "stopped_under_lock").exists()
+    assert "REFUSED RATE_UNREAD: own rate unread after 3 polls" in rig and "own rate" not in rig.split("REFUSED")[0], rig
+    assert not job and not (out.parent / "st" / "execs").exists(), rig
+    assert (out.parent / "st" / "stopped_under_lock").exists() and not (out.parent / "st" / "open").exists()
 
 
 def test_a_window_whose_pin_check_fails_stops_before_any_download():
@@ -331,11 +337,15 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
 def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
     # The defaults (an empty value takes them): grace 60 s + fetch 120 s against the margin at the fake A100's 5.3/hr.
     defaults = {"PIN_DEADLINE_GRACE_S": "", "PIN_FETCH_ALLOW_S": ""}
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2"})
+    # The margin is measured at the window's max rate, the worst case, never a constant.
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2", "PIN_MAX_RATE": "5.3"})
     assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.2 units at 5.3/hr is 135s" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MOCK_S": "2"})
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "8.88"})
+    assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.3 units at 8.88/hr is 121s" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job
 
 
 def test_card_rates_refusals_and_g4_margin_check():
@@ -344,12 +354,13 @@ def test_card_rates_refusals_and_g4_margin_check():
     binfile.write_bytes(b"x" * 100)
     script = str(ROOT / "scripts/colab/smoke_window.sh")
 
-    # 1. Each known card:high_mem combination has the same measured rate in both CARD_RATE (margin check) and GPU_RATE (neighbourclose fallback)
+    # 1. The margin check runs at the max rate on a GPU card and at the configured stub rate on a CPU one; a neighbour
+    #    closing between the rate reads refuses RATE_UNREAD on a GPU card, and a CPU stub takes its labelled configured rate.
     for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
         ("G4", "0", "8.90", "0.3", "121"),
         ("G4", "1", "8.90", "0.3", "121"),
-        ("A100", "1", "6.77", "0.3", "159"),
-        ("A100", "0", "5.3", "0.2", "135"),
+        ("A100", "1", "8.88", "0.3", "121"),
+        ("A100", "0", "6.73", "0.3", "160"),
         ("CPU", "1", "0.26", "0.01", "138"),
         ("CPU", "0", "0.08", "0.003", "135"),
     ):
@@ -364,6 +375,8 @@ def test_card_rates_refusals_and_g4_margin_check():
             "PIN_GPU": gpu,
             "PIN_HIGH_MEM": high_mem,
             "PIN_CAP_MARGIN": bad_margin,
+            **({} if gpu == "CPU" else {"PIN_MAX_RATE": rate_str}),
+            "PIN_SKIP_BINARY": "1",  # the binary's sha check comes first and isn't what this case measures
         }
         r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
         assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
@@ -376,10 +389,14 @@ def test_card_rates_refusals_and_g4_margin_check():
 
         rig_fb, _job_fb, out_fb = _window(
             "neighbourclose",
-            extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": high_mem, "PIN_MOCK_S": "1", "PIN_GATE": "0"},
+            extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": high_mem, "PIN_MOCK_S": "1", "PIN_GATE": "0",
+                   "PIN_MAX_RATE": None if gpu == "CPU" else "9.5", "PIN_CAP_MARGIN": "0.02"},
         )
-        assert f"own rate {rate_str}/hr" in rig_fb, (gpu, high_mem, rig_fb)
-        assert (out_fb / "pin-result.json").exists()
+        if gpu == "CPU":
+            assert f"own rate {rate_str}/hr (configured_cpu" in rig_fb, (gpu, high_mem, rig_fb)
+            assert (out_fb / "pin-result.json").exists()
+        else:
+            assert "REFUSED RATE_UNREAD" in rig_fb and not (out_fb / "pin-result.json").exists(), (gpu, high_mem, rig_fb)
 
     # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 180 s) above and passes at 0.5 (0.5 / 8.9 h = 202 s >= 180 s)
     rig_g4_pass, job_g4_pass, out_g4_pass = _window(
@@ -388,6 +405,7 @@ def test_card_rates_refusals_and_g4_margin_check():
             "PIN_DEADLINE_GRACE_S": "",
             "PIN_FETCH_ALLOW_S": "",
             "PIN_GPU": "G4",
+            "PIN_MAX_RATE": "8.90",
             "PIN_CAP_MARGIN": "0.5",
             "PIN_MOCK_S": "1",
             "PIN_GATE": "0",
@@ -680,9 +698,11 @@ def test_rejected_gate_vms_are_counted_in_running_spend_and_deadline():
 
 
 def test_open_lock_is_released_before_vm_gate_runs_and_preserves_neighbour_rate():
+    # A CPU stub: a neighbour closing between the reads leaves it its labelled configured rate (a GPU card refuses).
     rig, job, out = _window(
         "neighbourclose",
         extra={
+            "PIN_GPU": "CPU",
             "FAKE_GATE": "bad,good",
             "PIN_MOCK_S": "2",
         },
@@ -694,7 +714,7 @@ def test_open_lock_is_released_before_vm_gate_runs_and_preserves_neighbour_rate(
     assert new_locks == ["locked", "locked"], new_locks
     assert gate_locks == ["unlocked", "unlocked"], gate_locks
     assert stop_locks == ["locked", "locked"], stop_locks
-    assert "own rate 5.3/hr" in rig and job.count("PIN_RESULT") == 1, rig
+    assert "own rate 0.08/hr (configured_cpu" in rig and job.count("PIN_RESULT") == 1, rig
 
 
 def test_gate_jsonl_records_vm_name_zone_and_pool_from_colab_sessions_for_every_try():
@@ -1316,6 +1336,96 @@ def test_hung_exec_after_pin_result_takes_exit_sequence_within_one_watch_interva
         if ln.strip() and "calls.jsonl" in ln
     ]
     assert len(cb_rows) == 1 and cb_rows[0]["lines"] == 7, cb_rows
+
+
+# ---- the live-rate cap guard (R&D, 2026-11-06): Colab's balance moves only after a session ends, so the cap runs on the
+# session's own live rate, read after the open; unread or above the max refuses, and there is no fallback to a constant.
+
+def _rate(out: Path) -> dict:
+    import json
+
+    return json.loads((out / "rate.json").read_text(encoding="utf-8"))
+
+
+def _refused_and_stopped(rig: str, job: str, out: Path, code: str) -> None:
+    import json
+
+    st = out.parent / "st"
+    assert f"REFUSED {code}:" in rig, rig
+    assert not job and not (st / "execs").exists() and not (st / "gates").exists(), rig  # no gate, upload or job
+    assert not (st / "open").exists() and "Session terminated" in rig, rig  # the trap stopped the session
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["end"] == code and d["spent"] is None and d["deadline"] is None, d
+    assert _rate(out)["verdict"] == code and _rate(out)["why"], _rate(out)
+
+
+def test_an_unread_live_rate_refuses_rate_unread_after_its_polls_and_stops_the_session():
+    for how in ("missing", "zero"):
+        rig, job, out = _window("normal", extra={"FAKE_RATE_UNREAD": how, "PIN_RATE_POLLS": "3"})
+        _refused_and_stopped(rig, job, out, "RATE_UNREAD")
+        r = _rate(out)
+        assert r["polls"] == 3 and (out.parent / "st" / "usage-reads").read_text().strip() == "3", (how, r)
+        assert r["rate_live"] is None and r["rate_used"] is None and r["rate_scope"] == "unread", (how, r)
+        assert r["max_rate"] == 6 and r["cap"] == 99 and r["margin"] == 0.01, (how, r)
+
+
+def test_a_rate_read_on_a_later_poll_proceeds_on_that_rate():
+    rig, job, out = _window("normal", extra={"FAKE_RATE_UNREAD": "missing", "FAKE_RATE_UNREAD_READS": "2",
+                                             "PIN_RATE_POLLS": "3", "PIN_MOCK_S": "1", "PIN_GATE": "0"})
+    r = _rate(out)
+    assert r["verdict"] == "ok" and r["polls"] == 3 and r["rate_live"] == 5.3 and r["rate_scope"] == "own_delta", r
+    assert job.count("PIN_RESULT") == 1, rig
+
+
+def test_a_live_rate_above_the_max_refuses_rate_above_max_right_after_the_open():
+    rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": "8"})
+    _refused_and_stopped(rig, job, out, "RATE_ABOVE_MAX")
+    assert "own rate 8.88/hr is above the max rate 8/hr" in rig, rig
+    r = _rate(out)
+    assert r["rate_live"] == 8.88 and r["max_rate"] == 8 and r["polls"] == 1, r
+    # The --max-rate flag reaches the same check.
+    rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": None}, args=("--max-rate", "8"))
+    _refused_and_stopped(rig, job, out, "RATE_ABOVE_MAX")
+
+
+def test_a_live_rate_under_the_max_proceeds_and_the_deadline_runs_on_the_live_rate():
+    import json
+
+    rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.02",
+                                             "PIN_MOCK_S": "1", "PIN_GATE": "0"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    assert "own rate 8.88/hr (own_delta; max 9.5" in rig, rig
+    r = _rate(out)
+    assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["rate_used"] == 8.88, r
+    assert r["rate_scope"] == "own_delta" and r["max_rate"] == 9.5 and r["cap"] == 99 and r["margin"] == 0.02, r
+    # (cap - margin) / live rate: 98.98 / 8.88 h = 40127 s past the open, not at 5.3 (67233 s) nor at the max (37508 s).
+    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 8.88 * 3600), r
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["rate_live"] == 8.88 and d["rate_scope"] == "own_delta" and d["max_rate"] == 9.5, d
+    assert d["deadline"] == r["deadline"] and d["margin"] == 0.02 and d["cap"] == 99, d
+    assert "5.3" not in (out / "rate.json").read_text() + (out / "outcome.draft.json").read_text()
+
+
+def test_a_gpu_window_without_a_max_rate_refuses_before_any_vm():
+    for gpu in ("A100", "G4"):
+        rig, job, out = _window("normal", extra={"PIN_GPU": gpu, "PIN_MAX_RATE": None})
+        assert f"REFUSED: a {gpu} window needs --max-rate or PIN_MAX_RATE" in rig, rig
+        assert not (out.parent / "st" / "news").exists() and not job
+    for bad in ("0", "-1", "abc", "8.8.8"):
+        rig, job, out = _window("normal", extra={"PIN_MAX_RATE": bad})
+        assert f"REFUSED: PIN_MAX_RATE={bad} must be a positive number" in rig, rig
+        assert not (out.parent / "st" / "news").exists()
+
+
+def test_a_cpu_stub_is_unchanged_live_rate_when_read_and_labelled_configured_rate_when_not():
+    rig, job, out = _window("normal", extra={"PIN_GPU": "CPU", "PIN_MAX_RATE": None, "PIN_MOCK_S": "1"})
+    assert "own rate 5.3/hr (own_delta" in rig and job.count("PIN_RESULT") == 1, rig
+    assert _rate(out)["max_rate"] is None and _rate(out)["rate_scope"] == "own_delta"
+    rig, job, out = _window("normal", extra={"PIN_GPU": "CPU", "PIN_MAX_RATE": None, "PIN_MOCK_S": "1",
+                                             "FAKE_RATE_UNREAD": "missing"})
+    assert "own rate 0.08/hr (configured_cpu" in rig and job.count("PIN_RESULT") == 1, rig
+    r = _rate(out)
+    assert r["rate_live"] is None and r["rate_used"] == 0.08 and r["rate_scope"] == "configured_cpu" and r["polls"] == 1, r
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed

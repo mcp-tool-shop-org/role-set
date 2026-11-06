@@ -3,7 +3,8 @@
 # and downloads that really copy files, `status` reading BUSY while a job runs, and `exec` that runs the real job file
 # (mock_job.py) with its --env settings. FAKE_MODE picks what goes wrong:
 #   normal          the exec runs the job and returns
-#   neighbourclose  a neighbour session closes between the two rate reads (15.90 -> 10.60), so OWN_RATE falls back to GPU_RATE
+#   neighbourclose  a neighbour session closes between the two rate reads (15.90 -> 10.60): the own rate is unread, so a GPU
+#                   window refuses RATE_UNREAD and a CPU stub takes its configured rate
 #   lostfirst       the first exec loses its connection and hangs with nothing run; the second runs the job
 #   late            the first exec's job arrives FAKE_LATE_S seconds late (and survives the exec being killed, as a
 #                   remote kernel would); the second runs the job at once
@@ -36,10 +37,21 @@ maybe_banner() {
 maybe_banner
 case "$cmd" in
   usage)
+    # The rate lines copy a real `colab usage` (google-colab-cli 0.7.4, receipts of 2026-10-18): "Usage rate: 5.30/hr" and
+    # "Active assignments: 1". FAKE_RATE is the open session's rate (default 5.30). FAKE_RATE_UNREAD makes the post-open
+    # reads unreadable: "zero" reports 0.00/hr (the rate not registered yet), "missing" drops the rate line; only the first
+    # FAKE_RATE_UNREAD_READS of them when that is set (then the rate shows). Every post-open read is counted in usage-reads.
+    n_open=0; [ -f "$ST/open" ] && n_open=1
     if [ "${FAKE_MODE:-normal}" = neighbourclose ]; then
       if [ -f "$ST/open" ]; then r=10.60; else r=15.90; fi
-    elif [ -f "$ST/open" ]; then r=5.30; else r=0.00; fi
-    echo "Current balance: 100.00 compute units"; echo "Usage rate: $r/hr";;
+    elif [ -f "$ST/open" ]; then
+      u_n=$(( $(cat "$ST/usage-reads" 2>/dev/null || echo 0) + 1 )); echo "$u_n" > "$ST/usage-reads"
+      r="${FAKE_RATE:-5.30}"
+      if [ -n "${FAKE_RATE_UNREAD:-}" ] && { [ -z "${FAKE_RATE_UNREAD_READS:-}" ] || [ "$u_n" -le "$FAKE_RATE_UNREAD_READS" ]; }; then
+        case "$FAKE_RATE_UNREAD" in zero) r=0.00;; missing) r="";; esac
+      fi
+    else r=0.00; fi
+    echo "Current balance: 100.00 compute units"; [ -n "$r" ] && echo "Usage rate: $r/hr"; echo "Active assignments: $n_open";;
   new)
     if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
       echo locked >> "$ST/new-lock.log"
@@ -50,7 +62,7 @@ case "$cmd" in
       echo "[colab] Requesting runtime..."
       exit 1
     fi
-    rm -f "$ST/sessions_gone" "$ST/unassigned"
+    rm -f "$ST/sessions_gone" "$ST/unassigned" "$ST/usage-reads"
     echo "$*" >> "$ST/new-args.log"; touch "$ST/open"; echo $(( $(cat "$ST/news" 2>/dev/null || echo 0) + 1 )) > "$ST/news"; echo "[colab] Session READY.";;
   sessions)
     if [ -n "${FAKE_DROP_SESSION_AT_CALLS:-}" ] && [ -f "$ST/open" ]; then

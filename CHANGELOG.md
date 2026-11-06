@@ -6,6 +6,26 @@ All notable changes to role-set are documented here. The format is based on
 
 ## [Unreleased]
 
+### Fixed
+
+- **Colab window kit: a live-rate cap guard** (`scripts/colab/smoke_window.sh`, `tests/fake_colab/colab`,
+  `tests/test_window_script.py`; R&D, 2026-11-06). Colab's balance moves only after a session ends, and the rate moved
+  (A100 High-RAM 8.88/hr, A100 6.73/hr) while the kit still used 5.3, so the cap could run past its units mid-window.
+  - After `colab new` the window reads its own live rate (account rate after the open less before) in up to
+    `PIN_RATE_POLLS` polls (default 3, `PIN_RATE_POLL_S` apart). Unread or 0 or less on a GPU card refuses
+    `RATE_UNREAD` (exit 5) and the trap stops the session. No fallback to a constant rate on a GPU card.
+  - `--max-rate` / `PIN_MAX_RATE` is required for GPU windows, with no default. A live own rate above it refuses
+    `RATE_ABOVE_MAX` right after the open.
+  - The deadline runs on the live own rate only. The grace-and-fetch margin check runs at the max rate (the worst
+    case) in place of the per-card constants. Only the CPU stubs keep a configured rate (0.08, `--high-mem` 0.26),
+    labelled `configured_cpu` when used.
+  - Each window writes `rate.json` (verdict, why, `rate_live`, `rate_scope`, `rate_used`, `max_rate`, `margin`,
+    `deadline`, cap, polls), and `outcome.draft.json` carries the same rate fields.
+  - The fake `colab usage` reports a post-open rate (`FAKE_RATE`) or an unreadable one (`FAKE_RATE_UNREAD=zero|missing`),
+    in the real output's format.
+  - The uncommitted window-2 draft of this script (a balance-only cap) is retired. It ran windows 2 to 7 on 2026-10-17
+    and nothing since.
+
 ## [0.3.0] - 2026-10-29
 
 ### Changed
