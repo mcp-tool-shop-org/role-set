@@ -43,6 +43,10 @@ All notable changes to role-set are documented here. The format is based on
     8.88) came between sessions. Pricing at max(max rate, highest seen) bounds the exposure.
   - Known limit: a mid-run rise moves the deadline on the rig only. The VM keeps the `PIN_DEADLINE` it was given at the
     exec, so the watcher's grace ends the job.
+  - Known limit: a Colab CLI outage that fails 3 consecutive usage reads (about 3 min at 60 s a cycle) ends the window
+    as `ASSIGNMENTS_UNREADABLE`. It stops early and adds no spend.
+  - Known limit: a neighbour whose assignment count leads its rate by 2 or more reads (a registration lag of 2+
+    minutes) can still falsely trip `RATE_ABOVE_MAX`. This is unlikely, and it adds no spend.
   - The cap's clock starts when `colab new` succeeds, not after the polls, the settle and the gate.
   - The margin budget check rounds instead of truncating: 0.30 at 6/hr is 180 s, not 179 s. `--check-only` runs the
     checks that come before any colab call.
