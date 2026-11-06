@@ -5,7 +5,30 @@
 # pin the libraries it loads, convert both Colab models to Q8_0 at pinned revisions (Lightning must reproduce window 1's
 # hash), smoke-serve each with logprobs, then fetch the results. Unit cap and wall clock enforced; the VM is stopped in
 # a trap and the sessions list checked empty.
+# The live-rate cap guard (R&D, 2026-11-06): Colab's balance moves only after a session ends, so the cap runs on the
+# session's own live rate (the account rate after colab new less the rate before). `colab usage` is account-wide, so
+# the own delta is taken only when it is stable: two consecutive reads PIN_RATE_POLL_S apart that agree within 0.01 and
+# sit at or above GPU_RATE_FLOOR, within PIN_RATE_POLLS polls (plus the one extra read stability needs). The watcher
+# re-reads it every cap check (at most 60 s apart on a GPU window): a rise moves the deadline to the highest rate seen,
+# and a rate above the max ends the window as a cap trip (RATE_ABOVE_MAX). Every reading goes to rate.json.
+# A change in the "Active assignments" count (a neighbour opening or closing) re-baselines once two reads at the new
+# count agree; a count missing or 0 for 3 reads in a row ends the window (ASSIGNMENTS_UNREADABLE). Known limit: a
+# neighbour opening in the same read our own rate rises can fold that rise into the baseline; pricing at
+# max(max rate, highest seen) bounds it, and a window's rate is set at assignment.
+# A GPU window names its worst-case rate with --max-rate or PIN_MAX_RATE (no default); an own rate that stays unread
+# refuses RATE_UNREAD and one above the max refuses RATE_ABOVE_MAX, each right after the open, and the trap stops the
+# session. There is no fallback to a constant rate on a GPU card. Each window's rate.json records the reading.
+# Retired: the window-2 draft of this script (a balance-only cap, never committed) ran windows 2 to 7 on 2026-10-17,
+# and balance-only copies of it ran 7b and 8 that day; nothing since. It must not be run again; this file replaces it.
 set -uo pipefail
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --max-rate) PIN_MAX_RATE="${2:-}"; shift; [ $# -gt 0 ] && shift;;
+    --max-rate=*) PIN_MAX_RATE="${1#--max-rate=}"; shift;;
+    --check-only) CHECK_ONLY=1; shift;;  # run the checks that come before any colab call, then exit 0
+    *) break;;
+  esac
+done
 BIN="${1:?usage: smoke_window.sh <llama-server> <out dir>}"
 OUT="${2:?usage: smoke_window.sh <llama-server> <out dir>}"
 case "${PIN_GPU:-A100}" in
@@ -55,27 +78,23 @@ DL_S="${PIN_DL_TIMEOUT:-300}"
 COPYBACK_DL_S="${PIN_COPYBACK_DL_S:-60}"
 # The margin's budget (R&D on #91): the job's deadline is cap - MARGIN; it gets GRACE_S past it to cut its wave, tar and
 # print its result, and the exit fetch needs FETCH_ALLOW_S after that, all before the ceiling at the cap. So
-# GRACE_S + FETCH_ALLOW_S must fit in MARGIN at this card's rate, or the window doesn't open. The rates are the measured
-# ones (G4 8.90, A100-80GB 6.77, A100 5.3, CPU 0.08, CPU --high-mem 0.26); the rung measures the cut and the fetch, and
-# the margin is set from them.
+# GRACE_S + FETCH_ALLOW_S must fit in MARGIN at the window's worst-case rate, or the window doesn't open: PIN_MAX_RATE on
+# a GPU card (rates move: the A100 High-RAM shape read 8.88/hr and the A100 6.73/hr on 2026-11-03), the configured stub
+# rate on a CPU one. The rung measures the cut and the fetch, and the margin is set from them.
 # Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
 # deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
-# a 120 s fetch allowance: 180 s, 0.265 units at the A100's 5.3/hr, inside the default margin of 0.3.
+# a 120 s fetch allowance: 180 s. A GPU window derives its margin from them at its max rate (below); a CPU stub's
+# default margin of 0.3 holds them at its configured rate.
 GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
 FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
+# The cards a rung has run (G4, A100 in both shapes). Only the CPU stubs keep a configured rate (measured 0.08, --high-mem
+# 0.26), used when their own rate is unread and always labelled "configured_cpu" where it is recorded.
 case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
-  G4:*) CARD_RATE=8.90;;
-  A100:1) CARD_RATE=6.77;;
-  A100:*) CARD_RATE=5.3;;
-  CPU:1) CARD_RATE=0.26;;
-  CPU:*) CARD_RATE=0.08;;
+  G4:*|A100:*) CPU_RATE="";;
+  CPU:1) CPU_RATE=0.26;;
+  CPU:*) CPU_RATE=0.08;;
   *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
 esac
-BUDGET_S=$(awk -v m="$MARGIN" -v r="$CARD_RATE" 'BEGIN{printf "%d", m/r*3600}')
-if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
-  echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $CARD_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
-  exit 2
-fi
 DEFAULT_SERVER_SHA256="b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
 if [ "${PIN_SERVER_SHA256+set}" = set ]; then
   if ! printf '%s' "$PIN_SERVER_SHA256" | grep -qE '^[0-9a-f]{64}$'; then
@@ -94,6 +113,56 @@ if [ "${PIN_SKIP_BINARY:-0}" != 1 ] && [ "${PIN_ROLE:-}" != offrig-bench ]; then
     echo "REFUSED: llama-server $BIN sha256 $GOT_SERVER_SHA256 != expected $WANT_SERVER_SHA256" >&2
     exit 2
   fi
+fi
+MAX_RATE="${PIN_MAX_RATE:-}"
+if [ -n "$MAX_RATE" ] && ! awk -v r="$MAX_RATE" 'BEGIN{exit !(r ~ /^[0-9]+(\.[0-9]+)?$/ && r + 0 > 0)}'; then
+  echo "REFUSED: PIN_MAX_RATE=$MAX_RATE must be a positive number of units/hr" >&2
+  exit 2
+fi
+if [ "${PIN_GPU:-A100}" != CPU ] && [ -z "$MAX_RATE" ]; then
+  echo "REFUSED: a ${PIN_GPU:-A100} window needs --max-rate or PIN_MAX_RATE (the most units/hr it may run at; no default)" >&2
+  exit 2
+fi
+MARGIN_RATE="${MAX_RATE:-$CPU_RATE}"
+# A GPU window's margin is derived (Publisher, 2026-11-06): the units the grace and the fetch cost at the max rate,
+# rounded up to 0.01. An explicit PIN_CAP_MARGIN may raise it, never lower it. A CPU stub keeps its margin as before.
+MARGIN_DERIVED=""
+if [ "${PIN_GPU:-A100}" != CPU ]; then
+  MARGIN_DERIVED=$(awk -v g="$GRACE_S" -v f="$FETCH_ALLOW_S" -v r="$MAX_RATE" \
+    'BEGIN{x = (g + f) * r / 36; c = int(x); if (x - c > 1e-9) c++; printf "%.2f", c / 100}')
+  if [ -n "${PIN_CAP_MARGIN:-}" ]; then
+    if ! awk -v m="$PIN_CAP_MARGIN" 'BEGIN{exit !(m ~ /^[0-9]*\.?[0-9]+$/)}'; then
+      echo "REFUSED: PIN_CAP_MARGIN=$PIN_CAP_MARGIN must be a number of units" >&2; exit 2
+    fi
+    if awk -v m="$PIN_CAP_MARGIN" -v d="$MARGIN_DERIVED" 'BEGIN{exit !(m + 0 < d - 1e-9)}'; then
+      echo "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=$PIN_CAP_MARGIN is below the derived margin $MARGIN_DERIVED (grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s at the max rate $MAX_RATE/hr)" >&2
+      exit 2
+    fi
+    MARGIN=$PIN_CAP_MARGIN
+  else
+    MARGIN=$MARGIN_DERIVED
+  fi
+fi
+# Rounded, not truncated: 0.30 units at 6/hr is 180 s, which %d made 179 (R&D review of #132). A margin derived above
+# fits by construction, so the check binds only an explicit or a CPU margin.
+BUDGET_S=$(awk -v m="$MARGIN" -v r="$MARGIN_RATE" 'BEGIN{printf "%d", m/r*3600 + 0.5}')
+if [ "$MARGIN" != "$MARGIN_DERIVED" ] && [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
+  echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $MARGIN_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
+  exit 2
+fi
+# 4 polls x 5 s = 20 s, as rnd's rates.sh; stability takes one read more, so at most RATE_POLLS + 1 reads.
+RATE_POLLS="${PIN_RATE_POLLS:-4}"; RATE_POLL_S="${PIN_RATE_POLL_S:-5}"
+case "$RATE_POLLS" in ''|*[!0-9]*|0) echo "REFUSED: PIN_RATE_POLLS=$RATE_POLLS must be a whole number of 1 or more" >&2; exit 2;; esac
+RATE_READS_MAX=$(( RATE_POLLS + 1 ))
+[ "${PIN_GPU:-A100}" = CPU ] && RATE_READS_MAX=1  # a CPU stub reads once, as before, and keeps its labelled configured rate
+# Between the cheapest GPU card measured, the T4 at 1.07/hr (16 reads in window windowC2-12-t4-s1a-20261027), and the
+# highest CPU rate, 0.26/hr (--high-mem): a smaller own delta is a session not yet registered, or a neighbour's change
+# (a parallel CPU session), not this card's rate.
+GPU_RATE_FLOOR=1.0
+USAGE_T="${PIN_USAGE_TIMEOUT_S:-30}"
+if [ "${CHECK_ONLY:-0}" = 1 ]; then
+  echo "CHECK OK: margin $MARGIN (derived ${MARGIN_DERIVED:-n/a}) at ${MARGIN_RATE}/hr is ${BUDGET_S}s for grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s"
+  exit 0
 fi
 export COLUMNS=150
 # google-colab-cli 0.7.4 has no CLI flag or env var to disable its PyPI update banner (colab_cli/auto_update.py
@@ -123,7 +192,8 @@ scrub_log() {
     -e 's/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/[REDACTED]/g' \
     -e 's/hf_[A-Za-z0-9]{6,}/[REDACTED]/g'
 }
-bal() { colab usage 2>&1 | strip_colab_banner | grep -oP 'balance: \K[0-9.]+' || true; }
+usage() { timeout -k 5 "$USAGE_T" colab usage 2>&1; }  # every usage call is bounded
+bal() { usage | strip_colab_banner | grep -oP 'balance: \K[0-9.]+' || true; }
 # Stops this window's own session only: another window (or a probe) may be running beside it.
 # Holds the open lock while stopping, so a neighbour's rate reads never straddle a stop (R&D, from Argon's review).
 TOKF=""  # the rig-side token file, if this window sends one: removed in the trap too, so a crash can't leave it
@@ -168,7 +238,53 @@ stop_all() {
 }
 trap stop_all EXIT
 trap 'end_window term' TERM INT
-rate() { colab usage 2>&1 | strip_colab_banner | grep -oP 'rate: \K[0-9.]+' || true; }
+rate() { usage | strip_colab_banner | grep -oP 'rate: \K[0-9]+(\.[0-9]+)?' || true; }
+# One usage read as "<rate> <assignments>", either field "-" when unread: the rate and the assignment count from the same
+# call, so a neighbour's open or close is seen in the same read as the rate it moves.
+rate_assign() {
+  local u r n
+  u=$(usage | strip_colab_banner)
+  r=$(printf '%s\n' "$u" | grep -oP 'rate: \K[0-9]+(\.[0-9]+)?' | head -1 || true)
+  n=$(printf '%s\n' "$u" | grep -oP 'Active assignments: \K[0-9]+' | head -1 || true)
+  echo "${r:--} ${n:--}"
+}
+# This session's own rate: the account rate after colab new less the rate before; empty when either is unread or the
+# difference is 0 or less (a neighbour closing between the reads), never a constant.
+own_rate_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; r = a - b; if (r > 0) print r + 0 }'; }
+jnum() { if [ -n "${1:-}" ]; then printf '%s' "$1"; else printf null; fi; }
+RATE_LIVE=""; RATE_SCOPE=""; OWN_RATE=""; T_OPEN=""; T_NEW=""; PIN_DEADLINE=""; RATE_POLLS_USED=0; RATE_WHY=""
+RATE_STABLE_S=""; RATE_MAX_SEEN=""; ASSIGN0=""
+READINGS="$OUT/rate-readings.jsonl"; rm -f "$READINGS" "$OUT/.rate_max" "$OUT/.rate_verdict" "$OUT/rate.json"
+record_reading() {  # $1: phase (open, run or rebaseline), $2: account rate, $3: own delta, $4: assignments, $5: baseline
+  printf '{"t": %s, "phase": "%s", "account_rate": %s, "own": %s, "assignments": %s, "baseline": %s}\n' "$(date +%s)" "$1" \
+    "$(jnum "$2")" "$(jnum "$3")" "$(jnum "${4:-}")" "$(jnum "${5:-}")" >> "$READINGS"
+}
+# The own delta of an account read, or empty: signed here, so the stability check sees a neighbour's change too.
+delta_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; print a - b + 0 }'; }
+# The window receipt for the rate (rate.json) and the outcome draft both carry the reading the cap ran on.
+rate_fields() {
+  printf '"rate_live": %s, "rate_scope": "%s", "rate_used": %s, "rate_max_seen": %s, "max_rate": %s, "margin_derived": %s, "margin": %s, "deadline": %s' \
+    "$(jnum "$RATE_LIVE")" "$RATE_SCOPE" "$(jnum "$OWN_RATE")" "$(jnum "$RATE_MAX_SEEN")" "$(jnum "$MAX_RATE")" \
+    "$(jnum "$MARGIN_DERIVED")" "$MARGIN" "$(jnum "$PIN_DEADLINE")"
+}
+write_rate_receipt() {  # $1: the verdict: ok, RATE_UNREAD or RATE_ABOVE_MAX
+  printf '{"verdict": "%s", "why": "%s", "gpu": "%s", "high_mem": "%s", %s, "cap": %s, "account_rate_before": %s, "account_rate_after": %s, "polls": %s, "floor": %s, "t_new": %s, "t_open": %s, "rate_stable_s": %s, "assign0": %s, "readings": [%s]}\n' \
+    "$1" "$RATE_WHY" "${PIN_GPU:-A100}" "${PIN_HIGH_MEM:-0}" "$(rate_fields)" "$CAP_UNITS" "$(jnum "$RATE0")" \
+    "$(jnum "$RATE_AFTER")" "$RATE_POLLS_USED" "$GPU_RATE_FLOOR" "$(jnum "$T_NEW")" "$(jnum "$T_OPEN")" \
+    "$(jnum "$RATE_STABLE_S")" "$(jnum "$ASSIGN0")" "$( [ -f "$READINGS" ] && paste -sd, "$READINGS")" | scrub_log > "$OUT/rate.json"
+}
+outcome_draft() {  # $1: end, $2: spent (a number, or null)
+  printf '{"window": "%s", "date": "%s", "commit": "%s", "card": "%s", "cap": %s, "spent": %s, "basis": "rate_x_runtime", %s, "end": "%s", "outcome": null, "why": null}\n' \
+    "$(basename "$OUT")" "$(date -u +%F)" "${PIN_ROLESET_COMMIT:-unset}" "${PIN_GPU:-A100}" "$CAP_UNITS" "$2" \
+    "$(rate_fields)" "$1" | scrub_log > "$OUT/outcome.draft.json"
+}
+rate_refuse() {  # $1: RATE_UNREAD or RATE_ABOVE_MAX, $2: why. The EXIT trap stops the session.
+  RATE_WHY=$2
+  echo "REFUSED $1: $2; stopping $S $(date -u +%T)"
+  write_rate_receipt "$1"
+  outcome_draft "$1" null
+  exit 5
+}
 START=$(bal)
 sha256sum "$BIN"
 GPU_ARGS=(--gpu "${PIN_GPU:-A100}"); [ "${PIN_GPU:-A100}" = CPU ] && GPU_ARGS=()
@@ -197,13 +313,51 @@ for try in $(seq 1 "$GATE_TRIES"); do
   RATE0=$(rate)
   [ "$try" = 1 ] && echo "start balance $START, account rate $RATE0/hr $(date -u +%FT%TZ)"
   if new_out=$(timeout 300 colab new "${GPU_ARGS[@]}" -s "$S" 2>&1); then
+    T_NEW=$(date +%s)  # billing starts here: the cap's clock does too (R&D review of #132)
     printf '%s\n' "$new_out" | strip_colab_banner | tail -2 | scrub_log
   else
     printf '%s\n' "$new_out" | strip_colab_banner | tail -2 | scrub_log
     flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2
   fi
-  RATE_AFTER=$(rate)
+  # The live rate guard, still under the open lock: up to RATE_READS_MAX reads, RATE_POLL_S apart. A GPU card's own
+  # delta counts only once two consecutive reads agree within 0.01 at or above GPU_RATE_FLOOR; a CPU stub reads once.
+  RATE_AFTER=""; RATE_LIVE=""; RATE_POLLS_USED=0; RATE_STABLE_S=""; prev=""
+  for poll in $(seq 1 "$RATE_READS_MAX"); do
+    RATE_POLLS_USED=$poll
+    read -r RATE_AFTER n_open < <(rate_assign)
+    [ "$RATE_AFTER" = - ] && RATE_AFTER=""; [ "$n_open" = - ] && n_open=""
+    d=$(delta_of "$RATE_AFTER" "$RATE0")
+    record_reading open "$RATE_AFTER" "$d" "$n_open" "$RATE0"
+    ASSIGN0=$n_open  # the count with our session in it, as of the read the rate was taken from
+    if [ "${PIN_GPU:-A100}" = CPU ]; then
+      RATE_LIVE=$(own_rate_of "$RATE_AFTER" "$RATE0"); break
+    fi
+    if [ -n "$prev" ] && [ -n "$d" ] && awk -v a="$prev" -v b="$d" -v f="$GPU_RATE_FLOOR" \
+        'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9 && a >= f && b >= f)}'; then
+      RATE_LIVE=$(awk -v a="$prev" -v b="$d" 'BEGIN{print (a > b ? a : b) + 0}')
+      RATE_STABLE_S=$(( $(date +%s) - T_NEW ))
+      break
+    fi
+    prev=$d
+    [ "$poll" -lt "$RATE_READS_MAX" ] && sleep "$RATE_POLL_S"
+  done
   flock -u 9; exec 9>&-
+  if [ -n "$RATE_LIVE" ] && [ "${PIN_GPU:-A100}" != CPU ]; then
+    # Priced on max(max rate, highest stable rate seen), never on the window rate alone (Publisher, 2026-11-06): an
+    # under-read rate (a late registration, a neighbour closing) can then only end the window early, never stretch it.
+    RATE_SCOPE=own_delta; RATE_MAX_SEEN=$RATE_LIVE
+    OWN_RATE=$(awk -v m="$MAX_RATE" -v r="$RATE_LIVE" 'BEGIN{print (r > m ? r : m) + 0}')
+  elif [ -n "$RATE_LIVE" ]; then
+    OWN_RATE=$RATE_LIVE; RATE_SCOPE=own_delta
+  elif [ "${PIN_GPU:-A100}" = CPU ]; then
+    OWN_RATE=$CPU_RATE; RATE_SCOPE=configured_cpu
+  else
+    RATE_SCOPE=unread
+    rate_refuse RATE_UNREAD "own rate not stable at or above ${GPU_RATE_FLOOR}/hr after $RATE_POLLS_USED polls (account rate ${RATE0:-unread}/hr before the open, ${RATE_AFTER:-unread}/hr after)"
+  fi
+  if [ -n "$MAX_RATE" ] && [ "$RATE_SCOPE" = own_delta ] && awk -v r="$RATE_LIVE" -v m="$MAX_RATE" 'BEGIN{exit !(r > m)}'; then
+    rate_refuse RATE_ABOVE_MAX "own rate $RATE_LIVE/hr is above the max rate $MAX_RATE/hr"
+  fi
   sess_out=$(colab sessions 2>&1 || true)
   vm_name=$(printf '%s\n' "$sess_out" | strip_colab_banner | scrub_log | awk -v p="[$S]" '$1 == p {print $2; exit}')
   vm_pool=""; vm_zone=""
@@ -232,28 +386,23 @@ for try in $(seq 1 "$GATE_TRIES"); do
   GATE_REJECTED_S=$(( GATE_REJECTED_S + $(date +%s) - t_try ))
   if [ "$try" = "$GATE_TRIES" ]; then echo "VM GATE: no healthy ${PIN_GPU:-A100} in $GATE_TRIES tries"; exit 4; fi
 done
-colab usage 2>&1 | strip_colab_banner | grep -E "rate|assign" | scrub_log || true
+usage | strip_colab_banner | grep -E "rate|assign" | scrub_log || true
 # The cap counts this window's own spend: its rate (the account rate after its session opened, less the rate before) times
 # its own runtime (including any VMs the gate rejected). The account balance would count a neighbour's spend too (window 8
 # was cut off that way).
-# A neighbour closing between the two reads can make the difference 0 or less: then take the runtime's own known rate,
-# not the whole account's (R&D, from Argon's review; the account rate would stop this window early).
-case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
-  G4:*) GPU_RATE=8.90;;
-  A100:1) GPU_RATE=6.77;;
-  A100:*) GPU_RATE=5.3;;
-  CPU:1) GPU_RATE=0.26;;
-  CPU:*) GPU_RATE=0.08;;
-esac
-OWN_RATE=$(awk -v a="$RATE_AFTER" -v b="$RATE0" -v g="$GPU_RATE" 'BEGIN{r=a-b; if (r<=0) r=(g!="" ? g : a); print r}')
-T_OPEN=$(( $(date +%s) - GATE_REJECTED_S ))
-echo "own rate $OWN_RATE/hr (rejected gate VMs: ${GATE_REJECTED_S}s)"
+# OWN_RATE was read live after the open (the guard above): a GPU window that couldn't read it, or read it above its max
+# rate, never got here. A neighbour closing between the reads makes the difference 0 or less; that is unread, not a
+# constant (R&D, 2026-11-06). Only a CPU stub falls back, to its configured rate, labelled configured_cpu.
+T_OPEN=$(( T_NEW - GATE_REJECTED_S ))  # from the accepted VM's open, not after the gate and the polls
+[ -n "$RATE_MAX_SEEN" ] && echo "$RATE_MAX_SEEN" > "$OUT/.rate_max"
+echo "own rate ${RATE_LIVE:-$OWN_RATE}/hr ($RATE_SCOPE; max ${MAX_RATE:-none}; priced at $OWN_RATE/hr; rejected gate VMs: ${GATE_REJECTED_S}s)"
 # The job's deadline (R&D, 2026-10-18): own spend at the cap less MARGIN. Past it the job starts nothing new, cuts a wave
 # under way (SIGTERM, then SIGKILL) and writes pilot-out.tar and pin-result.json, so a cap stop returns results, not only
 # job.log. The watcher waits PIN_DEADLINE_GRACE_S past it for the PIN_RESULT line before it kills the exec.
 PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
 export PIN_DEADLINE
-echo "deadline $(date -u -d "@$PIN_DEADLINE" +%T) (cap $CAP_UNITS less $MARGIN at $OWN_RATE/hr); grace ${GRACE_S}s"
+echo "deadline $(date -u -d "@$PIN_DEADLINE" +%T) (cap $CAP_UNITS less $MARGIN at $OWN_RATE/hr, $RATE_SCOPE); grace ${GRACE_S}s"
+write_rate_receipt ok
 # This window's token: the job writes it into pin-result.json, and a second exec stops only on this window's result.
 export PIN_JOB_TOKEN="$S-$T_OPEN"
 # The watcher reads the job's own log, /content/pin/job.log, fetched every PIN_WATCH_S seconds, never the exec's output
@@ -478,8 +627,67 @@ TICK_S="$WATCH_S"
 if [ "$COPYBACK_S" -gt 0 ] 2>/dev/null && [ "$COPYBACK_S" -lt "$TICK_S" ]; then
   TICK_S="$COPYBACK_S"
 fi
-( seen=0; size0=-1; grew=0; ended=""; noted=""; last_copyback=0; sess_fail=0
+# A GPU window re-reads its rate every cap check, so the check runs at least once a minute.
+if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
+( seen=0; size0=-1; grew=0; ended=""; noted=""; last_copyback=0; sess_fail=0; run_prev=""
+  base="$RATE0"; last_assign="$ASSIGN0"; last_own="${RATE_LIVE:-}"; pend=""; pend_prev=""; pend_from=""; bad_n=0
   while sleep "$TICK_S"; do
+    # The mid-run rate (R&D review of #132): every reading is recorded; a stable reading at or above the floor raises the
+    # highest rate seen, and one above the max rate ends the window as a cap trip (RATE_ABOVE_MAX), fetch then stop.
+    if [ "${PIN_GPU:-A100}" != CPU ] && [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then
+      # `colab usage` is account-wide: when the assignment count moves, a neighbour opened or closed, and the delta
+      # against the old baseline is theirs too. Nothing is judged until two consecutive reads at the new count agree
+      # within 0.01 (a neighbour's rate can register a read after its count); then the baseline becomes the account
+      # rate less our last stable rate. Pricing stays max(max rate, highest seen) throughout. A missing count, or 0 while
+      # we are open, is recorded; three in a row end the window as ASSIGNMENTS_UNREADABLE (fetch, then stop).
+      # Known limit: a neighbour opening in the same read our own rate rises folds that rise into the baseline.
+      read -r a_run n_run < <(rate_assign)
+      [ "$a_run" = - ] && a_run=""; [ "$n_run" = - ] && n_run=""
+      if [ -z "$n_run" ] || [ "$n_run" = 0 ]; then
+        bad_n=$(( bad_n + 1 )); run_prev=""
+        record_reading bad_count "$a_run" "" "$n_run" "$base"
+        if [ "$bad_n" -ge 3 ]; then
+          echo "ASSIGNMENTS_UNREADABLE|assignment count missing or 0 for $bad_n consecutive reads (mid-run)" > "$OUT/.rate_verdict"
+          echo "REFUSED ASSIGNMENTS_UNREADABLE (mid-run): assignment count missing or 0 for $bad_n consecutive reads; fetching, then stopping $S $(date -u +%T)"
+          end_window ASSIGNMENTS_UNREADABLE; continue
+        fi
+      elif { bad_n=0; [ -z "$a_run" ]; }; then  # a good count resets the run of bad ones
+        record_reading run "" "" "$n_run" "$base"; run_prev=""
+      elif [ "$n_run" != "$last_assign" ]; then
+        [ -n "$pend" ] || pend_from=$last_assign
+        pend=1; pend_prev=$a_run; last_assign=$n_run; run_prev=""
+        record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
+      elif [ -n "$pend" ]; then
+        if awk -v a="$pend_prev" -v b="$a_run" 'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9)}'; then
+          [ -n "$last_own" ] && base=$(awk -v a="$a_run" -v o="$last_own" 'BEGIN{print a - o + 0}')
+          record_reading rebaseline "$a_run" "$last_own" "$n_run" "$base"
+          echo "RE-BASELINE: assignments $pend_from -> $n_run, neighbour baseline $base/hr $(date -u +%T)"
+          pend=""
+        else
+          pend_prev=$a_run
+          record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
+        fi
+      else
+      d_run=$(delta_of "$a_run" "$base")
+      record_reading run "$a_run" "$d_run" "$n_run" "$base"
+      if [ -n "$run_prev" ] && [ -n "$d_run" ] && awk -v a="$run_prev" -v b="$d_run" -v f="$GPU_RATE_FLOOR" \
+          'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9 && a >= f && b >= f)}'; then
+        if awk -v r="$d_run" -v m="$RATE_MAX_SEEN" 'BEGIN{exit !(r > m)}'; then
+          RATE_MAX_SEEN=$(awk -v r="$d_run" 'BEGIN{print r + 0}'); echo "$RATE_MAX_SEEN" > "$OUT/.rate_max"
+          OWN_RATE=$(awk -v m="$MAX_RATE" -v r="$RATE_MAX_SEEN" 'BEGIN{print (r > m ? r : m) + 0}')
+          PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
+          echo "RATE ROSE: own rate $RATE_MAX_SEEN/hr, priced at $OWN_RATE/hr $(date -u +%T)"
+        fi
+        if awk -v r="$d_run" -v m="$MAX_RATE" 'BEGIN{exit !(r > m)}'; then
+          echo "RATE_ABOVE_MAX|own rate $d_run/hr is above the max rate $MAX_RATE/hr (mid-run)" > "$OUT/.rate_verdict"
+          echo "REFUSED RATE_ABOVE_MAX (mid-run): own rate $d_run/hr is above the max rate $MAX_RATE/hr; fetching, then stopping $S $(date -u +%T)"
+          end_window RATE_ABOVE_MAX; continue
+        fi
+        last_own=$d_run
+      fi
+      run_prev=$d_run
+      fi
+    fi
     if [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then
       sess_w=$(CLI_T=30 cli sessions 2>&1) && sess_rc=0 || sess_rc=$?
       if [ "$sess_rc" -eq 0 ]; then
@@ -664,7 +872,7 @@ t0=$(date +%s)
 # Every PIN_* variable reaches the VM (window 10 failed when PIN_RND_COMMIT wasn't on a hand-kept list), except the
 # window script's own settings, which only matter here.
 ENV_ARGS=()
-for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S|UPLOAD_RETRY_SLEEP_S|COPYBACK_S|COPYBACK_DL_S|COPYBACK_LOCK|COPYBACK_STATE|COLAB_CONFIG|STUB_COPYBACK_RESUME|KILL_ESCALATE_S|C2_WATCH_S|C2_KILL_GRACE_S)$' || true); do
+for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSION|GPU|UPLOADS|DOWNLOADS|WATCH_S|STALL_FIRST_S|STALL_S|CAP_MARGIN|DL_TIMEOUT|SKIP_BINARY|JOB_SCRIPT|OPEN_LOCK|HF_TOKEN_FROM|HIGH_MEM|DEADLINE_GRACE_S|FETCH_ALLOW_S|UPLOAD_RETRY_SLEEP_S|COPYBACK_S|COPYBACK_DL_S|COPYBACK_LOCK|COPYBACK_STATE|COLAB_CONFIG|MAX_RATE|RATE_POLLS|RATE_POLL_S|USAGE_TIMEOUT_S|STUB_COPYBACK_RESUME|KILL_ESCALATE_S|C2_WATCH_S|C2_KILL_GRACE_S)$' || true); do
   ENV_ARGS+=(--env "$v=${!v}")
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
@@ -709,7 +917,15 @@ echo "end balance $(bal) (start $START)"
 # The window's outcome record (R&D, 2026-10-18: every outcome.json carries its date and commit). The rig writes what it
 # measured; the outcome class and its why are filled in by whoever reads the window, in outcome.json.
 T_END=$(cat "$OUT/.end.ts" 2>/dev/null || date +%s)
+if [ "${PIN_GPU:-A100}" != CPU ] && [ -f "$OUT/.rate_max" ]; then
+  RATE_MAX_SEEN=$(cat "$OUT/.rate_max")
+  OWN_RATE=$(awk -v m="$MAX_RATE" -v r="$RATE_MAX_SEEN" 'BEGIN{print (r > m ? r : m) + 0}')
+  PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
+fi
+if [ -f "$OUT/.rate_verdict" ]; then
+  v=$(cat "$OUT/.rate_verdict"); RATE_WHY=${v#*|}; write_rate_receipt "${v%%|*}"
+else
+  write_rate_receipt ok
+fi
 spent_end=$(awk -v r="$OWN_RATE" -v t="$(( T_END - T_OPEN ))" 'BEGIN{printf "%.2f", r*(t>0?t:0)/3600}')
-printf '{"window": "%s", "date": "%s", "commit": "%s", "card": "%s", "cap": %s, "spent": %s, "basis": "rate_x_runtime", "end": "%s", "outcome": null, "why": null}\n' \
-  "$(basename "$OUT")" "$(date -u +%F)" "${PIN_ROLESET_COMMIT:-unset}" "${PIN_GPU:-A100}" "$CAP_UNITS" "$spent_end" \
-  "$(cat "$OUT/.end" 2>/dev/null || echo exec)" | scrub_log > "$OUT/outcome.draft.json"
+outcome_draft "$(cat "$OUT/.end" 2>/dev/null || echo exec)" "$spent_end"
