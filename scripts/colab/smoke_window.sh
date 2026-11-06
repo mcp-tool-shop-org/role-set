@@ -151,8 +151,9 @@ RATE_POLLS="${PIN_RATE_POLLS:-4}"; RATE_POLL_S="${PIN_RATE_POLL_S:-5}"
 case "$RATE_POLLS" in ''|*[!0-9]*|0) echo "REFUSED: PIN_RATE_POLLS=$RATE_POLLS must be a whole number of 1 or more" >&2; exit 2;; esac
 RATE_READS_MAX=$(( RATE_POLLS + 1 ))
 [ "${PIN_GPU:-A100}" = CPU ] && RATE_READS_MAX=1  # a CPU stub reads once, as before, and keeps its labelled configured rate
-# Below the cheapest card's measured rate (T4 1.07/hr, L4 1.54/hr, receipts 2026-10-26/28): a smaller own delta is a
-# session not yet registered, or a neighbour's change, not this card's rate.
+# Between the cheapest GPU card measured, the T4 at 1.07/hr (16 reads in window windowC2-12-t4-s1a-20261027), and the
+# highest CPU rate, 0.26/hr (--high-mem): a smaller own delta is a session not yet registered, or a neighbour's change
+# (a parallel CPU session), not this card's rate.
 GPU_RATE_FLOOR=1.0
 USAGE_T="${PIN_USAGE_TIMEOUT_S:-30}"
 if [ "${CHECK_ONLY:-0}" = 1 ]; then
@@ -234,15 +235,25 @@ stop_all() {
 trap stop_all EXIT
 trap 'end_window term' TERM INT
 rate() { usage | strip_colab_banner | grep -oP 'rate: \K[0-9]+(\.[0-9]+)?' || true; }
+# One usage read as "<rate> <assignments>", either field "-" when unread: the rate and the assignment count from the same
+# call, so a neighbour's open or close is seen in the same read as the rate it moves.
+rate_assign() {
+  local u r n
+  u=$(usage | strip_colab_banner)
+  r=$(printf '%s\n' "$u" | grep -oP 'rate: \K[0-9]+(\.[0-9]+)?' | head -1 || true)
+  n=$(printf '%s\n' "$u" | grep -oP 'Active assignments: \K[0-9]+' | head -1 || true)
+  echo "${r:--} ${n:--}"
+}
 # This session's own rate: the account rate after colab new less the rate before; empty when either is unread or the
 # difference is 0 or less (a neighbour closing between the reads), never a constant.
 own_rate_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; r = a - b; if (r > 0) print r + 0 }'; }
 jnum() { if [ -n "${1:-}" ]; then printf '%s' "$1"; else printf null; fi; }
 RATE_LIVE=""; RATE_SCOPE=""; OWN_RATE=""; T_OPEN=""; T_NEW=""; PIN_DEADLINE=""; RATE_POLLS_USED=0; RATE_WHY=""
-RATE_STABLE_S=""; RATE_MAX_SEEN=""
+RATE_STABLE_S=""; RATE_MAX_SEEN=""; ASSIGN0=""
 READINGS="$OUT/rate-readings.jsonl"; rm -f "$READINGS" "$OUT/.rate_max" "$OUT/.rate_verdict" "$OUT/rate.json"
-record_reading() {  # $1: phase (open or run), $2: account rate, $3: own delta
-  printf '{"t": %s, "phase": "%s", "account_rate": %s, "own": %s}\n' "$(date +%s)" "$1" "$(jnum "$2")" "$(jnum "$3")" >> "$READINGS"
+record_reading() {  # $1: phase (open, run or rebaseline), $2: account rate, $3: own delta, $4: assignments, $5: baseline
+  printf '{"t": %s, "phase": "%s", "account_rate": %s, "own": %s, "assignments": %s, "baseline": %s}\n' "$(date +%s)" "$1" \
+    "$(jnum "$2")" "$(jnum "$3")" "$(jnum "${4:-}")" "$(jnum "${5:-}")" >> "$READINGS"
 }
 # The own delta of an account read, or empty: signed here, so the stability check sees a neighbour's change too.
 delta_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; print a - b + 0 }'; }
@@ -253,10 +264,10 @@ rate_fields() {
     "$(jnum "$MARGIN_DERIVED")" "$MARGIN" "$(jnum "$PIN_DEADLINE")"
 }
 write_rate_receipt() {  # $1: the verdict: ok, RATE_UNREAD or RATE_ABOVE_MAX
-  printf '{"verdict": "%s", "why": "%s", "gpu": "%s", "high_mem": "%s", %s, "cap": %s, "account_rate_before": %s, "account_rate_after": %s, "polls": %s, "floor": %s, "t_new": %s, "t_open": %s, "rate_stable_s": %s, "readings": [%s]}\n' \
+  printf '{"verdict": "%s", "why": "%s", "gpu": "%s", "high_mem": "%s", %s, "cap": %s, "account_rate_before": %s, "account_rate_after": %s, "polls": %s, "floor": %s, "t_new": %s, "t_open": %s, "rate_stable_s": %s, "assign0": %s, "readings": [%s]}\n' \
     "$1" "$RATE_WHY" "${PIN_GPU:-A100}" "${PIN_HIGH_MEM:-0}" "$(rate_fields)" "$CAP_UNITS" "$(jnum "$RATE0")" \
     "$(jnum "$RATE_AFTER")" "$RATE_POLLS_USED" "$GPU_RATE_FLOOR" "$(jnum "$T_NEW")" "$(jnum "$T_OPEN")" \
-    "$(jnum "$RATE_STABLE_S")" "$( [ -f "$READINGS" ] && paste -sd, "$READINGS")" | scrub_log > "$OUT/rate.json"
+    "$(jnum "$RATE_STABLE_S")" "$(jnum "$ASSIGN0")" "$( [ -f "$READINGS" ] && paste -sd, "$READINGS")" | scrub_log > "$OUT/rate.json"
 }
 outcome_draft() {  # $1: end, $2: spent (a number, or null)
   printf '{"window": "%s", "date": "%s", "commit": "%s", "card": "%s", "cap": %s, "spent": %s, "basis": "rate_x_runtime", %s, "end": "%s", "outcome": null, "why": null}\n' \
@@ -309,9 +320,11 @@ for try in $(seq 1 "$GATE_TRIES"); do
   RATE_AFTER=""; RATE_LIVE=""; RATE_POLLS_USED=0; RATE_STABLE_S=""; prev=""
   for poll in $(seq 1 "$RATE_READS_MAX"); do
     RATE_POLLS_USED=$poll
-    RATE_AFTER=$(rate)
+    read -r RATE_AFTER n_open < <(rate_assign)
+    [ "$RATE_AFTER" = - ] && RATE_AFTER=""; [ "$n_open" = - ] && n_open=""
     d=$(delta_of "$RATE_AFTER" "$RATE0")
-    record_reading open "$RATE_AFTER" "$d"
+    record_reading open "$RATE_AFTER" "$d" "$n_open" "$RATE0"
+    ASSIGN0=$n_open  # the count with our session in it, as of the read the rate was taken from
     if [ "${PIN_GPU:-A100}" = CPU ]; then
       RATE_LIVE=$(own_rate_of "$RATE_AFTER" "$RATE0"); break
     fi
@@ -613,12 +626,26 @@ fi
 # A GPU window re-reads its rate every cap check, so the check runs at least once a minute.
 if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
 ( seen=0; size0=-1; grew=0; ended=""; noted=""; last_copyback=0; sess_fail=0; run_prev=""
+  base="$RATE0"; last_assign="$ASSIGN0"; last_own="${RATE_LIVE:-}"
   while sleep "$TICK_S"; do
     # The mid-run rate (R&D review of #132): every reading is recorded; a stable reading at or above the floor raises the
     # highest rate seen, and one above the max rate ends the window as a cap trip (RATE_ABOVE_MAX), fetch then stop.
     if [ "${PIN_GPU:-A100}" != CPU ] && [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then
-      a_run=$(rate); d_run=$(delta_of "$a_run" "$RATE0")
-      record_reading run "$a_run" "$d_run"
+      # `colab usage` is account-wide: when the assignment count moves, a neighbour opened or closed, and the delta
+      # against the old baseline is theirs too. Re-baseline (account now less our last stable rate), record it, and judge
+      # nothing on that read; only reads at an unchanged count may raise our rate or trip the max.
+      read -r a_run n_run < <(rate_assign)
+      [ "$a_run" = - ] && a_run=""; [ "$n_run" = - ] && n_run=""
+      if [ -z "$n_run" ] || [ -z "$a_run" ]; then
+        record_reading run "$a_run" "" "$n_run" "$base"; run_prev=""
+      elif [ "$n_run" != "$last_assign" ]; then
+        [ -n "$last_own" ] && base=$(awk -v a="$a_run" -v o="$last_own" 'BEGIN{print a - o + 0}')
+        record_reading rebaseline "$a_run" "$last_own" "$n_run" "$base"
+        echo "RE-BASELINE: assignments $last_assign -> $n_run, neighbour baseline $base/hr $(date -u +%T)"
+        last_assign=$n_run; run_prev=""
+      else
+      d_run=$(delta_of "$a_run" "$base")
+      record_reading run "$a_run" "$d_run" "$n_run" "$base"
       if [ -n "$run_prev" ] && [ -n "$d_run" ] && awk -v a="$run_prev" -v b="$d_run" -v f="$GPU_RATE_FLOOR" \
           'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9 && a >= f && b >= f)}'; then
         if awk -v r="$d_run" -v m="$RATE_MAX_SEEN" 'BEGIN{exit !(r > m)}'; then
@@ -632,8 +659,10 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
           echo "REFUSED RATE_ABOVE_MAX (mid-run): own rate $d_run/hr is above the max rate $MAX_RATE/hr; fetching, then stopping $S $(date -u +%T)"
           end_window RATE_ABOVE_MAX; continue
         fi
+        last_own=$d_run
       fi
       run_prev=$d_run
+      fi
     fi
     if [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then
       sess_w=$(CLI_T=30 cli sessions 2>&1) && sess_rc=0 || sess_rc=$?

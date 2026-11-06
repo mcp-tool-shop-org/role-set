@@ -30,6 +30,12 @@ All notable changes to role-set are documented here. The format is based on
     end a window early. The watcher re-reads the rate every cap check, at least once a minute on GPU. A stable rate
     above the max ends the window mid-run as `RATE_ABOVE_MAX`, fetching first, then stopping. Every reading goes to
     `rate.json`. Every `colab usage` call is bounded by `timeout -k`.
+  - A parallel window opening or closing changes the account rate. Each mid-run read also carries the "Active
+    assignments" count, recorded at open as `assign0`. When the count changes, the watcher re-baselines: the neighbour
+    baseline becomes the account rate now less our last stable rate. It records the re-baseline and judges nothing on
+    that read. Only reads at an unchanged count may raise the rate or trip `RATE_ABOVE_MAX`.
+  - Known limit: a mid-run rise moves the deadline on the rig only. The VM keeps the `PIN_DEADLINE` it was given at the
+    exec, so the watcher's grace ends the job.
   - The cap's clock starts when `colab new` succeeds, not after the polls, the settle and the gate.
   - The margin budget check rounds instead of truncating: 0.30 at 6/hr is 180 s, not 179 s. `--check-only` runs the
     checks that come before any colab call.

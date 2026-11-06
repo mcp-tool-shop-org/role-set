@@ -55,7 +55,11 @@ case "$cmd" in
       if [ -n "${FAKE_RATE_UNREAD:-}" ] && { [ -z "${FAKE_RATE_UNREAD_READS:-}" ] || [ "$u_n" -le "$FAKE_RATE_UNREAD_READS" ]; }; then
         case "$FAKE_RATE_UNREAD" in zero) r=0.00;; missing) r="";; esac
       fi
-    else r="${FAKE_RATE0:-0.00}"; fi  # FAKE_RATE0: the account rate with no session of ours (a neighbour's)
+    else r="${FAKE_RATE0:-0.00}"; fi
+    # FAKE_ASSIGN_SEQ: the "Active assignments" count at each post-open read (a neighbour opening or closing).
+    if [ -f "$ST/open" ] && [ -n "${FAKE_ASSIGN_SEQ:-}" ] && [ "${FAKE_MODE:-normal}" != neighbourclose ]; then
+      n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | sed -n "${u_n}p"); [ -n "$n_open" ] || n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | tail -1)
+    fi  # FAKE_RATE0: the account rate with no session of ours (a neighbour's)
     echo "Current balance: 100.00 compute units"; [ -n "$r" ] && echo "Usage rate: $r/hr"; echo "Active assignments: $n_open";;
   new)
     if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then

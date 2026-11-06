@@ -1563,6 +1563,44 @@ def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15()
 
 
 
+# ---- fix 3 (confirming review of #132): a parallel window opening or closing moves the account rate; the assignment
+# count shows it, so the watcher re-baselines on a count change and judges only reads at an unchanged count.
+
+def test_a_neighbour_opening_mid_run_re_baselines_and_does_not_trip():
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "8", "FAKE_RATE_SEQ": "8.88,8.88,8.88,17.76",
+                                             "FAKE_ASSIGN_SEQ": "1,1,1,2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    assert "RE-BASELINE: assignments 1 -> 2, neighbour baseline 8.88/hr" in rig, rig
+    r = _rate(out)
+    assert r["verdict"] == "ok" and r["assign0"] == 1 and r["rate_max_seen"] == 8.88, r
+    reb = [x for x in r["readings"] if x["phase"] == "rebaseline"]
+    assert len(reb) == 1 and reb[0]["account_rate"] == 17.76 and reb[0]["baseline"] == 8.88 and reb[0]["assignments"] == 2, r
+    after = [x for x in r["readings"] if x["phase"] == "run" and x["t"] >= reb[0]["t"]]
+    assert after and all(x["own"] == 8.88 and x["baseline"] == 8.88 for x in after), r
+
+
+def test_our_own_rate_rising_at_an_unchanged_count_trips_rate_above_max():
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "30", "FAKE_RATE_SEQ": "8.88,8.88,8.88,12.00",
+                                             "FAKE_ASSIGN_SEQ": "1"})
+    assert "REFUSED RATE_ABOVE_MAX (mid-run): own rate 12/hr" in rig and "RE-BASELINE" not in rig, rig
+    r = _rate(out)
+    assert r["verdict"] == "RATE_ABOVE_MAX" and r["assign0"] == 1, r
+    assert any(x["phase"] == "run" and x["own"] == 12 and x["assignments"] == 1 for x in r["readings"]), r
+
+
+def test_a_neighbour_closing_mid_run_re_baselines_and_does_not_trip():
+    # A neighbour at 8.88 runs beside us at open (2 assignments), then closes (1): the account falls to our 8.88.
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "8", "FAKE_RATE0": "8.88",
+                                             "FAKE_RATE_SEQ": "17.76,17.76,17.76,8.88", "FAKE_ASSIGN_SEQ": "2,2,2,1"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    assert "RE-BASELINE: assignments 2 -> 1, neighbour baseline 0/hr" in rig, rig
+    r = _rate(out)
+    assert r["assign0"] == 2 and r["rate_live"] == 8.88, r
+    after = [x for x in r["readings"] if x["phase"] == "run" and x["baseline"] == 0]
+    assert after and all(x["own"] == 8.88 for x in after), r
+
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     only = set(sys.argv[1:])
     failed = 0
