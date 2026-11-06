@@ -1601,6 +1601,48 @@ def test_a_neighbour_closing_mid_run_re_baselines_and_does_not_trip():
 
 
 
+# ---- fix 4: the re-baseline waits for the new count to settle; a bad count fails closed
+
+def test_a_count_that_leads_the_neighbours_rate_by_a_read_does_not_trip():
+    # The count goes to 2 one read before the neighbour's 8.88 shows in the account rate.
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "8", "FAKE_RATE_SEQ": "8.88,8.88,8.88,8.88,17.76",
+                                             "FAKE_ASSIGN_SEQ": "1,1,1,2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    assert "RE-BASELINE: assignments 1 -> 2, neighbour baseline 8.88/hr" in rig, rig
+    r = _rate(out)
+    assert [x["phase"] for x in r["readings"]].count("rebaseline") == 1, r
+    assert "rebaseline_pending" in [x["phase"] for x in r["readings"]], r
+
+
+def _unreadable(extra: dict) -> None:
+    import json
+
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "30", **extra})
+    assert "REFUSED ASSIGNMENTS_UNREADABLE (mid-run)" in rig and "end=ASSIGNMENTS_UNREADABLE" in rig, rig
+    assert job.count("PIN_RESULT") == 0 and (out / "job.log").exists() and not (out.parent / "st" / "open").exists(), rig
+    r = _rate(out)
+    assert r["verdict"] == "ASSIGNMENTS_UNREADABLE" and "3 consecutive" in r["why"], r
+    assert [x["phase"] for x in r["readings"]].count("bad_count") == 3, r
+    assert json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "ASSIGNMENTS_UNREADABLE"
+
+
+def test_a_missing_assignment_count_for_three_reads_ends_the_window():
+    _unreadable({"FAKE_ASSIGN_MISSING_READS": "4,5,6"})
+
+
+def test_a_zero_assignment_count_while_open_for_three_reads_ends_the_window():
+    _unreadable({"FAKE_ASSIGN_SEQ": "1,1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"})
+
+
+def test_a_single_missing_assignment_count_is_recorded_only():
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "8", "FAKE_ASSIGN_MISSING_READS": "4"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    r = _rate(out)
+    bad = [x for x in r["readings"] if x["phase"] == "bad_count"]
+    assert r["verdict"] == "ok" and len(bad) == 1 and bad[0]["assignments"] is None, r
+
+
+
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
     only = set(sys.argv[1:])
     failed = 0

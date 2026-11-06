@@ -60,7 +60,10 @@ case "$cmd" in
     if [ -f "$ST/open" ] && [ -n "${FAKE_ASSIGN_SEQ:-}" ] && [ "${FAKE_MODE:-normal}" != neighbourclose ]; then
       n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | sed -n "${u_n}p"); [ -n "$n_open" ] || n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | tail -1)
     fi  # FAKE_RATE0: the account rate with no session of ours (a neighbour's)
-    echo "Current balance: 100.00 compute units"; [ -n "$r" ] && echo "Usage rate: $r/hr"; echo "Active assignments: $n_open";;
+    # FAKE_ASSIGN_MISSING_READS: post-open read numbers (comma list) that drop the "Active assignments" line.
+    drop_n=0; case ",${FAKE_ASSIGN_MISSING_READS:-}," in *",${u_n:-x},"*) drop_n=1;; esac
+    echo "Current balance: 100.00 compute units"; [ -n "$r" ] && echo "Usage rate: $r/hr"
+    [ "$drop_n" = 1 ] || echo "Active assignments: $n_open";;
   new)
     if [ -n "${PIN_OPEN_LOCK:-}" ] && ! flock -n "$PIN_OPEN_LOCK" true 2>/dev/null; then
       echo locked >> "$ST/new-lock.log"

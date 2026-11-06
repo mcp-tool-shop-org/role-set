@@ -11,6 +11,10 @@
 # sit at or above GPU_RATE_FLOOR, within PIN_RATE_POLLS polls (plus the one extra read stability needs). The watcher
 # re-reads it every cap check (at most 60 s apart on a GPU window): a rise moves the deadline to the highest rate seen,
 # and a rate above the max ends the window as a cap trip (RATE_ABOVE_MAX). Every reading goes to rate.json.
+# A change in the "Active assignments" count (a neighbour opening or closing) re-baselines once two reads at the new
+# count agree; a count missing or 0 for 3 reads in a row ends the window (ASSIGNMENTS_UNREADABLE). Known limit: a
+# neighbour opening in the same read our own rate rises can fold that rise into the baseline; pricing at
+# max(max rate, highest seen) bounds it, and a window's rate is set at assignment.
 # A GPU window names its worst-case rate with --max-rate or PIN_MAX_RATE (no default); an own rate that stays unread
 # refuses RATE_UNREAD and one above the max refuses RATE_ABOVE_MAX, each right after the open, and the trap stops the
 # session. There is no fallback to a constant rate on a GPU card. Each window's rate.json records the reading.
@@ -626,23 +630,43 @@ fi
 # A GPU window re-reads its rate every cap check, so the check runs at least once a minute.
 if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
 ( seen=0; size0=-1; grew=0; ended=""; noted=""; last_copyback=0; sess_fail=0; run_prev=""
-  base="$RATE0"; last_assign="$ASSIGN0"; last_own="${RATE_LIVE:-}"
+  base="$RATE0"; last_assign="$ASSIGN0"; last_own="${RATE_LIVE:-}"; pend=""; pend_prev=""; pend_from=""; bad_n=0
   while sleep "$TICK_S"; do
     # The mid-run rate (R&D review of #132): every reading is recorded; a stable reading at or above the floor raises the
     # highest rate seen, and one above the max rate ends the window as a cap trip (RATE_ABOVE_MAX), fetch then stop.
     if [ "${PIN_GPU:-A100}" != CPU ] && [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then
       # `colab usage` is account-wide: when the assignment count moves, a neighbour opened or closed, and the delta
-      # against the old baseline is theirs too. Re-baseline (account now less our last stable rate), record it, and judge
-      # nothing on that read; only reads at an unchanged count may raise our rate or trip the max.
+      # against the old baseline is theirs too. Nothing is judged until two consecutive reads at the new count agree
+      # within 0.01 (a neighbour's rate can register a read after its count); then the baseline becomes the account
+      # rate less our last stable rate. Pricing stays max(max rate, highest seen) throughout. A missing count, or 0 while
+      # we are open, is recorded; three in a row end the window as ASSIGNMENTS_UNREADABLE (fetch, then stop).
+      # Known limit: a neighbour opening in the same read our own rate rises folds that rise into the baseline.
       read -r a_run n_run < <(rate_assign)
       [ "$a_run" = - ] && a_run=""; [ "$n_run" = - ] && n_run=""
-      if [ -z "$n_run" ] || [ -z "$a_run" ]; then
-        record_reading run "$a_run" "" "$n_run" "$base"; run_prev=""
+      if [ -z "$n_run" ] || [ "$n_run" = 0 ]; then
+        bad_n=$(( bad_n + 1 )); run_prev=""
+        record_reading bad_count "$a_run" "" "$n_run" "$base"
+        if [ "$bad_n" -ge 3 ]; then
+          echo "ASSIGNMENTS_UNREADABLE|assignment count missing or 0 for $bad_n consecutive reads (mid-run)" > "$OUT/.rate_verdict"
+          echo "REFUSED ASSIGNMENTS_UNREADABLE (mid-run): assignment count missing or 0 for $bad_n consecutive reads; fetching, then stopping $S $(date -u +%T)"
+          end_window ASSIGNMENTS_UNREADABLE; continue
+        fi
+      elif { bad_n=0; [ -z "$a_run" ]; }; then  # a good count resets the run of bad ones
+        record_reading run "" "" "$n_run" "$base"; run_prev=""
       elif [ "$n_run" != "$last_assign" ]; then
-        [ -n "$last_own" ] && base=$(awk -v a="$a_run" -v o="$last_own" 'BEGIN{print a - o + 0}')
-        record_reading rebaseline "$a_run" "$last_own" "$n_run" "$base"
-        echo "RE-BASELINE: assignments $last_assign -> $n_run, neighbour baseline $base/hr $(date -u +%T)"
-        last_assign=$n_run; run_prev=""
+        [ -n "$pend" ] || pend_from=$last_assign
+        pend=1; pend_prev=$a_run; last_assign=$n_run; run_prev=""
+        record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
+      elif [ -n "$pend" ]; then
+        if awk -v a="$pend_prev" -v b="$a_run" 'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9)}'; then
+          [ -n "$last_own" ] && base=$(awk -v a="$a_run" -v o="$last_own" 'BEGIN{print a - o + 0}')
+          record_reading rebaseline "$a_run" "$last_own" "$n_run" "$base"
+          echo "RE-BASELINE: assignments $pend_from -> $n_run, neighbour baseline $base/hr $(date -u +%T)"
+          pend=""
+        else
+          pend_prev=$a_run
+          record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
+        fi
       else
       d_run=$(delta_of "$a_run" "$base")
       record_reading run "$a_run" "$d_run" "$n_run" "$base"
@@ -655,7 +679,7 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
           echo "RATE ROSE: own rate $RATE_MAX_SEEN/hr, priced at $OWN_RATE/hr $(date -u +%T)"
         fi
         if awk -v r="$d_run" -v m="$MAX_RATE" 'BEGIN{exit !(r > m)}'; then
-          echo "own rate $d_run/hr is above the max rate $MAX_RATE/hr (mid-run)" > "$OUT/.rate_verdict"
+          echo "RATE_ABOVE_MAX|own rate $d_run/hr is above the max rate $MAX_RATE/hr (mid-run)" > "$OUT/.rate_verdict"
           echo "REFUSED RATE_ABOVE_MAX (mid-run): own rate $d_run/hr is above the max rate $MAX_RATE/hr; fetching, then stopping $S $(date -u +%T)"
           end_window RATE_ABOVE_MAX; continue
         fi
@@ -899,7 +923,7 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ -f "$OUT/.rate_max" ]; then
   PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
 fi
 if [ -f "$OUT/.rate_verdict" ]; then
-  RATE_WHY=$(cat "$OUT/.rate_verdict"); write_rate_receipt RATE_ABOVE_MAX
+  v=$(cat "$OUT/.rate_verdict"); RATE_WHY=${v#*|}; write_rate_receipt "${v%%|*}"
 else
   write_rate_receipt ok
 fi

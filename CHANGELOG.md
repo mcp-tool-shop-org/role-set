@@ -34,6 +34,13 @@ All notable changes to role-set are documented here. The format is based on
     assignments" count, recorded at open as `assign0`. When the count changes, the watcher re-baselines: the neighbour
     baseline becomes the account rate now less our last stable rate. It records the re-baseline and judges nothing on
     that read. Only reads at an unchanged count may raise the rate or trip `RATE_ABOVE_MAX`.
+  - The re-baseline waits for two consecutive reads at the new count that agree within 0.01, because a neighbour's
+    rate can register a read after its count. Nothing is judged meanwhile, and pricing stays max(max rate, highest
+    seen). A missing assignment count, or 0 while open, is recorded. Three in a row end the window as
+    `ASSIGNMENTS_UNREADABLE`, fetching first, then stopping.
+  - Known limit: a neighbour opening in the same read our own rate rises can fold that rise into the baseline. A
+    window's rate is set at assignment and is not known to change mid-session. The measured price changes (6.77 to
+    8.88) came between sessions. Pricing at max(max rate, highest seen) bounds the exposure.
   - Known limit: a mid-run rise moves the deadline on the rig only. The VM keeps the `PIN_DEADLINE` it was given at the
     exec, so the watcher's grace ends the job.
   - The cap's clock starts when `colab new` succeeds, not after the polls, the settle and the gate.
