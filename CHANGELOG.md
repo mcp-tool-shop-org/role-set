@@ -22,6 +22,17 @@ All notable changes to role-set are documented here. The format is based on
   - A GPU window's margin is derived: `ceil((grace + fetch) x max_rate / 3600)` to 0.01 units. An explicit
     `PIN_CAP_MARGIN` may raise it, never lower it. A lower value refuses `MARGIN_TOO_SMALL` before any VM. CPU stubs
     are unchanged. Both values go to `rate.json` and the outcome draft (`margin_derived`, `margin`).
+  - `colab usage` is account-wide, so the own delta counts only when stable: two reads `PIN_RATE_POLL_S` apart that
+    agree within 0.01, at or above `GPU_RATE_FLOOR` 1.00/hr. The cheapest GPU card measured is the T4 at 1.07/hr, and
+    the highest CPU rate is 0.26/hr. Polls are 4 x 5 s plus the one extra read stability needs. The time to the first
+    stable read is recorded.
+  - The cap and the deadline are priced on max(max rate, the highest stable rate seen), so an under-read rate can only
+    end a window early. The watcher re-reads the rate every cap check, at least once a minute on GPU. A stable rate
+    above the max ends the window mid-run as `RATE_ABOVE_MAX`, fetching first, then stopping. Every reading goes to
+    `rate.json`. Every `colab usage` call is bounded by `timeout -k`.
+  - The cap's clock starts when `colab new` succeeds, not after the polls, the settle and the gate.
+  - The margin budget check rounds instead of truncating: 0.30 at 6/hr is 180 s, not 179 s. `--check-only` runs the
+    checks that come before any colab call.
   - Each window writes `rate.json` (verdict, why, `rate_live`, `rate_scope`, `rate_used`, `max_rate`, `margin`,
     `deadline`, cap, polls), and `outcome.draft.json` carries the same rate fields.
   - The fake `colab usage` reports a post-open rate (`FAKE_RATE`) or an unreadable one (`FAKE_RATE_UNREAD=zero|missing`),

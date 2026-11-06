@@ -98,7 +98,7 @@ def test_a_neighbour_closing_between_rate_reads_leaves_a_gpu_rate_unread_and_ref
     # No fallback to a constant on a GPU card (R&D, 2026-11-06): the own rate is unread, so the window refuses and stops.
     rig, job, out = _window("neighbourclose", extra={"PIN_MOCK_S": "2"})
     assert "account rate 15.90/hr" in rig, rig
-    assert "REFUSED RATE_UNREAD: own rate unread after 3 polls" in rig and "own rate" not in rig.split("REFUSED")[0], rig
+    assert "REFUSED RATE_UNREAD: own rate not stable at or above 1.0/hr after 5 polls" in rig and "own rate" not in rig.split("REFUSED")[0], rig
     assert not job and not (out.parent / "st" / "execs").exists(), rig
     assert (out.parent / "st" / "stopped_under_lock").exists() and not (out.parent / "st" / "open").exists()
 
@@ -1275,7 +1275,8 @@ def test_session_drop_after_new_journal_lines_runs_final_copyback_freezes_spend_
             "FAKE_EXEC_HANG_AFTER_DONE_S": "15",
             "FAKE_EXEC_IGNORE_TERM": "1",
             "PIN_KILL_ESCALATE_S": "2",
-            "PIN_CAP_UNITS": "0.008",
+            # The cap clock starts at the open now, so the 15 s settle (0.022 at the fake 5.30/hr) is on it too.
+            "PIN_CAP_UNITS": "0.030",
             "PIN_CAP_MARGIN": "0.0005",
             "PIN_DEADLINE_GRACE_S": "10",
             "PIN_FETCH_ALLOW_S": "1",
@@ -1366,7 +1367,8 @@ def test_an_unread_live_rate_refuses_rate_unread_after_its_polls_and_stops_the_s
         rig, job, out = _window("normal", extra={"FAKE_RATE_UNREAD": how, "PIN_RATE_POLLS": "3"})
         _refused_and_stopped(rig, job, out, "RATE_UNREAD")
         r = _rate(out)
-        assert r["polls"] == 3 and (out.parent / "st" / "usage-reads").read_text().strip() == "3", (how, r)
+        # 3 polls and the one extra read stability needs
+        assert r["polls"] == 4 and (out.parent / "st" / "usage-reads").read_text().strip() == "4", (how, r)
         assert r["rate_live"] is None and r["rate_used"] is None and r["rate_scope"] == "unread", (how, r)
         assert r["max_rate"] == 6 and r["cap"] == 99 and r["margin"] == 0.01, (how, r)
 
@@ -1375,7 +1377,7 @@ def test_a_rate_read_on_a_later_poll_proceeds_on_that_rate():
     rig, job, out = _window("normal", extra={"FAKE_RATE_UNREAD": "missing", "FAKE_RATE_UNREAD_READS": "2",
                                              "PIN_RATE_POLLS": "3", "PIN_MOCK_S": "1", "PIN_GATE": "0"})
     r = _rate(out)
-    assert r["verdict"] == "ok" and r["polls"] == 3 and r["rate_live"] == 5.3 and r["rate_scope"] == "own_delta", r
+    assert r["verdict"] == "ok" and r["polls"] == 4 and r["rate_live"] == 5.3 and r["rate_scope"] == "own_delta", r
     assert job.count("PIN_RESULT") == 1, rig
 
 
@@ -1384,7 +1386,7 @@ def test_a_live_rate_above_the_max_refuses_rate_above_max_right_after_the_open()
     _refused_and_stopped(rig, job, out, "RATE_ABOVE_MAX")
     assert "own rate 8.88/hr is above the max rate 8/hr" in rig, rig
     r = _rate(out)
-    assert r["rate_live"] == 8.88 and r["max_rate"] == 8 and r["polls"] == 1, r
+    assert r["rate_live"] == 8.88 and r["max_rate"] == 8 and r["polls"] == 2, r
     # The --max-rate flag reaches the same check.
     rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": None}, args=("--max-rate", "8"))
     _refused_and_stopped(rig, job, out, "RATE_ABOVE_MAX")
@@ -1398,10 +1400,10 @@ def test_a_live_rate_under_the_max_proceeds_and_the_deadline_runs_on_the_live_ra
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
     assert "own rate 8.88/hr (own_delta; max 9.5" in rig, rig
     r = _rate(out)
-    assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["rate_used"] == 8.88, r
+    assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["rate_used"] == 9.5, r
     assert r["rate_scope"] == "own_delta" and r["max_rate"] == 9.5 and r["cap"] == 99 and r["margin"] == 0.02, r
-    # (cap - margin) / live rate: 98.98 / 8.88 h = 40127 s past the open, not at 5.3 (67233 s) nor at the max (37508 s).
-    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 8.88 * 3600), r
+    # Priced on max(max rate, highest stable rate seen): 98.98 / 9.5 h past the open.
+    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 9.5 * 3600), r
     d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
     assert d["rate_live"] == 8.88 and d["rate_scope"] == "own_delta" and d["max_rate"] == 9.5, d
     assert d["deadline"] == r["deadline"] and d["margin"] == 0.02 and d["cap"] == 99, d
@@ -1439,7 +1441,7 @@ def test_a_gpu_window_without_a_margin_uses_the_derived_one_and_proceeds():
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
     r = _rate(out)  # (2 s + 2 s) x 9.5/hr = 0.0106 units, rounded up to 0.02
     assert r["margin_derived"] == 0.02 and r["margin"] == 0.02, r
-    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 5.3 * 3600), r
+    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 9.5 * 3600), r
     import json
     d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
     assert d["margin_derived"] == 0.02 and d["margin"] == 0.02, d
@@ -1451,13 +1453,113 @@ def test_an_explicit_higher_margin_is_used():
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
     r = _rate(out)
     assert r["margin_derived"] == 0.02 and r["margin"] == 0.05, r
-    assert r["deadline"] - r["t_open"] == int((99 - 0.05) / 5.3 * 3600), r
+    assert r["deadline"] - r["t_open"] == int((99 - 0.05) / 9.5 * 3600), r
 
 
 def test_an_explicit_lower_margin_refuses_margin_too_small_before_any_vm():
     rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.01"})
     assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.01 is below the derived margin 0.02" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job and not (out / "rate.json").exists()
+
+
+
+# ---- fix 2 (R&D review of #132 and the Publisher's ruling, 2026-11-06): `colab usage` is account-wide, so the own delta
+# counts only when stable (two reads 5 s apart within 0.01) and at or above GPU_RATE_FLOOR (1.00/hr); the cap and the
+# deadline are priced on max(max rate, the highest stable rate seen); the rate is re-read during the run; the cap's
+# clock starts at the open; the budget check rounds.
+
+FIX2 = {"PIN_MAX_RATE": "9.5", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": None, "PIN_MOCK_S": "1", "PIN_GATE": "0"}
+
+
+def _priced_deadline_s(r: dict) -> int:
+    return r["deadline"] - r["t_open"]
+
+
+def test_an_under_read_rate_is_priced_at_the_max_rate_not_stretched():
+    rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE": "2.15"})
+    r = _rate(out)
+    assert r["verdict"] == "ok" and r["rate_live"] == 2.15 and r["rate_used"] == 9.5, r
+    # (8 - 0.02) / 9.5 h is about 50 min; at 2.15 it would be about 3.7 h.
+    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600) and _priced_deadline_s(r) < 3100, r
+    assert job.count("PIN_RESULT") == 1, rig
+
+
+def test_a_stepped_registration_waits_for_a_stable_rate_and_prices_on_the_max():
+    rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE_SEQ": "4.00,8.88"})
+    r = _rate(out)
+    assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["polls"] == 3, r  # 4.00, 8.88, 8.88
+    assert [x["own"] for x in r["readings"] if x["phase"] == "open"] == [4, 8.88, 8.88], r
+    assert r["rate_used"] == 9.5 and _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+    assert r["rate_stable_s"] is not None and r["rate_stable_s"] >= 0, r
+
+
+def test_a_neighbour_closing_gives_a_low_stable_delta_that_cannot_stretch_the_deadline():
+    # The account read 6.73 before the open (a neighbour) and 8.88 after: the own delta reads 2.15, stable.
+    rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE0": "6.73", "FAKE_RATE_SEQ": "8.88"})
+    r = _rate(out)
+    assert r["account_rate_before"] == 6.73 and r["rate_live"] == 2.15 and r["rate_used"] == 9.5, r
+    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+    assert job.count("PIN_RESULT") == 1, rig
+
+
+def test_a_mid_run_rise_above_the_max_refuses_rate_above_max_and_stops():
+    import json
+
+    rig, job, out = _window("normal", extra={**FIX2, "PIN_MOCK_S": "30", "FAKE_RATE_SEQ": "4.00,4.00,4.00,12.00"})
+    assert "REFUSED RATE_ABOVE_MAX (mid-run): own rate 12/hr is above the max rate 9.5/hr" in rig, rig
+    assert "end=RATE_ABOVE_MAX" in rig and job.count("PIN_RESULT") == 0, rig
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["end"] == "RATE_ABOVE_MAX" and d["rate_max_seen"] == 12, d
+    r = _rate(out)
+    assert r["verdict"] == "RATE_ABOVE_MAX" and "mid-run" in r["why"], r
+    assert any(x["phase"] == "run" and x["own"] == 12 for x in r["readings"]), r
+    assert (out / "job.log").exists() and not (out.parent / "st" / "open").exists(), rig  # fetched, then stopped
+
+
+def test_a_parallel_cpu_neighbour_rate_refuses_rate_unread_by_the_floor():
+    # A CPU session beside it reads 0.26/hr: a delta of 0 or of 0.26 is no GPU card's rate.
+    for seq in ("0.26", "0.52"):
+        rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE0": "0.26", "FAKE_RATE_SEQ": seq})
+        _refused_and_stopped(rig, job, out, "RATE_UNREAD")
+        assert _rate(out)["floor"] == 1.0, _rate(out)
+
+
+def test_the_cap_clock_starts_when_the_session_opens():
+    rig, job, out = _window("normal", extra={**FIX2})  # the poll and the 15 s settle come after the open
+    r = _rate(out)
+    new_at = int((out.parent / "st" / "new-at").read_text().strip())
+    assert r["t_new"] == r["t_open"] and r["t_open"] - new_at <= 1, (r, new_at)
+    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+
+
+def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15():
+    import concurrent.futures
+    import math
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-sweep-"))
+    binfile = tmp / "bin.dat"
+    binfile.write_bytes(b"x")
+    script = str(ROOT / "scripts/colab/smoke_window.sh")
+    base = {**os.environ, "PATH": f"{FAKE}:{os.environ['PATH']}", "FAKE_ST": str(tmp / "st"), "PIN_SKIP_BINARY": "1",
+            "PIN_GATE_MIN_DISK_GB": "0", "PIN_GPU": "A100"}
+
+    def one(cents: int) -> list:
+        rate = f"{cents / 100:.2f}"
+        derived = math.ceil(round(180 * cents / 100 / 36, 9)) / 100  # the default grace 60 s + fetch 120 s
+        bad = []
+        # the derived margin, and the same value written by hand ("0.3" for "0.30"), which takes the rounded check
+        for margin in (None, f"{derived:g}"):
+            env = {**base, "PIN_MAX_RATE": rate, **({"PIN_CAP_MARGIN": margin} if margin else {})}
+            r = subprocess.run(["bash", script, "--check-only", str(binfile), str(tmp / "out")], env=env,
+                               capture_output=True, text=True, timeout=60)
+            if r.returncode != 0 or "CHECK OK" not in r.stdout:
+                bad.append((rate, margin, r.returncode, r.stderr.strip()[-200:]))
+        return bad
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as ex:
+        bad = [b for res in ex.map(one, range(100, 1501)) for b in res]
+    assert not bad, bad[:10]
+    assert not (tmp / "st" / "news").exists()  # --check-only never reaches colab
 
 
 
