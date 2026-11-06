@@ -15,6 +15,10 @@
 # count agree; a count missing or 0 for 3 reads in a row ends the window (ASSIGNMENTS_UNREADABLE). Known limit: a
 # neighbour opening in the same read our own rate rises can fold that rise into the baseline; pricing at
 # max(max rate, highest seen) bounds it, and a window's rate is set at assignment.
+# Known limit: a Colab CLI outage that fails 3 consecutive usage reads (about 3 min at 60 s a cycle) ends the window as
+# ASSIGNMENTS_UNREADABLE; it stops early and adds no spend.
+# Known limit: a neighbour whose assignment count leads its rate by 2 or more reads (a registration lag of 2+ minutes)
+# can still falsely trip RATE_ABOVE_MAX; unlikely, and it adds no spend.
 # A GPU window names its worst-case rate with --max-rate or PIN_MAX_RATE (no default); an own rate that stays unread
 # refuses RATE_UNREAD and one above the max refuses RATE_ABOVE_MAX, each right after the open, and the trap stops the
 # session. There is no fallback to a constant rate on a GPU card. Each window's rate.json records the reading.
