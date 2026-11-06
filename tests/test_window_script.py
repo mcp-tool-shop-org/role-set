@@ -337,14 +337,14 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
 def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
     # The defaults (an empty value takes them): grace 60 s + fetch 120 s against the margin at the fake A100's 5.3/hr.
     defaults = {"PIN_DEADLINE_GRACE_S": "", "PIN_FETCH_ALLOW_S": ""}
-    # The margin is measured at the window's max rate, the worst case, never a constant.
+    # A GPU window's margin is derived at its max rate, the worst case: 180 s at 5.3/hr is 0.265, so 0.27.
     rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2", "PIN_MAX_RATE": "5.3"})
-    assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.2 units at 5.3/hr is 135s" in rig, rig
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.2 is below the derived margin 0.27" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
     rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
     rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "8.88"})
-    assert "REFUSED: grace 60s + fetch 120s don't fit the margin: 0.3 units at 8.88/hr is 121s" in rig, rig
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.3 is below the derived margin 0.45" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job
 
 
@@ -357,10 +357,10 @@ def test_card_rates_refusals_and_g4_margin_check():
     # 1. The margin check runs at the max rate on a GPU card and at the configured stub rate on a CPU one; a neighbour
     #    closing between the rate reads refuses RATE_UNREAD on a GPU card, and a CPU stub takes its labelled configured rate.
     for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
-        ("G4", "0", "8.90", "0.3", "121"),
-        ("G4", "1", "8.90", "0.3", "121"),
-        ("A100", "1", "8.88", "0.3", "121"),
-        ("A100", "0", "6.73", "0.3", "160"),
+        ("G4", "0", "8.90", "0.3", "0.45"),
+        ("G4", "1", "8.90", "0.3", "0.45"),
+        ("A100", "1", "8.88", "0.3", "0.45"),
+        ("A100", "0", "6.73", "0.3", "0.34"),
         ("CPU", "1", "0.26", "0.01", "138"),
         ("CPU", "0", "0.08", "0.003", "135"),
     ):
@@ -380,7 +380,9 @@ def test_card_rates_refusals_and_g4_margin_check():
         }
         r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
         assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
-        assert f"REFUSED: grace 60s + fetch 120s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s" in r_m.stderr, (
+        want = (f"REFUSED: grace 60s + fetch 120s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s"
+                if gpu == "CPU" else f"REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN={bad_margin} is below the derived margin {bad_budget_s}")
+        assert want in r_m.stderr, (
             gpu,
             high_mem,
             r_m.stderr,
@@ -1426,6 +1428,37 @@ def test_a_cpu_stub_is_unchanged_live_rate_when_read_and_labelled_configured_rat
     assert "own rate 0.08/hr (configured_cpu" in rig and job.count("PIN_RESULT") == 1, rig
     r = _rate(out)
     assert r["rate_live"] is None and r["rate_used"] == 0.08 and r["rate_scope"] == "configured_cpu" and r["polls"] == 1, r
+
+
+# ---- the derived margin (Publisher, 2026-11-06): ceil((grace + fetch) x max_rate / 3600) to 0.01 on a GPU window; an
+# explicit PIN_CAP_MARGIN may raise it, never lower it.
+
+def test_a_gpu_window_without_a_margin_uses_the_derived_one_and_proceeds():
+    rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": None, "PIN_MOCK_S": "1",
+                                             "PIN_GATE": "0"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    r = _rate(out)  # (2 s + 2 s) x 9.5/hr = 0.0106 units, rounded up to 0.02
+    assert r["margin_derived"] == 0.02 and r["margin"] == 0.02, r
+    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 5.3 * 3600), r
+    import json
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["margin_derived"] == 0.02 and d["margin"] == 0.02, d
+
+
+def test_an_explicit_higher_margin_is_used():
+    rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.05", "PIN_MOCK_S": "1",
+                                             "PIN_GATE": "0"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
+    r = _rate(out)
+    assert r["margin_derived"] == 0.02 and r["margin"] == 0.05, r
+    assert r["deadline"] - r["t_open"] == int((99 - 0.05) / 5.3 * 3600), r
+
+
+def test_an_explicit_lower_margin_refuses_margin_too_small_before_any_vm():
+    rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.01"})
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.01 is below the derived margin 0.02" in rig, rig
+    assert not (out.parent / "st" / "news").exists() and not job and not (out / "rate.json").exists()
+
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed

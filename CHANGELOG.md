@@ -19,6 +19,9 @@ All notable changes to role-set are documented here. The format is based on
   - The deadline runs on the live own rate only. The grace-and-fetch margin check runs at the max rate (the worst
     case) in place of the per-card constants. Only the CPU stubs keep a configured rate (0.08, `--high-mem` 0.26),
     labelled `configured_cpu` when used.
+  - A GPU window's margin is derived: `ceil((grace + fetch) x max_rate / 3600)` to 0.01 units. An explicit
+    `PIN_CAP_MARGIN` may raise it, never lower it. A lower value refuses `MARGIN_TOO_SMALL` before any VM. CPU stubs
+    are unchanged. Both values go to `rate.json` and the outcome draft (`margin_derived`, `margin`).
   - Each window writes `rate.json` (verdict, why, `rate_live`, `rate_scope`, `rate_used`, `max_rate`, `margin`,
     `deadline`, cap, polls), and `outcome.draft.json` carries the same rate fields.
   - The fake `colab usage` reports a post-open rate (`FAKE_RATE`) or an unreadable one (`FAKE_RATE_UNREAD=zero|missing`),

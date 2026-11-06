@@ -74,7 +74,8 @@ COPYBACK_DL_S="${PIN_COPYBACK_DL_S:-60}"
 # rate on a CPU one. The rung measures the cut and the fetch, and the margin is set from them.
 # Defaults from the measurements (R&D, 2026-10-18): window 13p cut its wave and wrote its results within 1 s of the
 # deadline on stub data (a real tar of tens of MB takes seconds), and W-A's real exit fetch took 56 s. So a 60 s grace and
-# a 120 s fetch allowance: 180 s, which a margin of 0.3 holds up to 6.0/hr; a faster card needs a larger margin.
+# a 120 s fetch allowance: 180 s. A GPU window derives its margin from them at its max rate (below); a CPU stub's
+# default margin of 0.3 holds them at its configured rate.
 GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
 FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
 # The cards a rung has run (G4, A100 in both shapes). Only the CPU stubs keep a configured rate (measured 0.08, --high-mem
@@ -114,6 +115,25 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ -z "$MAX_RATE" ]; then
   exit 2
 fi
 MARGIN_RATE="${MAX_RATE:-$CPU_RATE}"
+# A GPU window's margin is derived (Publisher, 2026-11-06): the units the grace and the fetch cost at the max rate,
+# rounded up to 0.01. An explicit PIN_CAP_MARGIN may raise it, never lower it. A CPU stub keeps its margin as before.
+MARGIN_DERIVED=""
+if [ "${PIN_GPU:-A100}" != CPU ]; then
+  MARGIN_DERIVED=$(awk -v g="$GRACE_S" -v f="$FETCH_ALLOW_S" -v r="$MAX_RATE" \
+    'BEGIN{x = (g + f) * r / 36; c = int(x); if (x - c > 1e-9) c++; printf "%.2f", c / 100}')
+  if [ -n "${PIN_CAP_MARGIN:-}" ]; then
+    if ! awk -v m="$PIN_CAP_MARGIN" 'BEGIN{exit !(m ~ /^[0-9]*\.?[0-9]+$/)}'; then
+      echo "REFUSED: PIN_CAP_MARGIN=$PIN_CAP_MARGIN must be a number of units" >&2; exit 2
+    fi
+    if awk -v m="$PIN_CAP_MARGIN" -v d="$MARGIN_DERIVED" 'BEGIN{exit !(m + 0 < d - 1e-9)}'; then
+      echo "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=$PIN_CAP_MARGIN is below the derived margin $MARGIN_DERIVED (grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s at the max rate $MAX_RATE/hr)" >&2
+      exit 2
+    fi
+    MARGIN=$PIN_CAP_MARGIN
+  else
+    MARGIN=$MARGIN_DERIVED
+  fi
+fi
 BUDGET_S=$(awk -v m="$MARGIN" -v r="$MARGIN_RATE" 'BEGIN{printf "%d", m/r*3600}')
 if [ $(( GRACE_S + FETCH_ALLOW_S )) -gt "$BUDGET_S" ]; then
   echo "REFUSED: grace ${GRACE_S}s + fetch ${FETCH_ALLOW_S}s don't fit the margin: $MARGIN units at $MARGIN_RATE/hr is ${BUDGET_S}s; raise PIN_CAP_MARGIN or shorten the grace" >&2
@@ -203,8 +223,9 @@ jnum() { if [ -n "${1:-}" ]; then printf '%s' "$1"; else printf null; fi; }
 RATE_LIVE=""; RATE_SCOPE=""; OWN_RATE=""; T_OPEN=""; PIN_DEADLINE=""; RATE_POLLS_USED=0; RATE_WHY=""
 # The window receipt for the rate (rate.json) and the outcome draft both carry the reading the cap ran on.
 rate_fields() {
-  printf '"rate_live": %s, "rate_scope": "%s", "rate_used": %s, "max_rate": %s, "margin": %s, "deadline": %s' \
-    "$(jnum "$RATE_LIVE")" "$RATE_SCOPE" "$(jnum "$OWN_RATE")" "$(jnum "$MAX_RATE")" "$MARGIN" "$(jnum "$PIN_DEADLINE")"
+  printf '"rate_live": %s, "rate_scope": "%s", "rate_used": %s, "max_rate": %s, "margin_derived": %s, "margin": %s, "deadline": %s' \
+    "$(jnum "$RATE_LIVE")" "$RATE_SCOPE" "$(jnum "$OWN_RATE")" "$(jnum "$MAX_RATE")" "$(jnum "$MARGIN_DERIVED")" "$MARGIN" \
+    "$(jnum "$PIN_DEADLINE")"
 }
 write_rate_receipt() {  # $1: the verdict: ok, RATE_UNREAD or RATE_ABOVE_MAX
   printf '{"verdict": "%s", "why": "%s", "gpu": "%s", "high_mem": "%s", %s, "cap": %s, "account_rate_before": %s, "account_rate_after": %s, "polls": %s, "t_open": %s}\n' \
