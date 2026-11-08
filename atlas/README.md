@@ -1,27 +1,26 @@
 # role-set: how it works
 
-Mapped at 2026-10-29 from commit 7feccba by Atlas 1.24.0.
+Mapped at 2026-11-08 from commit cfb6ce1 by Atlas 1.24.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 4 doors; the busiest is CI, which reaches 3 parts. It publishes to PyPI. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-28 (46289bc)
+## What changed since 2026-10-29 (7feccba)
 
-- CI's push trigger now also names `site/package*.json`.
-- LICENSE is now also read by pyproject.toml.
-- scripts/ is now read by scripts/colab/pin_window.py.
-- scripts/toolcount/__init__.py is now read by scripts/colab/pin_window.py, scripts/colab/smoke_window.sh and scripts/toolcount/launch-w1.sh.
-- And 5 more new writers and readers of places.
-- 26 files changed content, across 6 parts.
+- CI's push trigger now also names `uv.lock.exclude-newer`.
+- Release (.github/workflows/release.yml) is a new door. It starts when a release is published. It checks src/role_set/.
+- pyproject.toml is now also read by .github/workflows/release.yml.
+- 1 file added and 10 changed content, across 4 parts.
 
 ## What comes in
 
-1. **CI.** On a pull request; on a push to main touching 11 paths; or by hand. Runs tests/.
+1. **CI.** On a pull request; on a push to main touching 12 paths; or by hand. Runs tests/.
 2. **Deploy site to GitHub Pages.** On a push to main touching 2 paths; or by hand. Runs site/astro.config.mjs and site/src/.
-3. **role-set** (a command people run). Runs src/role_set/cli.py.
+3. **Release.** When a release is published. Checks src/role_set/.
+4. **role-set** (a command people run). Runs src/role_set/cli.py.
 
 ## What happens through CI
 
@@ -37,11 +36,13 @@ CI writes nothing this map can see.
 
 **Deploy site to GitHub Pages** runs site/astro.config.mjs and site/src/, and deploys the site.
 
+**Release** checks src/role_set/, publishes to PyPI, and uploads dist/*.tar.gz and dist/*.whl to the release.
+
 **role-set** (a command people run) runs src/role_set/cli.py.
 
 ## What breaks what
 
-- **src** is imported by 1 part (scripts), and by 1 more only from tests; it sits on the path of 2 doors.
+- **src** is imported by 1 part (scripts), and by 1 more only from tests; it sits on the path of 3 doors.
 - **tests** is imported by 1 part (scripts) and sits on the path of 1 door.
 - **scripts** is imported only from tests, by 1 part (tests), and sits on the path of 1 door.
 - **roles/domains/naics-2022.json** is written by scripts and read by scripts and src; a hand edit reaches every reader.

@@ -1,0 +1,4 @@
+# uv --exclude-newer bound for uv.lock: the resolver sees only files uploaded before this
+# instant (RFC 3339, UTC, whole seconds). Written with the lock by scripts/colab/relock.sh; it
+# moves only in a deliberate re-lock PR (docs/colab-locks.md).
+2026-10-07T00:00:00Z

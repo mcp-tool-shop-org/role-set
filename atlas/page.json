@@ -8,7 +8,7 @@
   ],
   "breaks": [
     {
-      "doors": 2,
+      "doors": 3,
       "importedBy": [
         "scripts"
       ],
@@ -53,60 +53,45 @@
   ],
   "changes": {
     "fileCounts": {
-      "added": 0,
-      "changed": 26,
+      "added": 1,
+      "changed": 10,
       "moved": 0,
-      "parts": 6,
+      "parts": 4,
       "removed": 0
     },
     "items": [
       {
         "kind": "door",
-        "sentence": "CI's push trigger now also names `site/package*.json`.",
+        "sentence": "CI's push trigger now also names `uv.lock.exclude-newer`.",
         "subjects": [
           ".github/workflows/ci.yml"
         ]
       },
       {
-        "kind": "landing",
-        "sentence": "LICENSE is now also read by pyproject.toml.",
+        "kind": "door",
+        "sentence": "Release (.github/workflows/release.yml) is a new door. It starts when a release is published. It checks src/role_set/.",
         "subjects": [
-          "LICENSE",
-          "pyproject.toml"
+          ".github/workflows/release.yml",
+          "src/role_set/"
         ]
       },
       {
         "kind": "landing",
-        "sentence": "scripts/ is now read by scripts/colab/pin_window.py.",
+        "sentence": "pyproject.toml is now also read by .github/workflows/release.yml.",
         "subjects": [
-          "scripts/",
-          "scripts/colab/pin_window.py"
+          "pyproject.toml",
+          ".github/workflows/release.yml"
         ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "scripts/toolcount/__init__.py is now read by scripts/colab/pin_window.py, scripts/colab/smoke_window.sh and scripts/toolcount/launch-w1.sh.",
-        "subjects": [
-          "scripts/toolcount/__init__.py",
-          "scripts/colab/pin_window.py",
-          "scripts/colab/smoke_window.sh",
-          "scripts/toolcount/launch-w1.sh"
-        ]
-      },
-      {
-        "kind": "landing",
-        "sentence": "And 5 more new writers and readers of places.",
-        "subjects": []
       },
       {
         "kind": "counts",
-        "sentence": "26 files changed content, across 6 parts.",
+        "sentence": "1 file added and 10 changed content, across 4 parts.",
         "subjects": []
       }
     ],
     "since": {
-      "commit": "46289bc4615e80bef0d6716dda46ab4bff4bf590",
-      "generatedAt": "2026-10-28T05:03:08.808Z"
+      "commit": "7feccbac980c2325a8d6d43368959bee5bf68490",
+      "generatedAt": "2026-10-29T20:47:41.380Z"
     },
     "unchanged": false
   },
@@ -178,9 +163,9 @@
     "Window: 180 days; a pair counts from 3 shared commits, since 23 source files reach 10 revisions and the floor had fallen; it rises back to 10 when 25 do."
   ],
   "changesTogetherWithTests": 5,
-  "commit": "7feccbac980c2325a8d6d43368959bee5bf68490",
+  "commit": "cfb6ce1c2d6bddad27cd5aa3b14d6ae2b04f5339",
   "defaultBranch": "main",
-  "derived": "9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 3 doors; the busiest is CI, which reaches 3 parts. It deploys a site to GitHub Pages. People run role-set.",
+  "derived": "9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 4 doors; the busiest is CI, which reaches 3 parts. It publishes to PyPI. It deploys a site to GitHub Pages. People run role-set.",
   "doors": [
     {
       "checks": [],
@@ -219,7 +204,7 @@
       "stages": [],
       "triggers": [
         "on a pull request",
-        "on a push to main touching 11 paths",
+        "on a push to main touching 12 paths",
         "or by hand"
       ]
     },
@@ -252,6 +237,36 @@
       "triggers": [
         "on a push to main touching 2 paths",
         "or by hand"
+      ]
+    },
+    {
+      "checks": [
+        "src/role_set/"
+      ],
+      "checksCount": 1,
+      "checksMore": 0,
+      "file": ".github/workflows/release.yml",
+      "id": ".github/workflows/release.yml",
+      "landings": [],
+      "name": "Release",
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "src",
+          "depth": 0,
+          "files": 44
+        }
+      ],
+      "runs": [],
+      "runsCount": 0,
+      "runsMore": 0,
+      "sends": [
+        "publishes to PyPI",
+        "uploads dist/*.tar.gz and dist/*.whl to the release"
+      ],
+      "stages": [],
+      "triggers": [
+        "when a release is published"
       ]
     },
     {
@@ -349,7 +364,7 @@
       ]
     }
   ],
-  "generatedAt": "2026-10-29T20:47:41.380Z",
+  "generatedAt": "2026-11-08T08:16:50.051Z",
   "limits": [
     "8 imports could not be resolved: `scripts/batchdrift/replay.py` imports `pin_window`, which is no module on its import path and no declared dependency, twice; `scripts/colab/pin_window.py` imports `replay`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; and 4 more.",
     "9 writes and 35 reads use paths built at run time and are not named here.",
@@ -385,7 +400,7 @@
   "summaryFrom": "person",
   "testFiles": 76,
   "testedBy": {
-    "scripts": 12,
+    "scripts": 14,
     "src": 54
   },
   "unnamedWrites": 9,

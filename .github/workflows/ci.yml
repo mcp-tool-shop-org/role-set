@@ -24,6 +24,7 @@ on:
     paths:
       - "pyproject.toml"
       - "uv.lock"
+      - "uv.lock.exclude-newer"
       - "src/**"
       - "tests/**"
       - "roles/**"

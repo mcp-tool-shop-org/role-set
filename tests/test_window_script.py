@@ -33,12 +33,14 @@ def _window(mode: str, *, extra: dict | None = None, out_name: str = "out", args
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
            # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: a margin of 0.01 at the max rate is 6 s,
            # so the grace and the fetch allowance fit it. PIN_RATE_POLL_S 0: an unread rate is re-read at once.
-           "PIN_MAX_RATE": "6", "PIN_RATE_POLL_S": "0",
+           "PIN_HIGH_MEM": "0", "PIN_MAX_RATE": "6", "PIN_RATE_POLL_S": "0",
            "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
     out = tmp / out_name
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     if env.get("PIN_GPU") == "CPU" and "PIN_MAX_RATE" not in (extra or {}):
         env.pop("PIN_MAX_RATE")  # a CPU stub needs no max rate; its margin runs at its configured rate, as before
+    if env.get("PIN_GPU") == "CPU" and "PIN_HIGH_MEM" not in (extra or {}):
+        env.pop("PIN_HIGH_MEM", None)
     env = {k: v for k, v in env.items() if v is not None}  # extra may drop a base setting with None
     stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), *args, str(binfile), str(out)], env, 180)
     job = (out / "job.log").read_text(encoding="utf-8") if (out / "job.log").exists() else ""
@@ -417,7 +419,7 @@ def test_card_rates_refusals_and_g4_margin_check():
     assert (out_g4_pass / "pin-result.json").exists()
 
     # 3. Cards accepted on line 12 with no measured rate (H100, L4, T4) are refused at start before asking for any VM
-    for unmeasured in ("H100", "L4", "T4"):
+    for unmeasured, u_hm in (("H100", "0"), ("L4", "1"), ("T4", "0")):
         out_u = tmp / f"out-u-{unmeasured}"
         env_u = {
             **os.environ,
@@ -427,10 +429,11 @@ def test_card_rates_refusals_and_g4_margin_check():
             "PIN_OPEN_LOCK": str(tmp / f"lock-u-{unmeasured}"),
             "PIN_GATE_MIN_DISK_GB": "0",
             "PIN_GPU": unmeasured,
+            "PIN_HIGH_MEM": u_hm,
         }
         r_u = subprocess.run(["bash", script, str(binfile), str(out_u)], env=env_u, capture_output=True, text=True, timeout=30, check=False)
         assert r_u.returncode == 2, (unmeasured, r_u.returncode, r_u.stdout, r_u.stderr)
-        assert f"REFUSED: PIN_GPU={unmeasured} (PIN_HIGH_MEM=0) has no measured rate yet; refuse until one is measured" in r_u.stderr, (
+        assert f"REFUSED: PIN_GPU={unmeasured} (PIN_HIGH_MEM={u_hm}) has no measured rate yet; refuse until one is measured" in r_u.stderr, (
             unmeasured,
             r_u.stderr,
         )
@@ -465,6 +468,7 @@ def test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend():
             "FAKE_MODE": "normal",
             "PIN_OPEN_LOCK": str(tmp / f"lock-bad-{idx}"),
             "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_HIGH_MEM": "0",
             "PIN_SKIP_BINARY": "1",
             "PIN_SERVER_SHA256": bad,
         }
@@ -483,6 +487,7 @@ def test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend():
             "FAKE_MODE": "normal",
             "PIN_OPEN_LOCK": str(tmp / f"lock-mism-{tag}"),
             "PIN_GATE_MIN_DISK_GB": "0",
+            "PIN_HIGH_MEM": "0",
             "PIN_SKIP_BINARY": "0",
             **env_sha,
         }
@@ -1541,7 +1546,7 @@ def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15()
     binfile.write_bytes(b"x")
     script = str(ROOT / "scripts/colab/smoke_window.sh")
     base = {**os.environ, "PATH": f"{FAKE}:{os.environ['PATH']}", "FAKE_ST": str(tmp / "st"), "PIN_SKIP_BINARY": "1",
-            "PIN_GATE_MIN_DISK_GB": "0", "PIN_GPU": "A100"}
+            "PIN_GATE_MIN_DISK_GB": "0", "PIN_GPU": "A100", "PIN_HIGH_MEM": "0"}
 
     def one(cents: int) -> list:
         rate = f"{cents / 100:.2f}"
@@ -1641,6 +1646,328 @@ def test_a_single_missing_assignment_count_is_recorded_only():
     bad = [x for x in r["readings"] if x["phase"] == "bad_count"]
     assert r["verdict"] == "ok" and len(bad) == 1 and bad[0]["assignments"] is None, r
 
+
+
+
+
+# ---- Colab kit next (2026-11-08): explicit GPU shape, watcher orphan PID check, mid-run floor & highest-rate
+# re-baseline, and time-bounded locks (--exclude-newer) ----
+
+def test_gpu_window_requires_pin_high_mem_and_refuses_before_any_colab_call():
+    for gpu in ("A100", "G4", "H100", "L4", "T4", "V5E1", "V6E1"):
+        for val in (None, ""):
+            rig, job, out = _window("normal", extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": val})
+            st = out.parent / "st"
+            assert "REFUSED SHAPE_REQUIRED:" in rig and not job, (gpu, val, rig)
+            assert not (st / "news").exists() and not (st / "usage-reads").exists(), (gpu, val, rig)
+    for bad in ("2", "standard", "yes", "-1"):
+        rig, job, out = _window("normal", extra={"PIN_GPU": "A100", "PIN_HIGH_MEM": bad})
+        st = out.parent / "st"
+        assert "REFUSED SHAPE_INVALID:" in rig and not job, (bad, rig)
+        assert not (st / "news").exists() and not (st / "usage-reads").exists()
+    rig_flag, job_flag, out_flag = _window("normal", extra={"PIN_GPU": "A100", "PIN_HIGH_MEM": None}, args=("--shape", "bogus"))
+    assert "REFUSED SHAPE_INVALID:" in rig_flag and not job_flag and not (out_flag.parent / "st" / "news").exists(), rig_flag
+
+
+def test_single_shape_cards_refuse_standard_shape_before_any_colab_call():
+    for card in ("L4", "V5E1", "V6E1"):
+        rig, job, out = _window("normal", extra={"PIN_GPU": card, "PIN_HIGH_MEM": "0"})
+        st = out.parent / "st"
+        assert "REFUSED SHAPE_STANDARD_UNAVAILABLE:" in rig and card in rig and not job, (card, rig)
+        assert not (st / "news").exists() and not (st / "usage-reads").exists(), (card, rig)
+        rig_flag, job_flag, out_flag = _window(
+            "normal", extra={"PIN_GPU": card, "PIN_HIGH_MEM": None}, args=("--shape", "standard")
+        )
+        assert "REFUSED SHAPE_STANDARD_UNAVAILABLE:" in rig_flag and not job_flag, (card, rig_flag)
+        assert not (out_flag.parent / "st" / "news").exists()
+
+
+def test_shape_mismatch_after_open_refuses_shape_mismatch_and_stops_the_session():
+    import json
+
+    # 1. Requested Standard (PIN_HIGH_MEM=0), session row reports High-RAM -> SHAPE_MISMATCH, session stopped
+    rig0, job0, out0 = _window("normal", extra={"PIN_GPU": "A100", "PIN_HIGH_MEM": "0", "FAKE_SESSION_SHAPE": "High-RAM"})
+    _refused_and_stopped(rig0, job0, out0, "SHAPE_MISMATCH")
+    r0 = _rate(out0)
+    d0 = json.loads((out0 / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert r0["shape_expected"] == "Standard" and r0["shape_observed"] == "High-RAM", r0
+    assert d0["shape_expected"] == "Standard" and d0["shape_observed"] == "High-RAM", d0
+
+    # 2. Requested High-RAM (--shape high-mem), session row reports Standard -> SHAPE_MISMATCH, session stopped
+    rig1, job1, out1 = _window(
+        "normal",
+        extra={"PIN_GPU": "A100", "PIN_HIGH_MEM": None, "PIN_MAX_RATE": "8", "FAKE_SESSION_SHAPE": "Standard"},
+        args=("--shape", "high-mem"),
+    )
+    _refused_and_stopped(rig1, job1, out1, "SHAPE_MISMATCH")
+    r1 = _rate(out1)
+    assert r1["shape_expected"] == "High-RAM" and r1["shape_observed"] == "Standard", r1
+
+
+def _pid_alive(pid: int) -> bool:
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+    except OSError:
+        return False
+    return stat.rsplit(")", 1)[1].split()[0] != "Z"
+
+
+def test_watcher_orphan_reread_and_fetch_children_are_killed_by_pid_and_named_in_log():
+    # 1. In-flight mid-run usage re-read child still alive when the job ends is killed by PID and named in the log.
+    rig_u, job_u, out_u = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "2",
+            "PIN_WATCH_S": "1",
+            "FAKE_USAGE_SLOW_FROM_READ": "4",
+            "FAKE_USAGE_SLOW_S": "25",
+        },
+    )
+    assert job_u.count("PIN_RESULT") == 1, (rig_u, job_u)
+    slow_u_file = out_u.parent / "st" / "usage-slow-pids.log"
+    assert slow_u_file.is_file(), f"slow usage re-read never started: {rig_u}"
+    u_rows = [ln.split() for ln in slow_u_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert u_rows, rig_u
+    for pid_s, ppid_s, _pcomm in u_rows:
+        assert not _pid_alive(int(pid_s)), f"orphaned colab usage pid {pid_s} still alive"
+        assert not _pid_alive(int(ppid_s)), f"orphaned timeout pid {ppid_s} still alive"
+        assert "WATCHER ORPHAN KILLED:" in rig_u and "kind=reread" in rig_u, rig_u
+        assert pid_s in rig_u or ppid_s in rig_u, (pid_s, ppid_s, rig_u)
+
+    # 2. In-flight watcher fetch child (`fetch_log watcher`) still alive when the job ends is killed by PID and named.
+    rig_f, job_f, out_f = _window(
+        "normal",
+        extra={
+            "PIN_GPU": "CPU",
+            "PIN_MOCK_S": "2",
+            "PIN_WATCH_S": "1",
+            "PIN_GATE": "0",
+            "FAKE_FETCH_SLOW_FROM_CALL": "1",
+            "FAKE_FETCH_SLOW_S": "25",
+        },
+    )
+    assert job_f.count("PIN_RESULT") == 1, (rig_f, job_f)
+    slow_f_file = out_f.parent / "st" / "fetch-slow-pids.log"
+    assert slow_f_file.is_file(), f"slow watcher fetch never started: {rig_f}"
+    f_rows = [ln.split() for ln in slow_f_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert f_rows, rig_f
+    for pid_s, ppid_s, _pcomm in f_rows:
+        assert not _pid_alive(int(pid_s)), f"orphaned colab download pid {pid_s} still alive"
+        assert not _pid_alive(int(ppid_s)), f"orphaned timeout pid {ppid_s} still alive"
+        assert "WATCHER ORPHAN KILLED:" in rig_f and "kind=fetch" in rig_f, rig_f
+        assert pid_s in rig_f or ppid_s in rig_f, (pid_s, ppid_s, rig_f)
+
+
+def test_mid_run_rising_rate_reprices_and_rebaseline_uses_highest_stable_rate_seen():
+    import json
+
+    # 1. Rising rate mid-run (5.30 at open -> 8.88, 8.88 mid-run under max 9.5) moves RATE_MAX_SEEN and logs RATE ROSE.
+    rig_rise, job_rise, out_rise = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "6",
+            "FAKE_RATE_SEQ": "5.30,5.30,5.30,8.88,8.88",
+            "FAKE_ASSIGN_SEQ": "1",
+        },
+    )
+    assert "RATE ROSE: own rate 8.88/hr, priced at 9.5/hr" in rig_rise and job_rise.count("PIN_RESULT") == 1, rig_rise
+    r_rise = _rate(out_rise)
+    assert r_rise["rate_live"] == 5.3 and r_rise["rate_max_seen"] == 8.88 and r_rise["rate_used"] == 9.5, r_rise
+
+    # 2. After rising to 8.88 and dipping to 5.30 at count 1, a neighbour opening (count 1 -> 2 at 14.18, 14.18)
+    #    re-baselines on RATE_MAX_SEEN (8.88 -> base 5.30, not last_own 5.30 -> base 8.88), so our later rise to 15.30
+    #    reads as 10.00 (> max 9.5) and trips RATE_ABOVE_MAX.
+    rig_reb, job_reb, out_reb = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "30",
+            "FAKE_RATE_SEQ": "5.30,5.30,5.30,8.88,8.88,5.30,5.30,14.18,14.18,15.30,15.30",
+            "FAKE_ASSIGN_SEQ": "1,1,1,1,1,1,1,2,2,2,2",
+        },
+    )
+    assert "RE-BASELINE: assignments 1 -> 2, neighbour baseline 5.3/hr" in rig_reb, rig_reb
+    assert "REFUSED RATE_ABOVE_MAX (mid-run): own rate 10/hr is above the max rate 9.5/hr" in rig_reb, rig_reb
+    assert job_reb.count("PIN_RESULT") == 0, rig_reb
+    r_reb = _rate(out_reb)
+    assert r_reb["verdict"] == "RATE_ABOVE_MAX" and r_reb["rate_max_seen"] == 10, r_reb
+    assert json.loads((out_reb / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "RATE_ABOVE_MAX"
+
+
+def test_mid_run_sub_floor_or_zero_reading_is_rejected_and_cannot_hide_a_later_rise():
+    import json
+
+    # 1. A neighbour (8.88) closes and the account rate drops two reads before the count does: at count 2 our own rate
+    #    reads 0.00 twice. That is below GPU_RATE_FLOOR (1.0), so both reads are recorded as below_floor (never accepted),
+    #    the re-baseline at count 1 uses RATE_MAX_SEEN (8.88 -> base 0), and our rise to 12.00 trips RATE_ABOVE_MAX.
+    rig_lead, job_lead, out_lead = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "30",
+            "FAKE_RATE0": "8.88",
+            "FAKE_RATE_SEQ": "17.76,17.76,17.76,8.88,8.88,8.88,8.88,12.00,12.00",
+            "FAKE_ASSIGN_SEQ": "2,2,2,2,2,1,1,1,1",
+        },
+    )
+    assert "REFUSED RATE_ABOVE_MAX (mid-run): own rate 12/hr is above the max rate 9.5/hr" in rig_lead, rig_lead
+    r_lead = _rate(out_lead)
+    below_rows = [x for x in r_lead["readings"] if x["phase"] == "below_floor"]
+    assert len(below_rows) == 2 and all(x["own"] == 0 for x in below_rows), r_lead
+    reb_rows = [x for x in r_lead["readings"] if x["phase"] == "rebaseline"]
+    assert len(reb_rows) == 1 and reb_rows[0]["baseline"] == 0, r_lead
+    assert r_lead["verdict"] == "RATE_ABOVE_MAX", r_lead
+
+    # 2. Three consecutive sub-floor own-rate reads (0.50 < 1.00) at the settled count trip ASSIGNMENTS_UNREADABLE.
+    rig_sub, job_sub, out_sub = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "30",
+            "FAKE_RATE_SEQ": "8.88,8.88,8.88,0.50,0.50,0.50",
+            "FAKE_ASSIGN_SEQ": "1",
+        },
+    )
+    assert "REFUSED ASSIGNMENTS_UNREADABLE (mid-run)" in rig_sub and job_sub.count("PIN_RESULT") == 0, rig_sub
+    r_sub = _rate(out_sub)
+    assert r_sub["verdict"] == "ASSIGNMENTS_UNREADABLE", r_sub
+    assert [x["phase"] for x in r_sub["readings"]].count("below_floor") == 3, r_sub
+    assert json.loads((out_sub / "outcome.draft.json").read_text(encoding="utf-8"))["end"] == "ASSIGNMENTS_UNREADABLE"
+
+    # 3. Three consecutive missing-rate reads (rate line absent while count is present) mid-run trip ASSIGNMENTS_UNREADABLE.
+    rig_mr, job_mr, out_mr = _window(
+        "normal",
+        extra={
+            **FIX2,
+            "PIN_MOCK_S": "30",
+            "FAKE_RATE_MISSING_READS": "4,5,6",
+        },
+    )
+    assert "REFUSED ASSIGNMENTS_UNREADABLE (mid-run)" in rig_mr and job_mr.count("PIN_RESULT") == 0, rig_mr
+    r_mr = _rate(out_mr)
+    assert r_mr["verdict"] == "ASSIGNMENTS_UNREADABLE", r_mr
+
+
+def test_time_bounded_lock_refuses_missing_or_malformed_timestamp_and_reproduces_uv_lock_byte_for_byte():
+    import stat
+
+    preflight_sh = ROOT / "scripts" / "colab" / "preflight_resolve.sh"
+    relock_sh = ROOT / "scripts" / "colab" / "relock.sh"
+    ts_committed = ROOT / "uv.lock.exclude-newer"
+    lock_committed = ROOT / "uv.lock"
+    assert preflight_sh.is_file() and relock_sh.is_file() and ts_committed.is_file(), (
+        "missing preflight_resolve.sh, relock.sh, or uv.lock.exclude-newer"
+    )
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakelock-"))
+    argv_log = tmp / "fake_uv_argv.log"
+    fake_uv = tmp / "fake_uv"
+    fake_uv.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "--version" ]; then echo "uv 0.13.5 (fake)"; exit 0; fi\n'
+        'printf "ARGV %s\\n" "$*" >> "$FAKE_UV_ARGV_LOG"\n'
+        'cp "$FAKE_UV_COPY_FROM" uv.lock\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    fake_uv.chmod(fake_uv.stat().st_mode | stat.S_IEXEC)
+
+    base_env = {
+        **os.environ,
+        "UV_BIN": str(fake_uv),
+        "FAKE_UV_ARGV_LOG": str(argv_log),
+        "FAKE_UV_COPY_FROM": str(lock_committed),
+    }
+
+    # 1. Missing timestamp file refuses LOCK_TIMESTAMP_MISSING before calling uv.
+    r_miss = subprocess.run(
+        ["bash", str(preflight_sh)],
+        env={**base_env, "ROLESET_PREFLIGHT_EXCLUDE_NEWER_FILE": str(tmp / "missing.exclude-newer")},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert r_miss.returncode == 1 and "REFUSED: LOCK_TIMESTAMP_MISSING:" in r_miss.stderr, r_miss.stderr
+    assert not argv_log.exists()
+
+    # 2. Malformed or future timestamp files refuse LOCK_TIMESTAMP_MALFORMED before calling uv.
+    bad_cases = [
+        ("empty", ""),
+        ("comments_only", "# only comment\n\n"),
+        ("two_lines", "2026-10-07T00:00:00Z\n2026-10-08T00:00:00Z\n"),
+        ("date_only", "2026-10-07\n"),
+        ("offset", "2026-10-07T00:00:00+00:00\n"),
+        ("not_a_date", "2026-02-30T00:00:00Z\n"),
+        ("subsecond", "2026-10-07T00:00:00.123Z\n"),
+        ("future", "2999-01-01T00:00:00Z\n"),
+    ]
+    for name, content in bad_cases:
+        ts_p = tmp / f"{name}.exclude-newer"
+        ts_p.write_text(content, encoding="utf-8")
+        res = subprocess.run(
+            ["bash", str(preflight_sh)],
+            env={**base_env, "ROLESET_PREFLIGHT_EXCLUDE_NEWER_FILE": str(ts_p)},
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert res.returncode == 1 and "REFUSED: LOCK_TIMESTAMP_MALFORMED:" in res.stderr, (name, res.stderr)
+    assert not argv_log.exists()
+
+    # 3. relock.sh refuses missing/malformed timestamps without touching existing files, and writes lock + timestamp on success.
+    out_dir = tmp / "locks_out"
+    out_dir.mkdir()
+    (out_dir / "uv.lock").write_bytes(b"old lock\n")
+    (out_dir / "uv.lock.exclude-newer").write_bytes(b"2026-10-01T00:00:00Z\n")
+    for args, code in (
+        (("--locks-dir", str(out_dir)), "LOCK_TIMESTAMP_MISSING"),
+        (("--exclude-newer", "2026-10-07", "--locks-dir", str(out_dir)), "LOCK_TIMESTAMP_MALFORMED"),
+        (("--exclude-newer", "2999-01-01T00:00:00Z", "--locks-dir", str(out_dir)), "LOCK_TIMESTAMP_MALFORMED"),
+    ):
+        rr = subprocess.run(["bash", str(relock_sh), *args], env=base_env, capture_output=True, text=True, timeout=30)
+        assert rr.returncode == 1 and f"REFUSED: {code}:" in rr.stderr, (args, rr.stderr)
+    assert (out_dir / "uv.lock").read_bytes() == b"old lock\n"
+
+    rr_ok = subprocess.run(
+        ["bash", str(relock_sh), "--exclude-newer", "2026-10-07T00:00:00Z", "--locks-dir", str(out_dir)],
+        env=base_env,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert rr_ok.returncode == 0 and "RELOCK_OK" in rr_ok.stdout, (rr_ok.stdout, rr_ok.stderr)
+    assert (out_dir / "uv.lock").read_bytes() == lock_committed.read_bytes()
+    assert (out_dir / "uv.lock.exclude-newer").read_text(encoding="utf-8").splitlines()[-1] == "2026-10-07T00:00:00Z"
+
+    # 4. Real bounded compile with uv 0.13.5 reproduces committed uv.lock byte for byte.
+    real_env = {k: v for k, v in os.environ.items() if not k.startswith("ROLESET_PREFLIGHT_") and k != "UV_BIN"}
+    real_out = tmp / "real_relock"
+    real_out.mkdir()
+    bound_ts = [
+        ln.strip()
+        for ln in ts_committed.read_text(encoding="utf-8").splitlines()
+        if ln.strip() and not ln.strip().startswith("#")
+    ][0]
+    r_real_relock = subprocess.run(
+        ["bash", str(relock_sh), "--exclude-newer", bound_ts, "--locks-dir", str(real_out)],
+        env=real_env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert r_real_relock.returncode == 0, (r_real_relock.stdout, r_real_relock.stderr)
+    assert (real_out / "uv.lock").read_bytes() == lock_committed.read_bytes(), "bounded compile did not reproduce uv.lock byte for byte"
+
+    r_real_pre = subprocess.run(
+        ["bash", str(preflight_sh)],
+        env=real_env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert r_real_pre.returncode == 0 and "PREFLIGHT_OK" in r_real_pre.stdout, (r_real_pre.stdout, r_real_pre.stderr)
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed
