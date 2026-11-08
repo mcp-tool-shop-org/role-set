@@ -9,12 +9,16 @@
       "externals": 0,
       "files": [
         {
-          "hash": "95e540f32dd155da13e5f73d02f6cf158856f91376bdb8857c0dbc868d5e58f0",
+          "hash": "a6c5cf85d9b8ac815bf6603222b9dc5ed772789502d384a435595426b357e9b2",
           "path": ".github/workflows/ci.yml"
         },
         {
           "hash": "186759944a5f149676ed74fa56af1ce15d77a355c81f2bf01149174c95598e75",
           "path": ".github/workflows/pages.yml"
+        },
+        {
+          "hash": "1901e01433e0a707f4b2d16c263d9045ef60f3466938c9d3a21b512c16a42e53",
+          "path": ".github/workflows/release.yml"
         }
       ],
       "globs": [
@@ -173,7 +177,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "c019bfc4189ccbb0fde447e81ed699a9f524c93538034f583b5ca30019fe7155",
+          "hash": "541e2cbd3430272f1ddd1d8e5715121a159f4c964d2934db24a7d16894cf022f",
           "path": "CHANGELOG.md"
         },
         {
@@ -2619,7 +2623,7 @@
           "path": "scripts/colab/preflight_window.py"
         },
         {
-          "hash": "7887af4dc976f325a85433ea5616b18133d32346e72d1ed93cf55d2e576a3c45",
+          "hash": "9f759c647ecdc91d436c6bda1a64c85aca1cde094fdbab29a8c9fcf1b4daa66d",
           "names": [
             "scripts/toolcount/__init__.py",
             "scripts/toolcount/compass_lists.py",
@@ -3402,7 +3406,7 @@
           "path": "scripts/toolcount/gen_registry.py"
         },
         {
-          "hash": "48c35b11d5b98e04802ef5452b32036e4faeab2f4718d378cd529f0dedabaec3",
+          "hash": "c147dcee311c11ebd31b50f36f7fbfe91015e7e79e69cd3d60650ee455d46dfd",
           "path": "scripts/toolcount/launch-w1.sh"
         },
         {
@@ -3532,44 +3536,44 @@
             {
               "in": "run_model_window",
               "kind": "raise",
-              "line": 776
+              "line": 777
             },
             {
               "in": "run_model_window",
               "kind": "raise",
-              "line": 948
+              "line": 949
             },
             {
               "in": "base_url",
               "kind": "raise",
-              "line": 1027
+              "line": 1028
             },
             {
               "in": "do_POST",
               "kind": "except",
-              "line": 1066
+              "line": 1067
             },
             {
               "in": "run_r1_stub_verification",
               "kind": "raise",
-              "line": 1471
+              "line": 1472
             },
             {
               "in": "run_r1_stub_verification",
               "kind": "raise",
-              "line": 1498
+              "line": 1499
             },
             {
               "in": "run_r1_stub_verification",
               "kind": "raise",
-              "line": 1556
+              "line": 1557
             },
             {
               "kind": "raise",
-              "line": 1617
+              "line": 1618
             }
           ],
-          "hash": "e0fde0b4abd3c9fbcc2593e0f6fdf26ca938280b6cf44eeb2c0e538921b88df1",
+          "hash": "3bb8482219e15e955efbd398f515361afc2d8bc8148d7437cf357c5ded20d01e",
           "importOrder": [
             "scripts/toolcount/__init__.py",
             "scripts/toolcount/compass_lists.py",
@@ -3691,7 +3695,7 @@
       "testRunners": [
         "pytest"
       ],
-      "testedBy": 12,
+      "testedBy": 14,
       "unresolvedNamed": [
         {
           "path": "scripts/batchdrift/replay.py",
@@ -11052,7 +11056,7 @@
           "testFramework": "pytest"
         },
         {
-          "hash": "e1bc6057dc6e24bfb6e181b3721402e196ee67501d95165f77dcf269da715667",
+          "hash": "dd5c900d9cf332b7c54873ed9826ea3337bcc3f94cb91923835fc26093fc4dfd",
           "path": "tests/fake_colab/colab"
         },
         {
@@ -11132,7 +11136,7 @@
           "path": "tests/fixtures/window12g12h-chain.tar.gz"
         },
         {
-          "hash": "4efe62f33dc9285511292eb5f64fddb01be1c743ea767aa836bae44e7bb38137",
+          "hash": "096c6e88d796f1a32fe59c363081338c2c5455f22a417bff62a945926db66031",
           "importsFiles": [
             "src/role_set/mock.py"
           ],
@@ -11253,9 +11257,10 @@
             "test_stub_check_4_card_sampling_and_seed_reach_server_and_dropped_seed_detected",
             "test_stub_check_5_and_7_full_6_arm_run_and_non_zero_exit_if_arm_missing",
             "test_stub_check_6_join_survives_out_of_order_completion",
-            "test_stub_check_8_cap_watcher_cuts_cleanly_and_preserves_checkpoint_rows"
+            "test_stub_check_8_cap_watcher_cuts_cleanly_and_preserves_checkpoint_rows",
+            "test_stub_in_flight_decremented_before_response_sent_under_post_response_interleaving"
           ],
-          "hash": "92ccc772ce67dc7ea80aa9b01bd614dd9ccd17ce68abaab1d19afbaf7a5557ac",
+          "hash": "7a7783a4bf937caf8d760f8f6431a2ca7af9f48db7ade239ceb08443bd83d9d4",
           "importsFiles": [
             "src/role_set/__init__.py",
             "src/role_set/callcache.py",
@@ -11263,6 +11268,7 @@
             "src/role_set/critic.py",
             "src/role_set/gates.py",
             "src/role_set/pack.py",
+            "tests/stub_llama.py",
             "tests/test_window_script.py"
           ],
           "path": "tests/test_batchdrift.py",
@@ -12565,6 +12571,7 @@
             "test_every_action_in_the_workflows_is_pinned_by_commit_sha_with_a_version_comment",
             "test_preflight_refuses_an_older_role_set_commit_and_a_venv_on_the_wrong_python",
             "test_preflight_refuses_the_wrong_uv_even_when_the_venv_already_exists",
+            "test_release_workflow_runs_only_on_a_published_release",
             "test_requires_python_allows_follows_pep_440_for_exact_versions_and_refuses_what_it_cannot_read",
             "test_requires_python_allows_reads_the_clauses_role_set_has_used",
             "test_requires_python_is_current_python_and_the_lock_and_dev_pin_agree",
@@ -12573,7 +12580,7 @@
             "test_the_window_scripts_build_role_set_on_current_python_not_3_12",
             "test_zstandard_in_stub_mode_on_a_host_without_a_pinned_wheel_uses_the_vm_tag"
           ],
-          "hash": "3942d73008aa6d612125f014dfdf4d81e849d75125aca46cdb64afddb14b0f65",
+          "hash": "4199d06a71074552fb55807bf4a4ef10d8c2912e928f01b91d2d3fb5820b0432",
           "importsFiles": [
             "scripts/colab/pin_window.py",
             "scripts/colab/preflight_window.py"
@@ -13077,47 +13084,87 @@
         {
           "exports": [
             "test_a_bad_vm_and_a_dead_one_are_stopped_and_the_third_runs_the_job",
+            "test_a_count_that_leads_the_neighbours_rate_by_a_read_does_not_trip",
+            "test_a_cpu_stub_is_unchanged_live_rate_when_read_and_labelled_configured_rate_when_not",
             "test_a_gpu_window_with_the_gate_on_must_name_its_disk_floor",
+            "test_a_gpu_window_without_a_margin_uses_the_derived_one_and_proceeds",
+            "test_a_gpu_window_without_a_max_rate_refuses_before_any_vm",
             "test_a_healthy_vm_passes_the_gate_once_and_the_job_runs",
             "test_a_job_that_ignores_its_deadline_is_stopped_after_the_grace",
             "test_a_job_that_stops_at_its_deadline_returns_its_results_before_the_cap",
             "test_a_late_first_exec_and_its_retry_run_one_job",
             "test_a_late_first_exec_that_takes_the_lock_first_runs_the_only_job",
+            "test_a_live_rate_above_the_max_refuses_rate_above_max_right_after_the_open",
+            "test_a_live_rate_under_the_max_proceeds_and_the_deadline_runs_on_the_live_rate",
             "test_a_lost_first_exec_is_retried_once_and_the_job_runs",
             "test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm",
-            "test_a_neighbour_closing_between_rate_reads_falls_back_to_gpu_rate",
+            "test_a_mid_run_rise_above_the_max_refuses_rate_above_max_and_stops",
+            "test_a_missing_assignment_count_for_three_reads_ends_the_window",
+            "test_a_neighbour_closing_between_rate_reads_leaves_a_gpu_rate_unread_and_refuses",
+            "test_a_neighbour_closing_gives_a_low_stable_delta_that_cannot_stretch_the_deadline",
+            "test_a_neighbour_closing_mid_run_re_baselines_and_does_not_trip",
+            "test_a_neighbour_opening_mid_run_re_baselines_and_does_not_trip",
             "test_a_normal_exec_is_not_retried",
+            "test_a_parallel_cpu_neighbour_rate_refuses_rate_unread_by_the_floor",
+            "test_a_rate_read_on_a_later_poll_proceeds_on_that_rate",
             "test_a_resume_tar_upload_reaches_resume_from",
+            "test_a_single_missing_assignment_count_is_recorded_only",
+            "test_a_stepped_registration_waits_for_a_stable_rate_and_prices_on_the_max",
             "test_a_window_naming_an_empty_token_variable_stops_before_the_job",
             "test_a_window_whose_pin_check_fails_stops_before_any_download",
+            "test_a_zero_assignment_count_while_open_for_three_reads_ends_the_window",
             "test_an_exec_that_never_starts_twice_stalls",
+            "test_an_explicit_higher_margin_is_used",
+            "test_an_explicit_lower_margin_refuses_margin_too_small_before_any_vm",
+            "test_an_under_read_rate_is_priced_at_the_max_rate_not_stretched",
+            "test_an_unread_live_rate_refuses_rate_unread_after_its_polls_and_stops_the_session",
             "test_card_rates_refusals_and_g4_margin_check",
+            "test_copyback_synchronization_under_fast_writer_and_mid_call_watcher_interleaving",
             "test_each_role_sends_only_its_own_scoped_token_and_never_hf_token",
             "test_every_window_writes_an_outcome_draft_with_its_date_and_commit",
             "test_gate_jsonl_records_vm_name_zone_and_pool_from_colab_sessions_for_every_try",
+            "test_gpu_window_requires_pin_high_mem_and_refuses_before_any_colab_call",
             "test_hung_exec_after_pin_result_takes_exit_sequence_within_one_watch_interval_and_kills_exec",
             "test_journal_copyback_grows_lands_whole_scrubs_tokens_and_rejects_corrupt_or_truncated_pulls",
             "test_journal_copyback_survives_midrun_session_drop_and_resumes_byte_identically",
+            "test_mid_run_rising_rate_reprices_and_rebaseline_uses_highest_stable_rate_seen",
+            "test_mid_run_sub_floor_or_zero_reading_is_rejected_and_cannot_hide_a_later_rise",
             "test_no_healthy_vm_in_three_tries_ends_the_window_before_any_upload_or_job",
             "test_offrig_bench_stub_window_uploads_binary_and_gold_and_downloads_out_tar_and_ps",
             "test_open_lock_is_released_before_vm_gate_runs_and_preserves_neighbour_rate",
+            "test_our_own_rate_rising_at_an_unchanged_count_trips_rate_above_max",
             "test_pin_gate_0_skips_the_gate",
             "test_pin_high_mem_asks_for_the_high_memory_shape_and_stays_off_the_vm",
             "test_rejected_gate_vms_are_counted_in_running_spend_and_deadline",
             "test_scrub_log_redacts_proxy_tokens_access_tokens_and_jwts_across_all_logs",
             "test_session_drop_after_new_journal_lines_runs_final_copyback_freezes_spend_and_closes_gone",
+            "test_shape_mismatch_after_open_refuses_shape_mismatch_and_stops_the_session",
+            "test_single_shape_cards_refuse_standard_shape_before_any_colab_call",
             "test_smoke_window_checks_pin_server_sha256_and_binary_sha_before_spend",
             "test_smoke_window_refuses_pin_stub_on_any_gpu_runtime",
+            "test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15",
+            "test_the_cap_clock_starts_when_the_session_opens",
             "test_the_gate_gets_its_settings_and_a_cpu_window_skips_the_card_check",
             "test_the_stub_call_knob_never_runs_on_a_gpu_window",
             "test_the_token_goes_only_to_the_vm_that_passed_the_gate",
             "test_the_token_reaches_the_job_as_a_file_and_appears_in_nothing_the_window_keeps",
+            "test_time_bounded_lock_refuses_missing_or_malformed_timestamp_and_reproduces_uv_lock_byte_for_byte",
             "test_timed_out_or_nonzero_upload_and_new_fail_under_pipefail",
             "test_toolcount_role_uploads_toolcount_pkg_tar_and_forwards_its_sha256",
-            "test_update_banner_is_silenced_and_stripped_so_idle_retry_fires"
+            "test_update_banner_is_silenced_and_stripped_so_idle_retry_fires",
+            "test_watcher_orphan_reread_and_fetch_children_are_killed_by_pid_and_named_in_log"
           ],
-          "hash": "7720351b54ebe1db4998ddb5da15f6d3181f599ea98461afffc53d6eefe394f2",
+          "hash": "be8e51fa12482f393571b902389d9e51f6f5519e87732b696d5190dbda317285",
+          "importOrder": [
+            "tests/stub_llama.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/runner.py"
+          ],
           "importsFiles": [
+            "scripts/toolcount/compass_lists.py",
+            "scripts/toolcount/gen_registry.py",
+            "scripts/toolcount/runner.py",
             "tests/stub_llama.py"
           ],
           "names": [
@@ -13550,7 +13597,8 @@
             "site/package*.json",
             "src/**",
             "tests/**",
-            "uv.lock"
+            "uv.lock",
+            "uv.lock.exclude-newer"
           ]
         },
         {
@@ -13745,6 +13793,157 @@
       "usesWorkflowToken": false
     },
     {
+      "checksCount": 1,
+      "commands": [
+        {
+          "dir": "",
+          "job": "build",
+          "programs": [
+            "python"
+          ],
+          "step": "The tag matches the version"
+        },
+        {
+          "dir": "",
+          "job": "build",
+          "programs": [
+            "uv"
+          ],
+          "step": "Build"
+        },
+        {
+          "dir": "",
+          "job": "upload",
+          "programs": [
+            "gh"
+          ],
+          "step": "Attach the wheel and the sdist"
+        }
+      ],
+      "elsewhere": [],
+      "file": ".github/workflows/release.yml",
+      "jobs": [
+        {
+          "basis": "declared",
+          "name": "build",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ]
+        },
+        {
+          "basis": "declared",
+          "environment": {
+            "name": "pypi"
+          },
+          "name": "publish",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ]
+        },
+        {
+          "basis": "declared",
+          "name": "upload",
+          "runsOn": [
+            {
+              "labels": [
+                "ubuntu-latest"
+              ],
+              "platform": {
+                "cpu": "x64",
+                "libc": "glibc",
+                "os": "linux"
+              }
+            }
+          ]
+        }
+      ],
+      "landings": [],
+      "mentions": [
+        {
+          "job": "build",
+          "path": "pyproject.toml"
+        }
+      ],
+      "name": "Release",
+      "permissions": [
+        "actions:read",
+        "contents:read",
+        "contents:write",
+        "id-token:write"
+      ],
+      "pushes": false,
+      "reach": [
+        {
+          "boundary": "src",
+          "depth": 0,
+          "files": 44
+        }
+      ],
+      "readers": [],
+      "runs": [
+        {
+          "directory": true,
+          "job": "build",
+          "path": "src/role_set/",
+          "runKind": "checks",
+          "via": "build pyproject.toml"
+        }
+      ],
+      "runsCount": 1,
+      "secrets": [],
+      "sends": {
+        "assets": [
+          "file:dist/*.tar.gz",
+          "file:dist/*.whl"
+        ],
+        "deploysPages": false,
+        "dispatchesTo": [],
+        "opensIssues": false,
+        "opensIssuesOnFailure": false,
+        "opensPullRequests": false,
+        "publishes": true,
+        "publishesTo": [
+          "pypi"
+        ],
+        "releases": false
+      },
+      "stages": [],
+      "triggers": [
+        {
+          "event": "release",
+          "types": [
+            "published"
+          ]
+        }
+      ],
+      "uses": [
+        "actions/checkout",
+        "actions/download-artifact",
+        "actions/upload-artifact",
+        "astral-sh/setup-uv",
+        "pypa/gh-action-pypi-publish"
+      ],
+      "usesWorkflowToken": true
+    },
+    {
       "checksCount": 0,
       "commands": [],
       "elsewhere": [],
@@ -13813,8 +14012,8 @@
   ],
   "engine": "1.24.0",
   "generatedFrom": {
-    "commit": "7feccbac980c2325a8d6d43368959bee5bf68490",
-    "tracked": 222
+    "commit": "cfb6ce1c2d6bddad27cd5aa3b14d6ae2b04f5339",
+    "tracked": 223
   },
   "landings": [
     {
@@ -13883,6 +14082,10 @@
     },
     {
       "readers": [
+        {
+          "by": ".github/workflows/release.yml",
+          "confidence": "config"
+        },
         {
           "by": "scripts/colab/pin_window.py",
           "call": "read_text",

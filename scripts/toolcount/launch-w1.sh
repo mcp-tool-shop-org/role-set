@@ -108,6 +108,7 @@ case "$MODE" in
   run)
     export PIN_STUB=0
     export PIN_GPU="${PIN_GPU:-A100}"
+    export PIN_HIGH_MEM="${PIN_HIGH_MEM:-0}"
     export PIN_SKIP_BINARY=0
     # Design v1 §5: W1 Granite 4.2 8B — wall 2.5 h (9000 s), cap 13 units (binding ceiling = cap 13)
     export PIN_CAP_UNITS="${PIN_CAP_UNITS:-13}"

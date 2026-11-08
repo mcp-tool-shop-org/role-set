@@ -60,8 +60,16 @@ case "$cmd" in
     if [ -f "$ST/open" ] && [ -n "${FAKE_ASSIGN_SEQ:-}" ] && [ "${FAKE_MODE:-normal}" != neighbourclose ]; then
       n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | sed -n "${u_n}p"); [ -n "$n_open" ] || n_open=$(echo "$FAKE_ASSIGN_SEQ" | tr , '\n' | tail -1)
     fi  # FAKE_RATE0: the account rate with no session of ours (a neighbour's)
-    # FAKE_ASSIGN_MISSING_READS: post-open read numbers (comma list) that drop the "Active assignments" line.
+    # FAKE_ASSIGN_MISSING_READS / FAKE_RATE_MISSING_READS: post-open read numbers (comma list) that drop the count or rate line.
     drop_n=0; case ",${FAKE_ASSIGN_MISSING_READS:-}," in *",${u_n:-x},"*) drop_n=1;; esac
+    case ",${FAKE_RATE_MISSING_READS:-}," in *",${u_n:-x},"*) r="";; esac
+    if [ -f "$ST/open" ] && [ -n "${FAKE_USAGE_SLOW_FROM_READ:-}" ] && [ "${u_n:-0}" -eq "$FAKE_USAGE_SLOW_FROM_READ" ] 2>/dev/null; then
+      my_pid="${BASHPID:-$$}"
+      p_pid=$(awk '/^PPid:/{print $2}' "/proc/$my_pid/status" 2>/dev/null || echo "$PPID")
+      p_comm=$(cat "/proc/$p_pid/comm" 2>/dev/null || echo "?")
+      echo "$my_pid $p_pid $p_comm" >> "$ST/usage-slow-pids.log"
+      exec >/dev/null 2>&1; sleep "${FAKE_USAGE_SLOW_S:-25}"
+    fi
     echo "Current balance: 100.00 compute units"; [ -n "$r" ] && echo "Usage rate: $r/hr"
     [ "$drop_n" = 1 ] || echo "Active assignments: $n_open";;
   new)
@@ -88,7 +96,12 @@ case "$cmd" in
       vm_id=$(echo "${FAKE_VM:-}" | cut -d, -f"$n_vm")
       [ -n "$vm_id" ] || vm_id="gpu-a100-s-kkb-usc1b2-fake${n_vm}"
       hw="${PIN_GPU:-A100}"
-      shape="Standard"; [ "${PIN_HIGH_MEM:-0}" = 1 ] && shape="High-RAM"
+      shape="Standard"
+      if grep -q -- '--high-mem' "$ST/new-args.log" 2>/dev/null || [ "${PIN_HIGH_MEM:-0}" = 1 ]; then
+        shape="High-RAM"
+      fi
+      [ -n "${FAKE_SESSION_SHAPE:-}" ] && shape="$FAKE_SESSION_SHAPE"
+      [ -n "${FAKE_COLAB_SESSION_SHAPE:-}" ] && shape="$FAKE_COLAB_SESSION_SHAPE"
       variant="GPU"; [ "$hw" = CPU ] && variant="CPU"
       echo "[${PIN_SESSION:-fake}] $vm_id | Hardware: $hw | Shape: $shape | Variant: $variant"
     else
@@ -139,6 +152,16 @@ case "$cmd" in
     fi
     case "$1" in
       /content/pin/job.log)
+        if [[ "$2" == *.part.watcher ]]; then
+          wf_n=$(( $(cat "$ST/watcher-fetch-reads" 2>/dev/null || echo 0) + 1 )); echo "$wf_n" > "$ST/watcher-fetch-reads"
+          if [ -n "${FAKE_FETCH_SLOW_FROM_CALL:-}" ] && [ "$wf_n" -eq "$FAKE_FETCH_SLOW_FROM_CALL" ] 2>/dev/null; then
+            my_pid="${BASHPID:-$$}"
+            p_pid=$(awk '/^PPid:/{print $2}' "/proc/$my_pid/status" 2>/dev/null || echo "$PPID")
+            p_comm=$(cat "/proc/$p_pid/comm" 2>/dev/null || echo "?")
+            echo "$my_pid $p_pid $p_comm" >> "$ST/fetch-slow-pids.log"
+            exec >/dev/null 2>&1; sleep "${FAKE_FETCH_SLOW_S:-25}"
+          fi
+        fi
         if [ -s "$VM$1" ] && [ -n "${FAKE_HB_LINE:-}" ] && ! grep -Fq "$FAKE_HB_LINE" "$VM$1" 2>/dev/null; then
           printf '%s\n' "$FAKE_HB_LINE" >> "$VM$1"
         fi

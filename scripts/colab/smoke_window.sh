@@ -25,19 +25,29 @@
 # Retired: the window-2 draft of this script (a balance-only cap, never committed) ran windows 2 to 7 on 2026-10-17,
 # and balance-only copies of it ran 7b and 8 that day; nothing since. It must not be run again; this file replaces it.
 set -uo pipefail
+SHAPE_FLAG=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --max-rate) PIN_MAX_RATE="${2:-}"; shift; [ $# -gt 0 ] && shift;;
     --max-rate=*) PIN_MAX_RATE="${1#--max-rate=}"; shift;;
+    --shape) SHAPE_FLAG="${2:-}"; shift; [ $# -gt 0 ] && shift;;
+    --shape=*) SHAPE_FLAG="${1#--shape=}"; shift;;
     --check-only) CHECK_ONLY=1; shift;;  # run the checks that come before any colab call, then exit 0
     *) break;;
   esac
 done
 BIN="${1:?usage: smoke_window.sh <llama-server> <out dir>}"
 OUT="${2:?usage: smoke_window.sh <llama-server> <out dir>}"
+if [ -n "$SHAPE_FLAG" ]; then
+  case "$SHAPE_FLAG" in
+    standard) PIN_HIGH_MEM=0;;
+    high-mem) PIN_HIGH_MEM=1;;
+    *) echo "REFUSED SHAPE_INVALID: --shape=$SHAPE_FLAG must be standard or high-mem (or set PIN_HIGH_MEM=0|1)" >&2; exit 2;;
+  esac
+fi
 case "${PIN_GPU:-A100}" in
-  A100|H100|G4|L4|T4|CPU) ;;
-  *) echo "REFUSED: PIN_GPU=${PIN_GPU} must be A100, H100, G4, L4, T4 or CPU" >&2; exit 2;;
+  A100|H100|G4|L4|T4|V5E1|V6E1|CPU) ;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU} must be A100, H100, G4, L4, T4 or CPU (or V5E1, V6E1)" >&2; exit 2;;
 esac
 if [ "${PIN_STUB:-0}" = 1 ] && [ "${PIN_GPU:-A100}" != CPU ]; then
   echo "REFUSED: PIN_STUB=1 may only run on PIN_GPU=CPU, never on ${PIN_GPU:-A100}" >&2
@@ -91,13 +101,38 @@ COPYBACK_DL_S="${PIN_COPYBACK_DL_S:-60}"
 # default margin of 0.3 holds them at its configured rate.
 GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
 FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
+# PIN_HIGH_MEM is required on every GPU card (no default), and cross-checked against single-shape high-mem cards
+# (L4, V5E1, V6E1 are always High-RAM). Only CPU stubs default PIN_HIGH_MEM to 0.
+if [ "${PIN_GPU:-A100}" = CPU ]; then
+  PIN_HIGH_MEM="${PIN_HIGH_MEM:-0}"
+  if [ "$PIN_HIGH_MEM" != 0 ] && [ "$PIN_HIGH_MEM" != 1 ]; then
+    echo "REFUSED SHAPE_INVALID: PIN_HIGH_MEM=$PIN_HIGH_MEM must be 0 (Standard) or 1 (High-RAM)" >&2
+    exit 2
+  fi
+else
+  if [ -z "${PIN_HIGH_MEM:-}" ]; then
+    echo "REFUSED SHAPE_REQUIRED: a ${PIN_GPU:-A100} window requires PIN_HIGH_MEM=0 (Standard) or PIN_HIGH_MEM=1 (High-RAM) (or --shape standard|high-mem); there is no default" >&2
+    exit 2
+  fi
+  if [ "$PIN_HIGH_MEM" != 0 ] && [ "$PIN_HIGH_MEM" != 1 ]; then
+    echo "REFUSED SHAPE_INVALID: PIN_HIGH_MEM=$PIN_HIGH_MEM must be 0 (Standard) or 1 (High-RAM)" >&2
+    exit 2
+  fi
+  case "${PIN_GPU:-A100}:$PIN_HIGH_MEM" in
+    L4:0|V5E1:0|V6E1:0)
+      echo "REFUSED SHAPE_STANDARD_UNAVAILABLE: PIN_GPU=${PIN_GPU:-A100} is always high-mem (High-RAM); Standard (PIN_HIGH_MEM=0) is unavailable; set PIN_HIGH_MEM=1" >&2
+      exit 2;;
+  esac
+fi
+SHAPE_EXPECTED="Standard"; [ "$PIN_HIGH_MEM" = 1 ] && SHAPE_EXPECTED="High-RAM"
+SHAPE_OBS=""
 # The cards a rung has run (G4, A100 in both shapes). Only the CPU stubs keep a configured rate (measured 0.08, --high-mem
 # 0.26), used when their own rate is unread and always labelled "configured_cpu" where it is recorded.
-case "${PIN_GPU:-A100}:${PIN_HIGH_MEM:-0}" in
+case "${PIN_GPU:-A100}:$PIN_HIGH_MEM" in
   G4:*|A100:*) CPU_RATE="";;
   CPU:1) CPU_RATE=0.26;;
-  CPU:*) CPU_RATE=0.08;;
-  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=${PIN_HIGH_MEM:-0}) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
+  CPU:0) CPU_RATE=0.08;;
+  *) echo "REFUSED: PIN_GPU=${PIN_GPU:-A100} (PIN_HIGH_MEM=$PIN_HIGH_MEM) has no measured rate yet; refuse until one is measured" >&2; exit 2;;
 esac
 DEFAULT_SERVER_SHA256="b4659b3fc74037deb96b2148c455753121fa21dde174d7124547e2bf9ffd37c3"
 if [ "${PIN_SERVER_SHA256+set}" = set ]; then
@@ -221,8 +256,80 @@ end_window() {
     fi
   fi
 }
+WATCHER_CHILD_PID_FILE="$OUT/.watcher_child.pid"
+rm -f "$WATCHER_CHILD_PID_FILE" "$OUT/.watcher_reread.out"
+KILLED_TREE_PIDS=""
+# Kill a process and every descendant found by parent PID (pgrep -P), never by name: TERM, then KILL.
+kill_pid_tree() {
+  local root="$1" p c alive i
+  local -a pids=() frontier=() next=() live_pids=()
+  KILLED_TREE_PIDS=""
+  [[ "$root" =~ ^[0-9]+$ ]] || return 1
+  frontier=("$root")
+  while [ "${#frontier[@]}" -gt 0 ]; do
+    next=()
+    for p in "${frontier[@]}"; do
+      pids+=("$p")
+      while read -r c; do
+        [ -n "$c" ] && next+=("$c")
+      done < <(pgrep -P "$p" 2>/dev/null || true)
+    done
+    frontier=("${next[@]+"${next[@]}"}")
+  done
+  for p in "${pids[@]}"; do
+    if kill -0 "$p" 2>/dev/null && [ "$(ps -o stat= -p "$p" 2>/dev/null | tr -d ' ')" != Z ]; then
+      live_pids+=("$p")
+    fi
+  done
+  [ "${#live_pids[@]}" -gt 0 ] || return 1
+  KILLED_TREE_PIDS=$(IFS=,; echo "${live_pids[*]}")
+  kill -TERM "${live_pids[@]}" 2>/dev/null || true
+  for i in 1 2 3 4 5 6 7 8 9 10; do
+    alive=0
+    for p in "${live_pids[@]}"; do
+      if kill -0 "$p" 2>/dev/null && [ "$(ps -o stat= -p "$p" 2>/dev/null | tr -d ' ')" != Z ]; then
+        alive=1
+      fi
+    done
+    [ "$alive" -eq 0 ] && return 0
+    sleep 0.1
+  done
+  kill -KILL "${live_pids[@]}" 2>/dev/null || true
+  return 0
+}
+reap_watcher_orphans() {
+  local cpid="" ckind="" w_child="" w_comm=""
+  if [ -f "$WATCHER_CHILD_PID_FILE" ]; then
+    read -r cpid ckind < "$WATCHER_CHILD_PID_FILE" 2>/dev/null || true
+    if [ -n "$cpid" ] && kill_pid_tree "$cpid"; then
+      echo "WATCHER ORPHAN KILLED: pid=$cpid kind=${ckind:-unknown} pids=$KILLED_TREE_PIDS $(date -u +%T)" | tee -a "$OUT/smoke-window.log"
+    fi
+    rm -f "$WATCHER_CHILD_PID_FILE" 2>/dev/null || true
+  fi
+  if [ -n "${WATCH:-}" ]; then
+    for w_child in $(pgrep -P "$WATCH" 2>/dev/null || true); do
+      w_comm=$(cat "/proc/$w_child/comm" 2>/dev/null || echo "")
+      if [ "$w_comm" = sleep ]; then
+        kill -TERM "$w_child" 2>/dev/null || true
+      elif kill_pid_tree "$w_child"; then
+        echo "WATCHER ORPHAN KILLED: pid=$w_child kind=${w_comm:-child} pids=$KILLED_TREE_PIDS $(date -u +%T)" | tee -a "$OUT/smoke-window.log"
+      fi
+    done
+  fi
+}
 stop_all() {
   [ -n "$TOKF" ] && rm -f "$TOKF"
+  if [ -n "${WATCH:-}" ]; then
+    reap_watcher_orphans
+    reap_watcher_orphans
+kill "$WATCH" 2>/dev/null || true
+wait "$WATCH" 2>/dev/null || true
+reap_watcher_orphans
+WATCH=""
+    wait "$WATCH" 2>/dev/null || true
+    reap_watcher_orphans
+    WATCH=""
+  fi
   if [ -f "$OUT/.exec.pid" ] && [ ! -f "$OUT/.final_pulled" ]; then
     touch "$OUT/.final_pulled"
     if declare -F fetch_log >/dev/null 2>&1; then
@@ -256,6 +363,7 @@ rate_assign() {
 # difference is 0 or less (a neighbour closing between the reads), never a constant.
 own_rate_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; r = a - b; if (r > 0) print r + 0 }'; }
 jnum() { if [ -n "${1:-}" ]; then printf '%s' "$1"; else printf null; fi; }
+jstr() { if [ -n "${1:-}" ]; then printf '"%s"' "$1"; else printf null; fi; }
 RATE_LIVE=""; RATE_SCOPE=""; OWN_RATE=""; T_OPEN=""; T_NEW=""; PIN_DEADLINE=""; RATE_POLLS_USED=0; RATE_WHY=""
 RATE_STABLE_S=""; RATE_MAX_SEEN=""; ASSIGN0=""
 READINGS="$OUT/rate-readings.jsonl"; rm -f "$READINGS" "$OUT/.rate_max" "$OUT/.rate_verdict" "$OUT/rate.json"
@@ -267,8 +375,8 @@ record_reading() {  # $1: phase (open, run or rebaseline), $2: account rate, $3:
 delta_of() { awk -v a="$1" -v b="$2" 'BEGIN{ if (a == "" || b == "") exit; print a - b + 0 }'; }
 # The window receipt for the rate (rate.json) and the outcome draft both carry the reading the cap ran on.
 rate_fields() {
-  printf '"rate_live": %s, "rate_scope": "%s", "rate_used": %s, "rate_max_seen": %s, "max_rate": %s, "margin_derived": %s, "margin": %s, "deadline": %s' \
-    "$(jnum "$RATE_LIVE")" "$RATE_SCOPE" "$(jnum "$OWN_RATE")" "$(jnum "$RATE_MAX_SEEN")" "$(jnum "$MAX_RATE")" \
+  printf '"shape_expected": "%s", "shape_observed": %s, "rate_live": %s, "rate_scope": "%s", "rate_used": %s, "rate_max_seen": %s, "max_rate": %s, "margin_derived": %s, "margin": %s, "deadline": %s' \
+    "$SHAPE_EXPECTED" "$(jstr "$SHAPE_OBS")" "$(jnum "$RATE_LIVE")" "$RATE_SCOPE" "$(jnum "$OWN_RATE")" "$(jnum "$RATE_MAX_SEEN")" "$(jnum "$MAX_RATE")" \
     "$(jnum "$MARGIN_DERIVED")" "$MARGIN" "$(jnum "$PIN_DEADLINE")"
 }
 write_rate_receipt() {  # $1: the verdict: ok, RATE_UNREAD or RATE_ABOVE_MAX
@@ -322,6 +430,13 @@ for try in $(seq 1 "$GATE_TRIES"); do
   else
     printf '%s\n' "$new_out" | strip_colab_banner | tail -2 | scrub_log
     flock -u 9; exec 9>&-; echo "no ${PIN_GPU:-A100} assigned"; exit 2
+  fi
+  sess_out=$(colab sessions 2>&1 || true)
+  sess_row=$(printf '%s\n' "$sess_out" | strip_colab_banner | scrub_log | awk -v p="[$S]" '$1 == p {print; exit}')
+  SHAPE_OBS=$(printf '%s\n' "$sess_row" | grep -oP 'Shape:\s*\K[^|]+' | sed 's/[[:space:]]*$//' | head -1 || true)
+  if [ "$SHAPE_OBS" != "$SHAPE_EXPECTED" ]; then
+    flock -u 9; exec 9>&-
+    rate_refuse SHAPE_MISMATCH "requested PIN_HIGH_MEM=$PIN_HIGH_MEM (Shape: $SHAPE_EXPECTED) on ${PIN_GPU:-A100}, but session [$S] reports Shape: ${SHAPE_OBS:-missing}"
   fi
   # The live rate guard, still under the open lock: up to RATE_READS_MAX reads, RATE_POLL_S apart. A GPU card's own
   # delta counts only once two consecutive reads agree within 0.01 at or above GPU_RATE_FLOOR; a CPU stub reads once.
@@ -439,9 +554,20 @@ cli() {
   return "${PIPESTATUS[0]}"
 }
 fetch_log() {  # $1: a name for this fetcher's part file, so the watcher's and the exit sequence's never collide
-  local part="$OUT/job.log.part.${1:-x}" new old dl_out dl_rc
-  rm -f "$part"
-  dl_out=$(CLI_T="${CLI_T:-$DL_S}" cli download -s "$S" /content/pin/job.log "$part") && dl_rc=0 || dl_rc=$?
+  local part="$OUT/job.log.part.${1:-x}" raw_out="$OUT/.fetch.raw.${1:-x}" cfg_args=() fpid new old dl_out dl_rc
+  [ -n "${PIN_COLAB_CONFIG:-}" ] && cfg_args=(--config "$PIN_COLAB_CONFIG")
+  rm -f "$part" "$raw_out"
+  if [ "${1:-}" = watcher ]; then
+    timeout "${CLI_T:-$DL_S}" colab "${cfg_args[@]}" download -s "$S" /content/pin/job.log "$part" </dev/null >"$raw_out" 2>&1 &
+    fpid=$!
+    printf '%s fetch\n' "$fpid" > "$WATCHER_CHILD_PID_FILE"
+    wait "$fpid" 2>/dev/null && dl_rc=0 || dl_rc=$?
+    rm -f "$WATCHER_CHILD_PID_FILE"
+  else
+    timeout "${CLI_T:-$DL_S}" colab "${cfg_args[@]}" download -s "$S" /content/pin/job.log "$part" >"$raw_out" 2>&1 && dl_rc=0 || dl_rc=$?
+  fi
+  dl_out=$(strip_colab_banner < "$raw_out" 2>/dev/null | scrub_log || true)
+  rm -f "$raw_out"
   printf '%s\n' "$dl_out" > "$OUT/.fetch.out"
   [ "$dl_rc" -eq 0 ] || { rm -f "$part"; return 1; }
   grep -Eqi "^\[colab\] (Download failed|Error|Session .* not found)" "$OUT/.fetch.out" && { rm -f "$part"; return 1; }
@@ -645,26 +771,42 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
       # rate less our last stable rate. Pricing stays max(max rate, highest seen) throughout. A missing count, or 0 while
       # we are open, is recorded; three in a row end the window as ASSIGNMENTS_UNREADABLE (fetch, then stop).
       # Known limit: a neighbour opening in the same read our own rate rises folds that rise into the baseline.
-      read -r a_run n_run < <(rate_assign)
-      [ "$a_run" = - ] && a_run=""; [ "$n_run" = - ] && n_run=""
+      : > "$OUT/.watcher_reread.out"
+      timeout -k 5 "$USAGE_T" colab usage </dev/null >"$OUT/.watcher_reread.out" 2>&1 &
+      reread_pid=$!
+      printf '%s reread\n' "$reread_pid" > "$WATCHER_CHILD_PID_FILE"
+      wait "$reread_pid" 2>/dev/null || true
+      rm -f "$WATCHER_CHILD_PID_FILE"
+      u_run=$(strip_colab_banner < "$OUT/.watcher_reread.out" 2>/dev/null || true)
+      rm -f "$OUT/.watcher_reread.out"
+      a_run=$(printf '%s\n' "$u_run" | grep -oP 'rate: \K[0-9]+(\.[0-9]+)?' | head -1 || true)
+      n_run=$(printf '%s\n' "$u_run" | grep -oP 'Active assignments: \K[0-9]+' | head -1 || true)
       if [ -z "$n_run" ] || [ "$n_run" = 0 ]; then
-        bad_n=$(( bad_n + 1 )); run_prev=""
+        bad_n=$(( bad_n + 1 )); run_prev=""; pend=""
         record_reading bad_count "$a_run" "" "$n_run" "$base"
         if [ "$bad_n" -ge 3 ]; then
           echo "ASSIGNMENTS_UNREADABLE|assignment count missing or 0 for $bad_n consecutive reads (mid-run)" > "$OUT/.rate_verdict"
           echo "REFUSED ASSIGNMENTS_UNREADABLE (mid-run): assignment count missing or 0 for $bad_n consecutive reads; fetching, then stopping $S $(date -u +%T)"
           end_window ASSIGNMENTS_UNREADABLE; continue
         fi
-      elif { bad_n=0; [ -z "$a_run" ]; }; then  # a good count resets the run of bad ones
-        record_reading run "" "" "$n_run" "$base"; run_prev=""
+      elif [ -z "$a_run" ]; then
+        bad_n=$(( bad_n + 1 )); run_prev=""; pend=""
+        record_reading bad_rate "" "" "$n_run" "$base"
+        if [ "$bad_n" -ge 3 ]; then
+          echo "ASSIGNMENTS_UNREADABLE|usage rate unreadable for $bad_n consecutive reads (mid-run)" > "$OUT/.rate_verdict"
+          echo "REFUSED ASSIGNMENTS_UNREADABLE (mid-run): usage rate unreadable for $bad_n consecutive reads; fetching, then stopping $S $(date -u +%T)"
+          end_window ASSIGNMENTS_UNREADABLE; continue
+        fi
       elif [ "$n_run" != "$last_assign" ]; then
+        bad_n=0
         [ -n "$pend" ] || pend_from=$last_assign
         pend=1; pend_prev=$a_run; last_assign=$n_run; run_prev=""
         record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
       elif [ -n "$pend" ]; then
+        bad_n=0
         if awk -v a="$pend_prev" -v b="$a_run" 'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9)}'; then
-          [ -n "$last_own" ] && base=$(awk -v a="$a_run" -v o="$last_own" 'BEGIN{print a - o + 0}')
-          record_reading rebaseline "$a_run" "$last_own" "$n_run" "$base"
+          [ -n "$RATE_MAX_SEEN" ] && base=$(awk -v a="$a_run" -v o="$RATE_MAX_SEEN" 'BEGIN{b = a - o; print (b > 0 ? b : 0) + 0}')
+          record_reading rebaseline "$a_run" "$RATE_MAX_SEEN" "$n_run" "$base"
           echo "RE-BASELINE: assignments $pend_from -> $n_run, neighbour baseline $base/hr $(date -u +%T)"
           pend=""
         else
@@ -672,24 +814,35 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
           record_reading rebaseline_pending "$a_run" "" "$n_run" "$base"
         fi
       else
-      d_run=$(delta_of "$a_run" "$base")
-      record_reading run "$a_run" "$d_run" "$n_run" "$base"
-      if [ -n "$run_prev" ] && [ -n "$d_run" ] && awk -v a="$run_prev" -v b="$d_run" -v f="$GPU_RATE_FLOOR" \
-          'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9 && a >= f && b >= f)}'; then
-        if awk -v r="$d_run" -v m="$RATE_MAX_SEEN" 'BEGIN{exit !(r > m)}'; then
-          RATE_MAX_SEEN=$(awk -v r="$d_run" 'BEGIN{print r + 0}'); echo "$RATE_MAX_SEEN" > "$OUT/.rate_max"
-          OWN_RATE=$(awk -v m="$MAX_RATE" -v r="$RATE_MAX_SEEN" 'BEGIN{print (r > m ? r : m) + 0}')
-          PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
-          echo "RATE ROSE: own rate $RATE_MAX_SEEN/hr, priced at $OWN_RATE/hr $(date -u +%T)"
+        d_run=$(delta_of "$a_run" "$base")
+        if [ -z "$d_run" ] || awk -v d="$d_run" -v f="$GPU_RATE_FLOOR" 'BEGIN{exit !(d < f - 1e-9)}'; then
+          bad_n=$(( bad_n + 1 )); run_prev=""
+          record_reading below_floor "$a_run" "$d_run" "$n_run" "$base"
+          if [ "$bad_n" -ge 3 ]; then
+            echo "ASSIGNMENTS_UNREADABLE|own rate below floor ($GPU_RATE_FLOOR/hr) for $bad_n consecutive reads (mid-run)" > "$OUT/.rate_verdict"
+            echo "REFUSED ASSIGNMENTS_UNREADABLE (mid-run): own rate below floor ($GPU_RATE_FLOOR/hr) for $bad_n consecutive reads; fetching, then stopping $S $(date -u +%T)"
+            end_window ASSIGNMENTS_UNREADABLE; continue
+          fi
+        else
+          bad_n=0
+          record_reading run "$a_run" "$d_run" "$n_run" "$base"
+          if [ -n "$run_prev" ] && [ -n "$d_run" ] && awk -v a="$run_prev" -v b="$d_run" -v f="$GPU_RATE_FLOOR" \
+              'BEGIN{x = a - b; if (x < 0) x = -x; exit !(x <= 0.01 + 1e-9 && a >= f && b >= f)}'; then
+            if awk -v r="$d_run" -v m="$RATE_MAX_SEEN" 'BEGIN{exit !(r > m)}'; then
+              RATE_MAX_SEEN=$(awk -v r="$d_run" 'BEGIN{print r + 0}'); echo "$RATE_MAX_SEEN" > "$OUT/.rate_max"
+              OWN_RATE=$(awk -v m="$MAX_RATE" -v r="$RATE_MAX_SEEN" 'BEGIN{print (r > m ? r : m) + 0}')
+              PIN_DEADLINE=$(awk -v t="$T_OPEN" -v c="$CAP_UNITS" -v m="$MARGIN" -v r="$OWN_RATE" 'BEGIN{printf "%d", t + (c-m)/r*3600}')
+              echo "RATE ROSE: own rate $RATE_MAX_SEEN/hr, priced at $OWN_RATE/hr $(date -u +%T)"
+            fi
+            if awk -v r="$d_run" -v m="$MAX_RATE" 'BEGIN{exit !(r > m)}'; then
+              echo "RATE_ABOVE_MAX|own rate $d_run/hr is above the max rate $MAX_RATE/hr (mid-run)" > "$OUT/.rate_verdict"
+              echo "REFUSED RATE_ABOVE_MAX (mid-run): own rate $d_run/hr is above the max rate $MAX_RATE/hr; fetching, then stopping $S $(date -u +%T)"
+              end_window RATE_ABOVE_MAX; continue
+            fi
+            last_own=$d_run
+          fi
+          run_prev=$d_run
         fi
-        if awk -v r="$d_run" -v m="$MAX_RATE" 'BEGIN{exit !(r > m)}'; then
-          echo "RATE_ABOVE_MAX|own rate $d_run/hr is above the max rate $MAX_RATE/hr (mid-run)" > "$OUT/.rate_verdict"
-          echo "REFUSED RATE_ABOVE_MAX (mid-run): own rate $d_run/hr is above the max rate $MAX_RATE/hr; fetching, then stopping $S $(date -u +%T)"
-          end_window RATE_ABOVE_MAX; continue
-        fi
-        last_own=$d_run
-      fi
-      run_prev=$d_run
       fi
     fi
     if [ -z "$ended" ] && [ ! -f "$OUT/.end" ]; then

@@ -8,6 +8,11 @@ All notable changes to role-set are documented here. The format is based on
 
 ### Fixed
 
+- **Colab window safety & time-bounded locks**:
+  - `scripts/colab/smoke_window.sh`: require explicit `PIN_HIGH_MEM=0|1` on every GPU card (`SHAPE_REQUIRED` / `SHAPE_INVALID`), cross-check single-shape high-memory cards (`L4`, `V5E1`, `V6E1` refuse `PIN_HIGH_MEM=0` with `SHAPE_STANDARD_UNAVAILABLE` before any `colab` call), and verify the opened session `Shape:` line matches `PIN_HIGH_MEM` (`SHAPE_MISMATCH` stops the session before running any job).
+  - `scripts/colab/smoke_window.sh`: track the watcher mid-run rate re-read (`WATCH_REREAD_PID`) and log fetch (`WATCH_FETCH_PID`) children and kill any orphan by PID (never by name) with `WATCHER ORPHAN KILLED` diagnostics when a window exits.
+  - `scripts/colab/smoke_window.sh`: enforce the mid-run rate rule (from rdlab 0.6.0 / sdlab #62) with `GPU_RATE_FLOOR=1.0` applied mid-run (`below_floor` rows counted toward `ASSIGNMENTS_UNREADABLE` after 3 consecutive degraded reads) and neighbour re-baseline anchored to `RATE_MAX_SEEN` rather than `last_own`.
+  - `uv.lock.exclude-newer`, `scripts/colab/lock_common.sh`, `scripts/colab/preflight_resolve.sh`, `scripts/colab/relock.sh`, `docs/colab-locks.md`: time-bounded dependency locks with `uv --exclude-newer`, refusing `LOCK_TIMESTAMP_MISSING` / `LOCK_TIMESTAMP_MALFORMED` and verifying clean-room byte-for-byte lock reproduction.
 - **Colab window kit: a live-rate cap guard** (`scripts/colab/smoke_window.sh`, `tests/fake_colab/colab`,
   `tests/test_window_script.py`; R&D, 2026-11-06). Colab's balance moves only after a session ends, and the rate moved
   (A100 High-RAM 8.88/hr, A100 6.73/hr) while the kit still used 5.3, so the cap could run past its units mid-window.
