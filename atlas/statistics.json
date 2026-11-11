@@ -155,7 +155,7 @@
       "confidence": "full",
       "highWater": null,
       "name": "tests",
-      "qualifyingSourceCommits": 145,
+      "qualifyingSourceCommits": 146,
       "rebaseline": null
     }
   ],
@@ -168,8 +168,8 @@
         "path": ".gitattributes"
       },
       {
-        "commits": 18,
-        "lines": 240,
+        "commits": 19,
+        "lines": 241,
         "path": ".github/workflows/ci.yml"
       },
       {
@@ -198,8 +198,8 @@
         "path": "2026-10-11-pilot-3.md}"
       },
       {
-        "commits": 93,
-        "lines": 598,
+        "commits": 94,
+        "lines": 603,
         "path": "CHANGELOG.md"
       },
       {
@@ -273,8 +273,8 @@
         "path": "assets/logo/role-set-wordmark.png"
       },
       {
-        "commits": 58,
-        "lines": 1133,
+        "commits": 59,
+        "lines": 1158,
         "path": "atlas/README.md"
       },
       {
@@ -283,18 +283,18 @@
         "path": "atlas/boundaries.yaml"
       },
       {
-        "commits": 58,
-        "lines": 3646,
+        "commits": 59,
+        "lines": 3731,
         "path": "atlas/page.json"
       },
       {
-        "commits": 58,
-        "lines": 8817,
+        "commits": 59,
+        "lines": 9118,
         "path": "atlas/statistics.json"
       },
       {
-        "commits": 58,
-        "lines": 44185,
+        "commits": 59,
+        "lines": 44438,
         "path": "atlas/structure.json"
       },
       {
@@ -316,6 +316,11 @@
         "commits": 1,
         "lines": 65,
         "path": "docs/b3c/inventory.md"
+      },
+      {
+        "commits": 1,
+        "lines": 28,
+        "path": "docs/colab-locks.md"
       },
       {
         "commits": 10,
@@ -428,6 +433,11 @@
         "path": "scripts/colab/licences/openmdw-1.1.txt"
       },
       {
+        "commits": 1,
+        "lines": 114,
+        "path": "scripts/colab/lock_common.sh"
+      },
+      {
         "commits": 12,
         "lines": 455,
         "path": "scripts/colab/mock_job.py"
@@ -448,13 +458,23 @@
         "path": "scripts/colab/pin_window_split.sh"
       },
       {
+        "commits": 1,
+        "lines": 74,
+        "path": "scripts/colab/preflight_resolve.sh"
+      },
+      {
         "commits": 3,
         "lines": 299,
         "path": "scripts/colab/preflight_window.py"
       },
       {
-        "commits": 48,
-        "lines": 1791,
+        "commits": 1,
+        "lines": 98,
+        "path": "scripts/colab/relock.sh"
+      },
+      {
+        "commits": 49,
+        "lines": 2012,
         "path": "scripts/colab/smoke_window.sh"
       },
       {
@@ -533,8 +553,8 @@
         "path": "scripts/toolcount/gen_registry.py"
       },
       {
-        "commits": 3,
-        "lines": 331,
+        "commits": 4,
+        "lines": 332,
         "path": "scripts/toolcount/launch-w1.sh"
       },
       {
@@ -923,8 +943,8 @@
         "path": "tests/conftest.py"
       },
       {
-        "commits": 15,
-        "lines": 531,
+        "commits": 16,
+        "lines": 558,
         "path": "tests/fake_colab/colab"
       },
       {
@@ -1288,8 +1308,8 @@
         "path": "tests/test_waves.py"
       },
       {
-        "commits": 25,
-        "lines": 2455,
+        "commits": 26,
+        "lines": 2790,
         "path": "tests/test_window_script.py"
       },
       {
@@ -1303,6 +1323,11 @@
         "path": "uv.lock"
       },
       {
+        "commits": 1,
+        "lines": 4,
+        "path": "uv.lock.exclude-newer"
+      },
+      {
         "commits": 13,
         "lines": 652,
         "path": "writers.json"
@@ -1313,9 +1338,9 @@
     "level": "low",
     "reason": "fewer than 25 source files reach 10 revisions in the window"
   },
-  "generatedAt": "2026-11-08T08:16:50.051Z",
+  "generatedAt": "2026-11-11T22:37:59.911Z",
   "generatedFrom": {
-    "commit": "cfb6ce1c2d6bddad27cd5aa3b14d6ae2b04f5339"
+    "commit": "15cb913eec06d8907db7ede8db1c95e6118e0605"
   },
   "pairs": [
     {
@@ -1517,43 +1542,43 @@
     {
       "a": "atlas/README.md",
       "b": "atlas/page.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/statistics.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
       "a": "atlas/README.md",
       "b": "atlas/structure.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/statistics.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
       "a": "atlas/page.json",
       "b": "atlas/structure.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
       "a": "atlas/statistics.json",
       "b": "atlas/structure.json",
-      "either": 53,
-      "shared": 53,
+      "either": 54,
+      "shared": 54,
       "strength": 1
     },
     {
@@ -1569,6 +1594,13 @@
       "either": 20,
       "shared": 17,
       "strength": 0.85
+    },
+    {
+      "a": "scripts/colab/smoke_window.sh",
+      "b": "tests/test_window_script.py",
+      "either": 42,
+      "shared": 21,
+      "strength": 0.5
     },
     {
       "a": "src/role_set/assemble.py",
@@ -1636,9 +1668,9 @@
     {
       "a": "tests/fake_colab/colab",
       "b": "tests/test_window_script.py",
-      "either": 21,
-      "shared": 12,
-      "strength": 0.571429
+      "either": 22,
+      "shared": 13,
+      "strength": 0.590909
     }
   ],
   "parameters": {
@@ -1651,16 +1683,16 @@
     "floor": "fallen",
     "floorHeld": true,
     "floorTrigger": "revision-depth",
-    "headDate": "2026-11-06T09:14:08-05:00",
-    "inScopeFiles": 228,
+    "headDate": "2026-11-08T03:42:56-05:00",
+    "inScopeFiles": 233,
     "pinnedStart": null,
     "priorFloor": "fallen",
-    "qualifyingCommits": 191,
+    "qualifyingCommits": 192,
     "qualifyingMinimum": 30,
     "revisions": 5,
     "shared": 10,
     "sharedFloorUsed": 3,
-    "since": "2026-05-10T14:14:08.000Z",
+    "since": "2026-05-12T08:42:56.000Z",
     "sourceExtensions": [
       ".js",
       ".mjs",

@@ -1,19 +1,19 @@
 # role-set: how it works
 
-Mapped at 2026-11-08 from commit cfb6ce1 by Atlas 1.24.0.
+Mapped at 2026-11-11 from commit 15cb913 by Atlas 1.26.0.
 
 ## What this is
 
 role-set plans every slot of a role-shaping batch, has a loopback model write only the writer's parts, and passes each item through aspire-si's gates. It never rents a pod. (written by a person)
 
-9 parts, mostly Python (126 files), shell (6), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 4 doors; the busiest is CI, which reaches 3 parts. It publishes to PyPI. It deploys a site to GitHub Pages. People run role-set.
+9 parts, mostly Python (126 files), shell (9), CSS (2), TypeScript (2), Astro (1), JavaScript (1) and PowerShell (1). Work enters through 4 doors; the busiest is CI, which reaches 3 parts. It publishes to PyPI. It deploys a site to GitHub Pages. People run role-set.
 
-## What changed since 2026-10-29 (7feccba)
+## What changed since 2026-11-08 (cfb6ce1)
 
-- CI's push trigger now also names `uv.lock.exclude-newer`.
-- Release (.github/workflows/release.yml) is a new door. It starts when a release is published. It checks src/role_set/.
-- pyproject.toml is now also read by .github/workflows/release.yml.
-- 1 file added and 10 changed content, across 4 parts.
+- pyproject.toml is now also read by scripts/colab/lock_common.sh.
+- uv.lock is now also read by scripts/colab/lock_common.sh.
+- uv.lock.exclude-newer is now read by scripts/colab/lock_common.sh.
+- 5 files added and 2 changed content, across 4 parts.
 
 ## What comes in
 
@@ -94,10 +94,10 @@ Read those in order to follow one run of role-set end to end. This path follows 
 ## What this map cannot see
 
 - 8 imports could not be resolved: `scripts/batchdrift/replay.py` imports `pin_window`, which is no module on its import path and no declared dependency, twice; `scripts/colab/pin_window.py` imports `replay`, which is no module on its import path and no declared dependency; `tests/test_batchdrift.py` imports `build_requests60`, which is no module on its import path and no declared dependency; and 4 more.
-- 9 writes and 35 reads use paths built at run time and are not named here.
-- 73 writes and 160 reads go to a path their caller passes, not to this repository.
+- 9 writes and 33 reads use paths built at run time and are not named here.
+- 73 writes and 162 reads go to a path their caller passes, not to this repository.
+- 9 writes and 6 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - 15 reads go to the directory the command is run in, not to this repository.
-- 9 writes and 5 reads go to the directory the command is run in or a path their caller passes, not to this repository.
 - Statistics confidence is low: fewer than 25 source files reach 10 revisions in the window.
 
 Regenerate with `npx --yes @dogfood-lab/atlas map`.
