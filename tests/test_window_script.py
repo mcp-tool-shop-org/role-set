@@ -22,19 +22,22 @@ pytestmark = pytest and pytest.mark.skipif(os.name == "nt" or not shutil.which("
                                 reason="needs bash, flock and setsid (Linux)")
 
 
-def _window(mode: str, *, extra: dict | None = None, out_name: str = "out", args: tuple = ()) -> tuple[str, str, Path]:
+def _window(
+    mode: str, *, extra: dict | None = None, out_name: str = "out", args: tuple = (), timeout: float = 180
+) -> tuple[str, str, Path]:
     tmp = Path(tempfile.mkdtemp(prefix=f"fakewin-{mode}-"))
     binfile = tmp / "bin.dat"
     binfile.write_bytes(b"x" * 1000)
     env = {**os.environ, "PATH": f"{FAKE}:{os.environ['PATH']}", "FAKE_ST": str(tmp / "st"), "FAKE_MODE": mode,
            "PIN_OPEN_LOCK": str(tmp / "open.lock"), "PIN_GATE_MIN_DISK_GB": "0",
            "PIN_WATCH_S": "1", "PIN_STALL_FIRST_S": "6", "PIN_STALL_S": "8", "PIN_WALL_S": "120", "PIN_SESSION": "fake",
-           "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.01", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
+           "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.02", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
-           # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: a margin of 0.01 at the max rate is 6 s,
-           # so the grace and the fetch allowance fit it. PIN_RATE_POLL_S 0: an unread rate is re-read at once.
+           # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: grace 2 s + fetch 2 s + stop 4 s (2 x (1+1))
+           # = 8 s at 6/hr is 0.0133 units, so a margin of 0.02 fits it. PIN_RATE_POLL_S 0: an unread rate is re-read at once.
            "PIN_HIGH_MEM": "0", "PIN_MAX_RATE": "6", "PIN_RATE_POLL_S": "0",
-           "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2", **(extra or {})}
+           "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2",
+           "PIN_STOP_TIMEOUT_S": "1", "PIN_KILL_GRACE_S": "1", **(extra or {})}
     out = tmp / out_name
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     if env.get("PIN_GPU") == "CPU" and "PIN_MAX_RATE" not in (extra or {}):
@@ -42,7 +45,7 @@ def _window(mode: str, *, extra: dict | None = None, out_name: str = "out", args
     if env.get("PIN_GPU") == "CPU" and "PIN_HIGH_MEM" not in (extra or {}):
         env.pop("PIN_HIGH_MEM", None)
     env = {k: v for k, v in env.items() if v is not None}  # extra may drop a base setting with None
-    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), *args, str(binfile), str(out)], env, 180)
+    stdout, stderr = _run_window(["bash", str(ROOT / "scripts/colab/smoke_window.sh"), *args, str(binfile), str(out)], env, timeout)
     job = (out / "job.log").read_text(encoding="utf-8") if (out / "job.log").exists() else ""
     return stdout + stderr, job, out
 
@@ -337,16 +340,21 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
 
 
 def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
-    # The defaults (an empty value takes them): grace 60 s + fetch 120 s against the margin at the fake A100's 5.3/hr.
-    defaults = {"PIN_DEADLINE_GRACE_S": "", "PIN_FETCH_ALLOW_S": ""}
-    # A GPU window's margin is derived at its max rate, the worst case: 180 s at 5.3/hr is 0.265, so 0.27.
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.2", "PIN_MAX_RATE": "5.3"})
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.2 is below the derived margin 0.27" in rig, rig
+    # The defaults (an empty value takes them): grace 60 s + fetch 120 s + stop 140 s (320 s) at the fake A100's 5.3/hr.
+    defaults = {
+        "PIN_DEADLINE_GRACE_S": "",
+        "PIN_FETCH_ALLOW_S": "",
+        "PIN_STOP_TIMEOUT_S": "",
+        "PIN_KILL_GRACE_S": "",
+    }
+    # A GPU window's margin is derived at its max rate, the worst case: 320 s at 5.3/hr is 0.4711, so 0.48.
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "5.3"})
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.3 is below the derived margin 0.48" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
-    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # the default margin: 0.3 at 5.3/hr is 203 s
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "8.88"})
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.3 is below the derived margin 0.45" in rig, rig
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.5", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.5 at 5.3/hr is 340 s >= 320 s
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.5", "PIN_MAX_RATE": "8.88"})
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.5 is below the derived margin 0.79" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job
 
 
@@ -359,10 +367,10 @@ def test_card_rates_refusals_and_g4_margin_check():
     # 1. The margin check runs at the max rate on a GPU card and at the configured stub rate on a CPU one; a neighbour
     #    closing between the rate reads refuses RATE_UNREAD on a GPU card, and a CPU stub takes its labelled configured rate.
     for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
-        ("G4", "0", "8.90", "0.3", "0.45"),
-        ("G4", "1", "8.90", "0.3", "0.45"),
-        ("A100", "1", "8.88", "0.3", "0.45"),
-        ("A100", "0", "6.73", "0.3", "0.34"),
+        ("G4", "0", "8.90", "0.3", "0.80"),
+        ("G4", "1", "8.90", "0.3", "0.80"),
+        ("A100", "1", "8.88", "0.3", "0.79"),
+        ("A100", "0", "6.73", "0.3", "0.60"),
         ("CPU", "1", "0.26", "0.01", "138"),
         ("CPU", "0", "0.08", "0.003", "135"),
     ):
@@ -382,7 +390,7 @@ def test_card_rates_refusals_and_g4_margin_check():
         }
         r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
         assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
-        want = (f"REFUSED: grace 60s + fetch 120s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s"
+        want = (f"REFUSED: grace 60s + fetch 120s + stop 140s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s"
                 if gpu == "CPU" else f"REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN={bad_margin} is below the derived margin {bad_budget_s}")
         assert want in r_m.stderr, (
             gpu,
@@ -394,7 +402,7 @@ def test_card_rates_refusals_and_g4_margin_check():
         rig_fb, _job_fb, out_fb = _window(
             "neighbourclose",
             extra={"PIN_GPU": gpu, "PIN_HIGH_MEM": high_mem, "PIN_MOCK_S": "1", "PIN_GATE": "0",
-                   "PIN_MAX_RATE": None if gpu == "CPU" else "9.5", "PIN_CAP_MARGIN": "0.02"},
+                   "PIN_MAX_RATE": None if gpu == "CPU" else "9.5", "PIN_CAP_MARGIN": "0.03"},
         )
         if gpu == "CPU":
             assert f"own rate {rate_str}/hr (configured_cpu" in rig_fb, (gpu, high_mem, rig_fb)
@@ -402,15 +410,17 @@ def test_card_rates_refusals_and_g4_margin_check():
         else:
             assert "REFUSED RATE_UNREAD" in rig_fb and not (out_fb / "pin-result.json").exists(), (gpu, high_mem, rig_fb)
 
-    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 180 s) above and passes at 0.5 (0.5 / 8.9 h = 202 s >= 180 s)
+    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 320 s) above and passes at 0.85 (0.85 / 8.9 h = 344 s >= 320 s)
     rig_g4_pass, job_g4_pass, out_g4_pass = _window(
         "normal",
         extra={
             "PIN_DEADLINE_GRACE_S": "",
             "PIN_FETCH_ALLOW_S": "",
+            "PIN_STOP_TIMEOUT_S": "",
+            "PIN_KILL_GRACE_S": "",
             "PIN_GPU": "G4",
             "PIN_MAX_RATE": "8.90",
-            "PIN_CAP_MARGIN": "0.5",
+            "PIN_CAP_MARGIN": "0.85",
             "PIN_MOCK_S": "1",
             "PIN_GATE": "0",
         },
@@ -1375,7 +1385,7 @@ def test_an_unread_live_rate_refuses_rate_unread_after_its_polls_and_stops_the_s
         # 3 polls and the one extra read stability needs
         assert r["polls"] == 4 and (out.parent / "st" / "usage-reads").read_text().strip() == "4", (how, r)
         assert r["rate_live"] is None and r["rate_used"] is None and r["rate_scope"] == "unread", (how, r)
-        assert r["max_rate"] == 6 and r["cap"] == 99 and r["margin"] == 0.01, (how, r)
+        assert r["max_rate"] == 6 and r["cap"] == 99 and r["margin"] == 0.02, (how, r)
 
 
 def test_a_rate_read_on_a_later_poll_proceeds_on_that_rate():
@@ -1400,18 +1410,18 @@ def test_a_live_rate_above_the_max_refuses_rate_above_max_right_after_the_open()
 def test_a_live_rate_under_the_max_proceeds_and_the_deadline_runs_on_the_live_rate():
     import json
 
-    rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.02",
+    rig, job, out = _window("normal", extra={"FAKE_RATE": "8.88", "PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.03",
                                              "PIN_MOCK_S": "1", "PIN_GATE": "0"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
     assert "own rate 8.88/hr (own_delta; max 9.5" in rig, rig
     r = _rate(out)
     assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["rate_used"] == 9.5, r
-    assert r["rate_scope"] == "own_delta" and r["max_rate"] == 9.5 and r["cap"] == 99 and r["margin"] == 0.02, r
-    # Priced on max(max rate, highest stable rate seen): 98.98 / 9.5 h past the open.
-    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 9.5 * 3600), r
+    assert r["rate_scope"] == "own_delta" and r["max_rate"] == 9.5 and r["cap"] == 99 and r["margin"] == 0.03, r
+    # Priced on max(max rate, highest stable rate seen): 98.97 / 9.5 h past the open.
+    assert r["deadline"] - r["t_open"] == int((99 - 0.03) / 9.5 * 3600), r
     d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
     assert d["rate_live"] == 8.88 and d["rate_scope"] == "own_delta" and d["max_rate"] == 9.5, d
-    assert d["deadline"] == r["deadline"] and d["margin"] == 0.02 and d["cap"] == 99, d
+    assert d["deadline"] == r["deadline"] and d["margin"] == 0.03 and d["cap"] == 99, d
     assert "5.3" not in (out / "rate.json").read_text() + (out / "outcome.draft.json").read_text()
 
 
@@ -1437,19 +1447,19 @@ def test_a_cpu_stub_is_unchanged_live_rate_when_read_and_labelled_configured_rat
     assert r["rate_live"] is None and r["rate_used"] == 0.08 and r["rate_scope"] == "configured_cpu" and r["polls"] == 1, r
 
 
-# ---- the derived margin (Publisher, 2026-11-06): ceil((grace + fetch) x max_rate / 3600) to 0.01 on a GPU window; an
-# explicit PIN_CAP_MARGIN may raise it, never lower it.
+# ---- the derived margin (Publisher, 2026-11-06; extended with bounded stop): ceil((grace + fetch + stop_bound) x max_rate / 3600)
+# to 0.01 on a GPU window; an explicit PIN_CAP_MARGIN may raise it, never lower it.
 
 def test_a_gpu_window_without_a_margin_uses_the_derived_one_and_proceeds():
     rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": None, "PIN_MOCK_S": "1",
                                              "PIN_GATE": "0"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
-    r = _rate(out)  # (2 s + 2 s) x 9.5/hr = 0.0106 units, rounded up to 0.02
-    assert r["margin_derived"] == 0.02 and r["margin"] == 0.02, r
-    assert r["deadline"] - r["t_open"] == int((99 - 0.02) / 9.5 * 3600), r
+    r = _rate(out)  # (2 s + 2 s + 4 s) x 9.5/hr = 0.0211 units, rounded up to 0.03
+    assert r["margin_derived"] == 0.03 and r["margin"] == 0.03, r
+    assert r["deadline"] - r["t_open"] == int((99 - 0.03) / 9.5 * 3600), r
     import json
     d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
-    assert d["margin_derived"] == 0.02 and d["margin"] == 0.02, d
+    assert d["margin_derived"] == 0.03 and d["margin"] == 0.03, d
 
 
 def test_an_explicit_higher_margin_is_used():
@@ -1457,13 +1467,13 @@ def test_an_explicit_higher_margin_is_used():
                                              "PIN_GATE": "0"})
     assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig
     r = _rate(out)
-    assert r["margin_derived"] == 0.02 and r["margin"] == 0.05, r
+    assert r["margin_derived"] == 0.03 and r["margin"] == 0.05, r
     assert r["deadline"] - r["t_open"] == int((99 - 0.05) / 9.5 * 3600), r
 
 
 def test_an_explicit_lower_margin_refuses_margin_too_small_before_any_vm():
     rig, job, out = _window("normal", extra={"PIN_MAX_RATE": "9.5", "PIN_CAP_MARGIN": "0.01"})
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.01 is below the derived margin 0.02" in rig, rig
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.01 is below the derived margin 0.03" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job and not (out / "rate.json").exists()
 
 
@@ -1484,8 +1494,8 @@ def test_an_under_read_rate_is_priced_at_the_max_rate_not_stretched():
     rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE": "2.15"})
     r = _rate(out)
     assert r["verdict"] == "ok" and r["rate_live"] == 2.15 and r["rate_used"] == 9.5, r
-    # (8 - 0.02) / 9.5 h is about 50 min; at 2.15 it would be about 3.7 h.
-    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600) and _priced_deadline_s(r) < 3100, r
+    # (8 - 0.03) / 9.5 h is about 50 min; at 2.15 it would be about 3.7 h.
+    assert _priced_deadline_s(r) == int((8 - 0.03) / 9.5 * 3600) and _priced_deadline_s(r) < 3100, r
     assert job.count("PIN_RESULT") == 1, rig
 
 
@@ -1494,7 +1504,7 @@ def test_a_stepped_registration_waits_for_a_stable_rate_and_prices_on_the_max():
     r = _rate(out)
     assert r["verdict"] == "ok" and r["rate_live"] == 8.88 and r["polls"] == 3, r  # 4.00, 8.88, 8.88
     assert [x["own"] for x in r["readings"] if x["phase"] == "open"] == [4, 8.88, 8.88], r
-    assert r["rate_used"] == 9.5 and _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+    assert r["rate_used"] == 9.5 and _priced_deadline_s(r) == int((8 - 0.03) / 9.5 * 3600), r
     assert r["rate_stable_s"] is not None and r["rate_stable_s"] >= 0, r
 
 
@@ -1503,7 +1513,7 @@ def test_a_neighbour_closing_gives_a_low_stable_delta_that_cannot_stretch_the_de
     rig, job, out = _window("normal", extra={**FIX2, "FAKE_RATE0": "6.73", "FAKE_RATE_SEQ": "8.88"})
     r = _rate(out)
     assert r["account_rate_before"] == 6.73 and r["rate_live"] == 2.15 and r["rate_used"] == 9.5, r
-    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+    assert _priced_deadline_s(r) == int((8 - 0.03) / 9.5 * 3600), r
     assert job.count("PIN_RESULT") == 1, rig
 
 
@@ -1534,7 +1544,7 @@ def test_the_cap_clock_starts_when_the_session_opens():
     r = _rate(out)
     new_at = int((out.parent / "st" / "new-at").read_text().strip())
     assert r["t_new"] == r["t_open"] and r["t_open"] - new_at <= 1, (r, new_at)
-    assert _priced_deadline_s(r) == int((8 - 0.02) / 9.5 * 3600), r
+    assert _priced_deadline_s(r) == int((8 - 0.03) / 9.5 * 3600), r
 
 
 def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15():
@@ -1550,7 +1560,7 @@ def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15()
 
     def one(cents: int) -> list:
         rate = f"{cents / 100:.2f}"
-        derived = math.ceil(round(180 * cents / 100 / 36, 9)) / 100  # the default grace 60 s + fetch 120 s
+        derived = math.ceil(round(320 * cents / 100 / 36, 9)) / 100  # the default grace 60 s + fetch 120 s + stop 140 s
         bad = []
         # the derived margin, and the same value written by hand ("0.3" for "0.30"), which takes the rounded check
         for margin in (None, f"{derived:g}"):
@@ -1968,6 +1978,432 @@ def test_time_bounded_lock_refuses_missing_or_malformed_timestamp_and_reproduces
         timeout=120,
     )
     assert r_real_pre.returncode == 0 and "PREFLIGHT_OK" in r_real_pre.stdout, (r_real_pre.stdout, r_real_pre.stderr)
+
+
+# ---- Port of sdlab #66 (2026-11-11): every colab call under `timeout -k`, bounded open lock, stop with 1 retry
+# counted in the derived margin, and every trip path ending in a bounded stop with `stop_path` recorded ----
+
+def test_hanging_colab_stop_is_cut_at_its_bound_and_retried_once():
+    import json
+    import time
+
+    # 1. First `colab stop` attempt hangs; bounded helper cuts it at PIN_STOP_TIMEOUT_S=2s and succeeds on retry #2.
+    t0 = time.monotonic()
+    rig, job, out = _window(
+        "normal",
+        timeout=18,
+        extra={
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+            "PIN_STOP_TIMEOUT_S": "2",
+            "PIN_KILL_GRACE_S": "1",
+            "FAKE_HANG_VERB": "stop",
+            "FAKE_HANG_TRIES": "1",
+            "FAKE_HANG_S": "30",
+        },
+    )
+    elapsed = time.monotonic() - t0
+    st = out.parent / "st"
+    assert elapsed < 12, (elapsed, rig)
+    assert job.count("PIN_RESULT") == 1, (rig, job)
+    assert (st / "verb-stop-count").read_text(encoding="utf-8").strip() == "2", rig
+    assert not (st / "open").exists(), rig
+    hang_rows = [ln.split() for ln in (st / "hang-stop.pids").read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(hang_rows) == 1 and not _pid_alive(int(hang_rows[0][0])), hang_rows
+    stop_log = (out / "stop.log").read_text(encoding="utf-8")
+    assert "STOP_TIMEOUT caller=trap attempt=1/2" in stop_log, stop_log
+    assert "STOP_RETRY caller=trap attempt=2/2" in stop_log, stop_log
+    assert "STOP_COMPLETED caller=trap attempt=2/2" in stop_log, stop_log
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["stop_path"] == "trap" and d["stop_attempts"] == 2 and d["stop_rc"] == 0, d
+
+    # 2. Both `colab stop` attempts hang ignoring SIGTERM: SIGKILL cuts each within 1s + 1s, and stops after 1 retry (2 total).
+    t1 = time.monotonic()
+    rig2, _job2, out2 = _window(
+        "normal",
+        timeout=18,
+        extra={
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+            "PIN_STOP_TIMEOUT_S": "1",
+            "PIN_KILL_GRACE_S": "1",
+            "FAKE_HANG_VERB": "stop",
+            "FAKE_HANG_TRIES": "1,2",
+            "FAKE_HANG_IGNORE_TERM": "1",
+            "FAKE_HANG_S": "30",
+        },
+    )
+    elapsed2 = time.monotonic() - t1
+    st2 = out2.parent / "st"
+    assert elapsed2 < 12, (elapsed2, rig2)
+    assert (st2 / "verb-stop-count").read_text(encoding="utf-8").strip() == "2", rig2
+    hang_rows2 = [ln.split() for ln in (st2 / "hang-stop.pids").read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(hang_rows2) == 2 and all(not _pid_alive(int(r[0])) for r in hang_rows2), hang_rows2
+    d2 = json.loads((out2 / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d2["stop_path"] == "trap" and d2["stop_attempts"] == 2 and d2["stop_rc"] in (124, 137), d2
+
+
+def test_held_open_lock_refuses_open_lock_timeout_before_colab_new():
+    import fcntl
+    import json
+    import time
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-heldlock-"))
+    lock_path = tmp / "held.lock"
+    with lock_path.open("w", encoding="utf-8") as lf:
+        fcntl.flock(lf.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        t0 = time.monotonic()
+        rig, job, out = _window(
+            "normal",
+            timeout=15,
+            extra={
+                "PIN_OPEN_LOCK": str(lock_path),
+                "PIN_OPEN_LOCK_TIMEOUT_S": "2",
+            },
+        )
+        elapsed = time.monotonic() - t0
+    st = out.parent / "st"
+    assert 1.5 <= elapsed < 10, (elapsed, rig)
+    assert "REFUSED OPEN_LOCK_TIMEOUT:" in rig and not job, rig
+    assert (out / ".end").read_text(encoding="utf-8").strip() == "OPEN_LOCK_TIMEOUT"
+    assert not (st / "news").exists() and not (st / "verb-new-count").exists(), rig
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["end"] == "OPEN_LOCK_TIMEOUT" and d["stop_path"] == "none" and d["stop_attempts"] == 0, d
+
+
+def test_hanging_colab_new_ignoring_sigterm_is_killed_within_limit_plus_grace():
+    import time
+
+    t0 = time.monotonic()
+    rig, job, out = _window(
+        "normal",
+        timeout=15,
+        extra={
+            "PIN_NEW_TIMEOUT_S": "2",
+            "PIN_KILL_GRACE_S": "1",
+            "PIN_STOP_SETTLE_S": "0",
+            "FAKE_HANG_VERB": "new",
+            "FAKE_HANG_IGNORE_TERM": "1",
+            "FAKE_HANG_S": "60",
+        },
+    )
+    elapsed = time.monotonic() - t0
+    st = out.parent / "st"
+    # Limit 2 s + kill grace 1 s = 3 s (plus brief startup/stop overhead), far short of FAKE_HANG_S=60 s.
+    assert 2.5 <= elapsed < 8.5, (elapsed, rig)
+    assert "REFUSED NEW_TIMEOUT:" in rig and "no A100 assigned" in rig and not job, rig
+    assert (out / ".end").read_text(encoding="utf-8").strip() == "NEW_TIMEOUT"
+    hang_new = st / "hang-new.pids"
+    assert hang_new.is_file(), rig
+    rows = [ln.split() for ln in hang_new.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert len(rows) == 1 and not _pid_alive(int(rows[0][0])), rows
+    assert not (st / "execs").exists()
+
+
+def test_cap_too_small_to_hold_stop_in_margin_refuses_before_colab_new():
+    # At 8.88/hr, grace 60 s + fetch 120 s alone was 0.45 units (so PIN_CAP_UNITS=0.60 passed and opened a VM at base),
+    # whereas counting bounded stop 140 s (2 x (60 + 10)) brings the cleanup bound to 320 s -> derived margin 0.79 units,
+    # refusing CAP_TOO_SMALL_FOR_CLEANUP before any colab call.
+    defaults = {
+        "PIN_DEADLINE_GRACE_S": "",
+        "PIN_FETCH_ALLOW_S": "",
+        "PIN_STOP_TIMEOUT_S": "",
+        "PIN_KILL_GRACE_S": "",
+    }
+    rig, job, out = _window(
+        "normal",
+        timeout=30,
+        extra={
+            **defaults,
+            "PIN_MAX_RATE": "8.88",
+            "PIN_CAP_UNITS": "0.60",
+            "PIN_CAP_MARGIN": None,
+            "PIN_MOCK_S": "1",
+            "PIN_GATE": "0",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+        },
+    )
+    st = out.parent / "st"
+    assert "REFUSED CAP_TOO_SMALL_FOR_CLEANUP: PIN_CAP_UNITS=0.60 cannot hold the margin 0.79" in rig and not job, rig
+    assert not (st / "news").exists() and not (st / "verbs.log").exists(), rig
+
+    # An explicit PIN_CAP_MARGIN=0.50 (above the old 0.45, below the stop-inclusive 0.79) refuses MARGIN_TOO_SMALL,
+    # while PIN_CAP_MARGIN=1.00 raises the margin without lowering it.
+    rig_low, job_low, out_low = _window(
+        "normal",
+        timeout=15,
+        extra={**defaults, "PIN_MAX_RATE": "8.88", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": "0.50"},
+    )
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.50 is below the derived margin 0.79" in rig_low and not job_low, rig_low
+    assert not (out_low.parent / "st" / "news").exists()
+
+    rig_raise, _job_raise, out_raise = _window(
+        "normal",
+        timeout=15,
+        args=("--check-only",),
+        extra={**defaults, "PIN_MAX_RATE": "8.88", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": "1.00"},
+    )
+    assert "CHECK OK: margin 1.00 (derived 0.79)" in rig_raise and "stop 140s (320s)" in rig_raise, rig_raise
+    assert not (out_raise.parent / "st" / "news").exists()
+
+    # CPU stub: margin 0.008 at 0.08/hr is 360 s (>= 320 s), but cap 0.005 <= 0.008 refuses CAP_TOO_SMALL_FOR_CLEANUP.
+    rig_cpu, job_cpu, out_cpu = _window(
+        "normal",
+        timeout=15,
+        extra={**defaults, "PIN_GPU": "CPU", "PIN_CAP_UNITS": "0.005", "PIN_CAP_MARGIN": "0.008"},
+    )
+    assert "REFUSED CAP_TOO_SMALL_FOR_CLEANUP:" in rig_cpu and not job_cpu, rig_cpu
+    assert not (out_cpu.parent / "st" / "news").exists()
+
+
+def test_every_trip_path_ends_in_a_bounded_stop_and_records_stop_path():
+    import json
+    import signal
+    import time
+
+    common_hang_stop = {
+        "PIN_GATE": "0",
+        "PIN_GATE_SETTLE_S": "0",
+        "PIN_STOP_SETTLE_S": "0",
+        "PIN_STOP_TIMEOUT_S": "1",
+        "PIN_KILL_GRACE_S": "1",
+        "FAKE_HANG_VERB": "stop",
+        "FAKE_HANG_TRIES": "1",
+        "FAKE_HANG_S": "20",
+    }
+
+    # 1. Wall trip (`PIN_WALL_S` cuts exec -> end="wall", bounded stop retries once, stop_path="trap")
+    rig_wall, _job_wall, out_wall = _window(
+        "normal",
+        timeout=18,
+        extra={**common_hang_stop, "PIN_WALL_S": "2", "PIN_MOCK_S": "30"},
+    )
+    d_wall = json.loads((out_wall / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d_wall["end"] == "wall" and d_wall["stop_path"] == "trap" and d_wall["stop_attempts"] == 2 and d_wall["stop_rc"] == 0, (
+        d_wall,
+        rig_wall,
+    )
+    assert not (out_wall.parent / "st" / "open").exists()
+
+    # 2. Cap trip (`CAP REACHED` / `CAP CEILING` -> end="cap", bounded stop retries once, stop_path="trap")
+    rig_cap, _job_cap, out_cap = _window(
+        "normal",
+        timeout=20,
+        extra={
+            **common_hang_stop,
+            "PIN_CAP_UNITS": "0.03",
+            "PIN_CAP_MARGIN": "0.0256",
+            "PIN_DEADLINE_GRACE_S": "2",
+            "PIN_MOCK_S": "30",
+        },
+    )
+    d_cap = json.loads((out_cap / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d_cap["end"] == "cap" and d_cap["stop_path"] == "trap" and d_cap["stop_attempts"] == 2 and d_cap["stop_rc"] == 0, (
+        d_cap,
+        rig_cap,
+    )
+    assert not (out_cap.parent / "st" / "open").exists()
+
+    # 3. Post-open `RATE_ABOVE_MAX` trip -> end="RATE_ABOVE_MAX", bounded stop retries once, stop_path="trap"
+    rig_ropen, _job_ropen, out_ropen = _window(
+        "normal",
+        timeout=18,
+        extra={**common_hang_stop, "FAKE_RATE": "8.88", "PIN_MAX_RATE": "8"},
+    )
+    d_ropen = json.loads((out_ropen / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert (
+        d_ropen["end"] == "RATE_ABOVE_MAX"
+        and d_ropen["stop_path"] == "trap"
+        and d_ropen["stop_attempts"] == 2
+        and d_ropen["stop_rc"] == 0
+    ), (d_ropen, rig_ropen)
+    assert not (out_ropen.parent / "st" / "open").exists()
+
+    # 4. Mid-run rate re-read `RATE_ABOVE_MAX` trip -> end="RATE_ABOVE_MAX", bounded stop retries once, stop_path="trap"
+    rig_rmid, _job_rmid, out_rmid = _window(
+        "normal",
+        timeout=22,
+        extra={
+            **common_hang_stop,
+            "PIN_MAX_RATE": "9.5",
+            "PIN_CAP_MARGIN": None,
+            "PIN_MOCK_S": "30",
+            "FAKE_RATE_SEQ": "5.30,5.30,5.30,12.00",
+        },
+    )
+    d_rmid = json.loads((out_rmid / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert (
+        d_rmid["end"] == "RATE_ABOVE_MAX"
+        and d_rmid["stop_path"] == "trap"
+        and d_rmid["stop_attempts"] == 2
+        and d_rmid["stop_rc"] == 0
+    ), (d_rmid, rig_rmid)
+    assert not (out_rmid.parent / "st" / "open").exists()
+
+    # 5. Interrupt (`SIGTERM` while exec is running) -> end="term", exit 143, bounded stop retries once, stop_path="trap"
+    tmp_int = Path(tempfile.mkdtemp(prefix="fakewin-term-"))
+    bin_int = tmp_int / "bin.dat"
+    bin_int.write_bytes(b"x" * 1000)
+    out_int = tmp_int / "out"
+    env_int = {
+        **os.environ,
+        "PATH": f"{FAKE}:{os.environ['PATH']}",
+        "FAKE_ST": str(tmp_int / "st"),
+        "FAKE_MODE": "normal",
+        "PIN_OPEN_LOCK": str(tmp_int / "open.lock"),
+        "PIN_GATE_MIN_DISK_GB": "0",
+        "PIN_WATCH_S": "1",
+        "PIN_WALL_S": "120",
+        "PIN_SESSION": "fake",
+        "PIN_CAP_UNITS": "99",
+        "PIN_CAP_MARGIN": "0.02",
+        "PIN_DOWNLOADS": "pin-result.json",
+        "PIN_SKIP_BINARY": "1",
+        "PIN_JOB_SCRIPT": "mock_job.py",
+        "PIN_MOCK_S": "30",
+        "PIN_MOCK_EVERY_S": "1",
+        "PIN_HIGH_MEM": "0",
+        "PIN_MAX_RATE": "6",
+        "PIN_RATE_POLL_S": "0",
+        "PIN_DEADLINE_GRACE_S": "2",
+        "PIN_FETCH_ALLOW_S": "2",
+        **common_hang_stop,
+    }
+    proc_int = subprocess.Popen(
+        ["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(bin_int), str(out_int)],
+        env=env_int,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        t_wait = time.monotonic() + 10
+        while time.monotonic() < t_wait and not (out_int / ".exec.pid").is_file():
+            time.sleep(0.05)
+        assert (out_int / ".exec.pid").is_file(), "exec never started before SIGTERM"
+        os.kill(proc_int.pid, signal.SIGTERM)
+        out_s, err_s = proc_int.communicate(timeout=15)
+    finally:
+        try:
+            os.killpg(proc_int.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    assert proc_int.returncode == 143, (proc_int.returncode, out_s, err_s)
+    d_int = json.loads((out_int / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d_int["end"] == "term" and d_int["stop_path"] == "trap" and d_int["stop_attempts"] == 2 and d_int["stop_rc"] == 0, d_int
+    assert not (tmp_int / "st" / "open").exists()
+
+    # 6. Watcher fallback (`SIGKILL` to launcher while session is open) -> watcher runs bounded stop, stop_path="watcher"
+    tmp_w = Path(tempfile.mkdtemp(prefix="fakewin-watcher-stop-"))
+    bin_w = tmp_w / "bin.dat"
+    bin_w.write_bytes(b"x" * 1000)
+    out_w = tmp_w / "out"
+    env_w = {
+        **env_int,
+        "FAKE_ST": str(tmp_w / "st"),
+        "PIN_OPEN_LOCK": str(tmp_w / "open.lock"),
+    }
+    with (tmp_w / "rig.log").open("w", encoding="utf-8") as log_f:
+        proc_w = subprocess.Popen(
+            ["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(bin_w), str(out_w)],
+            env=env_w,
+            stdout=log_f,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    try:
+        t_wait_w = time.monotonic() + 10
+        while time.monotonic() < t_wait_w and not (out_w / ".exec.pid").is_file():
+            time.sleep(0.05)
+        assert (out_w / ".exec.pid").is_file(), "exec never started before launcher SIGKILL"
+        os.kill(proc_w.pid, signal.SIGKILL)
+        proc_w.wait(timeout=5)
+        t_done_w = time.monotonic() + 12
+        while time.monotonic() < t_done_w:
+            if (out_w / ".stop_completed").is_file() and (out_w / "outcome.draft.json").is_file():
+                try:
+                    if json.loads((out_w / "outcome.draft.json").read_text(encoding="utf-8")).get("stop_path") == "watcher":
+                        break
+                except (OSError, ValueError):
+                    pass
+            time.sleep(0.1)
+        assert (out_w / ".stop_completed").is_file(), (tmp_w / "rig.log").read_text(encoding="utf-8")
+        d_w = json.loads((out_w / "outcome.draft.json").read_text(encoding="utf-8"))
+        assert d_w["stop_path"] == "watcher" and d_w["stop_attempts"] == 2 and d_w["stop_rc"] == 0, d_w
+        assert not (tmp_w / "st" / "open").exists()
+    finally:
+        try:
+            os.killpg(proc_w.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def test_existing_smoke_window_rehearsal_calls_colab_verbs_in_same_order():
+    import stat
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-rehearsal-"))
+    shim_dir = tmp / "shim"
+    shim_dir.mkdir()
+    verb_log = tmp / "rehearsal-verbs.log"
+    upload_in = tmp / "input.txt"
+    upload_in.write_text("smoke rehearsal payload\n", encoding="utf-8")
+    shim = shim_dir / "colab"
+    shim.write_text(
+        "#!/usr/bin/env bash\n"
+        'args=("$@")\n'
+        'while [ $# -gt 0 ]; do case "$1" in --config) shift 2;; *) break;; esac; done\n'
+        'printf "%s\\n" "$1" >> "$REHEARSAL_VERB_LOG"\n'
+        f'exec "{FAKE.as_posix()}/colab" "${{args[@]}}"\n',
+        encoding="utf-8",
+        newline="\n",
+    )
+    shim.chmod(shim.stat().st_mode | stat.S_IEXEC)
+
+    rig, job, out = _window(
+        "normal",
+        timeout=45,
+        extra={
+            "PATH": f"{shim_dir}:{FAKE}:{os.environ['PATH']}",
+            "REHEARSAL_VERB_LOG": str(verb_log),
+            "FAKE_GATE": "good",
+            "PIN_UPLOADS": str(upload_in),
+            "PIN_MOCK_S": "1",
+            "PIN_WATCH_S": "60",
+            "PIN_COPYBACK_S": "0",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+        },
+    )
+    assert job.count("PIN_RESULT") == 1 and (out / "pin-result.json").is_file(), (rig, job)
+    expected_verbs = [
+        "usage",
+        "usage",
+        "new",
+        "sessions",
+        "usage",
+        "usage",
+        "sessions",
+        "exec",
+        "usage",
+        "upload",
+        "exec",
+        "download",
+        "download",
+        "usage",
+        "stop",
+        "sessions",
+    ]
+    observed_verbs = [ln.strip() for ln in verb_log.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    assert observed_verbs == expected_verbs, (observed_verbs, rig)
+    st_verbs = out.parent / "st" / "verbs.log"
+    if st_verbs.is_file():
+        assert [ln.strip() for ln in st_verbs.read_text(encoding="utf-8").splitlines() if ln.strip()] == expected_verbs
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed

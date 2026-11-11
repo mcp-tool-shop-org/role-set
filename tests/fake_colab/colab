@@ -19,6 +19,32 @@ while [ $# -gt 0 ]; do
   esac
 done
 cmd=$1; shift
+v_try=$(
+  (
+    flock -w 10 7 || true
+    cur=$(( $(cat "$ST/verb-${cmd}-count" 2>/dev/null || echo 0) + 1 ))
+    printf '%s\n' "$cur" > "$ST/verb-${cmd}-count"
+    printf '%s\n' "$cmd" >> "$ST/verbs.log"
+    printf '%s\n' "$cur"
+  ) 7>"$ST/.count.lock"
+)
+case ",${FAKE_HANG_VERB:-}," in
+  *,"$cmd",*)
+    hang_match=0
+    if [ -z "${FAKE_HANG_TRIES:-}" ] || [ "${FAKE_HANG_TRIES:-}" = all ]; then
+      hang_match=1
+    else
+      case ",${FAKE_HANG_TRIES}," in *,"$v_try",*) hang_match=1;; esac
+    fi
+    if [ "$hang_match" = 1 ]; then
+      my_pid="${BASHPID:-$$}"
+      printf '%s %s %s\n' "$my_pid" "$(date +%s)" "$v_try" >> "$ST/hang-${cmd}.pids"
+      [ "${FAKE_HANG_IGNORE_TERM:-0}" = 1 ] && trap '' TERM INT
+      exec >/dev/null 2>&1
+      exec sleep "${FAKE_HANG_S:-120}"
+    fi
+    ;;
+esac
 maybe_banner() {
   local emit=0
   if [ "${FAKE_BANNER:-}" = always ]; then
