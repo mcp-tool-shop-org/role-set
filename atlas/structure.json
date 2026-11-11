@@ -9,7 +9,7 @@
       "externals": 0,
       "files": [
         {
-          "hash": "a6c5cf85d9b8ac815bf6603222b9dc5ed772789502d384a435595426b357e9b2",
+          "hash": "56c91f712e2b84ddb9f860e7c0cc888cf819ed1c893baea4956667465fcace97",
           "path": ".github/workflows/ci.yml"
         },
         {
@@ -73,6 +73,10 @@
         {
           "hash": "5541dca5f1ef24ebe3272ef9d216d39d1d9728a4360662b6df368213aec9a6d9",
           "path": "docs/b3c/inventory.md"
+        },
+        {
+          "hash": "4b5bef127d800ec7aa23da076616208b17bccf9633886dd6b110a5ad227090a5",
+          "path": "docs/colab-locks.md"
         },
         {
           "hash": "be7e484fe124de13692914d70bd1c5043a5cb377fba93c8808b718a733f98a59",
@@ -177,7 +181,7 @@
           "path": ".python-version"
         },
         {
-          "hash": "541e2cbd3430272f1ddd1d8e5715121a159f4c964d2934db24a7d16894cf022f",
+          "hash": "c320c31197f00f934f859d6895ac42410d63f5eab1f129df7e75fde58dc5a27d",
           "path": "CHANGELOG.md"
         },
         {
@@ -243,6 +247,10 @@
         {
           "hash": "2ab72ae0c1dff668cc798ab5b0a9426315e107efb0764f8e7ba6097dd6c52154",
           "path": "uv.lock"
+        },
+        {
+          "hash": "3ea2979b395a247c03247e5f8eb3fa5301e9ce2ef9c127e78a4223f00a247d26",
+          "path": "uv.lock.exclude-newer"
         },
         {
           "hash": "ae62abc3561856418dbc6b5ffecf76ac446a59ccfd9bec0fe7a73d51438569c7",
@@ -856,6 +864,10 @@
         {
           "hash": "ac19de4aa4e0216bbf0ca2fc5794490637a6ba786f12afec8fb63f0005c5b27f",
           "path": "scripts/colab/licences/openmdw-1.1.txt"
+        },
+        {
+          "hash": "8ccc6ad1abe34fa1c098abfffd960711842bad2ff73c7117b918642ba6ce8f5d",
+          "path": "scripts/colab/lock_common.sh"
         },
         {
           "exports": [
@@ -2550,6 +2562,10 @@
           "path": "scripts/colab/pin_window_split.sh"
         },
         {
+          "hash": "fa8a08246a17ebfa50786409cbdecad15f17dfc8497fb7212d054be67d5d84d9",
+          "path": "scripts/colab/preflight_resolve.sh"
+        },
+        {
           "exports": [
             "main",
             "run"
@@ -2621,6 +2637,10 @@
             "scripts/colab/pin_window.py"
           ],
           "path": "scripts/colab/preflight_window.py"
+        },
+        {
+          "hash": "a6b01acf3891ec9da411828f874a2e131325e3ab8a889692938885ed73ac845c",
+          "path": "scripts/colab/relock.sh"
         },
         {
           "hash": "9f759c647ecdc91d436c6bda1a64c85aca1cde094fdbab29a8c9fcf1b4daa66d",
@@ -3682,14 +3702,14 @@
       "origin": "authored",
       "outsidePlaces": [
         {
-          "reads": 108,
+          "reads": 109,
           "where": [
             "caller"
           ],
           "writes": 63
         }
       ],
-      "outsideReads": 108,
+      "outsideReads": 109,
       "outsideWrites": 63,
       "role": "code",
       "testRunners": [
@@ -3825,7 +3845,7 @@
       "unresolvedSites": 0
     },
     {
-      "dynamicReads": 15,
+      "dynamicReads": 13,
       "dynamicSpawns": 0,
       "dynamicSpawnsInTests": 0,
       "dynamicWrites": 1,
@@ -10922,7 +10942,7 @@
       "origin": "mixed",
       "outsidePlaces": [
         {
-          "reads": 52,
+          "reads": 53,
           "where": [
             "caller"
           ],
@@ -10953,7 +10973,7 @@
           "writes": 5
         },
         {
-          "reads": 3,
+          "reads": 4,
           "where": [
             "caller",
             "cwd:roles/"
@@ -11024,7 +11044,7 @@
           "writes": 0
         }
       ],
-      "outsideReads": 72,
+      "outsideReads": 74,
       "outsideWrites": 19,
       "role": "code",
       "testRunners": [
@@ -14010,10 +14030,10 @@
       "to": "src"
     }
   ],
-  "engine": "1.24.0",
+  "engine": "1.26.0",
   "generatedFrom": {
-    "commit": "cfb6ce1c2d6bddad27cd5aa3b14d6ae2b04f5339",
-    "tracked": 223
+    "commit": "15cb913eec06d8907db7ede8db1c95e6118e0605",
+    "tracked": 228
   },
   "landings": [
     {
@@ -14085,6 +14105,11 @@
         {
           "by": ".github/workflows/release.yml",
           "confidence": "config"
+        },
+        {
+          "by": "scripts/colab/lock_common.sh",
+          "call": "literal",
+          "confidence": "text"
         },
         {
           "by": "scripts/colab/pin_window.py",
@@ -15030,6 +15055,11 @@
     {
       "readers": [
         {
+          "by": "scripts/colab/lock_common.sh",
+          "call": "literal",
+          "confidence": "text"
+        },
+        {
           "by": "tests/test_harvest_exemplars.py",
           "call": "literal",
           "confidence": "ast",
@@ -15037,6 +15067,17 @@
         }
       ],
       "target": "uv.lock",
+      "writers": []
+    },
+    {
+      "readers": [
+        {
+          "by": "scripts/colab/lock_common.sh",
+          "call": "literal",
+          "confidence": "text"
+        }
+      ],
+      "target": "uv.lock.exclude-newer",
       "writers": []
     },
     {
