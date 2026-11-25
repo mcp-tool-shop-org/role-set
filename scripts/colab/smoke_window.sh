@@ -86,7 +86,7 @@ S=${PIN_SESSION:-pinw2}
 OPEN_LOCK="${PIN_OPEN_LOCK:-/tmp/colab-window-open.lock}"
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$OUT"
-rm -f "$OUT/.exec.pid" "$OUT/.upload.pid" "$OUT/.end" "$OUT/.end.ts" "$OUT/.final_pulled" "$OUT/job.log" \
+rm -f "$OUT/.exec.pid" "$OUT/.exec.running" "$OUT/.upload.pid" "$OUT/.end" "$OUT/.end.ts" "$OUT/.final_pulled" "$OUT/job.log" \
   "$OUT/.retry" "$OUT/.retried" "$OUT/.session_open" "$OUT/.stop_completed" "$OUT/.stop_result" "$OUT/.stop_path" "$OUT/stop.log"
 JOB="$here/${PIN_JOB_SCRIPT:-pin_window.py}"  # mock_job.py for a test of this script on a cheap runtime
 MARGIN="${PIN_CAP_MARGIN:-0.3}"  # units kept back at the cap to fetch the results and stop the VM (R&D, 2026-10-17 / 2026-11-11)
@@ -372,6 +372,15 @@ kill_pid_tree() {
   kill -KILL "${live_pids[@]}" 2>/dev/null || true
   return 0
 }
+reap_exec_group() {
+  local epid="${1:-}"
+  [ -n "$epid" ] || epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
+  if [[ "$epid" =~ ^[0-9]+$ ]]; then
+    kill -TERM -- "-$epid" 2>/dev/null || true
+    kill -KILL -- "-$epid" 2>/dev/null || true
+  fi
+  rm -f "$OUT/.exec.running" 2>/dev/null || true
+}
 end_window() {
   [ -f "$OUT/.end" ] || echo "$1" > "$OUT/.end"
   ended=$1
@@ -381,17 +390,23 @@ end_window() {
     [ -n "$upid" ] && kill_pid_tree "$upid" || true
   fi
   if [ -f "$OUT/.exec.pid" ]; then
-    local epid c
+    local epid c has_child=0
     epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
     if [ -n "$epid" ]; then
-      for c in $(pgrep -P "$epid" 2>/dev/null || true); do pkill -TERM -P "$c" 2>/dev/null || true; done
-      pkill -TERM -P "$epid" 2>/dev/null || true
-      kill -TERM "$epid" 2>/dev/null || true
+      for c in $(pgrep -P "$epid" 2>/dev/null || true); do
+        has_child=1
+        pkill -TERM -P "$c" 2>/dev/null || true
+        kill -TERM "$c" 2>/dev/null || true
+      done
+      [ "$has_child" -eq 0 ] && kill -TERM "$epid" 2>/dev/null || true
       (
         sleep "${PIN_KILL_ESCALATE_S:-5}"
-        for c in $(pgrep -P "$epid" 2>/dev/null || true); do pkill -KILL -P "$c" 2>/dev/null || true; done
-        pkill -KILL -P "$epid" 2>/dev/null || true
-        kill -KILL "$epid" 2>/dev/null || true
+        if [ -f "$OUT/.exec.running" ] && [ "$(cat "$OUT/.exec.pid" 2>/dev/null || true)" = "$epid" ]; then
+          kill -KILL -- "-$epid" 2>/dev/null || true
+          for c in $(pgrep -P "$epid" 2>/dev/null || true); do pkill -KILL -P "$c" 2>/dev/null || true; done
+          pkill -KILL -P "$epid" 2>/dev/null || true
+          kill -KILL "$epid" 2>/dev/null || true
+        fi
       ) </dev/null >/dev/null 2>&1 &
     fi
   fi
@@ -477,6 +492,9 @@ stop_all() {
     wait "$WATCH" 2>/dev/null || true
     reap_watcher_orphans
     WATCH=""
+  fi
+  if [ -f "$OUT/.exec.running" ]; then
+    reap_exec_group
   fi
   if [ -f "$OUT/.exec.pid" ] && [ ! -f "$OUT/.final_pulled" ]; then
     touch "$OUT/.final_pulled"
@@ -929,7 +947,10 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
         kill_pid_tree "$(cat "$OUT/.upload.pid" 2>/dev/null || true)" || true
       fi
       if [ -f "$OUT/.exec.pid" ]; then
-        kill_pid_tree "$(cat "$OUT/.exec.pid" 2>/dev/null || true)" || true
+        local w_epid
+        w_epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
+        [ -n "$w_epid" ] && kill_pid_tree "$w_epid" || true
+        reap_exec_group "$w_epid"
       fi
       (
         flock -w "$STOP_LOCK_S" 9 || echo "open lock not free after ${STOP_LOCK_S} s; watcher stopping $S anyway"
@@ -1287,8 +1308,10 @@ for v in $(compgen -e | grep '^PIN_' | grep -v -E '^PIN_(CAP_UNITS|WALL_S|SESSIO
 done
 [ -n "${PIN_ROLE:-}" ] || ENV_ARGS+=(--env "PIN_ROLE=smoke")
 run_exec() {
-  ( trap - TERM INT; exec timeout --signal=SIGINT -k "$KILL_GRACE_S" "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" </dev/null ) \
-    > >(scrub_log >> "$OUT/smoke-window.log") 2>&1 &
+  touch "$OUT/.exec.running"
+  ( exec python3 -c 'import os, signal, sys; os.setsid(); signal.signal(signal.SIGINT, signal.SIG_DFL); signal.signal(signal.SIGTERM, signal.SIG_DFL); os.execvp(sys.argv[1], sys.argv[1:])' \
+    timeout --foreground --signal=SIGINT -k "$KILL_GRACE_S" "$WALL_S" colab exec -s "$S" "${ENV_ARGS[@]}" -f "$JOB" --timeout "$WALL_S" </dev/null ) \
+    > >(scrub_log >> "$OUT/smoke-window.log" 2>/dev/null) 2>&1 &
   EXEC=$!
   echo $EXEC > "$OUT/.exec.pid"
 }
@@ -1297,13 +1320,17 @@ if [ ! -f "$OUT/.end" ]; then
   run_exec
   IN_MAIN_EXEC_WAIT=1
   wait $EXEC && rc=0 || rc=$?
+  while kill -0 "$EXEC" 2>/dev/null; do wait $EXEC 2>/dev/null || true; done
   IN_MAIN_EXEC_WAIT=0
+  reap_exec_group "$EXEC"
   if [ -f "$OUT/.retry" ] && [ ! -f "$OUT/.end" ]; then  # the watcher saw the exec never start: once more, same session
     rm -f "$OUT/.retry"
     run_exec
     IN_MAIN_EXEC_WAIT=1
     wait $EXEC && rc=0 || rc=$?
+    while kill -0 "$EXEC" 2>/dev/null; do wait $EXEC 2>/dev/null || true; done
     IN_MAIN_EXEC_WAIT=0
+    reap_exec_group "$EXEC"
   fi
   if [ ! -f "$OUT/.end" ] && { [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; }; then
     [ -f "$OUT/.end.ts" ] || date +%s > "$OUT/.end.ts"
