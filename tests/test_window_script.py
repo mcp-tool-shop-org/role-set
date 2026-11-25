@@ -33,11 +33,11 @@ def _window(
            "PIN_WATCH_S": "1", "PIN_STALL_FIRST_S": "6", "PIN_STALL_S": "8", "PIN_WALL_S": "120", "PIN_SESSION": "fake",
            "PIN_CAP_UNITS": "99", "PIN_CAP_MARGIN": "0.02", "PIN_DOWNLOADS": "pin-result.json", "PIN_SKIP_BINARY": "1",
            "PIN_JOB_SCRIPT": "mock_job.py", "PIN_MOCK_S": "8", "PIN_MOCK_EVERY_S": "1", "PIN_MOCK_SILENT": "1",
-           # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: grace 2 s + fetch 2 s + stop 4 s (2 x (1+1))
-           # = 8 s at 6/hr is 0.0133 units, so a margin of 0.02 fits it. PIN_RATE_POLL_S 0: an unread rate is re-read at once.
+           # The fake card is an A100 at a live 5.30/hr, under a max rate of 6: grace 2 s + fetch 2 s + stop 5 s
+           # (1 s lock + 2 x (1+1)) = 9 s at 6/hr is 0.015 units, so a margin of 0.02 fits it.
            "PIN_HIGH_MEM": "0", "PIN_MAX_RATE": "6", "PIN_RATE_POLL_S": "0",
            "PIN_DEADLINE_GRACE_S": "2", "PIN_FETCH_ALLOW_S": "2",
-           "PIN_STOP_TIMEOUT_S": "1", "PIN_KILL_GRACE_S": "1", **(extra or {})}
+           "PIN_STOP_LOCK_TIMEOUT_S": "1", "PIN_STOP_TIMEOUT_S": "1", "PIN_KILL_GRACE_S": "1", **(extra or {})}
     out = tmp / out_name
     env.setdefault("PIN_OPEN_LOCK", str(tmp / "open.lock"))  # each case its own lock: no case waits on another's
     if env.get("PIN_GPU") == "CPU" and "PIN_MAX_RATE" not in (extra or {}):
@@ -340,21 +340,22 @@ def test_every_window_writes_an_outcome_draft_with_its_date_and_commit():
 
 
 def test_a_margin_that_cant_hold_the_grace_and_the_fetch_refuses_before_any_vm():
-    # The defaults (an empty value takes them): grace 60 s + fetch 120 s + stop 140 s (320 s) at the fake A100's 5.3/hr.
+    # The defaults (an empty value takes them): grace 60 s + fetch 120 s + stop 200 s (60 s lock + 2 x 70 s) = 380 s.
     defaults = {
         "PIN_DEADLINE_GRACE_S": "",
         "PIN_FETCH_ALLOW_S": "",
+        "PIN_STOP_LOCK_TIMEOUT_S": "",
         "PIN_STOP_TIMEOUT_S": "",
         "PIN_KILL_GRACE_S": "",
     }
-    # A GPU window's margin is derived at its max rate, the worst case: 320 s at 5.3/hr is 0.4711, so 0.48.
+    # A GPU window's margin is derived at its max rate, the worst case: 380 s at 5.3/hr is 0.5594, so 0.56.
     rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.3", "PIN_MAX_RATE": "5.3"})
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.3 is below the derived margin 0.48" in rig, rig
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.3 is below the derived margin 0.56" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job  # no VM asked for
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.5", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
-    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.5 at 5.3/hr is 340 s >= 320 s
-    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.5", "PIN_MAX_RATE": "8.88"})
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.5 is below the derived margin 0.79" in rig, rig
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.6", "PIN_MAX_RATE": "5.3", "PIN_MOCK_S": "2"})
+    assert "REFUSED" not in rig and job.count("PIN_RESULT") == 1, rig  # 0.6 at 5.3/hr is 408 s >= 380 s
+    rig, job, out = _window("normal", extra={**defaults, "PIN_CAP_MARGIN": "0.6", "PIN_MAX_RATE": "8.88"})
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.6 is below the derived margin 0.94" in rig, rig
     assert not (out.parent / "st" / "news").exists() and not job
 
 
@@ -367,10 +368,10 @@ def test_card_rates_refusals_and_g4_margin_check():
     # 1. The margin check runs at the max rate on a GPU card and at the configured stub rate on a CPU one; a neighbour
     #    closing between the rate reads refuses RATE_UNREAD on a GPU card, and a CPU stub takes its labelled configured rate.
     for gpu, high_mem, rate_str, bad_margin, bad_budget_s in (
-        ("G4", "0", "8.90", "0.3", "0.80"),
-        ("G4", "1", "8.90", "0.3", "0.80"),
-        ("A100", "1", "8.88", "0.3", "0.79"),
-        ("A100", "0", "6.73", "0.3", "0.60"),
+        ("G4", "0", "8.90", "0.3", "0.94"),
+        ("G4", "1", "8.90", "0.3", "0.94"),
+        ("A100", "1", "8.88", "0.3", "0.94"),
+        ("A100", "0", "6.73", "0.3", "0.72"),
         ("CPU", "1", "0.26", "0.01", "138"),
         ("CPU", "0", "0.08", "0.003", "135"),
     ):
@@ -390,7 +391,7 @@ def test_card_rates_refusals_and_g4_margin_check():
         }
         r_m = subprocess.run(["bash", script, str(binfile), str(out_m)], env=env_m, capture_output=True, text=True, timeout=30, check=False)
         assert r_m.returncode == 2, (gpu, high_mem, r_m.returncode, r_m.stdout, r_m.stderr)
-        want = (f"REFUSED: grace 60s + fetch 120s + stop 140s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s"
+        want = (f"REFUSED: grace 60s + fetch 120s + stop 200s don't fit the margin: {bad_margin} units at {rate_str}/hr is {bad_budget_s}s"
                 if gpu == "CPU" else f"REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN={bad_margin} is below the derived margin {bad_budget_s}")
         assert want in r_m.stderr, (
             gpu,
@@ -410,17 +411,18 @@ def test_card_rates_refusals_and_g4_margin_check():
         else:
             assert "REFUSED RATE_UNREAD" in rig_fb and not (out_fb / "pin-result.json").exists(), (gpu, high_mem, rig_fb)
 
-    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 320 s) above and passes at 0.85 (0.85 / 8.9 h = 344 s >= 320 s)
+    # 2. G4 margin check refuses at 0.3 (0.3 / 8.9 h = 121 s < 380 s) above and passes at 1.00 (1.00 / 8.9 h = 404 s >= 380 s)
     rig_g4_pass, job_g4_pass, out_g4_pass = _window(
         "normal",
         extra={
             "PIN_DEADLINE_GRACE_S": "",
             "PIN_FETCH_ALLOW_S": "",
+            "PIN_STOP_LOCK_TIMEOUT_S": "",
             "PIN_STOP_TIMEOUT_S": "",
             "PIN_KILL_GRACE_S": "",
             "PIN_GPU": "G4",
             "PIN_MAX_RATE": "8.90",
-            "PIN_CAP_MARGIN": "0.85",
+            "PIN_CAP_MARGIN": "1.00",
             "PIN_MOCK_S": "1",
             "PIN_GATE": "0",
         },
@@ -1560,7 +1562,7 @@ def test_the_budget_check_never_refuses_a_derived_margin_from_max_rate_1_to_15()
 
     def one(cents: int) -> list:
         rate = f"{cents / 100:.2f}"
-        derived = math.ceil(round(320 * cents / 100 / 36, 9)) / 100  # the default grace 60 s + fetch 120 s + stop 140 s
+        derived = math.ceil(round(380 * cents / 100 / 36, 9)) / 100  # the default grace 60 s + fetch 120 s + stop 200 s (60 s lock + 2 x 70 s)
         bad = []
         # the derived margin, and the same value written by hand ("0.3" for "0.30"), which takes the rounded check
         for margin in (None, f"{derived:g}"):
@@ -2105,12 +2107,13 @@ def test_hanging_colab_new_ignoring_sigterm_is_killed_within_limit_plus_grace():
 
 
 def test_cap_too_small_to_hold_stop_in_margin_refuses_before_colab_new():
-    # At 8.88/hr, grace 60 s + fetch 120 s alone was 0.45 units (so PIN_CAP_UNITS=0.60 passed and opened a VM at base),
-    # whereas counting bounded stop 140 s (2 x (60 + 10)) brings the cleanup bound to 320 s -> derived margin 0.79 units,
-    # refusing CAP_TOO_SMALL_FOR_CLEANUP before any colab call.
+    # At 8.88/hr, grace 60 s + fetch 120 s + stop tries 140 s alone was 320 s -> 0.79 units (so PIN_CAP_UNITS=0.85 passed
+    # and opened a VM before STOP_LOCK_S was counted), whereas including STOP_LOCK_S=60 s brings stop_bound_s to 200 s
+    # and cleanup_bound_s to 380 s -> derived margin 0.94 units, refusing CAP_TOO_SMALL_FOR_CLEANUP before any colab call.
     defaults = {
         "PIN_DEADLINE_GRACE_S": "",
         "PIN_FETCH_ALLOW_S": "",
+        "PIN_STOP_LOCK_TIMEOUT_S": "",
         "PIN_STOP_TIMEOUT_S": "",
         "PIN_KILL_GRACE_S": "",
     }
@@ -2120,7 +2123,7 @@ def test_cap_too_small_to_hold_stop_in_margin_refuses_before_colab_new():
         extra={
             **defaults,
             "PIN_MAX_RATE": "8.88",
-            "PIN_CAP_UNITS": "0.60",
+            "PIN_CAP_UNITS": "0.85",
             "PIN_CAP_MARGIN": None,
             "PIN_MOCK_S": "1",
             "PIN_GATE": "0",
@@ -2129,17 +2132,17 @@ def test_cap_too_small_to_hold_stop_in_margin_refuses_before_colab_new():
         },
     )
     st = out.parent / "st"
-    assert "REFUSED CAP_TOO_SMALL_FOR_CLEANUP: PIN_CAP_UNITS=0.60 cannot hold the margin 0.79" in rig and not job, rig
+    assert "REFUSED CAP_TOO_SMALL_FOR_CLEANUP: PIN_CAP_UNITS=0.85 cannot hold the margin 0.94" in rig and not job, rig
     assert not (st / "news").exists() and not (st / "verbs.log").exists(), rig
 
-    # An explicit PIN_CAP_MARGIN=0.50 (above the old 0.45, below the stop-inclusive 0.79) refuses MARGIN_TOO_SMALL,
+    # An explicit PIN_CAP_MARGIN=0.85 (above the old 0.79, below the lock-inclusive 0.94) refuses MARGIN_TOO_SMALL,
     # while PIN_CAP_MARGIN=1.00 raises the margin without lowering it.
     rig_low, job_low, out_low = _window(
         "normal",
         timeout=15,
-        extra={**defaults, "PIN_MAX_RATE": "8.88", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": "0.50"},
+        extra={**defaults, "PIN_MAX_RATE": "8.88", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": "0.85"},
     )
-    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.50 is below the derived margin 0.79" in rig_low and not job_low, rig_low
+    assert "REFUSED MARGIN_TOO_SMALL: PIN_CAP_MARGIN=0.85 is below the derived margin 0.94" in rig_low and not job_low, rig_low
     assert not (out_low.parent / "st" / "news").exists()
 
     rig_raise, _job_raise, out_raise = _window(
@@ -2148,14 +2151,14 @@ def test_cap_too_small_to_hold_stop_in_margin_refuses_before_colab_new():
         args=("--check-only",),
         extra={**defaults, "PIN_MAX_RATE": "8.88", "PIN_CAP_UNITS": "8", "PIN_CAP_MARGIN": "1.00"},
     )
-    assert "CHECK OK: margin 1.00 (derived 0.79)" in rig_raise and "stop 140s (320s)" in rig_raise, rig_raise
+    assert "CHECK OK: margin 1.00 (derived 0.94)" in rig_raise and "stop 200s (380s)" in rig_raise, rig_raise
     assert not (out_raise.parent / "st" / "news").exists()
 
-    # CPU stub: margin 0.008 at 0.08/hr is 360 s (>= 320 s), but cap 0.005 <= 0.008 refuses CAP_TOO_SMALL_FOR_CLEANUP.
+    # CPU stub: margin 0.009 at 0.08/hr is 405 s (>= 380 s), but cap 0.005 <= 0.009 refuses CAP_TOO_SMALL_FOR_CLEANUP.
     rig_cpu, job_cpu, out_cpu = _window(
         "normal",
         timeout=15,
-        extra={**defaults, "PIN_GPU": "CPU", "PIN_CAP_UNITS": "0.005", "PIN_CAP_MARGIN": "0.008"},
+        extra={**defaults, "PIN_GPU": "CPU", "PIN_CAP_UNITS": "0.005", "PIN_CAP_MARGIN": "0.009"},
     )
     assert "REFUSED CAP_TOO_SMALL_FOR_CLEANUP:" in rig_cpu and not job_cpu, rig_cpu
     assert not (out_cpu.parent / "st" / "news").exists()
@@ -2170,6 +2173,7 @@ def test_every_trip_path_ends_in_a_bounded_stop_and_records_stop_path():
         "PIN_GATE": "0",
         "PIN_GATE_SETTLE_S": "0",
         "PIN_STOP_SETTLE_S": "0",
+        "PIN_STOP_LOCK_TIMEOUT_S": "1",
         "PIN_STOP_TIMEOUT_S": "1",
         "PIN_KILL_GRACE_S": "1",
         "FAKE_HANG_VERB": "stop",
@@ -2404,6 +2408,431 @@ def test_existing_smoke_window_rehearsal_calls_colab_verbs_in_same_order():
     st_verbs = out.parent / "st" / "verbs.log"
     if st_verbs.is_file():
         assert [ln.strip() for ln in st_verbs.read_text(encoding="utf-8").splitlines() if ln.strip()] == expected_verbs
+
+
+def test_gate_reject_stop_failure_keeps_session_open_so_trap_retries_stop():
+    import json
+
+    # 1. When both `stop_session gate` attempts fail on a rejected gate VM, `smoke_window.sh` must NOT clear
+    #    SESSION_OPEN or open another VM under the same `-s`; it must keep SESSION_OPEN=1 and exit through
+    #    the EXIT trap so `stop_all` retries `stop_session trap` for the open session.
+    rig, job, out = _window(
+        "normal",
+        timeout=25,
+        extra={
+            "FAKE_GATE": "bad,good",
+            "PIN_GATE_TRIES": "2",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+            "FAKE_FAIL_VERB": "stop",
+            "FAKE_FAIL_TRIES": "1,2",
+            "FAKE_NEW_FAIL_TRIES": "2",
+            "PIN_MOCK_S": "2",
+        },
+    )
+    st = out.parent / "st"
+    assert not job and not (st / "execs").exists(), (rig, job)
+    assert "REFUSED GATE_STOP_FAILED:" in rig, rig
+    assert (out / ".end").read_text(encoding="utf-8").strip() == "GATE_STOP_FAILED"
+    assert (st / "verb-new-count").read_text(encoding="utf-8").strip() == "1", rig
+    assert (st / "verb-stop-count").read_text(encoding="utf-8").strip() == "3", rig
+    assert not (st / "open").exists(), "first gate VM stayed open and kept billing"
+    stop_log = (out / "stop.log").read_text(encoding="utf-8")
+    assert "STOP_FAILED caller=gate attempt=2/2" in stop_log, stop_log
+    assert "STOP_COMPLETED caller=trap attempt=1/2" in stop_log, stop_log
+    d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d["end"] == "GATE_STOP_FAILED" and d["stop_path"] == "trap" and d["stop_attempts"] == 1 and d["stop_rc"] == 0, d
+
+    # 2. If the trap's bounded stop attempts also fail (all 4 stops fail), `.session_open` stays set on disk
+    #    and `stop_all` still runs both trap stop attempts cleanly.
+    rig_all, _job_all, out_all = _window(
+        "normal",
+        timeout=25,
+        extra={
+            "FAKE_GATE": "bad,good",
+            "PIN_GATE_TRIES": "2",
+            "PIN_GATE_SETTLE_S": "0",
+            "PIN_STOP_SETTLE_S": "0",
+            "FAKE_FAIL_VERB": "stop",
+            "FAKE_FAIL_TRIES": "1,2,3,4",
+        },
+    )
+    st_all = out_all.parent / "st"
+    assert (st_all / "verb-stop-count").read_text(encoding="utf-8").strip() == "4", rig_all
+    assert (out_all / ".session_open").is_file(), "failed stop must never clear .session_open"
+    stop_log_all = (out_all / "stop.log").read_text(encoding="utf-8")
+    assert "STOP_FAILED caller=trap attempt=2/2" in stop_log_all, stop_log_all
+    d_all = json.loads((out_all / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d_all["end"] == "GATE_STOP_FAILED" and d_all["stop_path"] == "trap" and d_all["stop_attempts"] == 2 and d_all["stop_rc"] == 1, d_all
+
+
+def test_process_group_reap_kills_sigint_sigterm_ignoring_grandchild_across_paths():
+    import json
+    import signal
+
+    paths = [
+        (
+            "wall",
+            {
+                "PIN_WALL_S": "2",
+                "PIN_MOCK_S": "30",
+                "FAKE_EXEC_IGNORE_TERM": "1",
+                "PIN_KILL_GRACE_S": "1",
+            },
+            ("wall",),
+        ),
+        (
+            "hung_after_pin_result",
+            {
+                "PIN_MOCK_S": "1",
+                "PIN_WATCH_S": "1",
+                "FAKE_EXEC_HANG_AFTER_DONE_S": "25",
+                "PIN_KILL_ESCALATE_S": "2",
+            },
+            ("done",),
+        ),
+        (
+            "hanging_stop",
+            {
+                "PIN_MOCK_S": "1",
+                "FAKE_HANG_VERB": "stop",
+                "FAKE_HANG_TRIES": "1",
+                "PIN_STOP_TIMEOUT_S": "1",
+                "PIN_KILL_GRACE_S": "1",
+            },
+            ("done", "exec"),
+        ),
+    ]
+    survivors: list[tuple[str, int]] = []
+    cleanup_pids: list[int] = []
+    try:
+        for label, path_extra, expected_ends in paths:
+            rig, _job, out = _window(
+                "normal",
+                timeout=22,
+                extra={
+                    "PIN_GATE": "0",
+                    "PIN_GATE_SETTLE_S": "0",
+                    "PIN_STOP_SETTLE_S": "0",
+                    "FAKE_EXEC_GRANDCHILD_IGNORE_SIGNALS": "1",
+                    "FAKE_EXEC_GRANDCHILD_S": "120",
+                    **path_extra,
+                },
+            )
+            gc_file = out.parent / "st" / "exec-grandchild.pids"
+            assert gc_file.is_file(), f"{label}: missing exec-grandchild.pids: {rig}"
+            gc_pids = [int(ln.split()[0]) for ln in gc_file.read_text(encoding="utf-8").splitlines() if ln.strip()]
+            assert gc_pids, f"{label}: empty exec-grandchild.pids"
+            cleanup_pids.extend(gc_pids)
+            for gpid in gc_pids:
+                if _pid_alive(gpid):
+                    survivors.append((label, gpid))
+            d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+            assert d["end"] in expected_ends, (label, d, rig)
+            if label == "hanging_stop":
+                assert d["stop_attempts"] == 2 and d["stop_rc"] == 0, d
+        assert not survivors, f"SIGINT/SIGTERM-ignoring exec grandchild survived reap: {survivors}"
+    finally:
+        for gpid in cleanup_pids:
+            try:
+                os.kill(gpid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+
+
+def test_pid_guard_rejects_zero_one_and_own_pgid_in_reap_and_end_window():
+    import json
+    import signal
+    import time
+
+    # 1. Intercept dangerous kills (`kill -- -0`, `kill -- -1`, `kill -- -$SELF_PGID`, `kill -TERM 0`, `kill -TERM 1`)
+    #    via a safe BASH_ENV wrapper so a regression on `0` or `1` logs `DANGEROUS_KILL` without signaling the host,
+    #    exercising both `end_window` (`CAP REACHED` + `PIN_KILL_ESCALATE_S`) and `watcher_handle_launcher_gone` (`reap_exec_group`).
+    for case in ("0", "1", "SELF"):
+        for mode in ("end_window", "watcher_reap"):
+            tmp = Path(tempfile.mkdtemp(prefix=f"fakewin-pidguard-{case}-{mode}-"))
+            binfile = tmp / "bin.dat"
+            binfile.write_bytes(b"x" * 1000)
+            out = tmp / "out"
+            tap_log = tmp / "kill_tap.log"
+            tap_sh = tmp / "kill_tap.sh"
+            tap_sh.write_text(
+                "if [ -z \"${_TAP_MAIN_PGID:-}\" ]; then\n"
+                "  _TAP_MAIN_PGID=$(ps -o pgid= -p \"$$\" 2>/dev/null | tr -d ' ')\n"
+                "  export _TAP_MAIN_PGID\n"
+                "fi\n"
+                "kill() {\n"
+                "  local -a args=(\"$@\")\n"
+                "  local i=0 len=${#args[@]} a\n"
+                "  if [ \"$len\" -ge 1 ]; then\n"
+                "    if [ \"${args[0]}\" = \"-s\" ] || [ \"${args[0]}\" = \"-n\" ]; then\n"
+                "      i=2\n"
+                "    elif [ \"${args[0]}\" = \"--\" ]; then\n"
+                "      i=1\n"
+                "    elif [[ \"${args[0]}\" == -* ]]; then\n"
+                "      i=1\n"
+                "    fi\n"
+                "  fi\n"
+                "  if [ \"$i\" -lt \"$len\" ] && [ \"${args[$i]}\" = \"--\" ]; then\n"
+                "    i=$((i + 1))\n"
+                "  fi\n"
+                "  while [ \"$i\" -lt \"$len\" ]; do\n"
+                "    a=\"${args[$i]}\"\n"
+                "    case \"$a\" in\n"
+                "      0|-0|1|-1|\"-$_TAP_MAIN_PGID\")\n"
+                "        printf 'DANGEROUS_KILL %s\\n' \"$*\" >> \"$KILL_TAP_LOG\"\n"
+                "        return 0\n"
+                "        ;;\n"
+                "    esac\n"
+                "    i=$((i + 1))\n"
+                "  done\n"
+                "  builtin kill \"$@\"\n"
+                "}\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            env = {
+                **os.environ,
+                "PATH": f"{FAKE}:{os.environ['PATH']}",
+                "BASH_ENV": str(tap_sh),
+                "KILL_TAP_LOG": str(tap_log),
+                "FAKE_ST": str(tmp / "st"),
+                "FAKE_MODE": "normal",
+                "PIN_OPEN_LOCK": str(tmp / "open.lock"),
+                "PIN_GATE": "0",
+                "PIN_GATE_SETTLE_S": "0",
+                "PIN_STOP_SETTLE_S": "0",
+                "PIN_GATE_MIN_DISK_GB": "0",
+                "PIN_WATCH_S": "1",
+                "PIN_WALL_S": "60",
+                "PIN_SESSION": "fake",
+                "PIN_CAP_UNITS": "0.03" if mode == "end_window" else "99",
+                "PIN_CAP_MARGIN": "0.0256" if mode == "end_window" else "0.02",
+                "PIN_DEADLINE_GRACE_S": "1",
+                "PIN_KILL_ESCALATE_S": "1",
+                "PIN_DOWNLOADS": "pin-result.json",
+                "PIN_SKIP_BINARY": "1",
+                "PIN_JOB_SCRIPT": "mock_job.py",
+                "PIN_MOCK_S": "30",
+                "PIN_MOCK_EVERY_S": "1",
+                "PIN_MOCK_SILENT": "1",
+                "PIN_HIGH_MEM": "0",
+                "PIN_MAX_RATE": "6",
+                "PIN_RATE_POLL_S": "0",
+                "PIN_FETCH_ALLOW_S": "2",
+                "PIN_STOP_LOCK_TIMEOUT_S": "1",
+                "PIN_STOP_TIMEOUT_S": "1",
+                "PIN_KILL_GRACE_S": "1",
+            }
+            proc = subprocess.Popen(
+                ["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)],
+                env=env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                start_new_session=True,
+            )
+            real_exec_pid = None
+            try:
+                t_wait = time.monotonic() + 10
+                while time.monotonic() < t_wait and not (out / ".exec.pid").is_file():
+                    time.sleep(0.05)
+                assert (out / ".exec.pid").is_file(), (case, mode)
+                real_exec_pid = int((out / ".exec.pid").read_text(encoding="utf-8").strip())
+                bad_val = str(proc.pid) if case == "SELF" else case
+                (out / ".exec.pid").write_text(f"{bad_val}\n", encoding="utf-8")
+                if mode == "end_window":
+                    t_end = time.monotonic() + 10
+                    while time.monotonic() < t_end and not (out / ".end").is_file():
+                        time.sleep(0.05)
+                    assert (out / ".end").is_file(), (case, mode)
+                    # Wait past PIN_KILL_ESCALATE_S=1s so the escalation subshell runs too.
+                    time.sleep(1.5)
+                    try:
+                        os.killpg(real_exec_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                    proc.communicate(timeout=15)
+                else:
+                    os.kill(proc.pid, signal.SIGKILL)
+                    proc.wait(timeout=5)
+                    t_done = time.monotonic() + 10
+                    while time.monotonic() < t_done and not (out / ".stop_completed").is_file():
+                        time.sleep(0.05)
+                    assert (out / ".stop_completed").is_file(), (case, mode)
+            finally:
+                if real_exec_pid is not None:
+                    try:
+                        os.killpg(real_exec_pid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+                try:
+                    os.killpg(proc.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+            recorded = tap_log.read_text(encoding="utf-8") if tap_log.is_file() else ""
+            assert not recorded, f"{case} ({mode}) attempted dangerous kill:\n{recorded}"
+
+    # 2. Un-shimmed SELF_PGID survival check: overwriting .exec.pid with our own PGID during end_window must not
+    #    cause the script to SIGKILL itself.
+    tmp_s = Path(tempfile.mkdtemp(prefix="fakewin-selfpgid-real-"))
+    bin_s = tmp_s / "bin.dat"
+    bin_s.write_bytes(b"x" * 1000)
+    out_s = tmp_s / "out"
+    env_s = {
+        **os.environ,
+        "PATH": f"{FAKE}:{os.environ['PATH']}",
+        "FAKE_ST": str(tmp_s / "st"),
+        "FAKE_MODE": "normal",
+        "PIN_OPEN_LOCK": str(tmp_s / "open.lock"),
+        "PIN_GATE": "0",
+        "PIN_GATE_SETTLE_S": "0",
+        "PIN_STOP_SETTLE_S": "0",
+        "PIN_GATE_MIN_DISK_GB": "0",
+        "PIN_WATCH_S": "1",
+        "PIN_WALL_S": "60",
+        "PIN_SESSION": "fake",
+        "PIN_CAP_UNITS": "0.03",
+        "PIN_CAP_MARGIN": "0.0256",
+        "PIN_DEADLINE_GRACE_S": "1",
+        "PIN_KILL_ESCALATE_S": "1",
+        "PIN_DOWNLOADS": "pin-result.json",
+        "PIN_SKIP_BINARY": "1",
+        "PIN_JOB_SCRIPT": "mock_job.py",
+        "PIN_MOCK_S": "30",
+        "PIN_MOCK_EVERY_S": "1",
+        "PIN_MOCK_SILENT": "1",
+        "PIN_HIGH_MEM": "0",
+        "PIN_MAX_RATE": "6",
+        "PIN_RATE_POLL_S": "0",
+        "PIN_FETCH_ALLOW_S": "2",
+        "PIN_STOP_LOCK_TIMEOUT_S": "1",
+        "PIN_STOP_TIMEOUT_S": "1",
+        "PIN_KILL_GRACE_S": "1",
+    }
+    proc_s = subprocess.Popen(
+        ["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(bin_s), str(out_s)],
+        env=env_s,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    real_exec_s = None
+    try:
+        t_wait_s = time.monotonic() + 10
+        while time.monotonic() < t_wait_s and not (out_s / ".exec.pid").is_file():
+            time.sleep(0.05)
+        assert (out_s / ".exec.pid").is_file()
+        real_exec_s = int((out_s / ".exec.pid").read_text(encoding="utf-8").strip())
+        (out_s / ".exec.pid").write_text(f"{proc_s.pid}\n", encoding="utf-8")
+        t_end_s = time.monotonic() + 10
+        while time.monotonic() < t_end_s and not (out_s / ".end").is_file():
+            time.sleep(0.05)
+        assert (out_s / ".end").is_file()
+        time.sleep(1.5)
+        try:
+            os.killpg(real_exec_s, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        out_txt, err_txt = proc_s.communicate(timeout=15)
+    finally:
+        if real_exec_s is not None:
+            try:
+                os.killpg(real_exec_s, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            os.killpg(proc_s.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    assert proc_s.returncode == 0, (proc_s.returncode, out_txt, err_txt)
+    d_s = json.loads((out_s / "outcome.draft.json").read_text(encoding="utf-8"))
+    assert d_s["stop_path"] == "trap" and not (tmp_s / "st" / "open").exists(), d_s
+
+
+def test_watcher_launcher_gone_skips_exec_reap_when_exec_already_finished():
+    import json
+    import signal
+    import time
+
+    tmp = Path(tempfile.mkdtemp(prefix="fakewin-watcher-reuse-"))
+    binfile = tmp / "bin.dat"
+    binfile.write_bytes(b"x" * 1000)
+    out = tmp / "out"
+    st = tmp / "st"
+    env = {
+        **os.environ,
+        "PATH": f"{FAKE}:{os.environ['PATH']}",
+        "FAKE_ST": str(st),
+        "FAKE_MODE": "normal",
+        "PIN_OPEN_LOCK": str(tmp / "open.lock"),
+        "PIN_GATE": "0",
+        "PIN_GATE_SETTLE_S": "0",
+        "PIN_STOP_SETTLE_S": "0",
+        "PIN_GATE_MIN_DISK_GB": "0",
+        "PIN_WATCH_S": "60",
+        "PIN_COPYBACK_S": "0",
+        "PIN_WALL_S": "120",
+        "PIN_SESSION": "fake",
+        "PIN_CAP_UNITS": "99",
+        "PIN_CAP_MARGIN": "0.02",
+        "PIN_DOWNLOADS": "pin-result.json",
+        "PIN_SKIP_BINARY": "1",
+        "PIN_JOB_SCRIPT": "mock_job.py",
+        "PIN_MOCK_S": "1",
+        "PIN_MOCK_EVERY_S": "1",
+        "PIN_MOCK_SILENT": "1",
+        "PIN_HIGH_MEM": "0",
+        "PIN_MAX_RATE": "6",
+        "PIN_RATE_POLL_S": "0",
+        "PIN_DEADLINE_GRACE_S": "2",
+        "PIN_FETCH_ALLOW_S": "2",
+        "PIN_STOP_LOCK_TIMEOUT_S": "1",
+        "PIN_STOP_TIMEOUT_S": "1",
+        "PIN_KILL_GRACE_S": "1",
+        "FAKE_HANG_VERB": "download",
+        "FAKE_HANG_TRIES": "2",
+        "FAKE_HANG_S": "30",
+    }
+    dummy = None
+    proc = subprocess.Popen(
+        ["bash", str(ROOT / "scripts/colab/smoke_window.sh"), str(binfile), str(out)],
+        env=env,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        t_wait = time.monotonic() + 15
+        while time.monotonic() < t_wait:
+            if (out / ".exec.pid").is_file() and not (out / ".exec.running").exists() and (st / "verb-download-count").is_file():
+                break
+            time.sleep(0.05)
+        assert (out / ".exec.pid").is_file() and not (out / ".exec.running").exists(), "exec did not finish cleanly before exit fetch"
+        dummy = subprocess.Popen(["sleep", "30"], start_new_session=True)
+        (out / ".exec.pid").write_text(f"{dummy.pid}\n", encoding="utf-8")
+        os.kill(proc.pid, signal.SIGKILL)
+        proc.wait(timeout=5)
+        t_done = time.monotonic() + 10
+        while time.monotonic() < t_done and not ((out / ".stop_completed").is_file() and (out / "outcome.draft.json").is_file()):
+            time.sleep(0.05)
+        assert (out / ".stop_completed").is_file() and (out / "outcome.draft.json").is_file()
+        assert _pid_alive(dummy.pid), "watcher reaped reused PID even though .exec.running was absent"
+        d = json.loads((out / "outcome.draft.json").read_text(encoding="utf-8"))
+        assert d["stop_path"] == "watcher", d
+        assert not (st / "open").exists()
+    finally:
+        if dummy is not None:
+            try:
+                os.killpg(dummy.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
 
 
 if __name__ == "__main__":  # WSL on the rig: no pytest needed

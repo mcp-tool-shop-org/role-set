@@ -45,6 +45,20 @@ case ",${FAKE_HANG_VERB:-}," in
     fi
     ;;
 esac
+case ",${FAKE_FAIL_VERB:-}," in
+  *,"$cmd",*)
+    fail_match=0
+    if [ -z "${FAKE_FAIL_TRIES:-}" ] || [ "${FAKE_FAIL_TRIES:-}" = all ]; then
+      fail_match=1
+    else
+      case ",${FAKE_FAIL_TRIES}," in *,"$v_try",*) fail_match=1;; esac
+    fi
+    if [ "$fail_match" = 1 ]; then
+      echo "[colab] Error: simulated $cmd failure (try $v_try)" >&2
+      exit "${FAKE_FAIL_RC:-1}"
+    fi
+    ;;
+esac
 maybe_banner() {
   local emit=0
   if [ "${FAKE_BANNER:-}" = always ]; then
@@ -104,7 +118,10 @@ case "$cmd" in
     else
       echo unlocked >> "$ST/new-lock.log"
     fi
-    if [ "${FAKE_NEW_FAIL:-0}" = 1 ]; then
+    new_fail=0
+    [ "${FAKE_NEW_FAIL:-0}" = 1 ] && new_fail=1
+    case ",${FAKE_NEW_FAIL_TRIES:-}," in *,"$v_try",*) new_fail=1;; esac
+    if [ "$new_fail" = 1 ]; then
       echo "[colab] Requesting runtime..."
       exit 1
     fi
@@ -323,6 +340,17 @@ case "$cmd" in
         echo "trap 'rm -f \"$ST/busy.$n\"; [ -n \"\${JPID:-}\" ] && kill \"\$JPID\" 2>/dev/null || true' TERM INT EXIT"
       fi
       for e in "${envs[@]}"; do printf 'export %q\n' "$e"; done
+      if [ "${FAKE_EXEC_GRANDCHILD_IGNORE_SIGNALS:-0}" = 1 ]; then
+        cat <<EOF
+python3 -c 'import os, pathlib, signal, time
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+with pathlib.Path("$ST/exec-grandchild.pids").open("a", encoding="utf-8") as fh:
+    fh.write(f"{os.getpid()} {os.getpgrp()}\\n")
+time.sleep(${FAKE_EXEC_GRANDCHILD_S:-120})
+' </dev/null >/dev/null 2>&1 &
+EOF
+      fi
       echo "export PIN_CONTENT='$VM/content'"; echo "export PIN_WORK='$VM/content/pin'"; echo "python3 '$file' & JPID=\$!; wait \$JPID"
       if [ -n "${FAKE_EXEC_HANG_AFTER_DONE_S:-}" ]; then
         echo "sleep '${FAKE_EXEC_HANG_AFTER_DONE_S}' & HPID=\$!; wait \$HPID"

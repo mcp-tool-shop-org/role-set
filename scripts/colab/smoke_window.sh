@@ -107,13 +107,13 @@ UPLOAD_PART_S="${PIN_UPLOAD_TIMEOUT_S:-600}"
 UPLOAD_TOKEN_S="${PIN_TOKEN_UPLOAD_TIMEOUT_S:-120}"
 # The margin's budget (R&D on #91, extended with bounded stop): the job's deadline is cap - MARGIN; it gets GRACE_S past
 # it to cut its wave, tar and print its result, the exit fetch needs FETCH_ALLOW_S after that, and stopping the session
-# (STOP_ATTEMPTS tries of STOP_S + KILL_GRACE_S = STOP_BOUND_S) must also fit before the ceiling at the cap. So
-# CLEANUP_BOUND_S = GRACE_S + FETCH_ALLOW_S + STOP_BOUND_S must fit in MARGIN at the window's worst-case rate, and CAP_UNITS
-# must exceed MARGIN, or the window refuses before colab new: PIN_MAX_RATE on a GPU card (rates move: the A100 High-RAM
-# shape read 8.88/hr and the A100 6.73/hr on 2026-11-03), the configured stub rate on a CPU one.
-# Defaults from the measurements (R&D, 2026-10-18 / sdlab #66): 60 s grace + 120 s fetch + 140 s bounded stop (2 x 70 s)
-# = 320 s. A GPU window derives its margin from them at its max rate (below); an explicit PIN_CAP_MARGIN may raise it,
-# never lower it.
+# (STOP_LOCK_S lock wait + STOP_ATTEMPTS tries of STOP_S + KILL_GRACE_S = STOP_BOUND_S) must also fit before the ceiling
+# at the cap. So CLEANUP_BOUND_S = GRACE_S + FETCH_ALLOW_S + STOP_BOUND_S must fit in MARGIN at the window's worst-case
+# rate, and CAP_UNITS must exceed MARGIN, or the window refuses before colab new: PIN_MAX_RATE on a GPU card (rates move:
+# the A100 High-RAM shape read 8.88/hr and the A100 6.73/hr on 2026-11-03), the configured stub rate on a CPU one.
+# Defaults from the measurements (R&D, 2026-10-18 / sdlab #66): 60 s grace + 120 s fetch + 200 s bounded stop (60 s lock
+# + 2 x 70 s) = 380 s. A GPU window derives its margin from them at its max rate (below); an explicit PIN_CAP_MARGIN may
+# raise it, never lower it.
 GRACE_S="${PIN_DEADLINE_GRACE_S:-60}"
 FETCH_ALLOW_S="${PIN_FETCH_ALLOW_S:-120}"
 # PIN_HIGH_MEM is required on every GPU card (no default), and cross-checked against single-shape high-mem cards
@@ -195,7 +195,7 @@ if ! awk -v c="$CAP_UNITS" 'BEGIN{exit !(c ~ /^[0-9]*\.?[0-9]+$/ && c + 0 > 0)}'
   echo "REFUSED: PIN_CAP_UNITS=$CAP_UNITS must be a positive number of units" >&2
   exit 2
 fi
-STOP_BOUND_S=$(( STOP_ATTEMPTS * (STOP_S + KILL_GRACE_S) ))
+STOP_BOUND_S=$(( STOP_LOCK_S + STOP_ATTEMPTS * (STOP_S + KILL_GRACE_S) ))
 CLEANUP_BOUND_S=$(( GRACE_S + FETCH_ALLOW_S + STOP_BOUND_S ))
 MARGIN_RATE="${MAX_RATE:-$CPU_RATE}"
 # A GPU window's margin is derived (Publisher, 2026-11-06; extended with bounded stop, sdlab #66): the units the grace,
@@ -328,6 +328,7 @@ WATCH=""
 EXEC=""
 SPENT_FINAL="null"
 MAIN_PID="$$"
+SELF_PGID=$(python3 -c 'import os; print(os.getpgrp())' 2>/dev/null || ps -o pgid= -p "$$" 2>/dev/null | tr -d ' ' || true)
 RATE_LIVE=""; RATE_SCOPE=""; OWN_RATE=""; T_OPEN=""; T_NEW=""; PIN_DEADLINE=""; RATE_POLLS_USED=0; RATE_WHY=""
 RATE_STABLE_S=""; RATE_MAX_SEEN=""; ASSIGN0=""; RATE0=""; RATE_AFTER=""
 READINGS="$OUT/rate-readings.jsonl"; rm -f "$READINGS" "$OUT/.rate_max" "$OUT/.rate_verdict" "$OUT/rate.json"
@@ -372,10 +373,17 @@ kill_pid_tree() {
   kill -KILL "${live_pids[@]}" 2>/dev/null || true
   return 0
 }
+valid_exec_pgid() {
+  local p="${1:-}"
+  [[ "$p" =~ ^[1-9][0-9]*$ ]] || return 1
+  [ "$p" -gt 1 ] || return 1
+  [ -n "${SELF_PGID:-}" ] || return 1
+  [ "$p" -ne "$SELF_PGID" ] && [ "$p" -ne "$MAIN_PID" ] && [ "$p" -ne "${BASHPID:-$MAIN_PID}" ]
+}
 reap_exec_group() {
   local epid="${1:-}"
   [ -n "$epid" ] || epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
-  if [[ "$epid" =~ ^[0-9]+$ ]]; then
+  if valid_exec_pgid "$epid"; then
     kill -TERM -- "-$epid" 2>/dev/null || true
     kill -KILL -- "-$epid" 2>/dev/null || true
   fi
@@ -392,7 +400,7 @@ end_window() {
   if [ -f "$OUT/.exec.pid" ]; then
     local epid c has_child=0
     epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
-    if [ -n "$epid" ]; then
+    if valid_exec_pgid "$epid"; then
       for c in $(pgrep -P "$epid" 2>/dev/null || true); do
         has_child=1
         pkill -TERM -P "$c" 2>/dev/null || true
@@ -401,7 +409,7 @@ end_window() {
       [ "$has_child" -eq 0 ] && kill -TERM "$epid" 2>/dev/null || true
       (
         sleep "${PIN_KILL_ESCALATE_S:-5}"
-        if [ -f "$OUT/.exec.running" ] && [ "$(cat "$OUT/.exec.pid" 2>/dev/null || true)" = "$epid" ]; then
+        if [ -f "$OUT/.exec.running" ] && [ "$(cat "$OUT/.exec.pid" 2>/dev/null || true)" = "$epid" ] && valid_exec_pgid "$epid"; then
           kill -KILL -- "-$epid" 2>/dev/null || true
           for c in $(pgrep -P "$epid" 2>/dev/null || true); do pkill -KILL -P "$c" 2>/dev/null || true; done
           pkill -KILL -P "$epid" 2>/dev/null || true
@@ -685,10 +693,18 @@ for try in $(seq 1 "$GATE_TRIES"); do
     echo "VM GATE: no healthy ${PIN_GPU:-A100} in $GATE_TRIES tries"
     exit 4
   fi
+  gate_stop_rc=0
   (
     flock -w "$STOP_LOCK_S" 9 || echo "open lock not free after ${STOP_LOCK_S} s; stopping rejected $S anyway"
-    stop_session gate || true
-  ) 9>"$OPEN_LOCK"
+    stop_session gate
+  ) 9>"$OPEN_LOCK" || gate_stop_rc=$?
+  if [ "$gate_stop_rc" -ne 0 ]; then
+    T_OPEN=$(( T_NEW - GATE_REJECTED_S ))
+    GATE_REJECTED_S=$(( GATE_REJECTED_S + $(date +%s) - t_try ))
+    echo GATE_STOP_FAILED > "$OUT/.end"
+    echo "REFUSED GATE_STOP_FAILED: stop_session gate failed for rejected $S on try $try (rc=$gate_stop_rc); keeping SESSION_OPEN=1 so trap retries stop $(date -u +%FT%TZ)" | scrub_log | tee -a "$OUT/stop.log" >&2
+    exit 4
+  fi
   SESSION_OPEN=0; rm -f "$OUT/.session_open" "$OUT/.stop_completed"
   interruptible_sleep "$STOP_SETTLE_S"
   GATE_REJECTED_S=$(( GATE_REJECTED_S + $(date +%s) - t_try ))
@@ -946,11 +962,15 @@ if [ "${PIN_GPU:-A100}" != CPU ] && [ "$TICK_S" -gt 60 ]; then TICK_S=60; fi
       if [ -f "$OUT/.upload.pid" ]; then
         kill_pid_tree "$(cat "$OUT/.upload.pid" 2>/dev/null || true)" || true
       fi
-      if [ -f "$OUT/.exec.pid" ]; then
+      if [ -f "$OUT/.exec.running" ] && [ -f "$OUT/.exec.pid" ]; then
         local w_epid
         w_epid=$(cat "$OUT/.exec.pid" 2>/dev/null || true)
-        [ -n "$w_epid" ] && kill_pid_tree "$w_epid" || true
-        reap_exec_group "$w_epid"
+        if valid_exec_pgid "$w_epid"; then
+          kill_pid_tree "$w_epid" || true
+          reap_exec_group "$w_epid"
+        else
+          rm -f "$OUT/.exec.running" 2>/dev/null || true
+        fi
       fi
       (
         flock -w "$STOP_LOCK_S" 9 || echo "open lock not free after ${STOP_LOCK_S} s; watcher stopping $S anyway"
